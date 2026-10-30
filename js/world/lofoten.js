@@ -11,6 +11,7 @@ import { terrainMaterial, tex, texReady, TIME } from './terrainmat.js';
 import { Water } from '../../vendor/jsm/objects/Water.js';
 import { mergeGeometries } from '../../vendor/jsm/utils/BufferGeometryUtils.js';
 import { loadAssets } from './assets.js';
+import { Events } from './events.js';
 import { EffectComposer } from '../../vendor/jsm/postprocessing/EffectComposer.js';
 import { RenderPass } from '../../vendor/jsm/postprocessing/RenderPass.js';
 import { GTAOPass } from '../../vendor/jsm/postprocessing/GTAOPass.js';
@@ -218,13 +219,19 @@ export class WorldScene {
     this.roadMat = new THREE.MeshStandardMaterial({ map: at, roughness: 0.82, side: THREE.DoubleSide, polygonOffset: true, polygonOffsetFactor: -2 });
     // photo asphalt (assets/tex/asphalt_*) under the painted lines of the procedural texture
     const aC = tex('asphalt', 'col', [128, 128, 130]), aN = tex('asphalt', 'nrm', [128, 128, 255]);
+    this.roadBlur = { value: 0 }; // speed blur on the asphalt, strongest right in front of the wheel
     this.roadMat.onBeforeCompile = sh => {
-      sh.uniforms.tAsph = { value: aC }; sh.uniforms.tAsphN = { value: aN };
-      sh.fragmentShader = sh.fragmentShader.replace('#include <common>', '#include <common>\nuniform sampler2D tAsph, tAsphN;')
+      sh.uniforms.tAsph = { value: aC }; sh.uniforms.tAsphN = { value: aN }; sh.uniforms.uBlur = this.roadBlur;
+      sh.fragmentShader = sh.fragmentShader.replace('#include <common>', '#include <common>\nuniform sampler2D tAsph, tAsphN; uniform float uBlur;')
         .replace('#include <map_fragment>', `
-  vec4 painted = texture2D(map, vMapUv);
-  vec2 auv = vec2(vMapUv.x * 6.6, vMapUv.y * 40.) / 2.5;
-  vec3 asph = mix(texture2D(tAsph, auv).rgb, texture2D(tAsph, auv * 0.23 + .5).rgb, .35);
+  float bl = uBlur * clamp(6. / max(length(vViewPosition), .5), 0., 1.) * .012;
+  vec4 painted = vec4(0.); vec3 asph = vec3(0.);
+  for (int i = 0; i < 5; i++) {
+    vec2 uvo = vMapUv + vec2(0., (float(i) - 2.) * bl);
+    painted += texture2D(map, uvo) * .2;
+    vec2 auv = vec2(uvo.x * 6.6, uvo.y * 40.) / 2.5;
+    asph += mix(texture2D(tAsph, auv).rgb, texture2D(tAsph, auv * 0.23 + .5).rgb, .35) * .2;
+  }
   float line = smoothstep(.45, .7, dot(painted.rgb, vec3(.333)));
   float edge = smoothstep(.0, .06, vMapUv.x) * (1. - smoothstep(.94, 1., vMapUv.x));
   diffuseColor.rgb *= mix(painted.rgb, mix(asph * .95, painted.rgb, line), edge);`)
@@ -505,7 +512,7 @@ export class WorldScene {
         y += o.dy || 0;
       }
       const { obj, mixer } = A.make(e, o.anim, r);
-      obj.position.set(q.x, y, q.z); obj.rotation.y = ang; obj.userData.small = Math.max(...e.size) < 3; obj.userData.mid = Math.max(...e.size) < 9; if (Array.isArray(o.scale)) obj.scale.set(...o.scale); else if (o.scale) obj.scale.setScalar(o.scale);
+      obj.position.set(q.x, y, q.z); obj.rotation.y = ang; obj.userData.small = Math.max(...e.size) < 3; obj.userData.mid = Math.max(...e.size) < 9; if (e.category.startsWith('figure')) { obj.userData.person = true; obj.userData.h = e.size[1]; } if (Array.isArray(o.scale)) obj.scale.set(...o.scale); else if (o.scale) obj.scale.setScalar(o.scale);
       this.scene.add(obj); taken.push([q.x, q.z, rad]);
       this.props.push(obj); if (mixer) { mixer.obj = obj; this.mixers.push(mixer); }
       obj.traverse(c => { if (c.userData.millWheel) this.wheels.push(c); });
@@ -611,6 +618,24 @@ export class WorldScene {
       this.scene.add(obj); this.birds.push(obj); this.props.push(obj); if (mixer) { mixer.obj = obj; this.mixers.push(mixer); }
     }
     for (const b of this.birds) { const c = b.userData.circle; c.y = Math.max(0, f.height(c.x, c.z)) + 25 + Math.random() * 30; }
+    // trees by altitude: birch down by the water, pine on the slopes, crooked mountain birch at the tree line, juniper above.
+    // Each species carries its altitude band (zone_m) from the Mac; groves, not an even sprinkle.
+    const trees = A.by.tree || [];
+    if (trees.length) {
+      let n = 0;
+      for (let d = 80; d < t.length - 60 && n < 1400; d += 9 + r() * 10) {
+        const grove = f.n2(d / 400, 7.3) * 0.5 + 0.5; // stretches with woods and open stretches between them
+        if (r() > 0.25 + grove * 0.9) continue;
+        const side = r() < 0.5 ? -1 : 1, off = side * (ROAD_W + 9 + Math.pow(r(), 1.6) * 210), q = spot(d, off), h = f.height(q.x, q.z);
+        if (h < 2.5) continue;
+        const slope = Math.hypot(f.height(q.x + 3, q.z) - h, f.height(q.x, q.z + 3) - h) / 3; if (slope > 0.75) continue; // no trees on cliffs
+        const fit = trees.filter(e => !e.zone_m || (h >= e.zone_m[0] && h <= e.zone_m[1]));
+        if (!fit.length) continue;
+        const e = fit[Math.floor(r() * fit.length)], k = 0.8 + r() * 0.45;
+        if (place(e, d, off, { face: r() * 6.28, scale: k, radK: 0.35, gap: 4 })) n++;
+      }
+      console.info('RIDEFRAME Bäume', n);
+    }
     // big rock walls where the ground rises steeply beside the road (serpentines, cliffs)
     const cliffs = A.by.cliff || [];
     if (cliffs.length) for (let d = 300; d < t.length - 100; d += 140 + r() * 120) {
@@ -626,6 +651,10 @@ export class WorldScene {
     // everything that never moves: matrices once, then skipped by three's per-frame scene-graph update (was ~30 % CPU)
     const moving = new Set([...this.mixers.map(m => m.obj), ...this.birds, ...this.whales.map(w => w.obj), ...this.animated]);
     for (const o of this.props) if (!moving.has(o) && !o.userData.walk && !o.userData.circle) { let wheel = false; o.traverse(c => { if (c.userData.millWheel) wheel = true; }); if (!wheel) { freeze(o); o.userData.still = true; } }
+    const ck = A.by.cockpit?.[0]; // handlebar, hoods and forearms in the rider's view, hung on the camera
+    if (ck) { const { obj, mixer } = A.make(ck, 'Treten'); obj.traverse(c => { c.castShadow = false; c.layers.set(1); c.frustumCulled = false; });
+      this.camera.add(obj); this.scene.add(this.camera); this.cockpit = obj; this.cockpitMixer = mixer; }
+    this.events = new Events(this, A); // villagers calling out, birds, carts: before batching, which drops the props list
     if (!/[?&]nobatch/.test(location.search)) this._batch();
     // the sea mirror renders the scene a second time (was the biggest GPU cost): only terrain, road and big buildings go in
     for (const o of this.props) if (o.userData.small || o.userData.mid || o.userData.walk || o.userData.circle || o.userData.whale || moving.has(o)) noMirror(o);
@@ -740,6 +769,7 @@ export class WorldScene {
   }
   /** 0 = rider's eyes, 1 = chase view from behind and above, 2 = looking back */
   setView(v) { this.view = v; this.lookPos = null; }
+  setCockpit(on) { this.showCockpit = on; }
 
   _camera(d, dt = 1 / 60) {
     // exact rider pose on the spline; only the view direction is damped (time based, frame-rate independent)
@@ -816,6 +846,7 @@ export class WorldScene {
     this.light.position.set(cam.x + this.sunDir.x * 400, cam.y + this.sunDir.y * 400 + 40, cam.z + this.sunDir.z * 400);
     this.light.target.position.set(cam.x - this.sunDir.x * 40, cam.y, cam.z - this.sunDir.z * 40);
     this.sky.position.copy(this.camera.position);
+    this.roadBlur.value = Math.max(0, Math.min(1, ((this.speed || 0) * 3.6 - 12) / 50));
     this.streaks.position.copy(this.camera.position); this.streaks.quaternion.copy(this.camera.quaternion); this.streaks.userData.tick(dt, this.speed || 0, this.view === 2 ? 0 : this.fast || 0);
     this.water.position.x = Math.round(cam.x / 100) * 100; this.water.position.z = Math.round(cam.z / 100) * 100;
     this.water.material.uniforms.time.value = time * 0.6; this.grassTime.value = time; TIME.value = time;
@@ -834,6 +865,8 @@ export class WorldScene {
 
   _life(time, dt, cam) {
     if (!this.props) return;
+    this.events?.update(time, dt, cam, this.d);
+    if (this.cockpit) { this.cockpit.visible = !this.view && this.showCockpit !== false; if (this.cockpit.visible) this.cockpitMixer?.update(Math.min(dt, 0.1) * (0.4 + (this.speed || 0) / 8)); }
     // show only what is near (draw calls), animate only what is close
     if (!this._cullT || time - this._cullT > 0.5 || this.instant) {
       this._cullT = time;

@@ -335,6 +335,7 @@ function settings() {
       </div>
       <div class="panel"><h3>Ansicht 3D-Welt</h3>
         <label class="field"><div>Sichtfeld (Brennweite)<div class="hint">Kleinere mm = weiter Blick. Normal entspricht ca. 17 mm. Während der Fahrt: Tasten [ und ].</div></div>${seg('lensMm', String(s.lensMm || 0), LENS_OPTS)}</label>
+        <label class="field"><div>Lenker im Bild<div class="hint">Rennlenker mit Griffen und Unterarmen in der Fahrersicht.</div></div><input type="checkbox" class="toggle" id="cockpit" ${s.cockpit !== false ? 'checked' : ''}></label>
         <label class="field"><div>Kamera<div class="hint">Während der Fahrt umschalten mit Taste V oder dem Kamera-Knopf.</div></div>${seg('view3d', String(s.view3d || 0), VIEW_OPTS)}</label>
       </div>
       <div class="panel"><h3>Design</h3>
@@ -350,6 +351,7 @@ function settings() {
   const num = (id, key) => $('#' + id).addEventListener('change', e => { s[key] = +e.target.value; saveSettings(); });
   const stp = (id, key, fb) => wireStepper(main, id, v => { s[key] = v; saveSettings(); }, fb);
   stp('riderKg', 'riderKg', 75); stp('bikeKg', 'bikeKg', 8.5); stp('ftp', 'ftp', 250); stp('cadence', 'cadence', 90); stp('wheel', 'wheel', 2105);
+  $('#cockpit').onchange = e => { s.cockpit = e.target.checked; saveSettings(); };
   wireSeg(main, 'lensMm', v => { s.lensMm = +v; saveSettings(); });
   wireSeg(main, 'view3d', v => { s.view3d = +v; saveSettings(); });
   wireSeg(main, 'shiftMode', v => { s.shiftMode = v; saveSettings(); settings(); });
