@@ -196,8 +196,13 @@ export class WorldScene {
     const wn = tex('water', 'nrm', [128, 128, 255]);
     this.water = new Water(new THREE.PlaneGeometry(9000, 9000), {
       textureWidth: 1024, textureHeight: 1024, waterNormals: wn, sunDirection: sun.clone(), sunColor: 0xffd2a8,
-      waterColor: 0x0b4f5c, distortionScale: 2.2, fog: true, alpha: 0.86, size: 6,
+      waterColor: 0x0f6f78, distortionScale: 3.4, fog: true, alpha: 0.74, size: 3.2,
     });
+    // real water reflects ~4 % straight down (not 30 %): the sea is no longer a white mirror, the teal body and the
+    // turquoise sand under the shallows show through; grazing angles still mirror the mountains
+    this.water.material.fragmentShader = this.water.material.fragmentShader
+      .replace('float rf0 = 0.3;', 'float rf0 = 0.04;')
+      .replace('vec3 scatter = max( 0.0, dot( surfaceNormal, eyeDirection ) ) * waterColor;', 'vec3 scatter = ( 0.35 + 0.65 * max( 0.0, dot( surfaceNormal, eyeDirection ) ) ) * waterColor * 1.6;');
     this.water.material.transparent = true;
     this.water.rotation.x = -Math.PI / 2; this.water.position.y = 0; scene.add(this.water);
 
