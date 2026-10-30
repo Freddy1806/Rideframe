@@ -22,6 +22,55 @@ const TILE = 192;             // terrain tile size (m)
 const VIEW = 2000;            // tiles kept within this radius
 const SUB = STEP / DS;
 
+// ---------------- atmosphere: height fog with sun inscattering (aerial perspective) ----------------
+// Replaces three's FogExp2 for every material: haze is thick near the sea and thins out with height (scale height
+// FOG_H), so peaks stand out against a hazy shore, and it glows warm towards the sun (like UE's exponential height
+// fog with directional inscattering / iq's fog article). Sun direction and glow colour are shared plain objects:
+// three copies Vector3/Color uniforms per material, plain {x,y,z} objects stay shared and update every material.
+const FOG_SUN = { x: 0, y: 0.05, z: -1 }, FOG_SUNCOL = { x: 0, y: 0, z: 0 }, FOG_H = 420;
+let fogInstalled = false;
+function installFog() {
+  if (fogInstalled) return; fogInstalled = true;
+  const C = THREE.ShaderChunk;
+  C.fog_pars_vertex = '#ifdef USE_FOG\n  varying float vFogDepth;\n  varying vec3 vFogRay;\n#endif';
+  // camera-relative world vector: the view matrix's rotation transposed (camera has no scale)
+  C.fog_vertex = '#ifdef USE_FOG\n  vFogDepth = - mvPosition.z;\n  vFogRay = ( vec4( mvPosition.xyz, 0.0 ) * viewMatrix ).xyz;\n#endif';
+  C.fog_pars_fragment = `#ifdef USE_FOG
+  uniform vec3 fogColor;
+  uniform vec3 fogSunDir;
+  uniform vec3 fogSunCol;
+  varying float vFogDepth;
+  varying vec3 vFogRay;
+  #ifdef FOG_EXP2
+    uniform float fogDensity;
+  #else
+    uniform float fogNear;
+    uniform float fogFar;
+  #endif
+#endif`;
+  C.fog_fragment = `#ifdef USE_FOG
+  #ifdef FOG_EXP2
+    float fogLen = length( vFogRay );
+    vec3 fogRd = vFogRay / max( fogLen, 1e-3 );
+    float fogY0 = cameraPosition.y;
+    // sea mirror pass: the camera sits below the water, mirror the ray so reflections get the same haze
+    if ( fogY0 < 0.0 ) { fogY0 = - fogY0; fogRd.y = - fogRd.y; }
+    float fogK = fogRd.y * fogLen / ${FOG_H.toFixed(1)};
+    float fogH = exp( - fogY0 / ${FOG_H.toFixed(1)} ) * ( abs( fogK ) > 1e-4 ? ( 1.0 - exp( - fogK ) ) / fogK : 1.0 );
+    float fogFactor = 1.0 - exp( - fogDensity * fogDensity * fogLen * fogLen * min( fogH, 1.6 ) );
+    float fogS = max( dot( fogRd, fogSunDir ), 0.0 );
+    vec3 fogC = fogColor + fogSunCol * ( 0.7 * pow( fogS, 5.0 ) + 0.5 * pow( fogS, 40.0 ) );
+    gl_FragColor.rgb = mix( gl_FragColor.rgb, fogC, fogFactor );
+  #else
+    float fogFactor = smoothstep( fogNear, fogFar, vFogDepth );
+    gl_FragColor.rgb = mix( gl_FragColor.rgb, fogColor, fogFactor );
+  #endif
+#endif`;
+  const add = u => { if (u && u.fogColor && !u.fogSunDir) { u.fogSunDir = { value: FOG_SUN }; u.fogSunCol = { value: FOG_SUNCOL }; } };
+  add(THREE.UniformsLib.fog);
+  for (const k in THREE.ShaderLib) add(THREE.ShaderLib[k].uniforms);
+}
+
 // ---------------- terrain painting ----------------
 // splat = weights for (grass, rock, sand, snow); colour = gentle tint so meadows are not one flat green
 const _v = new THREE.Vector3();
@@ -160,39 +209,38 @@ export class WorldScene {
     this.field = new Field(track, DEM);
     const renderer = this.renderer = new THREE.WebGLRenderer({ canvas, antialias: true, powerPreference: 'high-performance', preserveDrawingBuffer: !!track.__shot });
     renderer.setPixelRatio(Math.min(devicePixelRatio || 1, 1.25)); // Retina at 2x costs 4x the pixels; 1.25 is still sharp at riding distance
-    renderer.toneMapping = THREE.ACESFilmicToneMapping; renderer.toneMappingExposure = 0.85;
+    renderer.toneMapping = THREE.ACESFilmicToneMapping; renderer.toneMappingExposure = 0.92;
     renderer.shadowMap.enabled = true; renderer.shadowMap.type = THREE.PCFSoftShadowMap;
     const scene = this.scene = new THREE.Scene();
     this.camera = new THREE.PerspectiveCamera(62, 16 / 9, 0.1, 9000); this.camera.layers.enable(1);
     this.streaks = windStreaks(); scene.add(this.streaks);
 
-    // midnight sun low in the north-west, over the sea
+    // midnight sun low in the north-west, over the sea; it sinks slowly over the ride (see _weather)
+    installFog();
     const sky = this.sky = new Sky(); sky.scale.setScalar(8000); scene.add(sky);
-    const sun = new THREE.Vector3().setFromSphericalCoords(1, THREE.MathUtils.degToRad(90 - 3), THREE.MathUtils.degToRad(-35 + 180));
-    sun.set(-Math.abs(sun.x), sun.y, -Math.abs(sun.z)).normalize(); // north-west
-    Object.assign(sky.material.uniforms, {});
-    sky.material.uniforms.turbidity.value = 10; sky.material.uniforms.rayleigh.value = 3.6;
-    sky.material.uniforms.mieCoefficient.value = 0.012; sky.material.uniforms.mieDirectionalG.value = 0.9;
-    sky.material.uniforms.sunPosition.value.copy(sun);
-    // midnight-sun grade: deeper blue overhead, glowing orange band along the horizon, hottest towards the sun
-    sky.material.fragmentShader = sky.material.fragmentShader.replace('gl_FragColor = vec4( retColor, 1.0 );', `
-      float hz = 1. - smoothstep(0., .35, max(direction.y, 0.)), toSun = pow(max(dot(direction, vSunDirection), 0.), 6.);
-      retColor = mix(retColor * vec3(.78, .9, 1.12), retColor * vec3(1.35, .92, .62), hz * (.45 + .55 * toSun));
-      retColor += vec3(1., .55, .2) * toSun * hz * .25;
-      gl_FragColor = vec4( retColor, 1.0 );`);
-    this.sunDir = sun;
-    const pm = new THREE.PMREMGenerator(renderer); const envScene = new THREE.Scene(); const sky2 = sky.clone(); envScene.add(sky2);
-    scene.environment = pm.fromScene(envScene, 0, 0.1, 9000).texture; scene.environmentIntensity = 0.6;
-    scene.fog = new THREE.FogExp2(0xd6c9bb, 0.00022);
+    const sun = this.sunDir = sunAt(0);
+    const su = sky.material.uniforms;
+    // clearer air than before (turbidity 10 made the whole sky milky white): blue overhead, warm only towards the sun
+    su.turbidity.value = 4; su.rayleigh.value = 2.6; su.mieCoefficient.value = 0.006; su.mieDirectionalG.value = 0.86;
+    su.sunPosition.value.copy(sun);
+    su.uTime = { value: 0 }; su.uCover = { value: 0.4 }; su.uVeil = { value: 0 }; su.uLow = { value: 0 };
+    sky.material.fragmentShader = skyGrade(sky.material.fragmentShader);
+    this.sky2 = sky.clone(); this.envScene = new THREE.Scene(); this.envScene.add(this.sky2);
+    this.pmrem = new THREE.PMREMGenerator(renderer);
+    scene.environmentIntensity = 0.75;
+    scene.fog = new THREE.FogExp2(0xa9b9d0, 0.00022);
     this.clouds = cloudLayer(sun); scene.add(this.clouds);
 
-    const light = this.light = new THREE.DirectionalLight(0xffd4b4, 2.9);
+    const light = this.light = new THREE.DirectionalLight(0xffd8bc, 3.0);
     light.castShadow = !QS.has('noshadow'); light.shadow.mapSize.set(2048, 2048);
     const sc = light.shadow.camera; sc.left = -110; sc.right = 110; sc.top = 110; sc.bottom = -110; sc.near = 10; sc.far = 900;
     light.shadow.camera.layers.enable(1); // layer 1 = seen and shadowed, but not mirrored by the sea
-    light.shadow.bias = -0.0004; light.shadow.normalBias = 0.6;
+    // smaller normal offset: shadows start at the foot of walls, rocks and posts instead of floating a metre away
+    light.shadow.bias = -0.0003; light.shadow.normalBias = 0.3;
     scene.add(light, light.target);
-    scene.add(new THREE.HemisphereLight(0xa9bddc, 0x5a5044, 0.85));
+    // strong cool sky fill from above, dim green-grey bounce from below: shadow sides read blue-green, never black;
+    // sunlit faces warm (golden-hour contrast)
+    this.hemi = new THREE.HemisphereLight(0x8fb0e2, 0x4f5442, 1.0); scene.add(this.hemi);
 
     // materials
     const dt = detailTex(); dt.repeat.set(1, 1);
@@ -201,13 +249,15 @@ export class WorldScene {
     // sea: reflective water with real normal map; slightly see-through so shallow sand turns it turquoise
     const wn = tex('water', 'nrm', [128, 128, 255]);
     this.water = new Water(new THREE.PlaneGeometry(9000, 9000), {
-      textureWidth: +(QS.get('refl') || 1024), textureHeight: +(QS.get('refl') || 1024), waterNormals: wn, sunDirection: sun.clone(), sunColor: 0xffd2a8,
-      waterColor: 0x0f6f78, distortionScale: 3.4, fog: true, alpha: 0.74, size: 3.2,
+      textureWidth: +(QS.get('refl') || 1024), textureHeight: +(QS.get('refl') || 1024), waterNormals: wn, sunDirection: sun.clone(), sunColor: 0xffb27a,
+      waterColor: 0x0c5f6a, distortionScale: 3.4, fog: true, alpha: 0.74, size: 3.2,
     });
     // real water reflects ~4 % straight down (not 30 %): the sea is no longer a white mirror, the teal body and the
     // turquoise sand under the shallows show through; grazing angles still mirror the mountains
     this.water.material.fragmentShader = this.water.material.fragmentShader
       .replace('float rf0 = 0.3;', 'float rf0 = 0.04;')
+      // sharper, brighter sun glitter: a glittering path on the sea towards the low sun
+      .replace('sunLight( surfaceNormal, eyeDirection, 100.0, 2.0, 0.5, diffuseLight, specularLight );', 'sunLight( surfaceNormal, eyeDirection, 260.0, 5.0, 0.5, diffuseLight, specularLight );')
       .replace('vec3 scatter = max( 0.0, dot( surfaceNormal, eyeDirection ) ) * waterColor;', 'vec3 scatter = ( 0.35 + 0.65 * max( 0.0, dot( surfaceNormal, eyeDirection ) ) ) * waterColor * 1.6;');
     this.water.material.transparent = true;
     this.water.rotation.x = -Math.PI / 2; this.water.position.y = 0; scene.add(this.water);
@@ -772,6 +822,40 @@ export class WorldScene {
     requestAnimationFrame(this._loop);
   }
 
+  // ---- weather: the evening develops along the ride ----
+  // The midnight sun sinks from 6.5° to 2° and swings towards north, the light reddens a little (direct light stays
+  // moderate so granite stays grey), cloud cover drifts along the route and a stratus band can veil the sun.
+  // Everything is a smooth function of the distance (plus a slow drift in time), so it never jumps.
+  _weather(d, time) {
+    const L = this.track.length || 40000, u = Math.max(0, Math.min(1, d / L));
+    const cover = Math.max(0.1, Math.min(0.8, 0.32 + 0.2 * Math.sin(d / 5200 + 1.3) + 0.1 * Math.sin(d / 1700 + 4) + 0.06 * Math.sin(time * 0.003)));
+    const veil = smooth(0.3, 0.95, 0.5 + 0.5 * Math.sin(d / 6100 + 2.6)) * (0.4 + 0.6 * cover);
+    const s = sunAt(u, this.sunDir), low = 1 - Math.max(0, Math.min(1, (s.y - 0.035) / (0.113 - 0.035)));
+    const su = this.sky.material.uniforms;
+    su.sunPosition.value.copy(s); su.uCover.value = cover; su.uVeil.value = veil; su.uLow.value = low;
+    // direct light: warm, a bit warmer as the sun sinks, dimmer behind the veil; never orange enough to rust the rock
+    this.light.color.lerpColors(W_HIGH, W_LOW, low);
+    this.light.intensity = 3.1 * (1 - 0.38 * veil) * (1 - 0.12 * cover) * (1 - 0.12 * low);
+    this.hemi.intensity = 1.0 + 0.12 * cover + 0.05 * veil;
+    this.hemi.color.lerpColors(H_CLEAR, H_GREY, cover * 0.7);
+    // haze: cool lavender away from the sun, glowing red-orange towards it (weaker behind the veil)
+    this.scene.fog.color.lerpColors(F_CLEAR, F_GREY, cover * 0.6);
+    FOG_SUN.x = s.x; FOG_SUN.y = s.y; FOG_SUN.z = s.z;
+    const g = (1 - 0.45 * veil) * (0.85 + 0.3 * low);
+    FOG_SUNCOL.x = 0.42 * g; FOG_SUNCOL.y = (0.2 - 0.06 * low) * g; FOG_SUNCOL.z = (0.06 - 0.03 * low) * g;
+    const wu = this.water.material.uniforms;
+    wu.sunDirection.value.copy(s); wu.sunColor.value.lerpColors(WS_HIGH, WS_LOW, low).multiplyScalar(1 - 0.5 * veil);
+    this.clouds.material.uniforms.uSun.value.copy(s); this.clouds.material.uniforms.uCover.value = cover;
+    this.clouds.material.uniforms.uLow.value = low;
+    // image-based light from the sky, re-baked only when the sun has moved noticeably (~0.2°)
+    if (!this.envSun || this.envSun.distanceToSquared(s) > 1.2e-5) {
+      (this.envSun ||= new THREE.Vector3()).copy(s);
+      const rt = this.pmrem.fromScene(this.envScene, 0, 0.1, 9000);
+      this.envRT?.dispose(); this.envRT = rt; this.scene.environment = rt.texture;
+    }
+    this.weather = { cover, veil, sunEl: THREE.MathUtils.radToDeg(Math.asin(s.y)) };
+  }
+
   _setQuality(q) {
     this.quality = q; const r = this.renderer;
     if (q < 3) this.useAO = false;
@@ -809,6 +893,7 @@ export class WorldScene {
       if (this.composer) this.composer.setSize(W, H);
     }
     this.d = distAtTime(this.track, this.currentTime);
+    this._weather(this.d, time);
     const cam = this._camera(this.d, dt);
     this._far(cam.x, cam.z); this.farCam.value.set(cam.x, cam.z);
     this._ensure(cam.x, cam.z);
@@ -819,7 +904,7 @@ export class WorldScene {
     this.streaks.position.copy(this.camera.position); this.streaks.quaternion.copy(this.camera.quaternion); this.streaks.userData.tick(dt, this.speed || 0, this.view === 2 ? 0 : this.fast || 0);
     this.water.position.x = Math.round(cam.x / 100) * 100; this.water.position.z = Math.round(cam.z / 100) * 100;
     this.water.material.uniforms.time.value = time * 0.6; this.grassTime.value = time; TIME.value = time;
-    this.clouds.position.copy(this.camera.position); this.clouds.material.uniforms.uTime.value = time;
+    this.clouds.position.copy(this.camera.position); this.clouds.material.uniforms.uTime.value = time; this.sky.material.uniforms.uTime.value = time;
     for (const o of this.animated) {
       if (o.userData.spin) o.rotation.z = time * 0.6;
       else if (o.userData.flag) o.rotation.y = Math.sin(time * 2.3 + o.id) * 0.25;
@@ -899,25 +984,84 @@ function mergeGeos(list) { // keeps every attribute all parts share (terrain: co
   return g;
 }
 
-// soft cumulus layer 1.4 km up: fbm noise drifting with the wind, lit warm from the low sun, fading out at the horizon
+// sun path over the ride (u = 0..1): elevation 6.5° -> 2°, azimuth 36° -> 24° west of north (north = -z, west = -x)
+function sunAt(u, out = new THREE.Vector3()) {
+  const k = u * u * (3 - 2 * u), el = THREE.MathUtils.degToRad(6.5 - 4.5 * k), az = THREE.MathUtils.degToRad(36 - 12 * u);
+  return out.set(-Math.cos(el) * Math.sin(az), Math.sin(el), -Math.cos(el) * Math.cos(az));
+}
+// light colours (linear) for a high (6.5°) and a low (2°) sun; sky fill clear / overcast; haze clear / overcast
+const W_HIGH = new THREE.Color(0xffdcc2), W_LOW = new THREE.Color(0xffc9a4);
+const H_CLEAR = new THREE.Color(0x8fb0e2), H_GREY = new THREE.Color(0xa6b2c6);
+const F_CLEAR = new THREE.Color(0xa9b9d0), F_GREY = new THREE.Color(0xb4b9c2);
+const WS_HIGH = new THREE.Color(0xffb27a), WS_LOW = new THREE.Color(0xff8a52);
+
+// sunset grade on top of three's Sky (Preetham): deep blue overhead, a pink belt of Venus opposite the sun,
+// orange-to-red glow along the horizon towards the sun, a large dark-red sun disc instead of the white-hot one,
+// and thin stratus streaks along the horizon lit red from below (they can veil the sun: uVeil)
+function skyGrade(fs) {
+  return fs
+    .replace('uniform vec3 up;', `uniform vec3 up;
+uniform float uTime, uCover, uVeil, uLow;
+float sh(vec2 p) { return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }
+float sn(vec2 p) { vec2 i = floor(p), f = fract(p); f = f * f * (3. - 2. * f); return mix(mix(sh(i), sh(i + vec2(1, 0)), f.x), mix(sh(i + vec2(0, 1)), sh(i + vec2(1, 1)), f.x), f.y); }`)
+    .replace('L0 += ( vSunE * 19000.0 * Fex ) * sundisk;', '')
+    .replace('gl_FragColor = vec4( retColor, 1.0 );', `
+  float ey = max(direction.y, 0.);
+  float cs = max(cosTheta, 0.);
+  float hz = 1. - smoothstep(0., .38, ey);
+  float low = 1. - smoothstep(0., .07, ey);
+  float toSun = pow(cs, 5.);
+  float nearSun = pow(cs, 60.);
+  retColor *= 1. - .45 * pow(cs, 6.) * hz;
+  retColor *= mix(vec3(1.), vec3(1.05, .66, .42), pow(cs, 16.) * (.2 + .8 * uLow));
+  retColor = max(mix(vec3(dot(retColor, vec3(.3, .55, .15))), retColor, 1.45), 0.) * .62;
+  retColor *= mix(vec3(.64, .85, 1.22), vec3(1.), hz * .65);
+  vec3 warm = mix(vec3(1.3, 1.02, .74), vec3(1.55, .78, .42), low * (.4 + .6 * toSun));
+  retColor = mix(retColor, retColor * warm, hz * (.35 + .65 * toSun));
+  retColor += vec3(1., .62, .3) * toSun * hz * (.32 + .1 * uLow) + vec3(1., .34, .08) * nearSun * low * (.5 - .25 * uVeil);
+  float anti = pow(max(-cosTheta, 0.), 1.5);
+  float belt = smoothstep(.015, .09, ey) * (1. - smoothstep(.12, .3, ey));
+  retColor = mix(retColor, retColor * vec3(1.22, .93, 1.02) + vec3(.035, .008, .02), belt * anti * .35);
+  float r = acos(clamp(cosTheta, -1., 1.));
+  float disc = 1. - smoothstep(.016, .019, r);
+  vec3 discCol = mix(vec3(6., 3.4, 1.6), vec3(1.6, .11, .03), smoothstep(.15, .85, uLow)) * (1. - .3 * r / .019);
+  retColor = mix(retColor, discCol, disc * (1. - .55 * uVeil));
+  float az = atan(direction.x, direction.z);
+  vec2 q = vec2(az * 7. + uTime * .0015, ey * 95.);
+  float st = sn(q) * .55 + sn(q * vec2(2.7, 2.1) + 3.1) * .3 + sn(q * vec2(7.3, 4.2) + 1.7) * .15;
+  float band = smoothstep(.006, .025, ey) * (1. - smoothstep(.07, .16, ey));
+  float thick = smoothstep(.7 - .2 * uCover - .25 * uVeil * pow(cs, 30.), .82, st) * band;
+  vec3 stCol = mix(vec3(.26, .22, .30), vec3(1.5, .5, .18), clamp(pow(cs, 10.) * 1.4 + .25 * pow(cs, 2.), 0., 1.));
+  retColor = mix(retColor, stCol * (.7 + .5 * st), thick * .85);
+  gl_FragColor = vec4( retColor, 1.0 );`);
+}
+
+// cumulus deck 1.5 km up: fbm noise drifting with the wind; coverage follows the weather (uCover). Undersides
+// slate-violet, edges facing the low sun glow red-orange, thin parts near the sun light up (silver lining)
 function cloudLayer(sun) {
   const m = new THREE.ShaderMaterial({
     transparent: true, depthWrite: false, fog: false, side: THREE.BackSide,
-    uniforms: { uTime: { value: 0 }, uSun: { value: sun.clone() } },
+    uniforms: { uTime: { value: 0 }, uSun: { value: sun.clone() }, uCover: { value: 0.4 }, uLow: { value: 0 } },
     vertexShader: 'varying vec3 vW; void main() { vec4 w = modelMatrix * vec4(position, 1.); vW = w.xyz; gl_Position = projectionMatrix * viewMatrix * w; }',
-    fragmentShader: `varying vec3 vW; uniform float uTime; uniform vec3 uSun;
+    fragmentShader: `varying vec3 vW; uniform float uTime, uCover, uLow; uniform vec3 uSun;
 float h(vec2 p) { return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }
 float n(vec2 p) { vec2 i = floor(p), f = fract(p); f = f * f * (3. - 2. * f); return mix(mix(h(i), h(i + vec2(1, 0)), f.x), mix(h(i + vec2(0, 1)), h(i + vec2(1, 1)), f.x), f.y); }
 float fbm(vec2 p) { float v = 0., a = .5; for (int k = 0; k < 5; k++) { v += a * n(p); p = p * 2.03 + 17.1; a *= .5; } return v; }
 void main() {
   vec3 dir = normalize(vW - cameraPosition); // cloud deck 1.5 km up, seen through a dome: no far-plane edge at the horizon
   if (dir.y < .015) discard;
-  vec2 p = (cameraPosition.xz + dir.xz / dir.y * 1500.) / 2600. + vec2(uTime * .004, uTime * .0015);
-  float f = fbm(p), c = smoothstep(.42, .72, f);
-  float lit = fbm(p + uSun.xz * .03);
-  vec3 col = mix(vec3(.42, .45, .52), vec3(1.05, .92, .80), clamp(.45 + (f - lit) * 4., 0., 1.)) * (.75 + .35 * smoothstep(.5, .9, fbm(p * 1.7)));
-  float fade = smoothstep(.015, .22, dir.y);
-  gl_FragColor = vec4(col, c * .8 * fade);
+  vec2 p = (cameraPosition.xz + dir.xz / dir.y * 1500.) / 1700. + vec2(uTime * .004, uTime * .0015);
+  float f = fbm(p);
+  float c = smoothstep(.56 - .2 * uCover, .8 - .12 * uCover, f);
+  vec2 sd = normalize(uSun.xz + 1e-4);
+  float lit = clamp(.5 + (f - fbm(p - sd * .045)) * 5., 0., 1.);
+  float toSun = pow(max(dot(dir, uSun), 0.), 4.);
+  vec3 dark = mix(vec3(.30, .30, .40), vec3(.36, .34, .40), uCover);
+  vec3 sunlit = mix(vec3(1.25, .78, .58), vec3(1.35, .58, .34), uLow);
+  vec3 col = mix(dark, sunlit, lit * (.55 + .45 * toSun)) * (.8 + .3 * smoothstep(.5, .9, fbm(p * 1.7)));
+  col += vec3(1.3, .5, .2) * toSun * (1. - c) * .9;
+  float fade = smoothstep(.015, .2, dir.y);
+  gl_FragColor = vec4(col, c * .85 * fade);
   #include <tonemapping_fragment>
   #include <colorspace_fragment>
 }` });
