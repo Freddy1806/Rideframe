@@ -512,13 +512,14 @@ export class WorldScene {
         y += o.dy || 0;
       }
       const { obj, mixer } = A.make(e, o.anim, r);
-      obj.position.set(q.x, y, q.z); obj.rotation.y = ang; obj.userData.small = Math.max(...e.size) < 3; obj.userData.mid = Math.max(...e.size) < 9; if (e.category.startsWith('figure')) { obj.userData.person = true; obj.userData.h = e.size[1]; } if (Array.isArray(o.scale)) obj.scale.set(...o.scale); else if (o.scale) obj.scale.setScalar(o.scale);
+      obj.position.set(q.x, y, q.z); obj.rotation.y = ang; obj.userData.small = Math.max(...e.size) < 3; obj.userData.mid = Math.max(...e.size) < 9; if (e.category.startsWith('figure')) { obj.userData.person = true; obj.userData.h = e.size[1]; } if (e.category === 'figure_music') obj.userData.musician = true; if (e.file.includes('schaf')) obj.userData.sheep = true; if (Array.isArray(o.scale)) obj.scale.set(...o.scale); else if (o.scale) obj.scale.setScalar(o.scale);
       this.scene.add(obj); taken.push([q.x, q.z, rad]);
       this.props.push(obj); if (mixer) { mixer.obj = obj; this.mixers.push(mixer); }
       obj.traverse(c => { if (c.userData.millWheel) this.wheels.push(c); });
       return obj;
     };
     const pick = (cat) => A.pick(cat, r), byName = part => A.find(part);
+    const festSeg = segs.filter(s => s.village).sort((p, q) => (q.to - q.from) * (q.village[1] - q.village[0]) - (p.to - p.from) * (p.village[1] - p.village[0]))[0];
     const segAt = d => segs.find(s => d >= s.from && d < s.to) || segs[segs.length - 1];
 
     for (const s of segs) {
@@ -568,6 +569,18 @@ export class WorldScene {
           const side = k % 2 ? 1 : -1, dd = a + r() * (b - a), off = side * (ROAD_W + 1.4 + r() * 0.8);
           const o = place(walkers[k % walkers.length], dd, off, { anim: 'Gehen', overlap: true, gap: 0.6, radK: 0.3 });
           if (o) o.userData.walk = { d: dd, off, v: (0.9 + r() * 0.5) * (r() < 0.5 ? 1 : -1), a, b };
+        }
+        // children and onlookers at the roadside who wave and call out as you pass
+        const watchers = ['junge', 'maedchen', 'kind', 'alte_frau', 'moench', 'bauer_sense'].map(byName).filter(Boolean);
+        for (let k = 0; watchers.length && k < 6; k++) place(watchers[k % watchers.length], a + (k + 0.5) * (b - a) / 6, (k % 2 ? 1 : -1) * (ROAD_W + 2.2 + r()), { face: 'road', anim: r() < 0.6 ? 'Winken' : 'Stehen', gap: 0.8, radK: 0.4 });
+        // the biggest village holds a street festival: garlands over the road, tents, jugglers, a second band, crowd
+        if (s === festSeg) {
+          const gar = byName('girlande'), tents = ['zelt', 'buehne', 'maibaum', 'tisch', 'fackel'].map(byName).filter(Boolean);
+          const crowd = ['gaukler', 'junge', 'maedchen', 'haendler', 'fischerin', 'moench'].map(byName).filter(Boolean);
+          for (let d = a + 15; gar && d < b - 15; d += 22) place(gar, d, 0.01, { face: 'along', overlap: true, gap: -99, radK: 0.01 });
+          for (let k = 0; tents.length && k < 8; k++) place(tents[k % tents.length], mid - 60 + k * 15, (k % 2 ? 1 : -1) * (ROAD_W + 8 + r() * 4), { face: 'road', gap: 2 });
+          for (let k = 0; crowd.length && k < 18; k++) place(crowd[k % crowd.length], a + r() * (b - a), (r() < .5 ? 1 : -1) * (ROAD_W + 2 + r() * 5), { face: 'road', anim: ['Jonglieren', 'Winken', 'Jubeln', 'Stehen'][k % 4], gap: 0.6, radK: 0.35 });
+          mus.forEach((e, k) => place(e, mid + 40 + k * 2.3, -(ROAD_W + 6 + (k % 2) * 0.8), { radK: 0.45, anim: 'Spielen', gap: 2 }));
         }
         place(byName('hjell'), a + 25, ROAD_W + 12, { face: 'along' });
         if (s === segs[0]) place(byName('dorfkirche'), b - 40, ROAD_W + 16, { face: Math.PI / 2 });
@@ -646,6 +659,16 @@ export class WorldScene {
         const k = 0.75 + r() * 0.3; // narrower and much deeper than modelled, so the back disappears in the hill
         place(cliffs[Math.floor(r() * cliffs.length)], d, side * (36 + r() * 10), { face: 'road', dy: -7, radK: 0.45, gap: 20, scale: [k * 0.75, k, k * 2.4] });
       }
+    }
+    // the castle is under siege: knights storm up from the road, a catapult and camp below, banners of both sides
+    for (const s of segs) if (s.top === 'castle') {
+      const d0 = s.to + 70, attackers = ['ritter', 'wache', 'bogenschuetze', 'soldat'].map(byName).filter(Boolean);
+      const q = spot(d0, 34), face = (d, off) => { const p = spot(d, off); return Math.atan2(q.x - p.x, q.z - p.z); };
+      for (let k = 0; attackers.length && k < 16; k++) { const d = d0 - 40 + r() * 80, off = 10 + r() * 14;
+        place(attackers[k % attackers.length], d, off, { face: face(d, off), anim: r() < 0.6 ? 'Kaempfen' : 'Rennen', gap: 0.8, radK: 0.35 }); }
+      const kn = byName('ritter_pferd'); if (kn) place(kn, d0 - 25, 9, { face: face(d0 - 25, 9), anim: 'Stehen', gap: 1 });
+      for (const [n, dd, off] of [['katapult', -55, 16], ['tribok', 50, 18], ['leiter', 5, 26], ['rammbock', -12, 24], ['zelt', -70, -12], ['palisade', -80, -10], ['banner', -40, 8], ['banner', 40, 8]]) {
+        const e = byName(n); if (e) place(e, d0 + dd, off, { face: face(d0 + dd, off), gap: 1 }); }
     }
     this._placeLegacyTops(segs);
     // everything that never moves: matrices once, then skipped by three's per-frame scene-graph update (was ~30 % CPU)
