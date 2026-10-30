@@ -249,7 +249,8 @@ export class WorldScene {
     // quality steps, lowered automatically while the frame rate stays under 50 fps (a trainer ride needs smooth video):
     // 3 = full, 2 = no ambient occlusion, 1 = render scale 1.0, 0 = sea reflection every 2nd frame + smaller shadow map
     const qp = new URLSearchParams(location.search).get('q');
-    this.quality = qp !== null ? +qp : 2; // 3 (ambient occlusion) only on request: it halves the frame rate on an M3 Pro this.autoQ = qp === null; this.fpsT = 0; this.fpsN = 0; this.fpsSince = 0;
+    // level 3 (ambient occlusion) only on request: it halves the frame rate on an M3 Pro
+    this.quality = qp !== null ? +qp : 2; this.autoQ = qp === null; this.fpsT = 0; this.fpsN = 0; this.fpsSince = 0;
     this.useAO = this.quality >= 3 && !new URLSearchParams(location.search).has('noao'); // headless screenshots: build everything, render once
     this.last = performance.now();
     this._loop = this._loop.bind(this); requestAnimationFrame(this._loop);
@@ -604,6 +605,9 @@ export class WorldScene {
       }
     }
     this._placeLegacyTops(segs);
+    // everything that never moves: matrices once, then skipped by three's per-frame scene-graph update (was ~30 % CPU)
+    const moving = new Set([...this.mixers.map(m => m.obj), ...this.birds, ...this.whales.map(w => w.obj), ...this.animated]);
+    for (const o of this.props) if (!moving.has(o) && !o.userData.walk && !o.userData.circle) { let wheel = false; o.traverse(c => { if (c.userData.millWheel) wheel = true; }); if (!wheel) freeze(o); }
   }
   _placeLegacyTops(segs) { // castle + lookout have no Blender model yet: keep the built-in ones
     const f = this.field;
@@ -620,7 +624,7 @@ export class WorldScene {
   _ensure(cx, cz) {
     // road chunks within 2 km
     const f = this.field, k0 = Math.floor(this.d / 500);
-    for (let k = k0 - 2; k <= k0 + 4; k++) if (k >= 0 && !this.roadChunks.has(k)) { const c = this._roadChunk(k); if (c) { this.scene.add(c); this.roadChunks.set(k, c); } }
+    for (let k = k0 - 2; k <= k0 + 4; k++) if (k >= 0 && !this.roadChunks.has(k)) { const c = this._roadChunk(k); if (c) { this.scene.add(c); freeze(c); this.roadChunks.set(k, c); } }
     for (const [k, c] of this.roadChunks) if (k < k0 - 3 || k > k0 + 6) { this.scene.remove(c); c.traverse(o => o.geometry?.dispose?.()); this.roadChunks.delete(k); }
     // tiles: resolution by distance
     const want = new Map(), R = Math.ceil(VIEW / TILE), tx0 = Math.floor(cx / TILE), tz0 = Math.floor(cz / TILE);
@@ -639,7 +643,7 @@ export class WorldScene {
     for (const [key, w] of todo) {
       if (!this.instant && performance.now() - t0 > 12) break;
       const old = this.tiles.get(key);
-      const obj = this._tile(w.tx, w.tz, w.res); this.scene.add(obj); this.built = true;
+      const obj = this._tile(w.tx, w.tz, w.res); this.scene.add(obj); freeze(obj); this.built = true;
       if (old) { this.scene.remove(old.obj); old.obj.traverse(o => { if (o.isMesh) o.geometry.dispose(); }); }
       this.tiles.set(key, { obj, res: w.res });
       if (!this.instant && budget <= 1 && performance.now() - t0 > 6) break;
@@ -671,7 +675,7 @@ export class WorldScene {
     g.setAttribute('splat', new THREE.BufferAttribute(spl, 4));
     g.setAttribute('color', new THREE.BufferAttribute(col, 3));
     if (this.farMesh) { this.scene.remove(this.farMesh); this.farMesh.geometry.dispose(); }
-    this.farMesh = new THREE.Mesh(g, this.farMat); this.farMesh.position.set(J.ox, 0, J.oz); this.farMesh.receiveShadow = true; this.scene.add(this.farMesh);
+    this.farMesh = new THREE.Mesh(g, this.farMat); this.farMesh.position.set(J.ox, 0, J.oz); this.farMesh.receiveShadow = true; this.scene.add(this.farMesh); freeze(this.farMesh);
     this.farJob = null;
   }
 
@@ -832,3 +836,6 @@ void main() {
   const g = new THREE.SphereGeometry(7000, 32, 12, 0, Math.PI * 2, 0, Math.PI / 2); // upper half dome around the camera
   const o = new THREE.Mesh(g, m); o.renderOrder = -1; o.frustumCulled = false; return o;
 }
+
+/** Static object: world matrices computed now, never again (three skips it in updateMatrixWorld). */
+function freeze(o) { o.updateMatrixWorld(true); o.traverse(c => { c.matrixAutoUpdate = false; }); o.matrixWorldAutoUpdate = false; }

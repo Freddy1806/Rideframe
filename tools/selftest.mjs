@@ -90,6 +90,18 @@ function TILE_S(res) { return 192 / res; }
   report('Straße kreuzt sich nicht', minGap > 2 * ROAD_W + 12, `kleinster Abstand zweier Abschnitte ${minGap.toFixed(1)} m bei km ${(at / 1000).toFixed(2)}`);
 }
 
+// --- 5. no code swallowed by a trailing comment (e.g. "a = 1; // note b = 2;") --------
+{
+  const fs = await import('node:fs'), path = await import('node:path');
+  const dir = new URL('../js/', import.meta.url).pathname, bad = [];
+  const walk = d => fs.readdirSync(d, { withFileTypes: true }).forEach(e => e.isDirectory() ? walk(path.join(d, e.name)) : e.name.endsWith('.js') && fs.readFileSync(path.join(d, e.name), 'utf8').split('\n').forEach((l, i) => {
+    const c = l.indexOf(' // '); if (c < 0 || !l.slice(0, c).trim() || /['"`]/.test(l.slice(c))) return;
+    if (/;\s+(this\.|const |let |var |[A-Za-z_$][\w.$]*\s*=[^=>])/.test(l.slice(c))) bad.push(`${e.name}:${i + 1}`);
+  }));
+  walk(dir);
+  report('Kein Code im Kommentar verschluckt', bad.length === 0, bad.length ? bad.join(', ') : 'ok');
+}
+
 console.log(res.join('\n'));
 console.log(fail ? `\n${fail} Test(s) rot` : '\nAlles grün');
 process.exit(fail ? 1 : 0);
