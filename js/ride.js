@@ -108,6 +108,7 @@ export class RideSession {
       }
       if (!this.player) this.player = new DemoScene(c, this.track);
       this.player.currentTime = timeAt(this.track, this.d);
+      this.player.setLens?.(this.state.settings.lensMm || 0); this.player.setView?.(this.state.settings.view3d || 0);
       if (this.player.ready) { // 3D world: show a loading card instead of a black screen until the ground around the start stands
         const ld = document.createElement('div'); ld.className = 'countdown loading'; ld.textContent = 'Welt wird geladen …'; el.append(ld);
         await Promise.race([this.player.ready, new Promise(r => setTimeout(r, 30000))]); ld.remove();
@@ -116,6 +117,7 @@ export class RideSession {
     this.profile = el.querySelector('#hudProfile');
     this.q = s => el.querySelector(s);
     document.addEventListener('keydown', this._key);
+    el.querySelector('#hCam')?.addEventListener('click', () => this._cycleView());
     let hideT; el.addEventListener('mousemove', () => { el.classList.add('cursor'); clearTimeout(hideT); hideT = setTimeout(() => el.classList.remove('cursor'), 2000); });
     try { await document.documentElement.requestFullscreen?.(); } catch {}
     try { this.wake = await navigator.wakeLock?.request('screen'); } catch {}
@@ -136,6 +138,7 @@ export class RideSession {
           ${ghostChip}
           <div class="chip glass gearchip"><div class="label" id="hGearL">${this.virtual ? 'Virtueller Gang' : 'Gang'}</div><div class="v num" id="hGear">–</div><div class="gearbar" id="hGearBar">${this.virtual ? this.gears.map(() => '<i></i>').join('') : ''}</div></div>
           <div class="chip glass"><div class="label">Zeit</div><div class="v num" id="hTime">0:00</div></div>
+          ${this.track.world ? '<button class="chip glass camchip" id="hCam" title="Kamera wechseln (V)"><div class="label">Kamera</div><div class="v">⟲</div></button>' : ''}
         </div>
       </div>
       <div class="grade-tag" id="hGradeTag"><div class="g num"><span class="arrow"></span><span id="hGrade">0,0</span><small>%</small></div><div class="next glass" id="hNext"></div></div>
@@ -327,6 +330,24 @@ export class RideSession {
     else if (e.key === ' ') { e.preventDefault(); this.paused ? this._resume() : this._pause(); }
     else if (e.key === 'Escape') { if (!this.paused && !this.finished) this._pause(); }
     else if (e.key === 'f') document.documentElement.requestFullscreen?.();
+    else if (e.key === 'v' || e.key === 'c') this._cycleView();
+    else if (e.key === '[' || e.key === ']') this._lens(e.key === ']' ? 1 : -1);
+  }
+
+  _cycleView() {
+    if (!this.player.setView) return;
+    const s = this.state.settings; s.view3d = ((s.view3d || 0) + 1) % 3; this.player.setView(s.view3d);
+    this._flash(['Fahrersicht', 'Verfolger', 'Rückblick'][s.view3d]); import('./app.js').then(m => m.saveSettings());
+  }
+  _lens(dir) { // [ wider, ] narrower
+    if (!this.player.setLens) return;
+    const steps = [12, 14, 0, 24, 35], s = this.state.settings, i = Math.max(0, steps.indexOf(s.lensMm || 0));
+    s.lensMm = steps[Math.max(0, Math.min(steps.length - 1, i + dir))]; this.player.setLens(s.lensMm);
+    this._flash(s.lensMm ? `Sichtfeld ${s.lensMm} mm` : 'Sichtfeld normal'); import('./app.js').then(m => m.saveSettings());
+  }
+  _flash(text) {
+    let f = this.q('#hFlash'); if (!f) { f = document.createElement('div'); f.id = 'hFlash'; f.className = 'flash glass'; this.el.append(f); }
+    f.textContent = text; f.classList.add('on'); clearTimeout(this._flashT); this._flashT = setTimeout(() => f.classList.remove('on'), 1600);
   }
 
   _pause() {

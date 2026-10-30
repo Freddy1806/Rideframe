@@ -261,6 +261,8 @@ function wireSeg(root, id, onChange) {
   el.querySelectorAll('button').forEach(b => b.onclick = () => { el.querySelectorAll('button').forEach(x => x.classList.toggle('on', x === b)); onChange(b.dataset.v); });
 }
 const SHIFT_OPTS = [['real', 'Echt am Rad'], ['virtual', 'Virtuell']];
+const LENS_OPTS = [['35', '35 mm'], ['24', '24 mm'], ['0', 'Normal'], ['14', '14 mm'], ['12', '12 mm']];
+const VIEW_OPTS = [['0', 'Fahrer'], ['1', 'Verfolger'], ['2', 'Rückblick']];
 
 function shiftHint(m) {
   return m === 'virtual'
@@ -324,12 +326,16 @@ function settings() {
         <label class="field"><div>Realismus Steigung <b id="diffV">${s.difficulty}%</b><div class="hint">100 % = echte Steigung. 50 % = Steigungen fühlen sich halb so steil an.</div></div><input type="range" id="difficulty" min="0" max="100" step="5" value="${s.difficulty}"></label>
         <label class="field"><div>Abfahrten <b id="downV">${s.downhill}%</b><div class="hint">Wie stark der Trainer bergab entlastet.</div></div><input type="range" id="downhill" min="0" max="100" step="5" value="${s.downhill}"></label>
         <div class="field"><div>Controller testen<div class="hint">Z. B. Di2-Zusatzknöpfe (D-FLY), Zwift Click, Gamepad. Zeigt, was die Knöpfe senden.</div></div><button class="btn ghost small" id="ctBtn">Testen</button></div>
-        <div class="field"><div>Herzfrequenz-Gurt<div class="hint">Optional, per Bluetooth.</div></div><button class="btn ghost small" id="hrBtn">${state.hr?.connected ? 'Verbunden' : 'Verbinden'}</button></div>
+        <div class="field"><div>Herzfrequenz-Gurt<div class="hint">Optional, per Bluetooth.</div></div><div style="display:flex;gap:8px"><button class="btn ghost small" id="hrAll" title="Wenn der Gurt in der normalen Suche fehlt">Alle Geräte</button><button class="btn ghost small" id="hrBtn">${state.hr?.connected ? 'Verbunden' : 'Verbinden'}</button></div></div>
       </div>
       <div class="panel"><h3>Video &amp; Daten</h3>
         <label class="field"><div>Video-Ton aus</div><input type="checkbox" class="toggle" id="muteVideo" ${s.muteVideo ? 'checked' : ''}></label>
         <label class="field"><div>Höhendaten verbessern<div class="hint">Beim Import Höhe aus Geländemodell holen (Open-Meteo). GoPro-Höhe ist ungenau.</div></div><input type="checkbox" class="toggle" id="improveEle" ${s.improveEle ? 'checked' : ''}></label>
         <div class="field"><div>Speicher<div class="hint" id="usage">…</div></div></div>
+      </div>
+      <div class="panel"><h3>Ansicht 3D-Welt</h3>
+        <label class="field"><div>Sichtfeld (Brennweite)<div class="hint">Kleinere mm = weiter Blick. Normal entspricht ca. 17 mm. Während der Fahrt: Tasten [ und ].</div></div>${seg('lensMm', String(s.lensMm || 0), LENS_OPTS)}</label>
+        <label class="field"><div>Kamera<div class="hint">Während der Fahrt umschalten mit Taste V oder dem Kamera-Knopf.</div></div>${seg('view3d', String(s.view3d || 0), VIEW_OPTS)}</label>
       </div>
       <div class="panel"><h3>Design</h3>
         <div class="field"><div>Akzentfarbe</div><div class="swatches">${Object.entries(ACCENTS).map(([k, c]) => `<button class="swatch ${s.accent === k ? 'on' : ''}" data-acc="${k}" style="background:${c}"></button>`).join('')}</div></div>
@@ -344,6 +350,8 @@ function settings() {
   const num = (id, key) => $('#' + id).addEventListener('change', e => { s[key] = +e.target.value; saveSettings(); });
   const stp = (id, key, fb) => wireStepper(main, id, v => { s[key] = v; saveSettings(); }, fb);
   stp('riderKg', 'riderKg', 75); stp('bikeKg', 'bikeKg', 8.5); stp('ftp', 'ftp', 250); stp('cadence', 'cadence', 90); stp('wheel', 'wheel', 2105);
+  wireSeg(main, 'lensMm', v => { s.lensMm = +v; saveSettings(); });
+  wireSeg(main, 'view3d', v => { s.view3d = +v; saveSettings(); });
   wireSeg(main, 'shiftMode', v => { s.shiftMode = v; saveSettings(); settings(); });
   $('#cassette').onchange = e => { s.cassette = e.target.value; saveSettings(); settings(); };
   const valid = { chainrings: v => parseRings(v), realGear: v => { const m = String(v).match(/^\s*(\d+)\s*[x×/\- ]\s*(\d+)\s*$/); return !!m && +m[1] >= 20 && +m[1] <= 60 && +m[2] >= 9 && +m[2] <= 40; } };
@@ -356,7 +364,7 @@ function settings() {
   $('#muteVideo').onchange = e => { s.muteVideo = e.target.checked; saveSettings(); };
   $('#improveEle').onchange = e => { s.improveEle = e.target.checked; saveSettings(); };
   main.querySelectorAll('.swatch').forEach(b => b.onclick = () => { s.accent = b.dataset.acc; applyAccent(); saveSettings(); settings(); });
-  $('#hrBtn').onclick = connectHR;
+  $('#hrBtn').onclick = () => connectHR(false); $('#hrAll').onclick = () => connectHR(true);
   $('#ctBtn').onclick = openControllerTest;
   db.usage().then(u => { if (u) $('#usage').textContent = `${fmtNum(u.usage / 1e9, 1)} GB belegt von ${fmtNum(u.quota / 1e9, 0)} GB verfügbar`; });
 }
@@ -373,18 +381,24 @@ function updateTrainerPill() {
   const t = state.trainer, pill = $('#trainerPill');
   const on = t.connected;
   pill.classList.toggle('on', on);
-  pill.querySelector('.t').innerHTML = on ? `${esc(t.device.name || 'Trainer')} <span class="sub">${t.mode === 'ftms' ? 'FTMS' : t.mode === 'wahoo' ? 'Wahoo' : 'nur Watt'}</span>` : 'KICKR verbinden';
+  pill.querySelector('.t').innerHTML = on ? `✓ ${esc(t.device.name || 'Trainer')} verbunden <span class="sub">${t.mode === 'ftms' ? 'FTMS' : t.mode === 'wahoo' ? 'Wahoo' : 'nur Watt'}</span>` : 'KICKR verbinden';
+  pill.title = on ? 'Verbunden. Klicken zum Trennen.' : 'Trainer per Bluetooth verbinden';
 }
 function updateHrPill() { // heart rate strap: its own Bluetooth connection, runs alongside the KICKR
   const h = state.hr, on = !!h?.connected, pill = $('#hrPill');
   pill.classList.toggle('on', on);
-  pill.querySelector('.t').textContent = on ? (h.hr ? `♥ ${h.hr}` : '♥ verbunden') : 'Puls verbinden';
+  pill.querySelector('.t').textContent = on ? (h.hr ? `♥ ${h.hr} · verbunden` : '♥ verbunden') : 'Puls verbinden';
 }
-async function connectHR() {
+async function connectHR(all) {
+  if (all instanceof Event) all = false;
   if (state.hr?.connected) { if (confirm('Pulsgurt trennen?')) { state.hr.device.gatt.disconnect(); updateHrPill(); } return; }
-  try { state.hr = new HeartRate(); state.hr.addEventListener('hr', updateHrPill); await state.hr.connect(); updateHrPill(); toast('Pulsgurt verbunden');
+  try { state.hr = new HeartRate(); state.hr.addEventListener('hr', updateHrPill); await state.hr.connect(!!all); updateHrPill(); toast('Pulsgurt verbunden');
     state.hr.device.addEventListener('gattserverdisconnected', updateHrPill); if (document.querySelector('#hrBtn')) settings(); }
-  catch (e) { if (e.name !== 'NotFoundError') toast('Pulsgurt: ' + e.message); }
+  catch (e) {
+    if (e.name !== 'NotFoundError') return toast('Pulsgurt: ' + e.message);
+    // nothing picked: most often the strap is asleep (not worn) or still paired with a watch/phone/bike computer
+    if (!all) toast('Kein Gurt gewählt? Gurt anlegen, Elektroden anfeuchten (er sendet nur getragen) und Bluetooth an Uhr/Handy/Radcomputer kurz aus. In den Einstellungen gibt es „Alle Geräte“.', 7000);
+  }
 }
 
 // ---------------- import ----------------

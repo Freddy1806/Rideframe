@@ -141,8 +141,11 @@ export class Trainer extends EventTarget {
 }
 
 export class HeartRate extends EventTarget {
-  async connect() {
-    this.device = await navigator.bluetooth.requestDevice({ filters: [{ services: [HRS] }] });
+  async connect(all = false) {
+    // straps only advertise while worn (moist electrodes) and often hide the HR service in their advert: also match common names
+    const names = ['HRM', 'Polar', 'TICKR', 'Wahoo', 'Garmin', 'COOSPO', 'Coospo', 'Magene', 'Suunto', 'Decathlon', 'Kalenji', 'XOSS', 'iGPSPORT', 'H10', 'H9', 'Verity', 'Forerunner', 'fenix', 'Apple Watch'];
+    this.device = await navigator.bluetooth.requestDevice(all ? { acceptAllDevices: true, optionalServices: [HRS] }
+      : { filters: [{ services: [HRS] }, ...names.map(namePrefix => ({ namePrefix }))], optionalServices: [HRS] });
     const s = await (await this.device.gatt.connect()).getPrimaryService(HRS);
     const c = await s.getCharacteristic(HRM);
     c.addEventListener('characteristicvaluechanged', e => {

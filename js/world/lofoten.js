@@ -164,6 +164,7 @@ export class WorldScene {
     renderer.shadowMap.enabled = true; renderer.shadowMap.type = THREE.PCFSoftShadowMap;
     const scene = this.scene = new THREE.Scene();
     this.camera = new THREE.PerspectiveCamera(62, 16 / 9, 0.1, 9000); this.camera.layers.enable(1);
+    this.streaks = windStreaks(); scene.add(this.streaks);
 
     // midnight sun low in the north-west, over the sea
     const sky = this.sky = new Sky(); sky.scale.setScalar(8000); scene.add(sky);
@@ -584,7 +585,10 @@ export class WorldScene {
         // dry-stone walls along the land side
         for (let d = s.from + 100; d < s.to - 100; d += 500 + r() * 400) {
           const wall = s.land === 'valley' ? byName('flechtzaun') : byName('trockenmauer'), off = ROAD_W + 5 + r() * 2, side = s.land === 'coast' ? 1 : -1;
-          for (let k = 0; k < 18; k++) place(wall, d + k * 3.6, side * off, { face: 'along', gap: 1, radK: 0.3, overlap: true });
+          if (wall) { // segments end to end, long side along the road whichever axis the model was built on
+            const len = Math.max(wall.size[0], wall.size[2]) * 0.97, turn = wall.size[0] > wall.size[2] ? Math.PI / 2 : 0;
+            for (let k = 0; k * len < 64; k++) place(wall, d + k * len, side * off, { face: 'along', rot: turn, gap: 1, radK: 0.3, overlap: true });
+          }
         }
       }
       // ---- landmarks on the climb tops ----
@@ -727,12 +731,33 @@ export class WorldScene {
     this.farJob = null;
   }
 
+  /** Lens as a full-frame focal length (14 mm = very wide). null keeps the default 62° vertical view. */
+  setLens(mm) { this.lensMm = mm || null; this._applyLens(); this.camera.updateProjectionMatrix(); }
+  _applyLens() {
+    if (!this.lensMm) { this.camera.fov = 62; return; }
+    const h = 2 * Math.atan(36 / (2 * this.lensMm)); // horizontal angle of a 36 mm wide sensor
+    this.camera.fov = THREE.MathUtils.radToDeg(2 * Math.atan(Math.tan(h / 2) / this.camera.aspect));
+  }
+  /** 0 = rider's eyes, 1 = chase view from behind and above, 2 = looking back */
+  setView(v) { this.view = v; this.lookPos = null; }
+
   _camera(d, dt = 1 / 60) {
     // exact rider pose on the spline; only the view direction is damped (time based, frame-rate independent)
     const p = this.field.pose(d), cam = new THREE.Vector3(p.x, p.y, p.z), look = new THREE.Vector3(p.lx, p.ly, p.lz);
     if (!this.lookPos || this.instant || cam.distanceTo(this.camera.position) > 40) this.lookPos = look.clone();
     else this.lookPos.lerp(look, 1 - Math.exp(-dt * 7 * Math.max(1, (this.playbackRate || 1) / 3))); // fast preview: the view keeps up
     this.camera.position.copy(cam); this.camera.lookAt(this.lookPos);
+    // speed: wind streaks and a light shake when it gets fast (downhill)
+    const v = this._prevD !== undefined && dt > 0 ? Math.max(0, (d - this._prevD) / dt) : 0; this._prevD = d;
+    this.speed = (this.speed || 0) + (Math.min(v, 30) - (this.speed || 0)) * Math.min(1, dt * 2);
+    const fast = Math.max(0, Math.min(1, (this.speed * 3.6 - 32) / 28)); this.fast = fast; // 0 at 32 km/h, 1 at 60 km/h
+    if (this.view === 1) { // chase: 7 m behind, 3 m up, never inside the hillside
+      const bx = cam.x - this.lookPos.x, bz = cam.z - this.lookPos.z, bl = Math.hypot(bx, bz) || 1;
+      const x = cam.x + bx / bl * 7, z = cam.z + bz / bl * 7, y = Math.max(cam.y + 2.4, this.field.height(x, z) + 1.8);
+      this.camera.position.set(x, y, z); this.camera.lookAt(this.lookPos.x, this.lookPos.y + 0.6, this.lookPos.z);
+    } else if (this.view === 2) this.camera.lookAt(2 * cam.x - this.lookPos.x, this.lookPos.y, 2 * cam.z - this.lookPos.z);
+    if (fast > 0 && !this.instant) { const t = performance.now() / 1000, a = fast * 0.004;
+      this.camera.rotation.z += Math.sin(t * 23) * a + Math.sin(t * 37) * a * 0.6; this.camera.rotation.x += Math.sin(t * 29) * a * 0.7; }
     if (this.debugTop) { this.camera.position.set(cam.x, cam.y + this.debugTop, cam.z + 0.01); this.camera.lookAt(cam.x, cam.y, cam.z); } // test view from above
     return cam;
   }
@@ -774,7 +799,7 @@ export class WorldScene {
     const c = this.c, W = c.clientWidth || c.width, H = c.clientHeight || c.height;
     const r = this.renderer;
     if (this._w !== W || this._h !== H) {
-      r.setSize(W, H, false); this.camera.aspect = W / H; this.camera.updateProjectionMatrix(); this._w = W; this._h = H;
+      r.setSize(W, H, false); this.camera.aspect = W / H; this._applyLens(); this.camera.updateProjectionMatrix(); this._w = W; this._h = H;
       if (this.useAO && !this.composer) { // ambient occlusion: grounds houses, rocks and grass
         this.composer = new EffectComposer(r); this.composer.addPass(new RenderPass(this.scene, this.camera));
         const ao = this.aoPass = new GTAOPass(this.scene, this.camera, W, H); ao.blendIntensity = 0.85;
@@ -791,6 +816,7 @@ export class WorldScene {
     this.light.position.set(cam.x + this.sunDir.x * 400, cam.y + this.sunDir.y * 400 + 40, cam.z + this.sunDir.z * 400);
     this.light.target.position.set(cam.x - this.sunDir.x * 40, cam.y, cam.z - this.sunDir.z * 40);
     this.sky.position.copy(this.camera.position);
+    this.streaks.position.copy(this.camera.position); this.streaks.quaternion.copy(this.camera.quaternion); this.streaks.userData.tick(dt, this.speed || 0, this.view === 2 ? 0 : this.fast || 0);
     this.water.position.x = Math.round(cam.x / 100) * 100; this.water.position.z = Math.round(cam.z / 100) * 100;
     this.water.material.uniforms.time.value = time * 0.6; this.grassTime.value = time; TIME.value = time;
     this.clouds.position.copy(this.camera.position); this.clouds.material.uniforms.uTime.value = time;
@@ -900,5 +926,21 @@ void main() {
 }
 
 /** Static object: world matrices computed now, never again (three skips it in updateMatrixWorld). */
+// downhill wind: thin streaks rushing past the camera, more and longer the faster you go
+function windStreaks(n = 90) {
+  const pos = new Float32Array(n * 6), seg = [], g = new THREE.BufferGeometry();
+  for (let i = 0; i < n; i++) { const a = Math.random() * 6.283, rad = 1.2 + Math.random() * 3.5; seg.push({ x: Math.cos(a) * rad, y: Math.sin(a) * rad * 0.7, z: -2 - Math.random() * 45 }); }
+  g.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+  const m = new THREE.LineBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0, depthWrite: false, fog: false });
+  const o = new THREE.LineSegments(g, m); o.frustumCulled = false; o.layers.set(1); o.renderOrder = 10;
+  o.userData.tick = (dt, v, fast) => {
+    m.opacity = fast * 0.55; o.visible = fast > 0.02; if (!o.visible) return;
+    const len = 0.6 + fast * 4.5;
+    seg.forEach((s, i) => { s.z += v * 1.6 * dt; if (s.z > -1) { s.z -= 46; const a = Math.random() * 6.283, rad = 1.2 + Math.random() * 3.5; s.x = Math.cos(a) * rad; s.y = Math.sin(a) * rad * 0.7; }
+      pos.set([s.x, s.y, s.z, s.x, s.y, s.z - len], i * 6); });
+    g.attributes.position.needsUpdate = true;
+  };
+  return o;
+}
 function noMirror(o) { o.traverse(c => c.layers.set(1)); }
 function freeze(o) { o.updateMatrixWorld(true); o.traverse(c => { c.matrixAutoUpdate = false; }); o.matrixWorldAutoUpdate = false; }

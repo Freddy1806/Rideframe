@@ -265,3 +265,6 @@ input[type=number]::-webkit-inner-spin-button, input[type=number]::-webkit-outer
 .panel .field { flex-wrap: wrap; }
 .panel .field > div:first-child { flex: 1 1 160px; }
 .panel .field > .stepper-wrap, .panel .field > .seg { margin-left: auto; }
+.camchip { cursor: pointer; border: 0; color: inherit; font: inherit; text-align: left; }
+.flash { position: absolute; left: 50%; top: 18%; transform: translateX(-50%); padding: 12px 22px; border-radius: 14px; font-weight: 700; font-size: 22px; opacity: 0; transition: opacity .25s; pointer-events: none; z-index: 20; }
+.flash.on { opacity: 1; }
