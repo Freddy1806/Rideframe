@@ -1,0 +1,8 @@
+# local assets that live only on the Mac (large, or third-party licences): Blender models, photo textures, DEM, satellite image
+assets/world/
+assets/tex/*
+!assets/tex/water_nrm.jpg
+assets/dem/*.bin
+assets/dem/*.jpg
+node_modules/
+.DS_Store
