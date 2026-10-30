@@ -33,6 +33,8 @@ function paint(f, x, z, h, ny, col, spl, i) {
   const n = f.n2(x / 60, z / 60), n2 = f.n3(x / 14, z / 14), n3 = f.n1(x / 230, z / 230);
   let rock = Math.max(smooth(0.86, 0.68, ny + n2 * 0.04), smooth(300, 480, h + n * 50) * 0.8);
   rock = Math.max(rock, smooth(0.25, 0.65, n3 * 0.5 + n2 * 0.5) * 0.35 * smooth(40, 120, h)); // rock outcrops in the meadows
+  // scree tongues on the talus slopes below the walls (the shader turns rock on 30-45 deg slopes into scree)
+  rock = Math.max(rock, smooth(0.93, 0.84, ny + n2 * 0.05) * smooth(0.1, 0.6, n * 0.6 + n2 * 0.4) * 0.75 * smooth(25, 90, h));
   let snow = h > 520 ? smooth(520, 660, h + n * 60) * smooth(0.6, 0.8, ny) : 0;
   let sand = h < 2.4 ? smooth(2.4, 0.9, h + n2 * 0.4) : 0;
   if (h < -0.5) { sand = 1; rock *= 0.3; }
