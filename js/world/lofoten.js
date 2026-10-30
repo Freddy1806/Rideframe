@@ -249,7 +249,7 @@ export class WorldScene {
     // quality steps, lowered automatically while the frame rate stays under 50 fps (a trainer ride needs smooth video):
     // 3 = full, 2 = no ambient occlusion, 1 = render scale 1.0, 0 = sea reflection every 2nd frame + smaller shadow map
     const qp = new URLSearchParams(location.search).get('q');
-    this.quality = qp !== null ? +qp : 3; this.autoQ = qp === null; this.fpsT = 0; this.fpsN = 0; this.fpsSince = 0;
+    this.quality = qp !== null ? +qp : 2; // 3 (ambient occlusion) only on request: it halves the frame rate on an M3 Pro this.autoQ = qp === null; this.fpsT = 0; this.fpsN = 0; this.fpsSince = 0;
     this.useAO = this.quality >= 3 && !new URLSearchParams(location.search).has('noao'); // headless screenshots: build everything, render once
     this.last = performance.now();
     this._loop = this._loop.bind(this); requestAnimationFrame(this._loop);
@@ -489,7 +489,7 @@ export class WorldScene {
         y += o.dy || 0;
       }
       const { obj, mixer } = A.make(e, o.anim, r);
-      obj.position.set(q.x, y, q.z); obj.rotation.y = ang; obj.userData.small = Math.max(...e.size) < 3; if (Array.isArray(o.scale)) obj.scale.set(...o.scale); else if (o.scale) obj.scale.setScalar(o.scale);
+      obj.position.set(q.x, y, q.z); obj.rotation.y = ang; obj.userData.small = Math.max(...e.size) < 3; obj.userData.mid = Math.max(...e.size) < 9; if (Array.isArray(o.scale)) obj.scale.set(...o.scale); else if (o.scale) obj.scale.setScalar(o.scale);
       this.scene.add(obj); taken.push([q.x, q.z, rad]);
       this.props.push(obj); if (mixer) { mixer.obj = obj; this.mixers.push(mixer); }
       obj.traverse(c => { if (c.userData.millWheel) this.wheels.push(c); });
@@ -541,7 +541,7 @@ export class WorldScene {
         }
         // villagers walking along the roadside (only models with a walk cycle 'Gehen'; others would glide)
         const walkers = (A.by.figure_walk || []).concat(A.by.figure_idle || []).filter(e => e.clips.some(c => c.name === 'Gehen'));
-        if (walkers.length) for (let k = 0; k < 6; k++) {
+        if (walkers.length) for (let k = 0; k < 14; k++) {
           const side = k % 2 ? 1 : -1, dd = a + r() * (b - a), off = side * (ROAD_W + 1.4 + r() * 0.8);
           const o = place(walkers[k % walkers.length], dd, off, { anim: 'Gehen', overlap: true, gap: 0.6, radK: 0.3 });
           if (o) o.userData.walk = { d: dd, off, v: (0.9 + r() * 0.5) * (r() < 0.5 ? 1 : -1), a, b };
@@ -713,6 +713,7 @@ export class WorldScene {
     if (now - this.fpsSince < 8000) return;
     this.fpsT += ft; this.fpsN++;
     if (this.fpsT > 3000) { const fps = 1000 * this.fpsN / this.fpsT; this.fpsT = this.fpsN = 0; this.fps = fps;
+      console.info(`RIDEFRAME ${fps.toFixed(1)} fps · Stufe ${this.quality} · ${this._calls} Draw-Calls · ${(this._tris / 1e6).toFixed(2)} Mio. Dreiecke · ${this.props?.filter(o => o.visible).length} Objekte sichtbar · Kacheln ${this.tiles.size}`);
       this.slow = fps < 45 ? (this.slow || 0) + 1 : 0;
       if (this.slow >= 2 && this.quality > 0) { this.slow = 0; this._setQuality(this.quality - 1); } } // two slow windows in a row
   }
@@ -748,6 +749,7 @@ export class WorldScene {
     }
     this._life(time, dt, cam);
     if (this.composer && this.useAO) this.composer.render(); else r.render(this.scene, this.camera);
+    this._calls = r.info.render.calls; this._tris = r.info.render.triangles;
   }
 
   _life(time, dt, cam) {
@@ -755,7 +757,7 @@ export class WorldScene {
     // show only what is near (draw calls), animate only what is close
     if (!this._cullT || time - this._cullT > 0.5 || this.instant) {
       this._cullT = time;
-      for (const o of this.props) o.visible = Math.hypot(o.position.x - cam.x, o.position.z - cam.z) < (o.userData.circle ? 900 : o.userData.small ? 450 : 1600); // people, animals, barrels: only near
+      for (const o of this.props) o.visible = Math.hypot(o.position.x - cam.x, o.position.z - cam.z) < (o.userData.circle ? 900 : o.userData.small ? 450 : o.userData.mid ? 900 : 1600); // people, animals, barrels: only near
     }
     for (const m of this.mixers) if (m.obj.visible && Math.hypot(m.obj.position.x - cam.x, m.obj.position.z - cam.z) < 260) m.update(Math.min(dt, 0.1));
     for (const w of this.wheels) w.rotation.x = time * 0.35;
