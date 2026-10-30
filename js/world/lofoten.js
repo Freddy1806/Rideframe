@@ -666,7 +666,7 @@ export class WorldScene {
       const q = spot(d0, 34), face = (d, off) => { const p = spot(d, off); return Math.atan2(q.x - p.x, q.z - p.z); };
       for (let k = 0; attackers.length && k < 16; k++) { const d = d0 - 40 + r() * 80, off = 10 + r() * 14;
         place(attackers[k % attackers.length], d, off, { face: face(d, off), anim: r() < 0.6 ? 'Kaempfen' : 'Rennen', gap: 0.8, radK: 0.35 }); }
-      const kn = byName('ritter_pferd'); if (kn) place(kn, d0 - 25, 9, { face: face(d0 - 25, 9), anim: 'Stehen', gap: 1 });
+      const kn = byName('reiter_ritter'); if (kn) place(kn, d0 - 25, 9, { face: face(d0 - 25, 9), anim: 'Stehen', gap: 1 });
       for (const [n, dd, off] of [['katapult', -55, 16], ['tribok', 50, 18], ['leiter', 5, 26], ['rammbock', -12, 24], ['zelt', -70, -12], ['palisade', -80, -10], ['banner', -40, 8], ['banner', 40, 8]]) {
         const e = byName(n); if (e) place(e, d0 + dd, off, { face: face(d0 + dd, off), gap: 1 }); }
     }

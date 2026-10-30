@@ -38,7 +38,7 @@ export class Assets {
   }
   get count() { return this.list.length; }
   has(cat) { return !!this.by[cat]?.length; }
-  find(part) { return this.list.find(e => e.file.includes(part)); }
+  find(part) { return this.list.find(e => e.file.split('/').pop().replace(/\.glb$/, '') === part) || this.list.find(e => e.file.includes(part)); } // exact name first: 'ritter' is not 'reiter_ritter'
   pick(cat, r) { const l = this.by[cat]; return l?.length ? l[Math.floor(r() * l.length) % l.length] : null; }
   /** A placed copy. Returns { obj, mixer|null }; animations start at a random phase. */
   make(e, anim, r = Math.random) {
