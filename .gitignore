@@ -6,3 +6,5 @@ assets/dem/*.bin
 assets/dem/*.jpg
 node_modules/
 .DS_Store
+.claude/
+assets/audio/
