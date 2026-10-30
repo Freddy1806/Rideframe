@@ -159,7 +159,7 @@ export class WorldScene {
     renderer.toneMapping = THREE.ACESFilmicToneMapping; renderer.toneMappingExposure = 0.85;
     renderer.shadowMap.enabled = true; renderer.shadowMap.type = THREE.PCFSoftShadowMap;
     const scene = this.scene = new THREE.Scene();
-    this.camera = new THREE.PerspectiveCamera(62, 16 / 9, 0.1, 9000);
+    this.camera = new THREE.PerspectiveCamera(62, 16 / 9, 0.1, 9000); this.camera.layers.enable(1);
 
     // midnight sun low in the north-west, over the sea
     const sky = this.sky = new Sky(); sky.scale.setScalar(8000); scene.add(sky);
@@ -330,7 +330,7 @@ export class WorldScene {
     for (let i = 0; i < p.count; i++) paint(f, p.getX(i) + ox, p.getZ(i) + oz, H[i], nrm.getY(i), col, spl, i);
     g.setAttribute('splat', new THREE.BufferAttribute(spl, 4));
     g.setAttribute('color', new THREE.BufferAttribute(col, 3));
-    const m = new THREE.Mesh(g, this.terrainMat); m.position.set(ox, 0, oz); m.receiveShadow = true; m.castShadow = res >= 48;
+    const m = new THREE.Mesh(g, this.terrainMat); m.position.set(ox, 0, oz); m.receiveShadow = true; m.castShadow = res >= 96; // only the nearest ring throws terrain shadows
     const sk = new THREE.Mesh(skirt(g, N, 1 + S * 0.6), this.skirtMat); sk.position.copy(m.position); sk.receiveShadow = true; // hides cracks between detail levels
     const grp = new THREE.Group(); grp.add(m, sk);
     if (res >= 48) this._scatter(grp, tx, tz, H, N, res >= 96, spl);
@@ -395,7 +395,7 @@ export class WorldScene {
       const im = new THREE.InstancedMesh(this.clumpGeo, this.clumpMat, gl.length);
       const dry = new THREE.Color(0.6, 0.56, 0.25);
       gl.forEach(([x, y, z, sz, a, patch], k) => { im.setMatrixAt(k, m4.compose(p.set(x, y, z), q.setFromAxisAngle(up, a), s.set(sz * (0.8 + 0.4 * r()), sz, sz))); im.setColorAt(k, grassColor(r, col).lerp(dry, Math.max(0, 0.45 - patch) * 0.8)); });
-      im.receiveShadow = true; grp.add(im);
+      im.receiveShadow = true; im.layers.set(1); grp.add(im); // layer 1: skipped by the sea reflection
     }
     // a few flower tufts for colour
     const fl = [];
@@ -489,7 +489,7 @@ export class WorldScene {
         y += o.dy || 0;
       }
       const { obj, mixer } = A.make(e, o.anim, r);
-      obj.position.set(q.x, y, q.z); obj.rotation.y = ang; if (Array.isArray(o.scale)) obj.scale.set(...o.scale); else if (o.scale) obj.scale.setScalar(o.scale);
+      obj.position.set(q.x, y, q.z); obj.rotation.y = ang; obj.userData.small = Math.max(...e.size) < 3; if (Array.isArray(o.scale)) obj.scale.set(...o.scale); else if (o.scale) obj.scale.setScalar(o.scale);
       this.scene.add(obj); taken.push([q.x, q.z, rad]);
       this.props.push(obj); if (mixer) { mixer.obj = obj; this.mixers.push(mixer); }
       obj.traverse(c => { if (c.userData.millWheel) this.wheels.push(c); });
@@ -710,7 +710,7 @@ export class WorldScene {
     if (!this.autoQ || this.instant || !ft || ft > 500) return;
     if (!this.fpsSince) this.fpsSince = now;
     // judge rendering only: skip the first 8 s and every frame in which terrain tiles were still being built
-    if (now - this.fpsSince < 8000 || this.built) { this.built = false; return; }
+    if (now - this.fpsSince < 8000) return;
     this.fpsT += ft; this.fpsN++;
     if (this.fpsT > 3000) { const fps = 1000 * this.fpsN / this.fpsT; this.fpsT = this.fpsN = 0; this.fps = fps;
       this.slow = fps < 45 ? (this.slow || 0) + 1 : 0;
@@ -740,7 +740,7 @@ export class WorldScene {
     this.sky.position.copy(this.camera.position);
     this.water.position.x = Math.round(cam.x / 100) * 100; this.water.position.z = Math.round(cam.z / 100) * 100;
     this.water.material.uniforms.time.value = time * 0.6; this.grassTime.value = time; TIME.value = time;
-    this.clouds.position.set(cam.x, 1100, cam.z); this.clouds.material.uniforms.uTime.value = time;
+    this.clouds.position.copy(this.camera.position); this.clouds.material.uniforms.uTime.value = time;
     for (const o of this.animated) {
       if (o.userData.spin) o.rotation.z = time * 0.6;
       else if (o.userData.flag) o.rotation.y = Math.sin(time * 2.3 + o.id) * 0.25;
@@ -755,7 +755,7 @@ export class WorldScene {
     // show only what is near (draw calls), animate only what is close
     if (!this._cullT || time - this._cullT > 0.5 || this.instant) {
       this._cullT = time;
-      for (const o of this.props) o.visible = Math.hypot(o.position.x - cam.x, o.position.z - cam.z) < (o.userData.circle ? 900 : 1600);
+      for (const o of this.props) o.visible = Math.hypot(o.position.x - cam.x, o.position.z - cam.z) < (o.userData.circle ? 900 : o.userData.small ? 450 : 1600); // people, animals, barrels: only near
     }
     for (const m of this.mixers) if (m.obj.visible && Math.hypot(m.obj.position.x - cam.x, m.obj.position.z - cam.z) < 260) m.update(Math.min(dt, 0.1));
     for (const w of this.wheels) w.rotation.x = time * 0.35;
@@ -808,7 +808,7 @@ function mergeGeos(list) {
 // soft cumulus layer 1.4 km up: fbm noise drifting with the wind, lit warm from the low sun, fading out at the horizon
 function cloudLayer(sun) {
   const m = new THREE.ShaderMaterial({
-    transparent: true, depthWrite: false, fog: false, side: THREE.DoubleSide,
+    transparent: true, depthWrite: false, fog: false, side: THREE.BackSide,
     uniforms: { uTime: { value: 0 }, uSun: { value: sun.clone() } },
     vertexShader: 'varying vec3 vW; void main() { vec4 w = modelMatrix * vec4(position, 1.); vW = w.xyz; gl_Position = projectionMatrix * viewMatrix * w; }',
     fragmentShader: `varying vec3 vW; uniform float uTime; uniform vec3 uSun;
@@ -816,15 +816,17 @@ float h(vec2 p) { return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }
 float n(vec2 p) { vec2 i = floor(p), f = fract(p); f = f * f * (3. - 2. * f); return mix(mix(h(i), h(i + vec2(1, 0)), f.x), mix(h(i + vec2(0, 1)), h(i + vec2(1, 1)), f.x), f.y); }
 float fbm(vec2 p) { float v = 0., a = .5; for (int k = 0; k < 5; k++) { v += a * n(p); p = p * 2.03 + 17.1; a *= .5; } return v; }
 void main() {
-  vec2 p = vW.xz / 2600. + vec2(uTime * .004, uTime * .0015);
-  float c = smoothstep(.38, .68, fbm(p));
+  vec3 dir = normalize(vW - cameraPosition); // cloud deck 1.5 km up, seen through a dome: no far-plane edge at the horizon
+  if (dir.y < .015) discard;
+  vec2 p = (cameraPosition.xz + dir.xz / dir.y * 1500.) / 2600. + vec2(uTime * .004, uTime * .0015);
+  float f = fbm(p), c = smoothstep(.42, .72, f);
   float lit = fbm(p + uSun.xz * .03);
-  vec3 col = mix(vec3(.42, .45, .52), vec3(1.05, .92, .80), clamp(.45 + (fbm(p) - lit) * 4., 0., 1.)) * (.75 + .35 * smoothstep(.5, .9, fbm(p * 1.7)));
-  vec3 d = vW - cameraPosition; float fade = 1. - smoothstep(2500., 8800., length(d.xz));
-  gl_FragColor = vec4(col, c * .85 * fade);
+  vec3 col = mix(vec3(.42, .45, .52), vec3(1.05, .92, .80), clamp(.45 + (f - lit) * 4., 0., 1.)) * (.75 + .35 * smoothstep(.5, .9, fbm(p * 1.7)));
+  float fade = smoothstep(.015, .22, dir.y);
+  gl_FragColor = vec4(col, c * .8 * fade);
   #include <tonemapping_fragment>
   #include <colorspace_fragment>
 }` });
-  const g = new THREE.PlaneGeometry(32000, 32000); g.rotateX(Math.PI / 2);
+  const g = new THREE.SphereGeometry(7000, 32, 12, 0, Math.PI * 2, 0, Math.PI / 2); // upper half dome around the camera
   const o = new THREE.Mesh(g, m); o.renderOrder = -1; o.frustumCulled = false; return o;
 }

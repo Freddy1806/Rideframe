@@ -29,7 +29,8 @@ function satTex() {
   if (SAT.tex) return SAT.tex;
   let done; pending.push(new Promise(r => done = r));
   SAT.tex = loader.load(new URL('../../assets/dem/lofoten_s2.jpg', import.meta.url).href, () => { SAT.on.value = 1; done(); }, undefined, () => done());
-  SAT.tex.colorSpace = THREE.SRGBColorSpace; SAT.tex.flipY = false; // image row 0 = north, like the DEM rows SAT.tex.wrapS = SAT.tex.wrapT = THREE.MirroredRepeatWrapping; SAT.tex.anisotropy = 8;
+  SAT.tex.colorSpace = THREE.SRGBColorSpace; SAT.tex.flipY = false; // image row 0 = north, like the DEM rows
+  SAT.tex.wrapS = SAT.tex.wrapT = THREE.MirroredRepeatWrapping; SAT.tex.anisotropy = 8;
   return SAT.tex;
 }
 const satRot = new THREE.Vector4(Math.cos(DEM_ROT) / DEM_SIZE, Math.sin(DEM_ROT) / DEM_SIZE, DEM_P0[0], DEM_P0[1]);
