@@ -5,9 +5,16 @@ import { Sky } from '../../vendor/Sky.js';
 import { createNoise2D } from '../../vendor/simplex-noise.js';
 import { STEP, distAtTime } from '../track.js';
 import { Field, rng, smooth, lerp, ROAD_W, DS, loadDEM } from './field.js';
-const DEM = await loadDEM();
+const DEMS = new Map(); let DEM = null;
+/** Load the ground (DEM + satellite image) of a track before new WorldScene(); cached per DEM file. */
+export async function prepareWorld(track) {
+  const key = track?.dem?.file || 'lofoten';
+  if (!DEMS.has(key)) DEMS.set(key, await loadDEM(track?.dem || null));
+  DEM = DEMS.get(key); useSatellite(DEM, track?.dem?.sat || 'lofoten_s2.jpg');
+}
+await prepareWorld(null);
 import { asphalt, grassTuft, planks, stone } from './tex.js';
-import { terrainMaterial, tex, texReady, TIME } from './terrainmat.js';
+import { terrainMaterial, tex, texReady, TIME, useSatellite } from './terrainmat.js';
 import { Water } from '../../vendor/jsm/objects/Water.js';
 import { mergeGeometries } from '../../vendor/jsm/utils/BufferGeometryUtils.js';
 import { loadAssets } from './assets.js';
@@ -233,7 +240,7 @@ export class WorldScene {
     asph += mix(texture2D(tAsph, auv).rgb, texture2D(tAsph, auv * 0.23 + .5).rgb, .35) * .2;
   }
   float line = smoothstep(.45, .7, dot(painted.rgb, vec3(.333))) * (abs(vMapUv.x - .5) < .05 ? .45 : 1.); // white edge lines, the centre dash only faint
-  float aL = dot(asph, vec3(.333)); asph = clamp((vec3(aL) + (asph - aL) * .45 + (aL - .22) * 1.2) * 1.55 * vec3(1.05, 1., .93) + .04, 0., .62); // light, grippy grey asphalt (albedo ~0.35), not the sun-glared black
+  float aL = max(dot(asph, vec3(.333)), 1e-3); asph = vec3(.14) * (.6 + .4 * clamp(aL / .06, 0., 2.5)) * mix(vec3(1.), asph / aL, .3) * vec3(1.04, 1., .95); // linear space: photo mean ~.06 -> ~.14 (sRGB ~.41), grain kept // light, grippy grey asphalt (albedo ~0.35), not the sun-glared black
   float edge = smoothstep(.0, .06, vMapUv.x) * (1. - smoothstep(.94, 1., vMapUv.x));
   diffuseColor.rgb *= mix(painted.rgb, mix(asph * .95, painted.rgb, line), edge);`)
         .replace('#include <normal_fragment_maps>', `#include <normal_fragment_maps>

@@ -24,16 +24,21 @@ export function tex(name, kind, fallback) {
 }
 
 // real colours from above: Sentinel-2 satellite image covering exactly the DEM area (assets/dem/lofoten_s2.jpg, optional)
-const SAT = { tex: null, on: { value: 0 } };
+const SAT = { tex: null, file: 'lofoten_s2.jpg', on: { value: 0 } };
 function satTex() {
   if (SAT.tex) return SAT.tex;
   let done; pending.push(new Promise(r => done = r));
-  SAT.tex = loader.load(new URL('../../assets/dem/lofoten_s2.jpg', import.meta.url).href, () => { SAT.on.value = 1; done(); }, undefined, () => done());
+  SAT.tex = loader.load(new URL('../../assets/dem/' + SAT.file, import.meta.url).href, () => { SAT.on.value = 1; done(); }, undefined, () => done());
   SAT.tex.colorSpace = THREE.SRGBColorSpace; SAT.tex.flipY = false; // image row 0 = north, like the DEM rows
   SAT.tex.wrapS = SAT.tex.wrapT = THREE.MirroredRepeatWrapping; SAT.tex.anisotropy = 8;
   return SAT.tex;
 }
 const satRot = new THREE.Vector4(Math.cos(DEM_ROT) / DEM_SIZE, Math.sin(DEM_ROT) / DEM_SIZE, DEM_P0[0], DEM_P0[1]);
+/** Satellite image + placement for the world about to be built (same frame as its DEM). */
+export function useSatellite(dem, file = 'lofoten_s2.jpg') {
+  if (dem) satRot.set(Math.cos(dem.rot) / dem.size, Math.sin(dem.rot) / dem.size, dem.p0[0], dem.p0[1]);
+  if (file !== SAT.file) { SAT.tex?.dispose(); SAT.tex = null; SAT.file = file; SAT.on.value = 0; }
+}
 
 /** Material for terrain tiles and the far backdrop. opts.far = discard inside the detailed area. */
 export function terrainMaterial(opts = {}) {

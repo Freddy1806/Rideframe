@@ -14,14 +14,19 @@ const SUB = STEP / DS;         // dense samples per track sample
 // Real Lofoten elevation (assets/dem): the mountain chain is turned so it runs along the route (north)
 // Same ground area in two resolutions: lofoten_dtm10.bin (2048², ~10.8 m, from the Mac) or lofoten.bin (1536², ~14.4 m)
 export const DEM_ROT = 27.5 * Math.PI / 180, DEM_P0 = [127 / 1536, 940 / 1536], DEM_SIZE = 1536 * 14.35; // metres across
-export async function loadDEM() {
-  for (const [file, n] of [['lofoten_dtm10.bin', 2048], ['lofoten.bin', 1536]]) {
+/** Elevation grid for a world. info = track.dem for a real route ({file, n, size_m, start_px}: unrotated,
+ *  start_px = route start in DEM pixels); without it the built-in Lofoten DEM turned along the coast route. */
+export async function loadDEM(info = null) {
+  const list = info ? [[info.file, info.n]] : [['lofoten_dtm10.bin', 2048], ['lofoten.bin', 1536]];
+  for (const [file, n] of list) {
     try {
       const url = new URL('../../assets/dem/' + file, import.meta.url);
       let data;
       if (typeof window === 'undefined') { const fs = await import('node:fs'); const b = fs.readFileSync(url); data = new Uint16Array(b.buffer.slice(b.byteOffset, b.byteOffset + b.length)); }
       else { const r = await fetch(url); if (!r.ok) continue; data = new Uint16Array(await r.arrayBuffer()); }
-      if (data.length === n * n) return { data, n };
+      if (data.length !== n * n) continue;
+      return info ? { data, n, rot: 0, p0: [info.start_px[0] / n, info.start_px[1] / n], size: info.size_m, real: true }
+        : { data, n, rot: DEM_ROT, p0: DEM_P0, size: DEM_SIZE, real: false };
     } catch { /* try the next one */ }
   }
   console.warn('DEM fehlt, Berge aus Rauschen'); return null;
@@ -35,7 +40,9 @@ const cr = (p0, p1, p2, p3, t) => { // Catmull-Rom
 export class Field {
   constructor(track, dem = null) {
     this.track = track; this.dem = dem;
-    this.dc = Math.cos(DEM_ROT); this.ds = Math.sin(DEM_ROT);
+    const rot = dem?.rot ?? DEM_ROT; this.dc = Math.cos(rot); this.ds = Math.sin(rot);
+    this.p0 = dem?.p0 ?? DEM_P0; this.demSize = dem?.size ?? DEM_SIZE;
+    this.real = !!dem?.real; // real road on its real ground: the sea is where the DEM says, no forced coast or invented islands
     const n = track.ele.length, R = 6371008.8, la0 = track.lat[0] * Math.PI / 180;
     const X = new Float64Array(n), Z = new Float64Array(n);
     for (let i = 0; i < n; i++) {
@@ -117,8 +124,8 @@ export class Field {
   /** Real elevation (m) at world x,z; mirrored beyond the edges so it never ends. */
   demH(x, z) {
     if (!this.dem) return null;
-    const D = this.dem.data, N = this.dem.n, px_m = DEM_SIZE / N;
-    let px = (this.dc * x - this.ds * z) / px_m + DEM_P0[0] * N, py = (this.ds * x + this.dc * z) / px_m + DEM_P0[1] * N;
+    const D = this.dem.data, N = this.dem.n, px_m = this.demSize / N;
+    let px = (this.dc * x - this.ds * z) / px_m + this.p0[0] * N, py = (this.ds * x + this.dc * z) / px_m + this.p0[1] * N;
     const M = N - 1, w = v => { v = Math.abs(v) % (2 * M); return v > M ? 2 * M - v : v; };
     px = w(px); py = w(py);
     const i = Math.min(M - 1, Math.floor(px)), j = Math.min(M - 1, Math.floor(py)), u = px - i, v = py - j, k = j * N + i;
@@ -145,6 +152,11 @@ export class Field {
       : lerp(-14, hills * smooth(5, 60, real) + real + rough * smooth(20, 200, real), smooth(0, 4, real)); // DEM sea = fjords
     const nearLand = base + Math.min(35, Math.max(0, out) * 0.18) + detail * smooth(0, 15, out);
     const target = real === null ? Math.max(mtn, nearLand) : lerp(mtn, Math.max(mtn, nearLand), smooth(0, 30, real));
+    if (this.real && real !== null) { // the DEM is the truth here: only a short shoulder blends into it, sea stays sea
+      const h = lerp(nearLand, real <= 0.5 ? -6 - smooth(0, 60, out) * 10 : real + rough * smooth(20, 200, real), smooth(6, 60, out));
+      const hh = lerp(r.e - 0.25, h, flat);
+      return out < 3 ? Math.min(hh, r.e - 0.25 + Math.max(0, out) * 0.4) : hh;
+    }
     const land = lerp(nearLand, target, smooth(60, 700, out));
     // sea side (left on coastal sections; always open sea far out on the left)
     const shore = lerp(lerp(14, 45, r.beach), 4, r.cliff) + this.n2(x / 70, z / 70) * 8 * (1 - 0.8 * r.cliff); // cliffs: edge right behind the guard rail

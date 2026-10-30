@@ -122,3 +122,42 @@ export function makeCoastTrack() {
   segs.forEach(s => delete s._plan);
   return { ...track, curve, theme: 'coast', world: 'lofoten', segments: segs, intervals: segs.filter(s => s.interval) };
 }
+
+// ---------------- real roads on their real ground (assets/dem/<name>.json from the Mac) ----------------
+// json: { name, file, n, size_m, sat, start_px, route: [[x east m, y south m], ...] (~10 m apart, relative to the start),
+//         ele: [m per route point], places: [{name, from_m, to_m}], sea_side?: [-1|0|1 per point], tunnels? }
+export async function loadRealTrack(id) {
+  try { const r = await fetch(new URL(`../assets/dem/${id}.json`, import.meta.url)); return r.ok ? makeRealTrack(await r.json()) : null; }
+  catch { return null; }
+}
+export function makeRealTrack(j) {
+  // resample the polyline to exact STEP spacing
+  const P = j.route, cum = [0];
+  for (let i = 1; i < P.length; i++) cum.push(cum[i - 1] + Math.hypot(P[i][0] - P[i - 1][0], P[i][1] - P[i - 1][1]));
+  const L = cum[cum.length - 1], n = Math.floor(L / STEP) + 1, xs = [], ys = [], alt = [], side = [];
+  for (let k = 0, i = 0; k < n; k++) {
+    const d = k * STEP; while (i < P.length - 2 && cum[i + 1] < d) i++;
+    const t = Math.min(1, (d - cum[i]) / Math.max(1e-6, cum[i + 1] - cum[i]));
+    xs.push(P[i][0] + (P[i + 1][0] - P[i][0]) * t); ys.push(P[i][1] + (P[i + 1][1] - P[i][1]) * t);
+    alt.push(j.ele[i] + (j.ele[i + 1] - j.ele[i]) * t); side.push(j.sea_side?.[t < 0.5 ? i : i + 1] || 0);
+  }
+  // metres -> lat/lon with the same flat projection the 3D field uses (x east, z south)
+  const R = 6371008.8, la0 = 68.2, lat = ys.map(y => la0 - y / R * 180 / Math.PI), lon = xs.map(x => 14.0 + x / (R * Math.cos(la0 * Math.PI / 180)) * 180 / Math.PI);
+  // segments: villages from the places list, the stretches between them coast (sea beside the road) or valley
+  const places = [...(j.places || [])].sort((a, b) => a.from_m - b.from_m), segs = [];
+  const seaOn = (a, b) => { let s = 0, c = 0; for (let k = Math.floor(a / STEP); k < Math.min(n, b / STEP); k++) { s += side[k] !== 0; c++; } return c && s / c > 0.4; };
+  const seaSide = (a, b) => { let s = 0; for (let k = Math.floor(a / STEP); k < Math.min(n, b / STEP); k++) s += side[k]; return s < 0 ? -1 : 1; };
+  const open = (a, b) => { if (b - a > 50) segs.push({ name: 'Küstenstraße', from: a, to: b, land: seaOn(a, b) ? 'coast' : 'valley', seaSide: seaSide(a, b) }); };
+  let at = 0;
+  for (const p of places) {
+    const a = Math.max(at, p.from_m - 150), b = Math.min(L, p.to_m + 150); if (b <= a) continue;
+    open(at, a); segs.push({ name: p.name, from: a, to: b, land: seaOn(a, b) ? 'coast' : 'valley', seaSide: seaSide(a, b), village: [0.1, 0.9] }); at = b;
+  }
+  open(at, L); if (segs.length) segs[segs.length - 1].to = (n - 1) * STEP;
+  const tmp = finishTrack({ length: (n - 1) * STEP, time: alt.map((_, i) => i), lat, lon, altRaw: alt, eleSource: 'dem' });
+  const d0 = COAST_DESIGN, p = defaultParams(d0), time = []; let t = 0;
+  for (let i = 0; i < n; i++) { time.push(t); t += STEP / speedFor(d0.ftp * 0.7, tmp.grade[i], p); } // "footage" pace: steady endurance ride
+  const track = finishTrack({ length: (n - 1) * STEP, time, lat, lon, altRaw: alt, eleSource: 'dem' });
+  return { ...track, curve: new Array(n).fill(0), theme: 'coast', world: 'lofoten', segments: segs, intervals: [], name: j.name,
+    dem: { file: j.file, n: j.n, size_m: j.size_m, start_px: j.start_px, sat: j.sat } };
+}

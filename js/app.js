@@ -3,7 +3,7 @@ import { readGoProGPS } from './gpmf.js';
 import { buildTrack, improveElevation, parseGPX, STEP } from './track.js';
 import { Trainer, HeartRate } from './trainer.js';
 import { makeDemoTrack, demoThumb } from './demo.js';
-import { makeCoastTrack } from './routes.js';
+import { makeCoastTrack, loadRealTrack } from './routes.js';
 import { gearsFrom, CASSETTES, parseRings } from './gears.js';
 import { profileSVG, drawDetailProfile } from './profile.js';
 import { RideSession, simulateRide } from './ride.js';
@@ -41,6 +41,8 @@ async function boot() {
   const params = new URLSearchParams(location.search);
   if (params.get('accent')) state.settings.accent = params.get('accent');
   applyAccent();
+  const real = await loadRealTrack('kueste60'); // 60 km real coast road, present once the Mac has built its terrain
+  if (real) BUILTIN.kueste60 = () => ({ id: 'kueste60', name: real.name || 'Küstenweg', place: `${(real.length / 1000).toFixed(0)} km echte Küstenstraße · fast flach, leicht wellig · ${real.gain} Hm`, source: 'demo', parts: [], track: real, createdAt: 2, thumb: demoThumb(real, 1200) });
   await reload();
   if (params.has('seed')) await seedDemoRides();
   document.querySelectorAll('.tab').forEach(t => t.addEventListener('click', () => go(t.dataset.view)));

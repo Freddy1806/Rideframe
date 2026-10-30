@@ -103,7 +103,7 @@ export class RideSession {
     } else {
       const c = document.createElement('canvas'); c.className = 'scene'; el.prepend(c);
       if (this.track.world) {
-        try { const { WorldScene } = await import('./world/lofoten.js'); this.player = new WorldScene(c, this.track); }
+        try { const { WorldScene, prepareWorld } = await import('./world/lofoten.js'); await prepareWorld(this.track); this.player = new WorldScene(c, this.track); }
         catch (e) { console.warn('3D world failed, using 2D scene', e); }
       }
       if (!this.player) this.player = new DemoScene(c, this.track);
