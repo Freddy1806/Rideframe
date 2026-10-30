@@ -1,13 +1,15 @@
 // Scrub-through preview of a built-in 3D route: mouse wheel / profile click moves along the road,
 // play runs fast-forward. Opened from the route detail page (preview.html?route=coast).
-import { makeCoastTrack } from '../routes.js';
+import { makeCoastTrack, loadRealTrack } from '../routes.js';
 import { timeAt } from '../track.js';
-import { WorldScene } from './lofoten.js';
+import { WorldScene, prepareWorld } from './lofoten.js';
 import { MeshBasicMaterial as THREE_Basic } from 'three';
 
 const $ = s => document.getElementById(s);
-const track = makeCoastTrack(), L = track.length;
-$('rname').textContent = 'Felsenküste';
+const rid = new URLSearchParams(location.search).get('route');
+const track = (rid && rid !== 'coast' && await loadRealTrack(rid)) || makeCoastTrack(), L = track.length;
+$('rname').textContent = track.name || 'Felsenküste';
+await prepareWorld(track);
 const world = new WorldScene($('gl'), track);
 world.paused = true;
 

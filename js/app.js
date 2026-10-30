@@ -345,6 +345,7 @@ function settings() {
       </div>
       <div class="panel"><h3>Quellen</h3>
         <div class="field"><div>Gelände Lofoten<div class="hint">Höhenmodell DTM 10 © Kartverket, CC BY 4.0. Fernes Gelände: Terrain Tiles (Mapzen / AWS Open Data).</div></div></div>
+        <div class="field"><div>Küstenweg<div class="hint">Straßenverlauf © OpenStreetMap-Mitwirkende, ODbL 1.0. Gelände © Kartverket, CC BY 4.0. Satellitenbild Sentinel-2 cloudless © EOX, CC BY 4.0.</div></div></div>
         <div class="field"><div>Satellitenfarben<div class="hint">Sentinel-2 cloudless – https://s2maps.eu by EOX IT Services GmbH (Contains modified Copernicus Sentinel data 2016), CC BY 4.0.</div></div></div>
         <div class="field"><div>3D-Grafik<div class="hint">three.js (MIT). Boden-Texturen Poly Haven (CC0). Figuren und Gebäude teils Quaternius (CC0), teils eigene Blender- und KI-Modelle.</div></div></div>
       </div>

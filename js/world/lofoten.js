@@ -504,6 +504,7 @@ export class WorldScene {
     /** place asset e at distance d / offset off; face: 'road' (front towards the road), 'away', 'along' or an angle */
     const place = (e, d, off, o = {}) => {
       if (!e) return null;
+      if (segAt(d).seaSide === 1) off = -off; // real roads with the sea on the right: the whole layout mirrors
       const q = spot(d, off), rad = Math.max(e.size[0], e.size[2]) / 2 * (o.radK ?? 0.85);
       const rd = f.road(q.x, q.z);
       if (!rd || rd.d - rad < ROAD_W + (o.gap ?? 1.2)) return null; // never on the road
