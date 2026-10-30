@@ -539,6 +539,13 @@ export class WorldScene {
             place(byName('fischer_netz'), d + 9, -(w + 1.2), { radK: 0.4, anim: 'Flicken', overlap: true, water: true, y: 1.6 });
           if (r() < 0.7) place(r() < 0.6 ? byName('nordlandboot') : byName('fischerboot'), d + 4, -(w + 14 + r() * 10), { water: true, y: -0.3, face: 'along', rot: r() * 0.6 });
         }
+        // villagers walking along the roadside (only models with a walk cycle 'Gehen'; others would glide)
+        const walkers = (A.by.figure_walk || []).concat(A.by.figure_idle || []).filter(e => e.clips.some(c => c.name === 'Gehen'));
+        if (walkers.length) for (let k = 0; k < 6; k++) {
+          const side = k % 2 ? 1 : -1, dd = a + r() * (b - a), off = side * (ROAD_W + 1.4 + r() * 0.8);
+          const o = place(walkers[k % walkers.length], dd, off, { anim: 'Gehen', overlap: true, gap: 0.6, radK: 0.3 });
+          if (o) o.userData.walk = { d: dd, off, v: (0.9 + r() * 0.5) * (r() < 0.5 ? 1 : -1), a, b };
+        }
         place(byName('hjell'), a + 25, ROAD_W + 12, { face: 'along' });
         if (s === segs[0]) place(byName('dorfkirche'), b - 40, ROAD_W + 16, { face: Math.PI / 2 });
       }
@@ -752,6 +759,10 @@ export class WorldScene {
     }
     for (const m of this.mixers) if (m.obj.visible && Math.hypot(m.obj.position.x - cam.x, m.obj.position.z - cam.z) < 260) m.update(Math.min(dt, 0.1));
     for (const w of this.wheels) w.rotation.x = time * 0.35;
+    for (const o of this.props) { const w = o.userData.walk; if (!w || !o.visible) continue; // walk along the road, turn round at the village ends
+      w.d += w.v * Math.min(dt, 0.1); if (w.d < w.a || w.d > w.b) { w.v = -w.v; w.d = Math.max(w.a, Math.min(w.b, w.d)); }
+      const p = this.field.at(w.d), l = Math.hypot(p.tx, p.tz) || 1, x = p.x - p.tz / l * w.off, z = p.z + p.tx / l * w.off;
+      o.position.set(x, this.field.height(x, z), z); o.rotation.y = Math.atan2(p.tx * Math.sign(w.v), p.tz * Math.sign(w.v)); }
     for (const b of this.birds) { const c = b.userData.circle, a = c.ph + time * c.w;
       b.position.set(c.x + Math.cos(a) * c.R, c.y + Math.sin(time * 0.3 + c.ph) * 4, c.z + Math.sin(a) * c.R); b.rotation.y = -a; }
     for (const w of this.whales) { // breach every ~25 s while the rider is within 900 m
