@@ -29,7 +29,7 @@ function satTex() {
   if (SAT.tex) return SAT.tex;
   let done; pending.push(new Promise(r => done = r));
   SAT.tex = loader.load(new URL('../../assets/dem/lofoten_s2.jpg', import.meta.url).href, () => { SAT.on.value = 1; done(); }, undefined, () => done());
-  SAT.tex.colorSpace = THREE.SRGBColorSpace; SAT.tex.wrapS = SAT.tex.wrapT = THREE.MirroredRepeatWrapping; SAT.tex.anisotropy = 8;
+  SAT.tex.colorSpace = THREE.SRGBColorSpace; SAT.tex.flipY = false; // image row 0 = north, like the DEM rows SAT.tex.wrapS = SAT.tex.wrapT = THREE.MirroredRepeatWrapping; SAT.tex.anisotropy = 8;
   return SAT.tex;
 }
 const satRot = new THREE.Vector4(Math.cos(DEM_ROT) / DEM_SIZE, Math.sin(DEM_ROT) / DEM_SIZE, DEM_P0[0], DEM_P0[1]);
@@ -76,7 +76,7 @@ ${opts.far ? '  if (distance(vWP.xz, uCam) < uHole) discard;' : ''}`)
   // satellite colours: decide the large-scale look (green slopes, scree, sand, snow); photo textures keep the close-up structure
   if (uSatOn > .5 && vWP.y > 1.) {
     vec2 suv = vec2(uSatRot.x * vWP.x - uSatRot.y * vWP.z + uSatRot.z, uSatRot.y * vWP.x + uSatRot.x * vWP.z + uSatRot.w);
-    vec3 sat = texture2D(tSat, suv).rgb * 1.15;
+    vec3 sat = texture2D(tSat, suv).rgb * 1.5;
     float dl = dot(alb, vec3(.299, .587, .114)), dist = length(vWP - cameraPosition);
     vec3 sd = sat * clamp(.55 + dl * 1.6, .6, 1.5); // satellite colour, shaded by the photo texture's detail
     alb = mix(alb, sd, mix(.45, .85, smoothstep(60., 900., dist)) * smoothstep(1., 4., vWP.y));

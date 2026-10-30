@@ -312,7 +312,7 @@ export class WorldScene {
         }
       });
       rail.count = nr;
-      pm.castShadow = rail.castShadow = true; grp.add(pm, rail);
+      rail.castShadow = true; grp.add(pm, rail); // posts cast no shadow: at midnight-sun angles they striped the whole road
     }
     return grp;
   }
@@ -632,7 +632,7 @@ export class WorldScene {
     for (const [key, w] of todo) {
       if (!this.instant && performance.now() - t0 > 12) break;
       const old = this.tiles.get(key);
-      const obj = this._tile(w.tx, w.tz, w.res); this.scene.add(obj);
+      const obj = this._tile(w.tx, w.tz, w.res); this.scene.add(obj); this.built = true;
       if (old) { this.scene.remove(old.obj); old.obj.traverse(o => { if (o.isMesh) o.geometry.dispose(); }); }
       this.tiles.set(key, { obj, res: w.res });
       if (!this.instant && budget <= 1 && performance.now() - t0 > 6) break;
@@ -702,10 +702,12 @@ export class WorldScene {
     const now = performance.now(), ft = this._lastNow ? now - this._lastNow : 0; this._lastNow = now;
     if (!this.autoQ || this.instant || !ft || ft > 500) return;
     if (!this.fpsSince) this.fpsSince = now;
-    if (now - this.fpsSince < 4000) return;
+    // judge rendering only: skip the first 8 s and every frame in which terrain tiles were still being built
+    if (now - this.fpsSince < 8000 || this.built) { this.built = false; return; }
     this.fpsT += ft; this.fpsN++;
-    if (this.fpsT > 2500) { const fps = 1000 * this.fpsN / this.fpsT; this.fpsT = this.fpsN = 0; this.fps = fps;
-      if (fps < 48 && this.quality > 0) this._setQuality(this.quality - 1); }
+    if (this.fpsT > 3000) { const fps = 1000 * this.fpsN / this.fpsT; this.fpsT = this.fpsN = 0; this.fps = fps;
+      this.slow = fps < 45 ? (this.slow || 0) + 1 : 0;
+      if (this.slow >= 2 && this.quality > 0) { this.slow = 0; this._setQuality(this.quality - 1); } } // two slow windows in a row
   }
   render(time = 0, dt = 1 / 60) {
     this._measure();
