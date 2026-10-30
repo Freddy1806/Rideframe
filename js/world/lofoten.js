@@ -182,7 +182,7 @@ export class WorldScene {
     scene.fog = new THREE.FogExp2(0xd6c9bb, 0.00022);
     this.clouds = cloudLayer(sun); scene.add(this.clouds);
 
-    const light = this.light = new THREE.DirectionalLight(0xffa266, 3.2);
+    const light = this.light = new THREE.DirectionalLight(0xffbf8c, 3.1);
     light.castShadow = true; light.shadow.mapSize.set(2048, 2048);
     const sc = light.shadow.camera; sc.left = -110; sc.right = 110; sc.top = 110; sc.bottom = -110; sc.near = 10; sc.far = 900;
     light.shadow.bias = -0.0004; light.shadow.normalBias = 0.6;
