@@ -9,6 +9,7 @@ const DEM = await loadDEM();
 import { asphalt, grassTuft, planks, stone } from './tex.js';
 import { terrainMaterial, tex, texReady, TIME } from './terrainmat.js';
 import { Water } from '../../vendor/jsm/objects/Water.js';
+import { mergeGeometries } from '../../vendor/jsm/utils/BufferGeometryUtils.js';
 import { loadAssets } from './assets.js';
 import { EffectComposer } from '../../vendor/jsm/postprocessing/EffectComposer.js';
 import { RenderPass } from '../../vendor/jsm/postprocessing/RenderPass.js';
@@ -610,7 +611,34 @@ export class WorldScene {
     this._placeLegacyTops(segs);
     // everything that never moves: matrices once, then skipped by three's per-frame scene-graph update (was ~30 % CPU)
     const moving = new Set([...this.mixers.map(m => m.obj), ...this.birds, ...this.whales.map(w => w.obj), ...this.animated]);
-    for (const o of this.props) if (!moving.has(o) && !o.userData.walk && !o.userData.circle) { let wheel = false; o.traverse(c => { if (c.userData.millWheel) wheel = true; }); if (!wheel) freeze(o); }
+    for (const o of this.props) if (!moving.has(o) && !o.userData.walk && !o.userData.circle) { let wheel = false; o.traverse(c => { if (c.userData.millWheel) wheel = true; }); if (!wheel) { freeze(o); o.userData.still = true; } }
+    if (!/[?&]nobatch/.test(location.search)) this._batch();
+  }
+  // static batching: every still prop is baked into one mesh per 500 m cell, size class and material (~1500 draw calls -> a few hundred)
+  _batch() {
+    const CELL = 500, buckets = new Map(), keep = [];
+    for (const o of this.props) {
+      if (!o.userData.still) { keep.push(o); continue; }
+      const cls = o.userData.small ? 'small' : o.userData.mid ? 'mid' : 'big';
+      const C = cls === 'small' ? CELL / 2 : CELL, cx = Math.floor(o.position.x / C), cz = Math.floor(o.position.z / C);
+      o.traverse(m => {
+        if (!m.isMesh || m.isSkinnedMesh || Array.isArray(m.material)) return;
+        const g = m.geometry, sig = Object.keys(g.attributes).sort().join(',') + (g.index ? ':i' : ':n');
+        const key = `${cx},${cz},${cls},${m.material.uuid},${m.castShadow ? 1 : 0}${m.receiveShadow ? 1 : 0},${sig}`;
+        let b = buckets.get(key); if (!b) buckets.set(key, b = { cls, mat: m.material, cast: m.castShadow, recv: m.receiveShadow, list: [], x: 0, z: 0 });
+        b.list.push(g.clone().applyMatrix4(m.matrixWorld)); b.x += o.position.x; b.z += o.position.z;
+      });
+      this.scene.remove(o);
+    }
+    for (const b of buckets.values()) {
+      const cx = b.x / b.list.length, cz = b.z / b.list.length;
+      const g = mergeGeometries(b.list, false); b.list.forEach(x => x.dispose()); if (!g) continue;
+      g.translate(-cx, 0, -cz); g.computeBoundingSphere();
+      const mesh = new THREE.Mesh(g, b.mat); mesh.position.set(cx, 0, cz); mesh.castShadow = b.cast; mesh.receiveShadow = b.recv;
+      mesh.userData.small = b.cls === 'small'; mesh.userData.mid = b.cls !== 'big'; mesh.userData.rad = g.boundingSphere.radius;
+      this.scene.add(mesh); freeze(mesh); keep.push(mesh);
+    }
+    this.props = keep;
   }
   _placeLegacyTops(segs) { // castle + lookout have no Blender model yet: keep the built-in ones
     const f = this.field;
@@ -755,6 +783,8 @@ export class WorldScene {
       else if (o.userData.bob) { o.position.y = Math.sin(time * 0.9 + o.id) * 0.15 - 0.4; o.rotation.z = Math.sin(time * 0.7 + o.id) * 0.04; }
     }
     this._life(time, dt, cam);
+    // scene graph once per frame: otherwise the water mirror pass walks every matrix a second time
+    this.scene.matrixWorldAutoUpdate = true; this.scene.updateMatrixWorld(); this.scene.matrixWorldAutoUpdate = false;
     if (this.composer && this.useAO) this.composer.render(); else r.render(this.scene, this.camera);
     this._calls = r.info.render.calls; this._tris = r.info.render.triangles;
   }
@@ -766,12 +796,12 @@ export class WorldScene {
       this._cullT = time;
       for (const o of this.props) {
         const dist = Math.hypot(o.position.x - cam.x, o.position.z - cam.z);
-        o.visible = dist < (o.userData.circle ? 900 : o.userData.small ? 450 : o.userData.mid ? 900 : 1600); // people, animals, barrels: only near
-        // moving things (skeletons!) update their matrices only while they can actually move: visible and animated (< 260 m)
-        if (o.matrixAutoUpdate !== false) o.matrixWorldAutoUpdate = o.visible && (dist < 270 || !!o.userData.circle || !!o.userData.walk);
+        o.visible = dist - (o.userData.rad || 0) * 0.7 < (o.userData.circle ? 900 : o.userData.small ? 450 : o.userData.mid ? 900 : 1600); // people, animals, barrels: only near
+        // moving things (skeletons!) update their matrices only while they can actually move: visible and animated (< 180 m)
+        if (o.matrixAutoUpdate !== false) o.matrixWorldAutoUpdate = o.visible && (dist < 180 || !!o.userData.circle || !!o.userData.walk);
       }
     }
-    for (const m of this.mixers) if (m.obj.visible && Math.hypot(m.obj.position.x - cam.x, m.obj.position.z - cam.z) < 260) m.update(Math.min(dt, 0.1));
+    for (const m of this.mixers) if (m.obj.visible && Math.hypot(m.obj.position.x - cam.x, m.obj.position.z - cam.z) < 180) m.update(Math.min(dt, 0.1));
     for (const w of this.wheels) w.rotation.x = time * 0.35;
     for (const o of this.props) { const w = o.userData.walk; if (!w || !o.visible) continue; // walk along the road, turn round at the village ends
       w.d += w.v * Math.min(dt, 0.1); if (w.d < w.a || w.d > w.b) { w.v = -w.v; w.d = Math.max(w.a, Math.min(w.b, w.d)); }

@@ -334,6 +334,11 @@ function settings() {
       <div class="panel"><h3>Design</h3>
         <div class="field"><div>Akzentfarbe</div><div class="swatches">${Object.entries(ACCENTS).map(([k, c]) => `<button class="swatch ${s.accent === k ? 'on' : ''}" data-acc="${k}" style="background:${c}"></button>`).join('')}</div></div>
       </div>
+      <div class="panel"><h3>Quellen</h3>
+        <div class="field"><div>Gelände Lofoten<div class="hint">Höhenmodell DTM 10 © Kartverket, CC BY 4.0. Fernes Gelände: Terrain Tiles (Mapzen / AWS Open Data).</div></div></div>
+        <div class="field"><div>Satellitenfarben<div class="hint">Sentinel-2 cloudless – https://s2maps.eu by EOX IT Services GmbH (Contains modified Copernicus Sentinel data 2016), CC BY 4.0.</div></div></div>
+        <div class="field"><div>3D-Grafik<div class="hint">three.js (MIT). Figuren und Gebäude teils Quaternius (CC0), teils eigene KI-Modelle.</div></div></div>
+      </div>
     </div>
   </section>`;
   const num = (id, key) => $('#' + id).addEventListener('change', e => { s[key] = +e.target.value; saveSettings(); });
