@@ -645,7 +645,9 @@ export class WorldScene {
         const fit = trees.filter(e => !e.zone_m || (h >= e.zone_m[0] && h <= e.zone_m[1]));
         if (!fit.length) continue;
         const e = fit[Math.floor(r() * fit.length)], k = 0.8 + r() * 0.45;
-        if (place(e, d, off, { face: r() * 6.28, scale: k, radK: 0.35, gap: 4 })) n++;
+        const o = place(e, d, off, { face: r() * 6.28, scale: k, radK: 0.35, gap: 4 }); if (!o) continue;
+        n++; o.userData.near = !!e.farScene;
+        if (e.farScene) { const lo = e.farScene.clone(true); lo.position.copy(o.position); lo.rotation.copy(o.rotation); lo.scale.copy(o.scale); lo.userData.far = true; this.scene.add(lo); this.props.push(lo); }
       }
       console.info('RIDEFRAME Bäume', n);
     }
@@ -687,8 +689,8 @@ export class WorldScene {
     const CELL = 500, buckets = new Map(), keep = [];
     for (const o of this.props) {
       if (!o.userData.still) { keep.push(o); continue; }
-      const cls = o.userData.small ? 'small' : o.userData.mid ? 'mid' : 'big';
-      const C = cls === 'small' ? CELL / 2 : CELL, cx = Math.floor(o.position.x / C), cz = Math.floor(o.position.z / C);
+      const cls = o.userData.near ? 'near' : o.userData.far ? 'far' : o.userData.small ? 'small' : o.userData.mid ? 'mid' : 'big';
+      const C = cls === 'small' || cls === 'near' || cls === 'far' ? CELL / 2 : CELL, cx = Math.floor(o.position.x / C), cz = Math.floor(o.position.z / C);
       o.traverse(m => {
         if (!m.isMesh || m.isSkinnedMesh || Array.isArray(m.material)) return;
         const g = m.geometry, sig = Object.keys(g.attributes).sort().join(',') + (g.index ? ':i' : ':n');
@@ -704,6 +706,7 @@ export class WorldScene {
       g.translate(-cx, 0, -cz); g.computeBoundingSphere();
       const mesh = new THREE.Mesh(g, b.mat); mesh.position.set(cx, 0, cz); mesh.castShadow = b.cast; mesh.receiveShadow = b.recv;
       mesh.userData.small = b.cls === 'small'; mesh.userData.mid = b.cls !== 'big'; mesh.userData.rad = g.boundingSphere.radius;
+      mesh.userData.near = b.cls === 'near'; mesh.userData.far = b.cls === 'far';
       if (b.cls !== 'big') noMirror(mesh);
       this.scene.add(mesh); freeze(mesh); keep.push(mesh);
     }
@@ -895,7 +898,9 @@ export class WorldScene {
       this._cullT = time;
       for (const o of this.props) {
         const dist = Math.hypot(o.position.x - cam.x, o.position.z - cam.z);
-        o.visible = !o.userData.hidden && dist - (o.userData.rad || 0) * 0.7 < (o.userData.circle ? 900 : o.userData.small ? 450 : o.userData.mid ? 900 : 1600); // people, animals, barrels: only near
+        const near = dist - (o.userData.rad || 0) * 0.7; // tree LODs: near and far batch share cell and centre, so exactly one of them shows
+        o.visible = !o.userData.hidden && (o.userData.near ? dist < 330 : o.userData.far ? dist >= 330 && near < 1400
+          : near < (o.userData.circle ? 900 : o.userData.small ? 450 : o.userData.mid ? 900 : 1600)); // people, animals, barrels: only near
         // moving things (skeletons!) update their matrices only while they can actually move: visible and animated (< 180 m)
         if (o.matrixAutoUpdate !== false) o.matrixWorldAutoUpdate = o.visible && (dist < 180 || !!o.userData.circle || !!o.userData.walk || !!o.userData.whale);
       }

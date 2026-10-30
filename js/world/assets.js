@@ -16,7 +16,9 @@ export async function loadAssets() {
     try {
       const g = await loader.loadAsync(new URL(e.file, base).href);
       g.scene.traverse(o => { if (o.isMesh) { o.castShadow = true; o.receiveShadow = true; } });
-      return { ...e, scene: g.scene, clips: g.animations || [] };
+      let farScene = null; // optional low-poly LOD for trees ("far": file), drawn beyond ~260 m
+      if (e.far) try { farScene = (await loader.loadAsync(new URL(e.far, base).href)).scene; farScene.traverse(o => { if (o.isMesh) { o.castShadow = true; o.receiveShadow = true; } }); } catch {}
+      return { ...e, scene: g.scene, farScene, clips: g.animations || [] };
     } catch { return null; }
   }));
   return new Assets(ok.filter(Boolean));
@@ -27,7 +29,7 @@ function fake(e) { // box with the model's size, origin bottom centre, orange no
   const col = { house: 0xb08060, house_big: 0xa07050, church: 0xcccccc, stall: 0xcc4444, cliff: 0x777777, boat: 0x6b4a2a, animal_land: 0xeeeeee, bird: 0x222222 }[e.category] ?? 0x4477aa;
   const b = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), new THREE.MeshStandardMaterial({ color: col })); b.position.y = h / 2; b.castShadow = true; g.add(b);
   const n = new THREE.Mesh(new THREE.BoxGeometry(w * 0.3, h * 0.3, 0.3), new THREE.MeshStandardMaterial({ color: 0xff5a1f })); n.position.set(0, h * 0.5, d / 2 + 0.15); g.add(n);
-  return { ...e, scene: g, clips: [] };
+  return { ...e, scene: g, farScene: e.far ? g.clone(true) : null, clips: [] };
 }
 
 export class Assets {

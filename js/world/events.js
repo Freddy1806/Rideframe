@@ -3,6 +3,7 @@
 // always ahead of the camera so it is not missed. Sounds come from assets/audio/manifest.json when present;
 // without them the calls still show as speech bubbles.
 import * as THREE from 'three';
+import { ROAD_W } from './field.js';
 
 const LINES = [
   'Godspeed, rider!', 'Faster! The King awaits!', 'Make way for the rider!', 'Huzzah!', 'Ride on, brave soul!',
@@ -133,11 +134,11 @@ export class Events {
       const cart = this.A.make(cartE).obj, horse = horseE ? this.A.make(horseE, 'Gehen') : null;
       const grp = new THREE.Group(); grp.add(cart); if (horse) { horse.obj.position.z = cartE.size[2] / 2 + horseE.size[2] / 2 + 0.3; grp.add(horse.obj); }
       this.w.scene.add(grp);
-      this.active.push({ obj: grp, mixer: horse?.mixer, kind: 'cart', d: c.at + 120, v: -3.2 }); // starts ahead, rolls towards the rider
+      this.active.push({ obj: grp, mixer: horse?.mixer, kind: 'cart', d: c.at + 120, v: -3.2, w: Math.min(cartE.size[0], cartE.size[2]) }); // starts ahead, rolls towards the rider
     }
     for (const e of this.active) if (e.kind === 'cart') {
       e.d += e.v * Math.min(dt, 0.1); if (e.d < d - 80) { e.dead = true; continue; }
-      const p = this.f.at(e.d), l = Math.hypot(p.tx, p.tz) || 1, off = -1.9; // left lane, oncoming
+      const p = this.f.at(e.d), l = Math.hypot(p.tx, p.tz) || 1, off = -Math.min(2.5, ROAD_W - (e.w || 2) / 2 - 0.15); // keep inside the oncoming lane, clear of the rider
       const x = p.x - p.tz / l * off, z = p.z + p.tx / l * off;
       e.obj.position.set(x, this.f.height(x, z), z); e.obj.rotation.y = Math.atan2(-p.tx, -p.tz);
     }
