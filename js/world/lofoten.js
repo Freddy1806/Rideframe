@@ -24,6 +24,7 @@ const SUB = STEP / DS;
 
 // ---------------- terrain painting ----------------
 // splat = weights for (grass, rock, sand, snow); colour = gentle tint so meadows are not one flat green
+const _v = new THREE.Vector3();
 const TINT_A = new THREE.Color(1.0, 1.0, 0.95), TINT_B = new THREE.Color(1.12, 1.05, 0.78), TINT_C = new THREE.Color(0.82, 0.9, 0.86), _c = new THREE.Color();
 const WET = new THREE.Color(0.55, 0.52, 0.5), SHALLOW = new THREE.Color(0.75, 1.0, 0.95), DEEP = new THREE.Color(0.15, 0.3, 0.33);
 function paint(f, x, z, h, ny, col, spl, i) {
@@ -156,7 +157,7 @@ export class WorldScene {
     this.currentTime = 0; this.playbackRate = 1; this.paused = true; this.duration = track.time[track.time.length - 1];
     this.field = new Field(track, DEM);
     const renderer = this.renderer = new THREE.WebGLRenderer({ canvas, antialias: true, powerPreference: 'high-performance', preserveDrawingBuffer: !!track.__shot });
-    renderer.setPixelRatio(Math.min(devicePixelRatio || 1, 1.5));
+    renderer.setPixelRatio(Math.min(devicePixelRatio || 1, 1.25)); // Retina at 2x costs 4x the pixels; 1.25 is still sharp at riding distance
     renderer.toneMapping = THREE.ACESFilmicToneMapping; renderer.toneMappingExposure = 0.85;
     renderer.shadowMap.enabled = true; renderer.shadowMap.type = THREE.PCFSoftShadowMap;
     const scene = this.scene = new THREE.Scene();
@@ -583,8 +584,8 @@ export class WorldScene {
       // ---- cliffs: eagles above, puffins on the rocks, whales offshore ----
       if (s.land === 'cliff' || s.beach) {
         for (let d = s.from + 300; d < s.to; d += 900) {
-          const q = spot(d, -260 - r() * 200);
-          if (f.height(q.x, q.z) < -6) { const w = place(byName('buckelwal'), d, -(260 + r() * 200), { water: true, y: -14, face: 'along', overlap: true }); if (w) this.whales.push({ obj: w, mixer: this.mixers[this.mixers.length - 1], next: 0 }); }
+          const off = 140 + r() * 120, q = spot(d, -off); // close enough to read as a whale at 62° FOV
+          if (f.height(q.x, q.z) < -6) { const w = place(byName('buckelwal'), d, -off, { water: true, y: -14, face: 'along', overlap: true }); if (w) w.userData.whale = true; if (w) this.whales.push({ obj: w, mixer: this.mixers[this.mixers.length - 1], next: 0 }); }
         }
         for (let k = 0; k < 2; k++) { const e = byName('seeadler'); if (e) { const { obj, mixer } = A.make(e, 'Gleiten', r); const q = spot(s.from + L * (0.3 + k * 0.4), -60); obj.userData.circle = { x: q.x, z: q.z, y: 0, R: 40 + r() * 40, w: 0.18 + r() * .1, ph: r() * 6 }; this.scene.add(obj); this.birds.push(obj); this.props.push(obj); if (mixer) { mixer.obj = obj; this.mixers.push(mixer); } } }
       }
@@ -798,10 +799,10 @@ export class WorldScene {
         const dist = Math.hypot(o.position.x - cam.x, o.position.z - cam.z);
         o.visible = dist - (o.userData.rad || 0) * 0.7 < (o.userData.circle ? 900 : o.userData.small ? 450 : o.userData.mid ? 900 : 1600); // people, animals, barrels: only near
         // moving things (skeletons!) update their matrices only while they can actually move: visible and animated (< 180 m)
-        if (o.matrixAutoUpdate !== false) o.matrixWorldAutoUpdate = o.visible && (dist < 180 || !!o.userData.circle || !!o.userData.walk);
+        if (o.matrixAutoUpdate !== false) o.matrixWorldAutoUpdate = o.visible && (dist < 180 || !!o.userData.circle || !!o.userData.walk || !!o.userData.whale);
       }
     }
-    for (const m of this.mixers) if (m.obj.visible && Math.hypot(m.obj.position.x - cam.x, m.obj.position.z - cam.z) < 180) m.update(Math.min(dt, 0.1));
+    for (const m of this.mixers) if (m.obj.visible && (m.obj.userData.whale || Math.hypot(m.obj.position.x - cam.x, m.obj.position.z - cam.z) < 180)) m.update(Math.min(dt, 0.1));
     for (const w of this.wheels) w.rotation.x = time * 0.35;
     for (const o of this.props) { const w = o.userData.walk; if (!w || !o.visible) continue; // walk along the road, turn round at the village ends
       w.d += w.v * Math.min(dt, 0.1); if (w.d < w.a || w.d > w.b) { w.v = -w.v; w.d = Math.max(w.a, Math.min(w.b, w.d)); }
@@ -809,9 +810,11 @@ export class WorldScene {
       o.position.set(x, this.field.height(x, z), z); o.rotation.y = Math.atan2(p.tx * Math.sign(w.v), p.tz * Math.sign(w.v)); }
     for (const b of this.birds) { const c = b.userData.circle, a = c.ph + time * c.w;
       b.position.set(c.x + Math.cos(a) * c.R, c.y + Math.sin(time * 0.3 + c.ph) * 4, c.z + Math.sin(a) * c.R); b.rotation.y = -a; }
-    for (const w of this.whales) { // breach every ~25 s while the rider is within 900 m
-      const near = Math.hypot(w.obj.position.x - cam.x, w.obj.position.z - cam.z) < 900;
-      if (near && time > w.next && w.mixer) { const c = ASSETS.clip(ASSETS.find('buckelwal'), 'Sprung'); if (c) { const act = w.mixer.clipAction(c); act.reset(); act.setLoop(THREE.LoopOnce); act.play(); } w.next = time + 22 + Math.random() * 10; }
+    const fwd = this.camera.getWorldDirection(_v);
+    for (const w of this.whales) { // breach as soon as it is in view ahead (< 700 m), then every ~25 s while near
+      const dx = w.obj.position.x - cam.x, dz = w.obj.position.z - cam.z, dist = Math.hypot(dx, dz);
+      const inView = (dx * fwd.x + dz * fwd.z) / (dist * Math.hypot(fwd.x, fwd.z) || 1) > 0.6;
+      if (dist < 700 && inView && time > w.next && w.mixer) { const c = ASSETS.clip(ASSETS.find('buckelwal'), 'Sprung'); if (c) { const act = w.mixer.clipAction(c); act.reset(); act.setLoop(THREE.LoopOnce); act.play(); } w.next = time + 22 + Math.random() * 10; }
     }
   }
 }
