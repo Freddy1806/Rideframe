@@ -697,7 +697,7 @@ export class WorldScene {
     this.farHole.value = hole;
     // fast preview: a road chunk shows only once the ground under it stands, never as a band in the sky
     const has = d => { const q = f.at(Math.min(d, this.track.length)); return this.tiles.has(Math.floor(q.x / TILE) + ',' + Math.floor(q.z / TILE)); };
-    for (const [k, c] of this.roadChunks) c.visible = has(k * 500) && has(k * 500 + 250) && has(k * 500 + 499);
+    for (const [k, c] of this.roadChunks) c.visible = k <= k0 + 1 || has(k * 500) && has(k * 500 + 250); // the road under and just ahead of the rider always shows
     if (this.loading && hole >= 500) { this.loading = false; this._readyRes(); }
   }
 
@@ -827,11 +827,11 @@ export class WorldScene {
     for (const b of this.birds) { const c = b.userData.circle, a = c.ph + time * c.w;
       b.position.set(c.x + Math.cos(a) * c.R, c.y + Math.sin(time * 0.3 + c.ph) * 4, c.z + Math.sin(a) * c.R); b.rotation.y = -a; }
     const fwd = this.camera.getWorldDirection(_v);
-    for (const w of this.whales) { // breach as soon as it is in view ahead (< 700 m), then every ~25 s while near
+    for (const w of this.whales) { // breach as soon as it is in view ahead (< 380 m), then every ~25 s while near
       const dx = w.obj.position.x - cam.x, dz = w.obj.position.z - cam.z, dist = Math.hypot(dx, dz);
       if (w.until && time > w.until) { w.until = 0; w.obj.userData.hidden = true; w.obj.visible = false; } // the clip ends under water (root -8 m): hide until the next breach
       const inView = (dx * fwd.x + dz * fwd.z) / (dist * Math.hypot(fwd.x, fwd.z) || 1) > 0.6;
-      if ((dist < 700 && inView || QS.has('whaletest')) && time > w.next && w.mixer) { console.info(`RIDEFRAME Wal springt, ${Math.round(dist)} m entfernt`); const c = ASSETS.clip(ASSETS.find('buckelwal'), 'Sprung');
+      if ((dist < 380 && inView || QS.has('whaletest')) && time > w.next && w.mixer) { console.info(`RIDEFRAME Wal springt, ${Math.round(dist)} m entfernt`); const c = ASSETS.clip(ASSETS.find('buckelwal'), 'Sprung');
         if (c) { const act = w.mixer.clipAction(c); act.reset(); act.setLoop(THREE.LoopOnce); act.clampWhenFinished = true; act.play(); w.obj.userData.hidden = false; w.obj.visible = true; w.until = time + c.duration; }
         w.next = time + 22 + Math.random() * 10; }
     }
