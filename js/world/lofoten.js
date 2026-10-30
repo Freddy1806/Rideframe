@@ -188,6 +188,7 @@ export class WorldScene {
     const light = this.light = new THREE.DirectionalLight(0xffd4b4, 2.9);
     light.castShadow = !QS.has('noshadow'); light.shadow.mapSize.set(2048, 2048);
     const sc = light.shadow.camera; sc.left = -110; sc.right = 110; sc.top = 110; sc.bottom = -110; sc.near = 10; sc.far = 900;
+    light.shadow.camera.layers.enable(1); // layer 1 = seen and shadowed, but not mirrored by the sea
     light.shadow.bias = -0.0004; light.shadow.normalBias = 0.6;
     scene.add(light, light.target);
     scene.add(new THREE.HemisphereLight(0x9fb4d8, 0x4a3f33, 0.55));
@@ -257,6 +258,9 @@ export class WorldScene {
     // level 3 (ambient occlusion) only on request: it halves the frame rate on an M3 Pro
     this.quality = qp !== null ? +qp : 2; this.autoQ = qp === null; this.fpsT = 0; this.fpsN = 0; this.fpsSince = 0;
     this.useAO = this.quality >= 3 && !new URLSearchParams(location.search).has('noao'); // headless screenshots: build everything, render once
+    // sea mirror every 2nd frame (every 3rd on level 0): the ripples hide the one-frame lag
+    this.reflEvery = this.quality >= 3 ? 1 : this.quality >= 1 ? 2 : 3;
+    { const wr = this.water.onBeforeRender; let k = 0; this.water.onBeforeRender = (...a) => { if (this.instant || k++ % this.reflEvery === 0) wr.apply(this.water, a); }; }
     this.last = performance.now();
     this._loop = this._loop.bind(this); requestAnimationFrame(this._loop);
   }
@@ -342,7 +346,7 @@ export class WorldScene {
     if (res <= 24) { // distant tiles: ground + skirt in one draw call (the far rings are most of the ~340 tiles)
       const one = new THREE.Mesh(mergeGeos([g, skg]), this.skirtMat); one.position.copy(m.position); one.receiveShadow = true; grp.add(one);
     } else { const sk = new THREE.Mesh(skg, this.skirtMat); sk.position.copy(m.position); sk.receiveShadow = true; grp.add(m, sk); }
-    if (res >= 48) this._scatter(grp, tx, tz, H, N, res >= 96, spl);
+    if (res >= 48) { const before = grp.children.length; this._scatter(grp, tx, tz, H, N, res >= 96, spl); grp.children.slice(before).forEach(noMirror); }
     return grp;
   }
 
@@ -588,7 +592,7 @@ export class WorldScene {
       if (s.land === 'cliff' || s.beach) {
         for (let d = s.from + 300; d < s.to; d += 900) {
           const off = 140 + r() * 120, q = spot(d, -off); // close enough to read as a whale at 62° FOV
-          if (f.height(q.x, q.z) < -6) { const w = place(byName('buckelwal'), d, -off, { water: true, y: -14, face: 'along', overlap: true }); if (w) { w.userData.whale = true; console.info(`RIDEFRAME Wal d=${Math.round(d)} off=-${Math.round(off)} (links)`); } if (w) this.whales.push({ obj: w, mixer: this.mixers[this.mixers.length - 1], next: 0 }); }
+          if (f.height(q.x, q.z) < -6) { const w = place(byName('buckelwal'), d, -off, { water: true, y: 0, face: 'along', overlap: true }); if (w) { w.userData.whale = true; w.userData.hidden = true; w.visible = false; console.info(`RIDEFRAME Wal d=${Math.round(d)} off=-${Math.round(off)} (links)`); } if (w) this.whales.push({ obj: w, mixer: this.mixers[this.mixers.length - 1], next: 0 }); }
         }
         for (let k = 0; k < 2; k++) { const e = byName('seeadler'); if (e) { const { obj, mixer } = A.make(e, 'Gleiten', r); const q = spot(s.from + L * (0.3 + k * 0.4), -60); obj.userData.circle = { x: q.x, z: q.z, y: 0, R: 40 + r() * 40, w: 0.18 + r() * .1, ph: r() * 6 }; this.scene.add(obj); this.birds.push(obj); this.props.push(obj); if (mixer) { mixer.obj = obj; this.mixers.push(mixer); } } }
       }
@@ -617,6 +621,8 @@ export class WorldScene {
     const moving = new Set([...this.mixers.map(m => m.obj), ...this.birds, ...this.whales.map(w => w.obj), ...this.animated]);
     for (const o of this.props) if (!moving.has(o) && !o.userData.walk && !o.userData.circle) { let wheel = false; o.traverse(c => { if (c.userData.millWheel) wheel = true; }); if (!wheel) { freeze(o); o.userData.still = true; } }
     if (!/[?&]nobatch/.test(location.search)) this._batch();
+    // the sea mirror renders the scene a second time (was the biggest GPU cost): only terrain, road and big buildings go in
+    for (const o of this.props) if (o.userData.small || o.userData.mid || o.userData.walk || o.userData.circle || o.userData.whale || moving.has(o)) noMirror(o);
   }
   // static batching: every still prop is baked into one mesh per 500 m cell, size class and material (~1500 draw calls -> a few hundred)
   _batch() {
@@ -640,6 +646,7 @@ export class WorldScene {
       g.translate(-cx, 0, -cz); g.computeBoundingSphere();
       const mesh = new THREE.Mesh(g, b.mat); mesh.position.set(cx, 0, cz); mesh.castShadow = b.cast; mesh.receiveShadow = b.recv;
       mesh.userData.small = b.cls === 'small'; mesh.userData.mid = b.cls !== 'big'; mesh.userData.rad = g.boundingSphere.radius;
+      if (b.cls !== 'big') noMirror(mesh);
       this.scene.add(mesh); freeze(mesh); keep.push(mesh);
     }
     this.props = keep;
@@ -740,7 +747,7 @@ export class WorldScene {
     if (q < 2) { r.setPixelRatio(1); this._w = 0; }
     if (q < 1) {
       this.light.shadow.mapSize.set(1024, 1024); this.light.shadow.map?.dispose(); this.light.shadow.map = null;
-      const wr = this.water.onBeforeRender; let k = 0; this.water.onBeforeRender = (...a) => { if (k++ % 2 === 0) wr.apply(this.water, a); };
+      this.reflEvery = 3;
     }
     console.info('RIDEFRAME Grafikstufe', q);
   }
@@ -800,7 +807,7 @@ export class WorldScene {
       this._cullT = time;
       for (const o of this.props) {
         const dist = Math.hypot(o.position.x - cam.x, o.position.z - cam.z);
-        o.visible = dist - (o.userData.rad || 0) * 0.7 < (o.userData.circle ? 900 : o.userData.small ? 450 : o.userData.mid ? 900 : 1600); // people, animals, barrels: only near
+        o.visible = !o.userData.hidden && dist - (o.userData.rad || 0) * 0.7 < (o.userData.circle ? 900 : o.userData.small ? 450 : o.userData.mid ? 900 : 1600); // people, animals, barrels: only near
         // moving things (skeletons!) update their matrices only while they can actually move: visible and animated (< 180 m)
         if (o.matrixAutoUpdate !== false) o.matrixWorldAutoUpdate = o.visible && (dist < 180 || !!o.userData.circle || !!o.userData.walk || !!o.userData.whale);
       }
@@ -816,8 +823,11 @@ export class WorldScene {
     const fwd = this.camera.getWorldDirection(_v);
     for (const w of this.whales) { // breach as soon as it is in view ahead (< 700 m), then every ~25 s while near
       const dx = w.obj.position.x - cam.x, dz = w.obj.position.z - cam.z, dist = Math.hypot(dx, dz);
+      if (w.until && time > w.until) { w.until = 0; w.obj.userData.hidden = true; w.obj.visible = false; } // the clip ends under water (root -8 m): hide until the next breach
       const inView = (dx * fwd.x + dz * fwd.z) / (dist * Math.hypot(fwd.x, fwd.z) || 1) > 0.6;
-      if ((dist < 700 && inView || QS.has('whaletest')) && time > w.next && w.mixer) { console.info(`RIDEFRAME Wal springt, ${Math.round(dist)} m entfernt`); const c = ASSETS.clip(ASSETS.find('buckelwal'), 'Sprung'); if (c) { const act = w.mixer.clipAction(c); act.reset(); act.setLoop(THREE.LoopOnce); act.play(); } w.next = time + 22 + Math.random() * 10; }
+      if ((dist < 700 && inView || QS.has('whaletest')) && time > w.next && w.mixer) { console.info(`RIDEFRAME Wal springt, ${Math.round(dist)} m entfernt`); const c = ASSETS.clip(ASSETS.find('buckelwal'), 'Sprung');
+        if (c) { const act = w.mixer.clipAction(c); act.reset(); act.setLoop(THREE.LoopOnce); act.clampWhenFinished = true; act.play(); w.obj.userData.hidden = false; w.obj.visible = true; w.until = time + c.duration; }
+        w.next = time + 22 + Math.random() * 10; }
     }
   }
 }
@@ -884,4 +894,5 @@ void main() {
 }
 
 /** Static object: world matrices computed now, never again (three skips it in updateMatrixWorld). */
+function noMirror(o) { o.traverse(c => c.layers.set(1)); }
 function freeze(o) { o.updateMatrixWorld(true); o.traverse(c => { c.matrixAutoUpdate = false; }); o.matrixWorldAutoUpdate = false; }
