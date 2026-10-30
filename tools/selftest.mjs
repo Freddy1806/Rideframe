@@ -93,7 +93,8 @@ function TILE_S(res) { return 192 / res; }
 // --- 5. no code swallowed by a trailing comment (e.g. "a = 1; // note b = 2;") --------
 {
   const fs = await import('node:fs'), path = await import('node:path');
-  const dir = new URL('../js/', import.meta.url).pathname, bad = [];
+  const { fileURLToPath } = await import('node:url');
+  const dir = fileURLToPath(new URL('../js/', import.meta.url)), bad = []; // decoded path: Freddy's folder has spaces
   const walk = d => fs.readdirSync(d, { withFileTypes: true }).forEach(e => e.isDirectory() ? walk(path.join(d, e.name)) : e.name.endsWith('.js') && fs.readFileSync(path.join(d, e.name), 'utf8').split('\n').forEach((l, i) => {
     const c = l.indexOf(' // '); if (c < 0 || !l.slice(0, c).trim() || /['"`]/.test(l.slice(c))) return;
     if (/;\s+(this\.|const |let |var |[A-Za-z_$][\w.$]*\s*=[^=>])/.test(l.slice(c))) bad.push(`${e.name}:${i + 1}`);

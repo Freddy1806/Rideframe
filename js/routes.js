@@ -24,7 +24,7 @@ export const COAST_SEGMENTS = [
   { kind: 'climb', min: 8, grade: 6.0, name: 'Kirchturm-Rampe', land: 'serp', top: 'church' },
   { kind: 'recover', min: 5, name: 'Abfahrt zur Bucht', land: 'coast' },
   { kind: 'climb', min: 10, grade: 5.0, name: 'Mühlenpass', land: 'valley', top: 'mill' },
-  { kind: 'recover', min: 5, name: 'Abfahrt durchs Dorf', land: 'coast', village: [0.55, 0.95] },
+  { kind: 'recover', min: 5, name: 'Abfahrt durchs Dorf', land: 'coast', village: [0.15, 0.9] },
   { kind: 'climb', min: 12, grade: 4.5, name: 'Klippenstraße', land: 'cliff', top: 'lookout' },
   { kind: 'recover', min: 5, name: 'Abfahrt zum Strand', land: 'coast', beach: true },
   { kind: 'climb', min: 10, grade: 7.0, name: 'Burgberg', land: 'serp', top: 'castle' },

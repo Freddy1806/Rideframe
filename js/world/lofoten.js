@@ -332,8 +332,11 @@ export class WorldScene {
     g.setAttribute('splat', new THREE.BufferAttribute(spl, 4));
     g.setAttribute('color', new THREE.BufferAttribute(col, 3));
     const m = new THREE.Mesh(g, this.terrainMat); m.position.set(ox, 0, oz); m.receiveShadow = true; m.castShadow = res >= 96; // only the nearest ring throws terrain shadows
-    const sk = new THREE.Mesh(skirt(g, N, 1 + S * 0.6), this.skirtMat); sk.position.copy(m.position); sk.receiveShadow = true; // hides cracks between detail levels
-    const grp = new THREE.Group(); grp.add(m, sk);
+    const skg = skirt(g, N, 1 + S * 0.6); // hides cracks between detail levels
+    const grp = new THREE.Group();
+    if (res <= 24) { // distant tiles: ground + skirt in one draw call (the far rings are most of the ~340 tiles)
+      const one = new THREE.Mesh(mergeGeos([g, skg]), this.skirtMat); one.position.copy(m.position); one.receiveShadow = true; grp.add(one);
+    } else { const sk = new THREE.Mesh(skg, this.skirtMat); sk.position.copy(m.position); sk.receiveShadow = true; grp.add(m, sk); }
     if (res >= 48) this._scatter(grp, tx, tz, H, N, res >= 96, spl);
     return grp;
   }
@@ -761,7 +764,12 @@ export class WorldScene {
     // show only what is near (draw calls), animate only what is close
     if (!this._cullT || time - this._cullT > 0.5 || this.instant) {
       this._cullT = time;
-      for (const o of this.props) o.visible = Math.hypot(o.position.x - cam.x, o.position.z - cam.z) < (o.userData.circle ? 900 : o.userData.small ? 450 : o.userData.mid ? 900 : 1600); // people, animals, barrels: only near
+      for (const o of this.props) {
+        const dist = Math.hypot(o.position.x - cam.x, o.position.z - cam.z);
+        o.visible = dist < (o.userData.circle ? 900 : o.userData.small ? 450 : o.userData.mid ? 900 : 1600); // people, animals, barrels: only near
+        // moving things (skeletons!) update their matrices only while they can actually move: visible and animated (< 260 m)
+        if (o.matrixAutoUpdate !== false) o.matrixWorldAutoUpdate = o.visible && (dist < 270 || !!o.userData.circle || !!o.userData.walk);
+      }
     }
     for (const m of this.mixers) if (m.obj.visible && Math.hypot(m.obj.position.x - cam.x, m.obj.position.z - cam.z) < 260) m.update(Math.min(dt, 0.1));
     for (const w of this.wheels) w.rotation.x = time * 0.35;
@@ -800,14 +808,16 @@ function skirt(g, N, depth) {
   return s;
 }
 
-function mergeGeos(list) {
-  const pos = [], nrm = [], uv = [], idx = []; let off = 0;
+function mergeGeos(list) { // keeps every attribute all parts share (terrain: color + splat, cards: uv)
+  const names = Object.keys(list[0].attributes).filter(n => list.every(g => g.attributes[n]));
+  const out = Object.fromEntries(names.map(n => [n, []])), idx = []; let off = 0;
   for (const g of list) {
-    pos.push(...g.attributes.position.array); nrm.push(...g.attributes.normal.array); uv.push(...g.attributes.uv.array);
+    for (const n of names) for (const v of g.attributes[n].array) out[n].push(v);
     for (const i of g.index.array) idx.push(i + off); off += g.attributes.position.count;
   }
   const g = new THREE.BufferGeometry();
-  g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3)); g.setAttribute('normal', new THREE.Float32BufferAttribute(nrm, 3)); g.setAttribute('uv', new THREE.Float32BufferAttribute(uv, 2)); g.setIndex(idx);
+  for (const n of names) g.setAttribute(n, new THREE.Float32BufferAttribute(out[n], list[0].attributes[n].itemSize));
+  g.setIndex(idx);
   return g;
 }
 
