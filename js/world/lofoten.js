@@ -261,6 +261,8 @@ export class WorldScene {
     // sea mirror every 2nd frame (every 3rd on level 0): the ripples hide the one-frame lag
     this.reflEvery = this.quality >= 3 ? 1 : this.quality >= 1 ? 2 : 3;
     { const wr = this.water.onBeforeRender; let k = 0; this.water.onBeforeRender = (...a) => { if (this.instant || k++ % this.reflEvery === 0) wr.apply(this.water, a); }; }
+    // loading: tiles build with a bigger per-frame budget until the ground around the start is complete
+    this.loading = true; this.ready = new Promise(res => { this._readyRes = res; });
     this.last = performance.now();
     this._loop = this._loop.bind(this); requestAnimationFrame(this._loop);
   }
@@ -592,7 +594,7 @@ export class WorldScene {
       if (s.land === 'cliff' || s.beach) {
         for (let d = s.from + 300; d < s.to; d += 900) {
           const off = 140 + r() * 120, q = spot(d, -off); // close enough to read as a whale at 62° FOV
-          if (f.height(q.x, q.z) < -6) { const w = place(byName('buckelwal'), d, -off, { water: true, y: 0, face: 'along', overlap: true }); if (w) { w.userData.whale = true; w.userData.hidden = true; w.visible = false; console.info(`RIDEFRAME Wal d=${Math.round(d)} off=-${Math.round(off)} (links)`); } if (w) this.whales.push({ obj: w, mixer: this.mixers[this.mixers.length - 1], next: 0 }); }
+          if (f.height(q.x, q.z) < -6) { const w = place(byName('buckelwal'), d, -off, { water: true, y: 0, face: 'along', overlap: true }); if (w) { w.traverse(c => { c.frustumCulled = false; }); w.userData.whale = true; w.userData.hidden = true; w.visible = false; console.info(`RIDEFRAME Wal d=${Math.round(d)} off=-${Math.round(off)} (links)`); } if (w) this.whales.push({ obj: w, mixer: this.mixers[this.mixers.length - 1], next: 0 }); }
         }
         for (let k = 0; k < 2; k++) { const e = byName('seeadler'); if (e) { const { obj, mixer } = A.make(e, 'Gleiten', r); const q = spot(s.from + L * (0.3 + k * 0.4), -60); obj.userData.circle = { x: q.x, z: q.z, y: 0, R: 40 + r() * 40, w: 0.18 + r() * .1, ph: r() * 6 }; this.scene.add(obj); this.birds.push(obj); this.props.push(obj); if (mixer) { mixer.obj = obj; this.mixers.push(mixer); } } }
       }
@@ -683,7 +685,7 @@ export class WorldScene {
     this.pending = todo.length;
     const budget = this.instant ? 999 : 1, t0 = performance.now();
     for (const [key, w] of todo) {
-      if (!this.instant && performance.now() - t0 > 12) break;
+      if (!this.instant && performance.now() - t0 > (this.loading ? 45 : 12)) break;
       const old = this.tiles.get(key);
       const obj = this._tile(w.tx, w.tz, w.res); this.scene.add(obj); freeze(obj); this.built = true;
       if (old) { this.scene.remove(old.obj); old.obj.traverse(o => { if (o.isMesh) o.geometry.dispose(); }); }
@@ -693,6 +695,7 @@ export class WorldScene {
     let hole = 1780; // radius around the camera fully covered by detailed tiles
     for (const [key, w] of want) if (!this.tiles.has(key)) hole = Math.min(hole, Math.max(0, w.dist - TILE * 0.75));
     this.farHole.value = hole;
+    if (this.loading && hole >= 500) { this.loading = false; this._readyRes(); }
   }
 
   _far(cx, cz) { // 16 km backdrop (60 m grid) for peaks and islands; rebuilt every 2 km, a few rows per frame
@@ -736,7 +739,7 @@ export class WorldScene {
     const dt = Math.min(0.1, (now - this.last) / 1000); this.last = now;
     if (!this.paused) this.currentTime = Math.min(this.duration, this.currentTime + dt * this.playbackRate);
     if (this.instant && !this.texOk) { if (!this.texWait) this.texWait = texReady().then(() => this.texOk = true); requestAnimationFrame(this._loop); return; }
-    if (this.instant) { if (this.shotDone || this.currentTime <= 0) { if (!this.shotDone) requestAnimationFrame(this._loop); return; } this.render(10); this.shotDone = true; window.__shot = true; return; }
+    if (this.instant) { this.shotWait = (this.shotWait || 0) + 1; if (this.shotDone || (this.currentTime <= 0 && this.shotWait < 20)) { if (!this.shotDone) requestAnimationFrame(this._loop); return; } this.render(10); this.shotDone = true; window.__shot = true; return; }
     this.render(now / 1000, dt);
     requestAnimationFrame(this._loop);
   }

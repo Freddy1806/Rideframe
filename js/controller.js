@@ -22,7 +22,7 @@ export function openControllerTest() {
   let device, raf;
   m.querySelector('#ctClose').onclick = () => { cancelAnimationFrame(raf); device?.gatt?.disconnect(); document.removeEventListener('keydown', onKey); m.remove(); };
   m.querySelector('#ctCopy').onclick = () => navigator.clipboard?.writeText(logEl.textContent);
-  const onKey = e => log(`Taste: ${e.code}`); document.addEventListener('keydown', onKey);
+  const onKey = e => { if (e.key === 'Escape') return m.querySelector('#ctClose').click(); log(`Taste: ${e.code}`); }; document.addEventListener('keydown', onKey);
   // gamepads
   const prev = {};
   const poll = () => { for (const gp of navigator.getGamepads?.() || []) { if (!gp) continue; gp.buttons.forEach((b, i) => { const k = gp.index + ':' + i; if (b.pressed !== !!prev[k]) { prev[k] = b.pressed; log(`Gamepad ${gp.id.slice(0, 30)} Knopf ${i} ${b.pressed ? 'gedrückt' : 'los'}`); } }); } raf = requestAnimationFrame(poll); }; poll();

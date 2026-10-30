@@ -4,7 +4,7 @@ import { buildTrack, improveElevation, parseGPX, STEP } from './track.js';
 import { Trainer, HeartRate } from './trainer.js';
 import { makeDemoTrack, demoThumb } from './demo.js';
 import { makeCoastTrack } from './routes.js';
-import { gearsFrom, CASSETTES } from './gears.js';
+import { gearsFrom, CASSETTES, parseRings } from './gears.js';
 import { profileSVG, drawDetailProfile } from './profile.js';
 import { RideSession, simulateRide } from './ride.js';
 import { fmtTime, fmtKm, fmtNum, esc, bestAvg } from './util.js';
@@ -214,7 +214,7 @@ function history() {
   const rides = state.rides;
   const totalKm = rides.reduce((s, r) => s + r.distance, 0);
   const best20 = Math.max(0, ...rides.map(r => r.best20 || 0));
-  const best20Ride = rides.find(r => r.best20 === best20);
+  const best20Ride = best20 ? rides.find(r => r.best20 === best20) : null;
   const mostGain = rides.slice().sort((a, b) => b.gain - a.gain)[0];
   const longest = rides.slice().sort((a, b) => b.distance - a.distance)[0];
   main.innerHTML = `
@@ -222,7 +222,7 @@ function history() {
     <div class="view-head"><div><div class="label">Verlauf</div><h1 class="display" style="margin-top:14px">Fahrten &amp;<br>Rekorde</h1></div></div>
     <div class="records">
       <div class="record"><div class="label">Beste 20 Minuten</div><div class="v">${best20 || '–'}<small>W</small></div><div class="s">${best20Ride ? esc(routeById(best20Ride.routeId)?.name || '') + ' · ' + new Date(best20Ride.date).toLocaleDateString('de-DE') : 'Fahre mind. 20 Minuten'}</div></div>
-      <div class="record"><div class="label">Gesamt</div><div class="v">${fmtKm(totalKm)}<small>km</small></div><div class="s">${rides.length} Fahrten · ${fmtTime(rides.reduce((s, r) => s + r.duration, 0))} h</div></div>
+      <div class="record"><div class="label">Gesamt</div><div class="v">${fmtKm(totalKm)}<small>km</small></div><div class="s">${rides.length} ${rides.length === 1 ? 'Fahrt' : 'Fahrten'} · ${(t => t >= 3600 ? `${Math.floor(t / 3600)} h ${Math.round(t % 3600 / 60)} min` : `${Math.round(t / 60)} min`)(rides.reduce((s, r) => s + r.duration, 0))}</div></div>
       <div class="record"><div class="label">Meiste Höhenmeter</div><div class="v">${mostGain ? fmtNum(mostGain.gain) : '–'}<small>hm</small></div><div class="s">${mostGain ? esc(routeById(mostGain.routeId)?.name || '') : ''}</div></div>
       <div class="record"><div class="label">Längste Fahrt</div><div class="v">${longest ? fmtKm(longest.distance) : '–'}<small>km</small></div><div class="s">${longest ? fmtTime(longest.duration) : ''}</div></div>
     </div>
@@ -337,7 +337,7 @@ function settings() {
       <div class="panel"><h3>Quellen</h3>
         <div class="field"><div>Gelände Lofoten<div class="hint">Höhenmodell DTM 10 © Kartverket, CC BY 4.0. Fernes Gelände: Terrain Tiles (Mapzen / AWS Open Data).</div></div></div>
         <div class="field"><div>Satellitenfarben<div class="hint">Sentinel-2 cloudless – https://s2maps.eu by EOX IT Services GmbH (Contains modified Copernicus Sentinel data 2016), CC BY 4.0.</div></div></div>
-        <div class="field"><div>3D-Grafik<div class="hint">three.js (MIT). Figuren und Gebäude teils Quaternius (CC0), teils eigene KI-Modelle.</div></div></div>
+        <div class="field"><div>3D-Grafik<div class="hint">three.js (MIT). Boden-Texturen Poly Haven (CC0). Figuren und Gebäude teils Quaternius (CC0), teils eigene Blender- und KI-Modelle.</div></div></div>
       </div>
     </div>
   </section>`;
@@ -346,7 +346,10 @@ function settings() {
   stp('riderKg', 'riderKg', 75); stp('bikeKg', 'bikeKg', 8.5); stp('ftp', 'ftp', 250); stp('cadence', 'cadence', 90); stp('wheel', 'wheel', 2105);
   wireSeg(main, 'shiftMode', v => { s.shiftMode = v; saveSettings(); settings(); });
   $('#cassette').onchange = e => { s.cassette = e.target.value; saveSettings(); settings(); };
-  const txt = (id) => $('#' + id).addEventListener('change', e => { s[id] = e.target.value; saveSettings(); settings(); });
+  const valid = { chainrings: v => parseRings(v), realGear: v => { const m = String(v).match(/^\s*(\d+)\s*[x×/\- ]\s*(\d+)\s*$/); return !!m && +m[1] >= 20 && +m[1] <= 60 && +m[2] >= 9 && +m[2] <= 40; } };
+  const txt = (id) => $('#' + id).addEventListener('change', e => {
+    if (!valid[id](e.target.value)) { toast(id === 'chainrings' ? 'Kettenblätter bitte als Zahlen, z. B. 50,34' : 'Gang bitte so: 50x17', 3500); e.target.value = s[id]; return; }
+    s[id] = e.target.value; saveSettings(); settings(); });
   txt('chainrings'); txt('realGear');
   $('#difficulty').oninput = e => { s.difficulty = +e.target.value; $('#diffV').textContent = s.difficulty + '%'; saveSettings(); };
   $('#downhill').oninput = e => { s.downhill = +e.target.value; $('#downV').textContent = s.downhill + '%'; saveSettings(); };

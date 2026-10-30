@@ -197,15 +197,16 @@ h2.section { font-size: 28px; font-weight: 900; font-stretch: 118%; text-transfo
 
 .hud-help { position: absolute; left: 50%; top: 24px; transform: translateX(-50%); padding: 10px 14px; border-radius: 6px; font-size: 12px; color: var(--muted); font-weight: 600; }
 .hud-help b { color: var(--paper); }
-.paused { position: absolute; inset: 0; display: grid; place-items: center; background: rgba(0,0,0,.45); }
-.paused .box { text-align: center; }
+.paused { position: absolute; inset: 0; display: grid; place-items: center; background: rgba(0,0,0,.55); z-index: 40; }
+.paused .box { text-align: center; background: rgba(12,12,12,.82); padding: 32px 44px 36px; border-radius: 20px; }
 .paused h2 { font-size: 120px; }
 .paused .row-actions { justify-content: center; margin-top: 28px; }
 
 .countdown { position: absolute; inset: 0; display: grid; place-items: center; font-size: 280px; font-weight: 900; font-stretch: 125%; color: var(--accent); text-shadow: 0 8px 60px rgba(0,0,0,.4); pointer-events: none; }
+.countdown.loading { font-size: 44px; font-weight: 700; font-stretch: 100%; color: #f4f1ea; background: #0b0b0b; z-index: 30; }
 
 /* finish screen */
-.finish { position: absolute; inset: 0; background: rgba(11,11,11,.86); backdrop-filter: blur(14px); display: grid; place-items: center; }
+.finish { position: absolute; inset: 0; z-index: 40; background: rgba(11,11,11,.86); backdrop-filter: blur(14px); display: grid; place-items: center; }
 .finish .box { width: min(1100px, 92vw); }
 .finish h2 { font-size: 110px; }
 .finish .pbflag { display: inline-block; background: var(--accent); color: var(--accent-ink); padding: 8px 14px; font-weight: 900; font-stretch: 118%; letter-spacing: .08em; font-size: 14px; text-transform: uppercase; margin-bottom: 18px; border-radius: 2px; }

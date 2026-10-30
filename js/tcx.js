@@ -21,7 +21,7 @@ export function toTCX(rec, name) {
 /** Saves the .tcx and opens Strava's upload page next to it. */
 export function stravaExport(rec, name) {
   const blob = new Blob([toTCX(rec, name)], { type: 'application/vnd.garmin.tcx+xml' });
-  const a = document.createElement('a'), day = new Date(rec.date).toISOString().slice(0, 10);
+  const a = document.createElement('a'), dt = new Date(rec.date), day = `${dt.getFullYear()}-${String(dt.getMonth() + 1).padStart(2, '0')}-${String(dt.getDate()).padStart(2, '0')}_${String(dt.getHours()).padStart(2, '0')}${String(dt.getMinutes()).padStart(2, '0')}`; // local time, so two rides a day don't overwrite each other
   a.href = URL.createObjectURL(blob); a.download = `RIDEFRAME_${day}_${name.replace(/[^\wäöüÄÖÜß-]+/g, '_')}.tcx`;
   document.body.append(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(a.href), 5000);
   window.open('https://www.strava.com/upload/select', '_blank');

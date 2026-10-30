@@ -73,6 +73,7 @@ export class RideSession {
     this.track = route.track;
     this.params = defaultParams(state.settings);
     this.d = Math.min(at, this.track.length - 1); this.v = 0; this.elapsed = 0;
+    this.startD = this.d; // a ride started mid-route counts its own distance and never sets a best time
     this.manualPower = autopilot ? 240 : 0; this.power = 0; this.cadence = 0; this.hr = 0;
     this.powerHist = []; this.samples = []; this.lastSample = 0; this.gainAcc = 0; this.lastEle = eleAt(this.track, this.d);
     this.running = false; this.paused = false; this.finished = false;
@@ -107,6 +108,10 @@ export class RideSession {
       }
       if (!this.player) this.player = new DemoScene(c, this.track);
       this.player.currentTime = timeAt(this.track, this.d);
+      if (this.player.ready) { // 3D world: show a loading card instead of a black screen until the ground around the start stands
+        const ld = document.createElement('div'); ld.className = 'countdown loading'; ld.textContent = 'Welt wird geladen …'; el.append(ld);
+        await Promise.race([this.player.ready, new Promise(r => setTimeout(r, 30000))]); ld.remove();
+      }
     }
     this.profile = el.querySelector('#hudProfile');
     this.q = s => el.querySelector(s);
@@ -203,7 +208,7 @@ export class RideSession {
       this._syncVideo();
       if (this.elapsed - this.lastSample >= 1) {
         this.lastSample = Math.floor(this.elapsed);
-        this.samples.push([this.lastSample, Math.round(this.d), Math.round(this.power), Math.round(this.v * 36) / 10, Math.round(this.cadence), this.hr]);
+        this.samples.push([this.lastSample, Math.round(this.d - this.startD), Math.round(this.power), Math.round(this.v * 36) / 10, Math.round(this.cadence), this.hr]);
         this.powerHist.push(this.power);
       }
       if (this.d >= this.track.length) this._finish();
@@ -341,7 +346,7 @@ export class RideSession {
     const pw = this.samples.map(s => s[2]);
     return {
       id: uid(), routeId: this.route.id, date: Date.now(), complete,
-      duration: Math.round(this.elapsed), distance: Math.round(this.d), gain: Math.round(this.gainAcc),
+      duration: Math.round(this.elapsed), distance: Math.round(this.d - this.startD), gain: Math.round(this.gainAcc),
       avgPower: pw.length ? Math.round(pw.reduce((a, b) => a + b, 0) / pw.length) : 0,
       maxPower: Math.max(0, ...pw), best5: bestAvg(pw, 300), best20: bestAvg(pw, 1200),
       samples: this.samples,
@@ -350,17 +355,23 @@ export class RideSession {
 
   async _finish() {
     this.finished = true; this.player.pause();
-    const rec = this._rideRecord(true);
+    const full = this.startD < 50; // only a ride from the start line is a time on this route
+    const rec = this._rideRecord(full);
     const prev = (await db.ridesFor(this.route.id)).filter(r => r.complete).sort((a, b) => a.duration - b.duration);
     await db.put('rides', rec);
-    const pb = !prev.length || rec.duration < prev[0].duration;
-    const rank = prev.filter(r => r.duration < rec.duration).length + 1;
-    const delta = prev.length ? rec.duration - prev[0].duration : 0;
+    this._summary(rec, full ? prev : null, full ? '' : 'Ab km ' + fmtKm(this.startD) + ' gestartet, zählt nicht als Bestzeit');
+  }
+
+  /** End screen; prev = completed rides to rank against (null: not ranked, note says why). */
+  _summary(rec, prev, note) {
+    const pb = prev && (!prev.length || rec.duration < prev[0].duration);
+    const rank = prev ? prev.filter(r => r.duration < rec.duration).length + 1 : 0;
+    const delta = prev?.length ? rec.duration - prev[0].duration : 0;
     const o = document.createElement('div'); o.className = 'finish';
     o.innerHTML = `<div class="box">
-      ${pb ? '<div class="pbflag">Neue Bestzeit</div>' : `<div class="label">Platz ${rank} von ${prev.length + 1}</div>`}
+      ${!prev ? `<div class="label">${fmtKm(rec.distance)} km gefahren</div>` : pb ? '<div class="pbflag">Neue Bestzeit</div>' : `<div class="label">Platz ${rank} von ${prev.length + 1}</div>`}
       <h2 class="display">${fmtTime(rec.duration)}</h2>
-      <div class="label" style="margin-top:14px">${esc(this.route.name)} · ${prev.length ? (delta <= 0 ? `${fmtTime(-delta)} schneller als deine alte Bestzeit` : `${fmtTime(delta)} hinter deiner Bestzeit`) : 'Erste Fahrt auf dieser Strecke'}</div>
+      <div class="label" style="margin-top:14px">${esc(this.route.name)} · ${!prev ? esc(note) : prev.length ? (delta <= 0 ? `${fmtTime(-delta)} schneller als deine alte Bestzeit` : `${fmtTime(delta)} hinter deiner Bestzeit`) : 'Erste Fahrt auf dieser Strecke'}</div>
       <div class="bigstats" style="grid-template-columns:repeat(5,1fr)">
         <div><div class="label">Ø Leistung</div><div class="v">${rec.avgPower}<small>W</small></div></div>
         <div><div class="label">Max</div><div class="v">${rec.maxPower}<small>W</small></div></div>
@@ -375,8 +386,11 @@ export class RideSession {
   }
 
   async _end(save) {
-    if (save && this.elapsed > 30) await db.put('rides', this._rideRecord(false));
-    this._close(save);
+    if (!save) return this._close(false);
+    if (this.elapsed <= 30) { import('./app.js').then(m => m.toast('Unter 30 Sekunden, nicht gespeichert', 3500)); return this._close(false); }
+    const rec = this._rideRecord(false); await db.put('rides', rec);
+    this.finished = true; this.q('#pauseOverlay')?.remove();
+    this._summary(rec, null, 'Vorzeitig beendet, gespeichert');
   }
 
   _close(saved) {

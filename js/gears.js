@@ -7,11 +7,13 @@ export const CASSETTES = {
   '11-32': [11, 12, 13, 14, 15, 16, 17, 19, 21, 24, 28, 32],
 };
 
-const nums = s => String(s).split(/[^\d]+/).map(Number).filter(n => n > 0);
+const nums = s => String(s ?? '').split(/[^\d]+/).map(Number).filter(n => n > 0);
+/** Chainrings / cogs from free text; null when nothing plausible is in it (e.g. "abc"). */
+export const parseRings = s => { const r = nums(s).filter(n => n >= 20 && n <= 60); return r.length ? r : null; };
 
 /** All chainring × cog combos, sorted easy -> hard, near-duplicates removed. */
 export function gearsFrom(settings) {
-  const rings = nums(settings.chainrings).sort((a, b) => b - a);
+  const rings = (parseRings(settings.chainrings) || [50, 34]).sort((a, b) => b - a);
   const cogs = CASSETTES[settings.cassette] || nums(settings.cassette);
   const all = [];
   rings.forEach((f, fi) => cogs.forEach(r => all.push({ f, r, ratio: f / r, fi })));
@@ -27,7 +29,7 @@ export function gearsFrom(settings) {
 
 export const gearName = g => `${g.f}×${g.r}`;
 
-export function parseGear(s) { const [f, r] = nums(s); return f && r ? { f, r, ratio: f / r } : { f: 50, r: 17, ratio: 50 / 17 }; }
+export function parseGear(s) { const [f, r] = nums(s); return f >= 20 && f <= 60 && r >= 9 && r <= 40 ? { f, r, ratio: f / r } : { f: 50, r: 17, ratio: 50 / 17 }; }
 
 /** Nearest real gear for a measured wheel speed (m/s) and cadence (rpm). */
 export function estimateGear(gears, speed, cadence, wheelMm) {
