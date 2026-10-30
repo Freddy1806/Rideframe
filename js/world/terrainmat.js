@@ -72,7 +72,7 @@ ${opts.far ? '  if (distance(vWP.xz, uCam) < uHole) discard;' : ''}`)
   vec3 cS = twoScale(tSand, vWP.xz, 2.6, 13.).rgb;
   vec3 cR = (texture2D(tRock, vWP.zy / 7.).rgb * bw.x + texture2D(tRock, vWP.xz / 7.).rgb * bw.y + texture2D(tRock, vWP.xy / 7.).rgb * bw.z);
   cR = mix(cR, cR * (texture2D(tRock, vWP.xz / 61.).rgb * 1.6), .5);
-  cR = mix(vec3(dot(cR, vec3(.299, .587, .114))), cR, .35) * vec3(.93, .98, 1.14); // Lofoten granite is grey: drop the photo's warmth and the meadow tint
+  cR = mix(vec3(dot(cR, vec3(.299, .587, .114))), cR, .35) * vec3(.93, .98, 1.14) * 1.4; // Lofoten granite is grey: drop the photo's warmth and the meadow tint
   vec3 cW = vec3(.93, .95, .98) * (.9 + .1 * vnoise(vWP.xz * .3));
   vec3 alb = cG * sp.x + cR * sp.y + cS * sp.z + cW * sp.w;
   // satellite colours: decide the large-scale look (green slopes, scree, sand, snow); photo textures keep the close-up structure

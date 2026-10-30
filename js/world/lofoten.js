@@ -191,7 +191,7 @@ export class WorldScene {
     light.shadow.camera.layers.enable(1); // layer 1 = seen and shadowed, but not mirrored by the sea
     light.shadow.bias = -0.0004; light.shadow.normalBias = 0.6;
     scene.add(light, light.target);
-    scene.add(new THREE.HemisphereLight(0x9fb4d8, 0x4a3f33, 0.55));
+    scene.add(new THREE.HemisphereLight(0xa9bddc, 0x5a5044, 0.85));
 
     // materials
     const dt = detailTex(); dt.repeat.set(1, 1);
@@ -695,6 +695,9 @@ export class WorldScene {
     let hole = 1780; // radius around the camera fully covered by detailed tiles
     for (const [key, w] of want) if (!this.tiles.has(key)) hole = Math.min(hole, Math.max(0, w.dist - TILE * 0.75));
     this.farHole.value = hole;
+    // fast preview: a road chunk shows only once the ground under it stands, never as a band in the sky
+    const has = d => { const q = f.at(Math.min(d, this.track.length)); return this.tiles.has(Math.floor(q.x / TILE) + ',' + Math.floor(q.z / TILE)); };
+    for (const [k, c] of this.roadChunks) c.visible = has(k * 500) && has(k * 500 + 250) && has(k * 500 + 499);
     if (this.loading && hole >= 500) { this.loading = false; this._readyRes(); }
   }
 
@@ -728,7 +731,7 @@ export class WorldScene {
     // exact rider pose on the spline; only the view direction is damped (time based, frame-rate independent)
     const p = this.field.pose(d), cam = new THREE.Vector3(p.x, p.y, p.z), look = new THREE.Vector3(p.lx, p.ly, p.lz);
     if (!this.lookPos || this.instant || cam.distanceTo(this.camera.position) > 40) this.lookPos = look.clone();
-    else this.lookPos.lerp(look, 1 - Math.exp(-dt * 7));
+    else this.lookPos.lerp(look, 1 - Math.exp(-dt * 7 * Math.max(1, (this.playbackRate || 1) / 3))); // fast preview: the view keeps up
     this.camera.position.copy(cam); this.camera.lookAt(this.lookPos);
     if (this.debugTop) { this.camera.position.set(cam.x, cam.y + this.debugTop, cam.z + 0.01); this.camera.lookAt(cam.x, cam.y, cam.z); } // test view from above
     return cam;
