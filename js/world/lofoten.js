@@ -25,6 +25,8 @@ const SUB = STEP / DS;
 // ---------------- terrain painting ----------------
 // splat = weights for (grass, rock, sand, snow); colour = gentle tint so meadows are not one flat green
 const _v = new THREE.Vector3();
+// measuring switches for the GPU budget: &noshadow &noreflect &refl=512 &grass=0.5 &whaletest
+const QS = typeof location !== 'undefined' ? new URLSearchParams(location.search) : new URLSearchParams(), GRASS_K = +(QS.get('grass') ?? 1);
 const TINT_A = new THREE.Color(1.0, 1.0, 0.95), TINT_B = new THREE.Color(1.12, 1.05, 0.78), TINT_C = new THREE.Color(0.82, 0.9, 0.86), _c = new THREE.Color();
 const WET = new THREE.Color(0.55, 0.52, 0.5), SHALLOW = new THREE.Color(0.75, 1.0, 0.95), DEEP = new THREE.Color(0.15, 0.3, 0.33);
 function paint(f, x, z, h, ny, col, spl, i) {
@@ -183,8 +185,8 @@ export class WorldScene {
     scene.fog = new THREE.FogExp2(0xd6c9bb, 0.00022);
     this.clouds = cloudLayer(sun); scene.add(this.clouds);
 
-    const light = this.light = new THREE.DirectionalLight(0xffbf8c, 3.1);
-    light.castShadow = true; light.shadow.mapSize.set(2048, 2048);
+    const light = this.light = new THREE.DirectionalLight(0xffd4b4, 2.9);
+    light.castShadow = !QS.has('noshadow'); light.shadow.mapSize.set(2048, 2048);
     const sc = light.shadow.camera; sc.left = -110; sc.right = 110; sc.top = 110; sc.bottom = -110; sc.near = 10; sc.far = 900;
     light.shadow.bias = -0.0004; light.shadow.normalBias = 0.6;
     scene.add(light, light.target);
@@ -197,7 +199,7 @@ export class WorldScene {
     // sea: reflective water with real normal map; slightly see-through so shallow sand turns it turquoise
     const wn = tex('water', 'nrm', [128, 128, 255]);
     this.water = new Water(new THREE.PlaneGeometry(9000, 9000), {
-      textureWidth: 1024, textureHeight: 1024, waterNormals: wn, sunDirection: sun.clone(), sunColor: 0xffd2a8,
+      textureWidth: +(QS.get('refl') || 1024), textureHeight: +(QS.get('refl') || 1024), waterNormals: wn, sunDirection: sun.clone(), sunColor: 0xffd2a8,
       waterColor: 0x0f6f78, distortionScale: 3.4, fog: true, alpha: 0.74, size: 3.2,
     });
     // real water reflects ~4 % straight down (not 30 %): the sea is no longer a white mirror, the teal body and the
@@ -207,6 +209,7 @@ export class WorldScene {
       .replace('vec3 scatter = max( 0.0, dot( surfaceNormal, eyeDirection ) ) * waterColor;', 'vec3 scatter = ( 0.35 + 0.65 * max( 0.0, dot( surfaceNormal, eyeDirection ) ) ) * waterColor * 1.6;');
     this.water.material.transparent = true;
     this.water.rotation.x = -Math.PI / 2; this.water.position.y = 0; scene.add(this.water);
+    if (QS.has('noreflect')) { const wr = this.water.onBeforeRender; let k = 0; this.water.onBeforeRender = (...x) => { if (k++ < 30) wr.apply(this.water, x); }; } // mirror frozen after the first frames
 
 
     const at = asphalt(256, 1024, 9, true); at.anisotropy = 16; at.repeat.set(1, 1);
@@ -378,7 +381,7 @@ export class WorldScene {
     const vi = (x, z) => Math.max(0, Math.min(N, Math.round((z - oz) / TILE * N))) * (N + 1) + Math.max(0, Math.min(N, Math.round((x - ox) / TILE * N)));
     // dense grass carpet along the road: spawned from the road samples inside this tile (≈3 clumps/m² up to 16 m, thinner to 70 m)
     const gl = [], col = new THREE.Color(), inT = (x, z) => x >= ox && x < ox + TILE && z >= oz && z < oz + TILE;
-    const bands = [[ROAD_W + 0.5, 16, 4.0], [16, 35, 1.0], [35, 70, 0.25]];
+    const bands = [[ROAD_W + 0.5, 16, 4.0 * GRASS_K], [16, 35, 1.0 * GRASS_K], [35, 70, 0.25 * GRASS_K]];
     for (const j of f._query(f.fine, ox + TILE / 2, oz + TILE / 2, TILE)) {
       if (!inT(f.x[j], f.z[j])) continue;
       const tx = f.tx[j], tz = f.tz[j];
@@ -585,7 +588,7 @@ export class WorldScene {
       if (s.land === 'cliff' || s.beach) {
         for (let d = s.from + 300; d < s.to; d += 900) {
           const off = 140 + r() * 120, q = spot(d, -off); // close enough to read as a whale at 62° FOV
-          if (f.height(q.x, q.z) < -6) { const w = place(byName('buckelwal'), d, -off, { water: true, y: -14, face: 'along', overlap: true }); if (w) w.userData.whale = true; if (w) this.whales.push({ obj: w, mixer: this.mixers[this.mixers.length - 1], next: 0 }); }
+          if (f.height(q.x, q.z) < -6) { const w = place(byName('buckelwal'), d, -off, { water: true, y: -14, face: 'along', overlap: true }); if (w) { w.userData.whale = true; console.info(`RIDEFRAME Wal d=${Math.round(d)} off=-${Math.round(off)} (links)`); } if (w) this.whales.push({ obj: w, mixer: this.mixers[this.mixers.length - 1], next: 0 }); }
         }
         for (let k = 0; k < 2; k++) { const e = byName('seeadler'); if (e) { const { obj, mixer } = A.make(e, 'Gleiten', r); const q = spot(s.from + L * (0.3 + k * 0.4), -60); obj.userData.circle = { x: q.x, z: q.z, y: 0, R: 40 + r() * 40, w: 0.18 + r() * .1, ph: r() * 6 }; this.scene.add(obj); this.birds.push(obj); this.props.push(obj); if (mixer) { mixer.obj = obj; this.mixers.push(mixer); } } }
       }
@@ -814,7 +817,7 @@ export class WorldScene {
     for (const w of this.whales) { // breach as soon as it is in view ahead (< 700 m), then every ~25 s while near
       const dx = w.obj.position.x - cam.x, dz = w.obj.position.z - cam.z, dist = Math.hypot(dx, dz);
       const inView = (dx * fwd.x + dz * fwd.z) / (dist * Math.hypot(fwd.x, fwd.z) || 1) > 0.6;
-      if (dist < 700 && inView && time > w.next && w.mixer) { const c = ASSETS.clip(ASSETS.find('buckelwal'), 'Sprung'); if (c) { const act = w.mixer.clipAction(c); act.reset(); act.setLoop(THREE.LoopOnce); act.play(); } w.next = time + 22 + Math.random() * 10; }
+      if ((dist < 700 && inView || QS.has('whaletest')) && time > w.next && w.mixer) { console.info(`RIDEFRAME Wal springt, ${Math.round(dist)} m entfernt`); const c = ASSETS.clip(ASSETS.find('buckelwal'), 'Sprung'); if (c) { const act = w.mixer.clipAction(c); act.reset(); act.setLoop(THREE.LoopOnce); act.play(); } w.next = time + 22 + Math.random() * 10; }
     }
   }
 }
