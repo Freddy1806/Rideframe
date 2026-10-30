@@ -216,7 +216,7 @@ export class WorldScene {
 
 
     const at = asphalt(256, 1024, 9, true); at.anisotropy = 16; at.repeat.set(1, 1);
-    this.roadMat = new THREE.MeshStandardMaterial({ map: at, roughness: 0.82, side: THREE.DoubleSide, polygonOffset: true, polygonOffsetFactor: -2 });
+    this.roadMat = new THREE.MeshStandardMaterial({ map: at, roughness: 0.95, side: THREE.DoubleSide, polygonOffset: true, polygonOffsetFactor: -2 });
     // photo asphalt (assets/tex/asphalt_*) under the painted lines of the procedural texture
     const aC = tex('asphalt', 'col', [128, 128, 130]), aN = tex('asphalt', 'nrm', [128, 128, 255]);
     this.roadBlur = { value: 0 }; // speed blur on the asphalt, strongest right in front of the wheel
@@ -232,7 +232,8 @@ export class WorldScene {
     vec2 auv = vec2(uvo.x * 6.6, uvo.y * 40.) / 2.5;
     asph += mix(texture2D(tAsph, auv).rgb, texture2D(tAsph, auv * 0.23 + .5).rgb, .35) * .2;
   }
-  float line = smoothstep(.45, .7, dot(painted.rgb, vec3(.333)));
+  float line = smoothstep(.45, .7, dot(painted.rgb, vec3(.333))) * (abs(vMapUv.x - .5) < .05 ? .45 : 1.); // white edge lines, the centre dash only faint
+  float aL = dot(asph, vec3(.333)); asph = clamp((vec3(aL) + (asph - aL) * .45 + (aL - .22) * 1.2) * 1.55 * vec3(1.05, 1., .93) + .04, 0., .62); // light, grippy grey asphalt (albedo ~0.35), not the sun-glared black
   float edge = smoothstep(.0, .06, vMapUv.x) * (1. - smoothstep(.94, 1., vMapUv.x));
   diffuseColor.rgb *= mix(painted.rgb, mix(asph * .95, painted.rgb, line), edge);`)
         .replace('#include <normal_fragment_maps>', `#include <normal_fragment_maps>
