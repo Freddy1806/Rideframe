@@ -421,7 +421,10 @@ function findBig(f, L, frame, spot, H) {
     pts.length = Math.max(2, pts.length - Math.max(0, low - 1));
     const drop = pts[0][1] - pts[pts.length - 1][1]; if (drop < 50 || pts.length < 12) continue;
     if (f.real) { let hl = 0; for (let k = 1; k < pts.length; k++) hl += Math.hypot(pts[k][0] - pts[k - 1][0], pts[k][2] - pts[k - 1][2]); // real DEM: only true walls, never a low rounded hill
-      if (drop < 110 || drop / (hl || 1) < 0.7) continue; }
+      if (drop < 110 || drop / (hl || 1) < 0.7) continue;
+      const t = pts[0], rq = f.road(t[0], t[2]); if (!rq) continue; const q0 = frame(rq.i * DS), bx = t[0] - q0.x, bz = t[2] - q0.z, bl = Math.hypot(bx, bz) || 1;
+      let back = -1e9; for (let m = 300; m <= 1500; m += 150) back = Math.max(back, H(t[0] + bx / bl * m, t[2] + bz / bl * m));
+      if (back < t[1] + 40) continue; } // seen from the road a mountain must stand behind it, or it hangs against the sky
     const mid = pts[Math.floor(pts.length * 0.4)], rr = f.road(mid[0], mid[2]); if (!rr || rr.d < 150 || rr.d > 1100) continue;
     if (pts.some(p => { const q = f.road(p[0], p[2]); return !q || q.d < 120; })) continue;
     const dn = rr.i * DS, pa = pts[Math.floor(pts.length * 0.2)], e = pts[Math.floor(pts.length * 0.7)], fl = Math.hypot(e[0] - pa[0], e[2] - pa[2]) || 1, fx = (e[0] - pa[0]) / fl, fz = (e[2] - pa[2]) / fl;
