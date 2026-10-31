@@ -105,11 +105,16 @@ export class Field {
   }
   /** Nearest point on the dense centreline: signed lateral offset (+ = right of travel), road height, smoothed nearby height. */
   road(x, z) {
+    if (x === this._lx && z === this._lz) return this._lr; // height() and vertexHeight() ask for the same point back to back
+    const r = this._road(x, z); this._lx = x; this._lz = z; this._lr = r; return r;
+  }
+  _road(x, z) {
     let best = -1, bd = 1e12;
     const nearest = l => { for (const i of l) { const dx = x - this.x[i], dz = z - this.z[i], d2 = dx * dx + dz * dz; if (d2 < bd) { bd = d2; best = i; } } };
     const reach = () => Math.sqrt(4.24 * bd + 14400); // radius holding every sample with a smoothing weight > e^-9 (sig2 below)
     let list = this._query(this.fine, x, z, 120);
     if (list.length) nearest(list);
+    else if (!this._noFar) return this._roadFar(x, z);
     else { // away from the road: widen step by step instead of always scanning 7 km (coarse and huge hold the same samples)
       list = this._query(this.coarse, x, z, 500); nearest(list);
       if (best < 0 || reach() > 500) { best = -1; bd = 1e12; list = this._query(this.huge, x, z, 2500); nearest(list);
@@ -132,6 +137,25 @@ export class Field {
     const near = smooth(30, 8, Math.abs(side)); // right at the road use the exact local values
     return { i, d: Math.abs(side), side, e: eHere, ew: we / ws,
       sea: lerp(wsea / ws, this.sea[i], near), cliff: lerp(wcl / ws, this.cliff[i], near), beach: lerp(wbe / ws, this.beach[i], near) };
+  }
+  /** Away from the road (> ~120 m) the smoothed values change slowly: they come bilinearly from a cached 12 m grid,
+   *  only the nearest sample is refined exactly. Terrain tiles far from the road build several times faster. */
+  _roadFar(x, z) {
+    const G = 12, gx = Math.floor(x / G), gz = Math.floor(z / G), u = x / G - gx, v = z / G - gz;
+    const C = this._farC ||= new Map(); if (C.size > 400000) C.clear();
+    const corner = (a, b) => { const k = (a + 1e6) * 4e6 + b + 1e6; let c = C.get(k);
+      if (c === undefined) { this._noFar = true; const r = this._road(a * G, b * G); this._noFar = false; c = r ? [r.i, r.ew, r.sea, r.cliff, r.beach] : null; C.set(k, c); } return c; };
+    const c00 = corner(gx, gz), c10 = corner(gx + 1, gz), c01 = corner(gx, gz + 1), c11 = corner(gx + 1, gz + 1);
+    if (!c00 || !c10 || !c01 || !c11) { this._noFar = true; const r = this._road(x, z); this._noFar = false; return r; }
+    const bl = k => (c00[k] * (1 - u) + c10[k] * u) * (1 - v) + (c01[k] * (1 - u) + c11[k] * u) * v;
+    let best = (u < .5 ? (v < .5 ? c00 : c01) : (v < .5 ? c10 : c11))[0], bd = 1e12;
+    for (const c of [c00, c10, c01, c11]) { const i = c[0], dx = x - this.x[i], dz = z - this.z[i], d2 = dx * dx + dz * dz; if (d2 < bd) { bd = d2; best = i; } }
+    const lo = Math.max(0, best - SUB * 4), hi = Math.min(this.n - 1, best + SUB * 4);
+    for (let i = lo; i <= hi; i++) { const dx = x - this.x[i], dz = z - this.z[i], d2 = dx * dx + dz * dz; if (d2 < bd) { bd = d2; best = i; } }
+    const i = best, dx = x - this.x[i], dz = z - this.z[i];
+    const along = dx * this.tx[i] + dz * this.tz[i], side = dx * -this.tz[i] + dz * this.tx[i];
+    const f = Math.max(-1, Math.min(1, along / DS)), j = Math.max(0, Math.min(this.n - 1, i + Math.sign(f)));
+    return { i, d: Math.abs(side), side, e: lerp(this.e[i], this.e[j], Math.abs(f)), ew: bl(1), sea: bl(2), cliff: bl(3), beach: bl(4) };
   }
   /** Real elevation (m) at world x,z; mirrored beyond the edges so it never ends. */
   demH(x, z) {
