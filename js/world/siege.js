@@ -10,6 +10,7 @@ const NEAR = 900, AFTER = 700, WAR = 600; // active window and start of the bomb
 const FIRE_N = 360, SMOKE_N = 420, EMBER_N = 400, STONE_N = 240, BLOCK_N = 80, BALL_N = 14, KNIGHT_N = 22, PARTS = 5;
 const _m = new THREE.Matrix4(), _m2 = new THREE.Matrix4(), _m3 = new THREE.Matrix4(), _m4 = new THREE.Matrix4();
 const _q = new THREE.Quaternion(), _q2 = new THREE.Quaternion(), _v = new THREE.Vector3(), _v2 = new THREE.Vector3(), _v3 = new THREE.Vector3();
+const _v4 = new THREE.Vector3(), _v5 = new THREE.Vector3();
 const _s = new THREE.Vector3(), _ray = new THREE.Ray(), _box = new THREE.Box3(), _c = new THREE.Color(), _up = new THREE.Vector3(0, 1, 0), _px = new THREE.Vector2();
 const rnd = (a, b) => a + Math.random() * (b - a);
 const sstep = (a, b, x) => { const t = Math.max(0, Math.min(1, (x - a) / (b - a))); return t * t * (3 - 2 * t); };
@@ -369,7 +370,9 @@ export function batchPieces(obj, test = /bruch/i) {
     if (ok.length < 4) continue;
     try {
       let nv = 0, ni = 0; for (const m of ok) { nv += m.geometry.attributes.position.count; ni += m.geometry.index?.count || 0; }
-      const bm = new THREE.BatchedMesh(ok.length, nv, ni || nv, mat);
+      const flip = ok[0].matrixWorld.determinant() < 0, m = flip ? mat.clone() : mat; // mirrored model (scale.x -1): the winding flips, so draw the other side
+      if (flip) { m.side = THREE.BackSide; m.shadowSide = THREE.FrontSide; }
+      const bm = new THREE.BatchedMesh(ok.length, nv, ni || nv, m);
       bm.castShadow = bm.receiveShadow = true; bm.frustumCulled = false; bm.perObjectFrustumCulled = false; bm.sortObjects = false;
       const ids = ok.map(m => bm.addInstance(bm.addGeometry(m.geometry)));
       ok.forEach(m => { m.visible = false; }); out.push({ bm, list: ok, ids });
@@ -396,7 +399,7 @@ export class Siege {
       return (h[j * N + i] * (1 - a) + h[j * N + i + 1] * a) * (1 - b) + (h[(j + 1) * N + i] * (1 - a) + h[(j + 1) * N + i + 1] * a) * b;
     };
     // one light for every flash and the burning ruins: always in the scene (intensity 0) so no shader ever recompiles
-    this.light = new THREE.PointLight(0xff7a30, 0, 90, 2); this.light.position.copy(this.c); world.scene.add(this.light);
+    this.light = new THREE.PointLight(0xff7a30, 0, 120, 2); this.light.position.copy(this.c); world.scene.add(this.light);
     this.ballLight = new THREE.PointLight(0xff8a3a, 0, 60, 2); world.scene.add(this.ballLight); // follows the nearest fireball
     console.info(`RIDEFRAME Belagerung bei d=${Math.round(d0)}, ${Math.round(this.roadDist)} m neben der Straße`);
   }
@@ -439,7 +442,7 @@ export class Siege {
       b.obj.traverse(o => { if (o.isMesh && /feuer/i.test(o.material?.name || '')) { Object.assign(o.material, { blending: THREE.AdditiveBlending, depthWrite: false, transparent: true }); o.castShadow = false; } }); }
     for (const [k, file, grid, frames, fps, anchor, add, n] of [['boom', 'explosion_flipbook', 8, 64, 24, [.56, .26], false, 12], ['spark', 'funken_flipbook', 8, 64, 24, [.5, .32], true, 12],
       ['dust', 'staub_flipbook', 8, 64, 24, [.5, .14], false, 10], ['ball', 'feuerkugel', 2, 4, 0, [.5, .5], true, BALL_N]])
-      L.load(new URL(`../../assets/world/fx/${file}.png`, import.meta.url).href, t => { const f = this.fx[k] = new Flip(n, t, grid, frames, fps, anchor, add); this.root.add(f.mesh); }, undefined, () => {});
+      L.load(new URL(`../../assets/world/fx/${file}.png`, import.meta.url).href, t => { const f = this.fx[k] = new Flip(n, t, grid, frames, fps, anchor, add); this.root.add(f.mesh); if (this.compiled) this._warm(f.mesh); }, undefined, () => {});
     this.saved = kids.map(o => ({ o, parent: o.parent, p: o.position.clone(), q: o.quaternion.clone(), vis: o.visible, mask: o.layers.mask }));
     this._planFall(wall, tower, cone);
     this._planGLB(find);
@@ -514,7 +517,11 @@ export class Siege {
     }
     if (ram) {
       const { obj } = this.A.make(ram); applyFlames(flickers(obj, this.flk)); obj.rotation.y = Math.atan2(n.z, -n.x); // head (+X) into the wall
-      const p = face.clone().addScaledVector(along, 1.5).addScaledVector(n, (ram.size?.[0] || 6) / 2 + .2); p.y = this.ground(p.x, p.z); obj.position.copy(p); this.root.add(obj);
+      const half = (ram.size?.[0] || 6) / 2, foot = (a, out = []) => { const c = face.clone().addScaledVector(along, a).addScaledVector(n, half + .2);
+        for (const [u, w] of [[-1.6, -half], [1.6, -half], [-1.6, half], [1.6, half], [0, 0]]) out.push(this.ground(c.x + along.x * u + n.x * w, c.z + along.z * u + n.z * w)); return out; };
+      const a = [1.5, -3, 4, -7, 7].map(a => { const h = foot(a); return [a, Math.max(...h) - Math.min(...h)]; }).sort((x, y) => x[1] - y[1])[0][0]; // the flattest spot
+      const p = face.clone().addScaledVector(along, a).addScaledVector(n, half + .2); obj.position.copy(p); this.root.add(obj);
+      obj.updateMatrixWorld(true); const bb = new THREE.Box3().setFromObject(obj); p.y += Math.min(...foot(a)) - bb.min.y - .05; obj.position.copy(p); // lowest corner on the ground, nothing hangs
       let morph = null; obj.traverse(o => { const i = o.morphTargetDictionary?.Stoss; if (i !== undefined && !morph) morph = { o, i }; });
       this.props.push({ obj, ram: morph, p: p.clone(), q: obj.quaternion.clone() });
     }
@@ -581,20 +588,36 @@ export class Siege {
     this.kn = [];
     const fw = this.falls.find(f => f.kind === 'wall'), wallC = fw ? fw.base.clone().addScaledVector(fw.nL.clone().applyQuaternion(this.castle.quaternion), 2.2) : this.c.clone().addScaledVector(this.out, 15);
     const along = fw ? new THREE.Vector3().crossVectors(_up, fw.nL.clone().applyQuaternion(this.castle.quaternion)) : this.tan.clone();
-    const n = names.length ? 6 : KNIGHT_N;
+    const n = names.length ? 14 : KNIGHT_N, pre = names.length ? 2 : 4; // a few fight at the wall already, the rest storms as one group
+    const wn = fw ? fw.nL.clone().applyQuaternion(this.castle.quaternion) : this.out.clone(), S = new THREE.Vector3();
+    for (let tries = 0; tries < 10; tries++) { // the group: between road and castle, back towards the rider, so it runs across the foreground
+      S.copy(this.c).addScaledVector(this.out, this.roadDist - 8 - tries * 2).addScaledVector(this.tan, -95); const r = this.f.road(S.x, S.z); if (!r || r.d > 9.5) break; }
+    const dir = wallC.clone().sub(S).setY(0).normalize(), perp = new THREE.Vector3().crossVectors(_up, dir);
+    this.ladders = []; const front = [];
     for (let i = 0; i < n; i++) {
-      const back = Math.random() < .72, s = new THREE.Vector3();
-      for (let tries = 0; tries < 8; tries++) { // the camp: on the bank between road and castle, never on the asphalt
-        s.copy(this.c).addScaledVector(this.out, Math.min(this.roadDist - 8, rnd(14, 26))).addScaledVector(this.tan, back ? -rnd(30, 70) : rnd(22, 45));
-        const r = this.f.road(s.x, s.z); if (!r || r.d > 7.5) break;
+      const j = i - pre, row = Math.floor(j / 4), col = j % 4, s = new THREE.Vector3();
+      let tgt, trig = -1e9, v = rnd(2.9, 3.3);
+      if (j < 0) { tgt = wallC.clone().addScaledVector(along, rnd(-9, 9)); s.copy(tgt).addScaledVector(wn, 1.5); }
+      else {
+        s.copy(S).addScaledVector(perp, (col - 1.5) * 1.9 + rnd(-.3, .3)).addScaledVector(dir, -row * 2.6 + rnd(-.3, .3));
+        tgt = wallC.clone().addScaledVector(along, (col - 1.5) * 4.5 + rnd(-1, 1));
+        if (row === 1 && front[col]) { const a = front[col]; tgt = a.tgt.clone().addScaledVector(wn, 2.2); v = a.v; } // the rear carrier of a ladder
       }
-      const tgt = wallC.clone().addScaledVector(along, rnd(-9, 9));
-      const k = { start: s.clone(), p: s.clone(), tgt, yaw: 0, st: 'wait', trig: this.d0 - WAR + 40 + (i / n) * (WAR - 80) + rnd(-15, 15), v: rnd(2.3, 3.4), ph: rnd(0, 6), lean: 0, vy: 0, vel: new THREE.Vector3(), spin: 0, t: 0,
+      const lead = j < 0 ? 0 : (row === 1 && front[col] ? front[col].lead : s.distanceTo(tgt) / v - 8); // still running across the bank when the wall falls, then on into the breach as the rider comes by
+      if (j >= 0) trig = this.d0 - 121 - 13 * lead; // at 13 m/s; _knights recomputes with the real speed
+      const k = { start: s.clone(), p: s.clone(), tgt, tgt0: tgt.clone(), yaw: 0, st: 'wait', trig, v, lead, wave: j >= 0, ph: rnd(0, 6), lean: 0, vy: 0, vel: new THREE.Vector3(), spin: 0, t: 0,
         col: [0x8a1c1c, 0x23407a, 0x6b6f75, 0x7a5a1c][i % 4] };
+      if (row === 0 && j >= 0) front[col] = k; if (row === 1 && front[col]) this.ladders.push({ a: front[col], b: k });
       k.yaw = Math.atan2(tgt.x - s.x, tgt.z - s.z);
       if (names.length) { const { obj, mixer } = A.make(names[i % names.length], 'Rennen'); applyFlames(flickers(obj, this.flk)); k.obj = obj; k.mixer = mixer; k.e = names[i % names.length]; obj.rotation.order = 'YXZ'; this.root.add(obj); }
       this.kn.push(k);
     }
+    // ladders: one instanced mesh, 9 m long (y 0..1 scaled), carried at shoulder height, then set against the crown
+    const rail = x => new THREE.BoxGeometry(.09, 1, .09).translate(x, .5, 0), parts = [rail(-.26), rail(.26)];
+    for (let r = 1; r < 13; r++) parts.push(new THREE.BoxGeometry(.52, .006, .06).translate(0, r / 13, 0));
+    this.lad = new THREE.InstancedMesh(mergeGeometries(parts), new THREE.MeshStandardMaterial({ color: 0x6b4e33, roughness: .9 }), Math.max(1, this.ladders.length));
+    this.lad.castShadow = true; this.lad.frustumCulled = false; this.lad.count = 0; this.lad.instanceMatrix.setUsage(THREE.DynamicDrawUsage); this.root.add(this.lad);
+    this.wallTop = fw ? fw.base.y + (fw.glb ? 10.2 : fw.L + 2.5) : this.c.y + 9; this.wallN = wn;
     if (!names.length) {
       const mat = new THREE.MeshStandardMaterial({ roughness: .55, metalness: .25 });
       const body = new THREE.CapsuleGeometry(.27, .72, 3, 8); body.translate(0, 1.42, 0);
@@ -609,6 +632,8 @@ export class Siege {
 
   // ---- per frame ----
   update(time, dt, cam, d) {
+    if (d > this.d0 - WAR - 200 && d < this.d0 + 200) { const ev = this.w.events, s = ev?.surprises; // the siege is the show: no other surprise, no shouts
+      if (s) s.next = Math.max(s.next || 0, (s.clock || 0) + 5); if (ev) ev.nextShout = Math.max(ev.nextShout || 0, time + 5); }
     const inWin = d > this.d0 - NEAR && d < this.d0 + AFTER;
     if (!inWin) {
       if (this.active) { this.active = false; this.root.visible = false; this.light.intensity = 0; }
@@ -629,16 +654,23 @@ export class Siege {
     if (this.w.instant || this.compiled) { this.root.visible = true; return; }
     this.compiled = true; // compile shaders ahead (still ~900 m away), show once ready
     const show = () => { if (this.active) this.root.visible = true; };
-    try { this.w.renderer.compileAsync(this.root, this.w.camera, this.w.scene).then(show, show); } catch { show(); }
+    this._warm(this.root).then(show, show);
     setTimeout(show, 2500);
+  }
+  _warm(obj) { // compile every shader and upload every texture ahead, hidden parts included (compile() only walks visible objects)
+    const r = this.w.renderer, hid = [], up = v => { if (v?.isTexture) try { r.initTexture(v); } catch {} };
+    obj.traverse(o => { if (!o.visible) { hid.push(o); o.visible = true; }
+      for (const m of [].concat(o.material || [])) { for (const k in m) up(m[k]); for (const k in m.uniforms || {}) up(m.uniforms[k].value); } });
+    let p; try { p = r.compileAsync(obj, this.w.camera, this.w.scene); } catch { p = Promise.resolve(); } // compiles synchronously before it waits
+    for (const o of hid) o.visible = false; return p;
   }
   _decide(d, jump) {
     if (this.state === 'idle' && d >= this.d0 - WAR) this.state = 'war';
-    const rel = this.d0 - d, trig = Math.max(18, Math.min(60, (this.w.speed || 6) * 3.4)); // the wall comes down ~1.6 s later: peak just ahead, still in view as you pass
+    const rel = this.d0 - d, trig = this._trig();
     const T = this.falls.find(f => f.kind === 'tower' && f.glb), g = T?.glb;
     if (g && g.t < 0 && !g.armed && !jump) { // baked tower: clip starts 12 m + 2.3 s x v before it, a fireball from across the road hits at .33 s
       const v = Math.max(3, this.w.speed || 6), relT = g.dT - d, Tf = 2.2;
-      if (relT <= 12 + v * (g.crown + Tf - g.impact) && relT > -20) {
+      if (relT <= 85 + v * (g.crown + Tf - g.impact) && relT > -20) { // crown lands ~85 m ahead, after the wall
         g.armed = true; const q = this.spot(g.dT + 25, -rnd(70, 85), new THREE.Vector3()); q.y = Math.max(0, this.f.height(q.x, q.z)) + 2;
         this._launch(q, g.hit, Tf); this.timed.push({ at: this.t + Tf - g.impact, fn: () => this._glbStart(T, true) });
       }
@@ -648,12 +680,13 @@ export class Siege {
       else this._collapse();
     }
   }
+  _trig() { return 100 + Math.max(3, this.w.speed || 6) * 1.6; } // the wall peaks ~1.6 s after: 80-120 m ahead, right of centre
   _prewarm(d) { // headless screenshot (one frame): simulate the last seconds; &siege=<s> sets how many
     this.prewarmed = true; this.silent = true;
     const rel = this.d0 - d, pre = QS.has('siege') ? +QS.get('siege') : null;
     if (d >= this.d0 - WAR) this.state = 'war';
     const T = this.falls.find(f => f.kind === 'tower' && f.glb);
-    if (rel <= 60) { this._collapse(); if (T) this.timed.push({ at: this.t + .6, fn: () => this._glbStart(T) }); this._run(pre ?? 12, d); }
+    if (rel <= this._trig()) { this._collapse(); if (T) this.timed.push({ at: this.t + .6, fn: () => this._glbStart(T) }); this._run(pre ?? 12, d); }
     else if (this.state === 'war') this._run(pre ?? 7, d);
     this.silent = false; this._write();
   }
@@ -665,7 +698,7 @@ export class Siege {
     for (const k in this.fx) this.fx[k].n = 0;
     for (const p of this.props) { this.root.attach(p.obj); p.obj.position.copy(p.p); p.obj.quaternion.copy(p.q); p.obj.visible = true; }
     this.timed.length = 0; this.dustSrc.length = 0; this.dustUntil = 0; this.ruinFires = null; this.ruinLight = null;
-    for (const k of this.kn) { k.p.copy(k.start); k.st = 'wait'; k.lean = 0; k.t = 0; if (k.obj) k.obj.visible = true; k.yaw = Math.atan2(k.tgt.x - k.p.x, k.tgt.z - k.p.z); }
+    for (const k of this.kn) { k.p.copy(k.start); k.tgt.copy(k.tgt0); k.st = 'wait'; k.won = false; k.lean = 0; k.t = 0; if (k.obj) k.obj.visible = true; k.yaw = Math.atan2(k.tgt.x - k.p.x, k.tgt.z - k.p.z); }
     for (const b of this.ball) b.on = false;
     for (const l of this.launchers) { l.next = rnd(.5, 3); l.loaded = l.kind !== 'far'; l.pend = false; l.fired = -9; }
     this.blocks.clear(); this.stones.clear(); this.fire.clear(); this.smoke.clear(); this.embers.clear();
@@ -792,7 +825,7 @@ export class Siege {
       this.stones.add(p.x, p.y, p.z, _q, s, s * rnd(.6, 1), s, n.x * rnd(1, 4) * P + rnd(-3, 3) * P, rnd(4, 10) * P, n.z * rnd(1, 4) * P + rnd(-3, 3) * P, 12, _c.setRGB(g, g * .96, g * .9), 0);
     }
     for (let k = 0, N = Math.round(10 + 34 * P); k < N; k++) embers.spawn(p.x, p.y, p.z, rnd(-7, 7) * P, rnd(2, 10) * P, rnd(-7, 7) * P, rnd(1, 2.6));
-    this.flash = Math.max(this.flash, 900 + 2600 * P); this.light.position.set(p.x + n.x * 3, p.y + 2.5, p.z + n.z * 3);
+    this.flash = Math.max(this.flash, 1500 + 4200 * P); this.light.position.set(p.x + n.x * 3, p.y + 2.5, p.z + n.z * 3);
     const dist = this.w.camera.position.distanceTo(p);
     if (!this.silent) this.w.shakeImpulse = Math.max(this.w.shakeImpulse || 0, P * 1.3 * Math.max(0, 1 - dist / 260));
     this._sfx('explosion', p, Math.min(1, .35 + P * .7));
@@ -912,7 +945,7 @@ export class Siege {
   _knights(dt, d) {
     for (const k of this.kn) {
       k.ph += dt * (k.st === 'run' ? k.v * 3 : 4); k.t += dt;
-      if (k.st === 'wait') { if (d >= k.trig) k.st = 'run'; }
+      if (k.st === 'wait') { if (d >= (k.wave ? this.d0 - this._trig() - Math.max(3, this.w.speed || 6) * k.lead : k.trig)) k.st = 'run'; }
       else if (k.st === 'run') {
         _v.subVectors(k.tgt, k.p).setY(0); const L = _v.length();
         if (L < .6) { k.st = this.state === 'war' || this.state === 'idle' ? 'fight' : 'cheer'; k.t = 0; }
@@ -951,6 +984,25 @@ export class Siege {
       part(3, -.34, 1.45, .12, 0, 0, .08, .75, .6); // shield
       part(4, .34, 1.35, .2 + jab, .95 + up, .7, .07, 2.4, .07); // spear
     }
+    let nl = 0; // ladders: carried rear -> front at the shoulders, or leaning on the crown; gone once the wall falls
+    for (const L of this.ladders) { const a = L.a, b = L.b;
+      if (a.st === 'wait') L.M = null;
+      if (L.M) { this.lad.setMatrixAt(nl++, L.M); continue; }
+      const carried = a.st === 'wait' || (a.st === 'run' && !a.won);
+      if (['fly', 'down', 'gone'].includes(a.st)) continue;
+      if (!carried && this.state !== 'war' && this.state !== 'idle') { // the wall is down: carried ones are dropped where they are, the ones on the wall fell with it
+        a.won = true; if (!L.wasCarried) continue;
+        _v.subVectors(a.p, b.p).setY(0).normalize(); _v2.copy(b.p).setY(this.ground(b.p.x, b.p.z) + .08); _v3.copy(_v2).addScaledVector(_v, 9); _v3.y = this.ground(_v3.x, _v3.z) + .08;
+        _v.subVectors(_v3, _v2); const len = _v.length(); _v.divideScalar(len); _v4.crossVectors(_up, _v).normalize(); _v5.crossVectors(_v4, _v);
+        L.M = new THREE.Matrix4().makeBasis(_v4, _v.multiplyScalar(len), _v5).setPosition(_v2); this.lad.setMatrixAt(nl++, L.M); continue; }
+      L.wasCarried = carried;
+      if (carried) { _v.subVectors(a.p, b.p).setY(0); if (_v.lengthSq() < .01) _v.set(Math.sin(a.yaw), 0, Math.cos(a.yaw)); _v.normalize();
+        _v2.copy(b.p).addScaledVector(_v, -1.2); _v2.y = (a.p.y + b.p.y) / 2 + 1.72 + Math.sin(a.ph) * .05; _v3.copy(_v).multiplyScalar(9).add(_v2); }
+      else { _v2.copy(a.tgt).addScaledVector(this.wallN, 1.8); _v2.y = this.ground(_v2.x, _v2.z); _v3.copy(a.tgt).addScaledVector(this.wallN, -1.2).setY(this.wallTop + .4); }
+      _v.subVectors(_v3, _v2); const len = _v.length(); _v.divideScalar(len);
+      _v4.crossVectors(_up, _v); if (_v4.lengthSq() < 1e-4) _v4.set(1, 0, 0); _v4.normalize(); _v5.crossVectors(_v4, _v);
+      _m.makeBasis(_v4, _v.multiplyScalar(len), _v5).setPosition(_v2); this.lad.setMatrixAt(nl++, _m); }
+    this.lad.count = nl; this.lad.instanceMatrix.needsUpdate = true;
     if (this.kBody) { this.kBody.instanceMatrix.needsUpdate = true; this.kPart.instanceMatrix.needsUpdate = true; this.kBody.count = this.kn.length; }
   }
 }
