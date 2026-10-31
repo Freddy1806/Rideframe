@@ -11,6 +11,7 @@ export async function prepareWorld(track) {
   const key = track?.dem?.file || 'lofoten';
   if (!DEMS.has(key)) DEMS.set(key, await loadDEM(track?.dem || null));
   DEM = DEMS.get(key); useSatellite(DEM, track?.dem?.sat || 'lofoten_s2.jpg');
+  console.info('RIDEFRAME Gelände', key, DEM ? `${DEM.n}² ${(DEM.size / 1000).toFixed(1)} km${DEM.real ? ' echt' : ''}` : 'fehlt');
 }
 await prepareWorld(null);
 import { asphalt, grassTuft, planks, stone } from './tex.js';
