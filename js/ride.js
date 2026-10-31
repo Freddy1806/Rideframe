@@ -7,6 +7,7 @@ import { drawHudProfile } from './profile.js';
 import { fmtTime, fmtKm, fmtNum, esc, bestAvg } from './util.js';
 import { stravaExport } from './tcx.js';
 import { gearsFrom, gearName, parseGear, estimateGear, virtualGrade } from './gears.js';
+import { UEBridge } from './uebridge.js';
 
 const MIN_RATE = 0.0625, MAX_RATE = 4;
 
@@ -85,6 +86,7 @@ export class RideSession {
     this.gear = this.virtual ? this.gears[this.gi] : null;
     if (at && ghost?.samples?.length) this.elapsed = Math.max(0, (this.ghostTimeAt(this.d) || 0) - 14); // screenshots / resume
     this._tick = this._tick.bind(this); this._key = this._key.bind(this);
+    if (st.ueBridge || new URLSearchParams(location.search).has('ue')) this.ue = new UEBridge(route.id, this.track.length); // Unreal view (beta)
   }
 
   async start() {
@@ -221,6 +223,7 @@ export class RideSession {
       if (this.d >= this.track.length) this._finish();
     }
     if (now - (this.lastHud || 0) > 100) { this.lastHud = now; this._updateHUD(); }
+    this.ue?.update(now, { d: Math.round(this.d * 100) / 100, v: Math.round(this.v * 100) / 100, grade: Math.round(gradeAt(this.track, this.d) * 10) / 10, watt: Math.round(this.power), hr: this.hr, cad: Math.round(this.cadence), paused: this.paused || this.finished, t: Math.round(this.elapsed * 10) / 10 });
     requestAnimationFrame(this._tick);
   }
 
@@ -427,7 +430,7 @@ export class RideSession {
   }
 
   _close(saved) {
-    this.running = false;
+    this.running = false; this.ue?.close();
     document.removeEventListener('keydown', this._key);
     this.player.destroy?.();
     this.wake?.release?.();
