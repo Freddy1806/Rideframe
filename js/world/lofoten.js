@@ -610,8 +610,9 @@ export class WorldScene {
         for (let d = a; d < b; d += 18 + r() * 22) {
           if (Math.abs(d - mid) < 22 || r() < 0.2) continue;
           const back = r() < 0.3 ? 14 + r() * 14 : 0; // some houses stand back in a second row
-          const hr = r(); // Lofoten look: mostly red and ochre wooden houses, a few stone and timber-framed ones
-          const he = hr < 0.38 ? byName('rorbu_rot') : hr < 0.62 ? byName('rorbu_ocker') : hr < 0.8 ? byName('steinhaus') : hr < 0.92 ? byName('fachwerkhaus_a') : pick('house_big');
+          const hr = r(); // Lofoten look: red and ochre rorbuer, some stone houses; timber framing only in the festival town
+          const he = s === festSeg && hr > 0.8 ? (hr < 0.92 ? byName('fachwerkhaus_a') : byName('fachwerkhaus_b'))
+            : hr < 0.45 ? byName('rorbu_rot') : hr < 0.8 ? byName('rorbu_ocker') : byName('steinhaus');
           if (he) place(he, d, ROAD_W + 7 + Math.max(...he.size) / 2 + r() * 4 + back, { rot: (r() - .5) * .3, gap: 4 }); // front 5-9 m behind the asphalt
           if (r() < 0.3) place(byName('waescheleine'), d + 9, ROAD_W + 10 + r() * 3, { face: 'along', gap: 2 });
           if (r() < 0.25) place(r() < .5 ? byName('fass') : byName('schubkarre'), d + 5, ROAD_W + 3.5, { gap: 0.5, rot: r() * 3 });
@@ -721,7 +722,11 @@ export class WorldScene {
         const p = f.at(d), q1 = spot(d, side * 34), q2 = spot(d, side * 70);
         if (f.height(q1.x, q1.z) - p.e < 18 || f.height(q2.x, q2.z) - p.e < 40) continue;
         const k = 0.75 + r() * 0.3; // narrower and much deeper than modelled, so the back disappears in the hill
-        place(cliffs[Math.floor(r() * cliffs.length)], d, side * (36 + r() * 10), { face: 'road', dy: -7, radK: 0.45, gap: 20, scale: [k * 0.75, k, k * 2.4] });
+        const o = place(cliffs[Math.floor(r() * cliffs.length)], d, side * (36 + r() * 10), { face: 'road', dy: -7, radK: 0.45, gap: 20, scale: [k * 0.75, k, k * 2.4] });
+        if (o && !QS.has('cliffglb')) o.traverse(m => { // same granite/gneiss shader as the mountains instead of the baked texture
+          if (!m.isMesh) return; const g = m.geometry, n = g.attributes.position.count;
+          if (!g.attributes.splat) { g.setAttribute('splat', new THREE.Float32BufferAttribute(new Float32Array(n * 4).map((_, i) => i % 4 === 1 ? 1 : 0), 4)); g.setAttribute('color', new THREE.Float32BufferAttribute(new Float32Array(n * 3).fill(0.85), 3)); }
+          m.material = this.rockMat; });
       }
     }
     // the castle is under siege: knights storm up from the road, a catapult and camp below, banners of both sides
