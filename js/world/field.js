@@ -112,9 +112,9 @@ export class Field {
     let best = -1, bd = 1e12;
     const nearest = l => { for (const i of l) { const dx = x - this.x[i], dz = z - this.z[i], d2 = dx * dx + dz * dz; if (d2 < bd) { bd = d2; best = i; } } };
     const reach = () => Math.sqrt(4.24 * bd + 14400); // radius holding every sample with a smoothing weight > e^-9 (sig2 below)
+    if (!this._noFar) return this._roadFar(x, z);
     let list = this._query(this.fine, x, z, 120);
     if (list.length) nearest(list);
-    else if (!this._noFar) return this._roadFar(x, z);
     else { // away from the road: widen step by step instead of always scanning 7 km (coarse and huge hold the same samples)
       list = this._query(this.coarse, x, z, 500); nearest(list);
       if (best < 0 || reach() > 500) { best = -1; bd = 1e12; list = this._query(this.huge, x, z, 2500); nearest(list);
@@ -138,8 +138,8 @@ export class Field {
     return { i, d: Math.abs(side), side, e: eHere, ew: we / ws,
       sea: lerp(wsea / ws, this.sea[i], near), cliff: lerp(wcl / ws, this.cliff[i], near), beach: lerp(wbe / ws, this.beach[i], near) };
   }
-  /** Away from the road (> ~120 m) the smoothed values change slowly: they come bilinearly from a cached 12 m grid,
-   *  only the nearest sample is refined exactly. Terrain tiles far from the road build several times faster. */
+  /** The smoothed values (sigma >= 40 m) change slowly: they come bilinearly from a cached 12 m grid,
+   *  only the nearest sample is refined exactly. Terrain tiles build several times faster. */
   _roadFar(x, z) {
     const G = 12, gx = Math.floor(x / G), gz = Math.floor(z / G), u = x / G - gx, v = z / G - gz;
     const C = this._farC ||= new Map(); if (C.size > 400000) C.clear();
@@ -155,7 +155,9 @@ export class Field {
     const i = best, dx = x - this.x[i], dz = z - this.z[i];
     const along = dx * this.tx[i] + dz * this.tz[i], side = dx * -this.tz[i] + dz * this.tx[i];
     const f = Math.max(-1, Math.min(1, along / DS)), j = Math.max(0, Math.min(this.n - 1, i + Math.sign(f)));
-    return { i, d: Math.abs(side), side, e: lerp(this.e[i], this.e[j], Math.abs(f)), ew: bl(1), sea: bl(2), cliff: bl(3), beach: bl(4) };
+    const near = smooth(30, 8, Math.abs(side)); // right at the road use the exact local values
+    return { i, d: Math.abs(side), side, e: lerp(this.e[i], this.e[j], Math.abs(f)), ew: bl(1),
+      sea: lerp(bl(2), this.sea[i], near), cliff: lerp(bl(3), this.cliff[i], near), beach: lerp(bl(4), this.beach[i], near) };
   }
   /** Real elevation (m) at world x,z; mirrored beyond the edges so it never ends. */
   demH(x, z) {
