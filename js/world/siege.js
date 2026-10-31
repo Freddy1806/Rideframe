@@ -634,7 +634,7 @@ export class Siege {
   }
   _decide(d, jump) {
     if (this.state === 'idle' && d >= this.d0 - WAR) this.state = 'war';
-    const rel = this.d0 - d, trig = Math.max(18, Math.min(60, (this.w.speed || 6) * 2.4)); // the wall comes down ~1.6 s later: peak when level with the castle
+    const rel = this.d0 - d, trig = Math.max(18, Math.min(60, (this.w.speed || 6) * 3.4)); // the wall comes down ~1.6 s later: peak just ahead, still in view as you pass
     const T = this.falls.find(f => f.kind === 'tower' && f.glb), g = T?.glb;
     if (g && g.t < 0 && !g.armed && !jump) { // baked tower: clip starts 12 m + 2.3 s x v before it, a fireball from across the road hits at .33 s
       const v = Math.max(3, this.w.speed || 6), relT = g.dT - d, Tf = 2.2;
