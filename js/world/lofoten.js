@@ -874,15 +874,15 @@ export class WorldScene {
 
   /** Lens as a full-frame focal length (14 mm = very wide). null keeps the default 62° vertical view. */
   setLens(mm) { this.lensMm = mm || null; this._applyLens(); this.camera.updateProjectionMatrix(); this._placeCockpit(); }
-  _placeCockpit() { // aim the hoods at fixed screen spots for every lens (reference photo: hood tops at 64 % height, hoods at 20 % / 80 % width)
+  _placeCockpit() { // aim the hoods at fixed screen spots for every lens (reference photo: hood tops at ~67 % height, hoods at 19 % / 81 % width)
     const ck = this.cockpit; if (!ck) return;
     if (!this.ckGeo) { // hood width and height from the bar itself (model: bar centre 0.45 m below / 0.55 m ahead of the eye)
       const bar = ck.getObjectByName('lenker'), b = new THREE.Box3();
       if (bar) { ck.updateMatrixWorld(true); const inv = new THREE.Matrix4().copy(ck.matrixWorld).invert(); b.setFromObject(bar).applyMatrix4(inv); }
-      this.ckGeo = bar && !b.isEmpty() ? { hx: Math.max(0.12, (b.max.x - b.min.x) / 2 * 0.85), top: b.max.y + 0.45 } : { hx: 0.21, top: 0.03 };
+      this.ckGeo = bar && !b.isEmpty() ? { hx: Math.max(0.12, (b.max.x - b.min.x) / 2 * 0.874), top: b.max.y + 0.45 } : { hx: 0.208, top: 0.065 };
     }
     const { hx, top } = this.ckGeo, tv = Math.tan(THREE.MathUtils.degToRad(this.camera.fov / 2)), th = tv * this.camera.aspect;
-    const D = 0.42, X = this.cockpitX ?? 0.6, Y = this.cockpitY ?? -0.28; // target NDC
+    const D = 0.42, X = this.cockpitX ?? 0.62, Y = this.cockpitY ?? -0.34; // top bar just below the HUD strip, only hoods and forearms show // target NDC
     const s = X * D * th / hx, yTop = Y * D * tv;
     ck.scale.setScalar(s); ck.position.set(0, yTop - top * s + 0.45 * s, -D + 0.55 * s);
   }
