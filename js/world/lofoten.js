@@ -499,6 +499,7 @@ export class WorldScene {
   // ---- villages, harbour, landmarks at the climb tops ----
   _placeLandmarks() {
     this.props = []; this.mixers = []; this.birds = []; this.whales = []; this.wheels = [];
+    this._bridges();
     if (ASSETS.count) return this._placeAssets();
     const f = this.field, t = this.track, r = rng(4242), segs = t.segments || [];
     const put = (kind, i, side, off, rot = 0, yOff = 0) => {
@@ -778,6 +779,25 @@ export class WorldScene {
       this.scene.add(mesh); freeze(mesh); keep.push(mesh);
     }
     this.props = keep;
+  }
+  // real routes: concrete bridges (deck slab, parapets, piers into the water) where the road crosses a sound
+  _bridges() {
+    const f = this.field, list = this.track.dem?.bridges || []; if (!list.length) return;
+    const mat = new THREE.MeshStandardMaterial({ color: 0xb9b6ae, roughness: 0.85 }), box = new THREE.BoxGeometry(1, 1, 1);
+    const parts = { slab: [], wall: [], pier: [] }, m4 = new THREE.Matrix4(), q = new THREE.Quaternion(), up = new THREE.Vector3(0, 1, 0), P = new THREE.Vector3(), S = new THREE.Vector3();
+    for (const [a, b] of list) {
+      for (let d = a - 10; d < b + 10; d += 5) {
+        const p = f.at(d), l = Math.hypot(p.tx, p.tz) || 1, ang = Math.atan2(p.tx, p.tz), rx = -p.tz / l, rz = p.tx / l;
+        const p2 = f.at(d + 5), grade = Math.atan2(p2.e - p.e, 5); q.setFromEuler(new THREE.Euler(-grade, ang, 0, 'YXZ'));
+        parts.slab.push(m4.compose(P.set(p.x, p.e - 0.55, p.z), q, S.set(ROAD_W * 2 + 1.6, 1.0, 5.2)).clone());
+        for (const s of [-1, 1]) parts.wall.push(m4.compose(P.set(p.x + rx * s * (ROAD_W + 0.6), p.e + 0.35, p.z + rz * s * (ROAD_W + 0.6)), q, S.set(0.35, 0.9, 5.2)).clone());
+        if (Math.round((d - a) / 5) % 7 === 3 && d > a + 5 && d < b - 5) { const g = Math.min(-2, f.height(p.x + rx * 9, p.z + rz * 9)); // pier pair down to the bottom
+          for (const s of [-1, 1]) parts.pier.push(m4.compose(P.set(p.x + rx * s * 2.2, (p.e - 1 + g) / 2, p.z + rz * s * 2.2), q.setFromAxisAngle(up, ang), S.set(1.6, p.e - 1 - g, 2.2)).clone()); }
+      }
+    }
+    for (const k in parts) { const im = new THREE.InstancedMesh(box, mat, parts[k].length); parts[k].forEach((x, i) => im.setMatrixAt(i, x));
+      im.castShadow = k !== 'slab'; im.receiveShadow = true; im.computeBoundingSphere(); this.scene.add(im); }
+    console.info('RIDEFRAME Brücken', list.length);
   }
   _placeLegacyTops(segs) { // castle + lookout have no Blender model yet: keep the built-in ones
     const f = this.field;
