@@ -32,6 +32,7 @@ export class Events {
   }
   /** speech bubble over any object (surprises use it too) */
   say(o, text, dur = 3) {
+    if (this.f.tunnelNear?.(this.w.d)) return; // a call with no one to see, right at a tunnel mouth, looks broken
     const b = document.createElement('div'); b.className = 'rf-bubble'; b.textContent = text; b._o = o; b._until = this.time + dur; this.overlay.append(b);
   }
 

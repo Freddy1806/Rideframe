@@ -184,6 +184,12 @@ export class Field {
   }
   /** Height of a terrain mesh vertex for a grid with spacing S: coarse grids are pulled down near the road
    *  so that the interpolated triangles never cover the asphalt. */
+  /** True when a rock tunnel (or its mouth) lies within [d - back, d + ahead]: no shouting into a tunnel. */
+  tunnelNear(d, back = 40, ahead = 160) {
+    const t = this.tunnelHole; if (!t) return false;
+    for (let j = Math.max(0, Math.floor((d - back) / DS)), e = Math.min(t.length - 1, (d + ahead) / DS); j <= e; j += 4) if (t[j] || this.tunnel[j]) return true;
+    return false;
+  }
   /** Terrain vertex inside the slot right behind a tunnel mouth: its triangles are left out, so the raised mountain never closes the tube. */
   holeAt(x, z) {
     if (!this.tunnelHole) return false;

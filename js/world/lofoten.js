@@ -812,9 +812,9 @@ export class WorldScene {
   // real routes: rock tunnels (closed tube with lamps, concrete portals) and avalanche galleries (roof + hill wall, open pillars on the sea side)
   _tunnels() {
     const f = this.field, list = this.track.dem?.tunnels || [], kinds = this.track.dem?.tunnelKinds || []; if (!list.length) return;
-    const wall = new THREE.MeshStandardMaterial({ color: 0x55534f, roughness: 0.95, side: THREE.DoubleSide });
-    const conc = new THREE.MeshStandardMaterial({ color: 0x5f5d58, roughness: 0.95 });
-    const concD = new THREE.MeshStandardMaterial({ color: 0x5f5d58, roughness: 0.95, side: THREE.DoubleSide }); let collar = null;
+    const wall = new THREE.MeshStandardMaterial({ color: 0xd2cec6, roughness: 0.9, side: THREE.DoubleSide, map: concreteTex(false), emissive: 0x1c160e, emissiveIntensity: 0.4 }); // light shotcrete, a warm sodium glow
+    const conc = new THREE.MeshStandardMaterial({ color: 0xb4b0a8, roughness: 0.95, map: concreteTex(true) });
+    const concD = new THREE.MeshStandardMaterial({ color: 0xb4b0a8, roughness: 0.95, side: THREE.DoubleSide, map: concreteTex(true) }); let collar = null;
     const lampM = new THREE.MeshBasicMaterial({ color: 0xffc27a }), box = new THREE.BoxGeometry(1, 1, 1);
     const lamps = [], cols = [], m4 = new THREE.Matrix4(), q = new THREE.Quaternion(), P = new THREE.Vector3(), S = new THREE.Vector3(), E = new THREE.Euler();
     const W = ROAD_W + 1.4, H = 6.2, K = 14; // half width, height, arch segments
@@ -831,20 +831,21 @@ export class WorldScene {
       const R = ring.length - 1;
       if (!gallery && !collar) { const sh = new THREE.Shape(); sh.moveTo(-W - 0.2, -0.3); sh.lineTo(W + 0.2, -0.3); sh.lineTo(W + 0.2, H + 0.8); sh.lineTo(-W - 0.2, H + 0.8); sh.closePath();
         const arch = ring.slice(1, -1).map(([u, v]) => new THREE.Vector2(u * 0.98, v * 0.98)); arch.push(new THREE.Vector2(arch[arch.length - 1].x, -0.3), new THREE.Vector2(arch[0].x, -0.3));
-        sh.holes.push(new THREE.Path(arch)); collar = new THREE.ShapeGeometry(sh); }
+        sh.holes.push(new THREE.Path(arch)); collar = new THREE.ShapeGeometry(sh); const uv = collar.attributes.uv; for (let i = 0; i < uv.count; i++) uv.setXY(i, uv.getX(i) / 8, uv.getY(i) / 8); }
       for (let j = 0; j <= n; j++) {
         const d = a + (b - a) * j / n, p = f.at(d), l = Math.hypot(p.tx, p.tz) || 1, rx = -p.tz / l, rz = p.tx / l;
         for (const [u, v] of ring) pos.push(p.x + rx * u, p.e - 0.3 + v, p.z + rz * u);
         if (j < n) for (let i = 0; i < R; i++) { const A = j * (R + 1) + i, B = A + R + 1; idx.push(A, B, A + 1, A + 1, B, B + 1); }
-        if (j % 6 === 3) lamps.push(m4.compose(P.set(p.x, p.e - 0.3 + H - 0.25, p.z), q.setFromAxisAngle(_v.set(0, 1, 0), Math.atan2(p.tx, p.tz)), S.set(0.5, 0.12, 2.2)).clone());
+        if (j % 4 === 2) lamps.push(m4.compose(P.set(p.x, p.e - 0.3 + H - 0.25, p.z), q.setFromAxisAngle(_v.set(0, 1, 0), Math.atan2(p.tx, p.tz)), S.set(0.5, 0.12, 2.2)).clone());
         if (gallery && j % 2 === 0) cols.push(m4.compose(P.set(p.x - rx * hill * W, p.e - 0.3 + H / 2, p.z - rz * hill * W), q.setFromAxisAngle(_v.set(0, 1, 0), Math.atan2(p.tx, p.tz)), S.set(0.6, H, 0.8)).clone());
       }
-      const g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3)); g.setIndex(idx); g.computeVertexNormals();
+      const uvs = []; for (let j = 0; j <= n; j++) for (let i = 0; i <= R; i++) uvs.push((b - a) * j / n / 6, i / R * 3);
+      const g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3)); g.setAttribute('uv', new THREE.Float32BufferAttribute(uvs, 2)); g.setIndex(idx); g.computeVertexNormals();
       const tube = new THREE.Mesh(g, wall); tube.castShadow = true; tube.receiveShadow = true; this.scene.add(tube); (this.tunnelMeshes ||= []).push(tube); // __world.tunnelMeshes: perf checks on the Mac
       if (!gallery) for (const [dd, dir] of [[a, 1], [b, -1]]) { // concrete portal frame at both mouths
         const p = f.at(dd + dir * 2), ang = Math.atan2(p.tx, p.tz); E.set(0, ang, 0); q.setFromEuler(E);
         const fr = new THREE.Group(); fr.position.set(p.x, p.e - 0.3, p.z); fr.quaternion.copy(q);
-        for (const [x, y, w, h] of [[-W - 2, H * 0.6, 4, H * 1.2], [W + 2, H * 0.6, 4, H * 1.2], [0, H + 4.6, W * 2 + 8, 8]]) { // tall headwall: also hides the cut-open slot above the mouth
+        for (const [x, y, w, h] of [[-W - 2, H * 0.6, 4, H * 1.2], [W + 2, H * 0.6, 4, H * 1.2], [0, H + 2.6, W * 2 + 8, 4]]) { // tall headwall: also hides the cut-open slot above the mouth
           const m = new THREE.Mesh(box, conc); m.position.set(x, y, 0); m.scale.set(w, h, 1.6); m.castShadow = true; fr.add(m); }
         fr.add(new THREE.Mesh(collar, concD)); // closes the corners between the arch and the rectangular frame
         this.scene.add(fr);
@@ -996,8 +997,8 @@ export class WorldScene {
     su.sunPosition.value.copy(s); su.uCover.value = cover; su.uVeil.value = veil; su.uLow.value = low;
     // direct light: warm, a bit warmer as the sun sinks, dimmer behind the veil; never orange enough to rust the rock
     this.light.color.lerpColors(W_HIGH, W_LOW, low);
-    this.light.intensity = 3.1 * (1 - 0.38 * veil) * (1 - 0.12 * cover) * (1 - 0.12 * low) * (1 - 0.85 * (this.tunnelK || 0));
-    this.hemi.intensity = (1.45 + 0.12 * cover + 0.05 * veil) * (1 - 0.75 * (this.tunnelK || 0)); // shadow slopes ~40 % of the sunlit side, not black; dim inside rock tunnels
+    this.light.intensity = 3.1 * (1 - 0.38 * veil) * (1 - 0.12 * cover) * (1 - 0.12 * low) * (1 - 0.8 * (this.tunnelK || 0));
+    this.hemi.intensity = (1.45 + 0.12 * cover + 0.05 * veil) * (1 - 0.5 * (this.tunnelK || 0)); // shadow slopes ~40 % of the sunlit side, not black; dim inside rock tunnels
     this.hemi.color.lerpColors(H_CLEAR, H_GREY, cover * 0.7);
     // haze: cool lavender away from the sun, glowing red-orange towards it (weaker behind the veil)
     this.scene.fog.color.lerpColors(F_CLEAR, F_GREY, cover * 0.6);
@@ -1081,7 +1082,7 @@ export class WorldScene {
 
   _life(time, dt, cam) {
     if (this.field.tunnel) this.tunnelK = lerp(this.tunnelK || 0, this.field.tunnel[Math.max(0, Math.min(this.field.n - 1, Math.round(this.d / DS)))] ? 1 : 0, Math.min(1, dt * 1.5)); // eyes adjust to the tunnel
-    if (this.field.tunnel) this.scene.environmentIntensity = 0.95 * (1 - 0.75 * this.tunnelK);
+    if (this.field.tunnel) this.scene.environmentIntensity = 0.95 * (1 - 0.45 * this.tunnelK);
     if (!this.props) return;
     this.falls?.update(time, dt, cam);
     this.events?.update(time, dt, cam, this.d);
@@ -1119,6 +1120,19 @@ export class WorldScene {
 }
 
 /** Vertical strip hanging down from the border of a (N+1)² grid, same attributes, so neighbouring tiles of a coarser level show no gaps. */
+const _conc = {};
+function concreteTex(streaks) { // grey concrete (portals: vertical rain streaks and a mossy foot; tube: plain shotcrete), made once each
+  if (_conc[streaks]) return _conc[streaks];
+  const c = document.createElement('canvas'); c.width = c.height = 256; const x = c.getContext('2d');
+  x.fillStyle = '#9a978f'; x.fillRect(0, 0, 256, 256);
+  for (let i = 0; i < 2600; i++) { const v = 120 + Math.random() * 60 | 0; x.fillStyle = `rgba(${v},${v - 3},${v - 8},.35)`; x.fillRect(Math.random() * 256, Math.random() * 256, 2, 2); }
+  if (streaks) for (let i = 0; i < 70; i++) { const px = Math.random() * 256, len = 40 + Math.random() * 200, g = x.createLinearGradient(0, 0, 0, len);
+    g.addColorStop(0, 'rgba(40,38,34,.35)'); g.addColorStop(1, 'rgba(40,38,34,0)'); x.fillStyle = g; x.fillRect(px, 0, 1 + Math.random() * 3, len); }
+  if (streaks) { const m = x.createLinearGradient(0, 200, 0, 256); m.addColorStop(0, 'rgba(70,90,40,0)'); m.addColorStop(1, 'rgba(70,90,40,.45)'); x.fillStyle = m; x.fillRect(0, 200, 256, 56); }
+  const t = _conc[streaks] = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace; t.wrapS = t.wrapT = THREE.RepeatWrapping; t.anisotropy = 4;
+  return t;
+}
+
 function skirt(g, N, depth) {
   const P = g.attributes.position, C = g.attributes.color, Sp = g.attributes.splat, Nr = g.attributes.normal;
   const ring = [];

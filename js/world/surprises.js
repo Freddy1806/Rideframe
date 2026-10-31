@@ -1,5 +1,5 @@
 // The ride as a roller coaster: never more than about half a minute without something happening.
-// A director fires one surprise every 25–40 s, close (15–40 m) and in view, whichever fits the spot (sea beside the road, a village, open land),
+// A director fires one surprise every 14–24 s, close (15–40 m) and in view, whichever fits the spot (sea beside the road, a village, open land),
 // plus fireworks over the festival and at the finish. Every surprise starts ahead of the camera and uses the
 // Mac's models when present; without a model that surprise is simply skipped.
 import * as THREE from 'three';
@@ -11,7 +11,7 @@ const layer1 = o => o.traverse(c => c.layers.set(1)); // not in the water reflec
 export class Surprises {
   constructor(world, assets, events) {
     this.w = world; this.A = assets; this.ev = events; this.f = world.field; this.track = world.track;
-    this.next = 20; this.active = []; this.used = new Map();
+    this.next = 12; this.active = []; this.used = new Map();
     const villages = (this.track.segments || []).filter(s => s.village);
     const fest = villages.sort((p, q) => (q.to - q.from) * (q.village[1] - q.village[0]) - (p.to - p.from) * (p.village[1] - p.village[0]))[0];
     this.festD = fest ? fest.from + (fest.to - fest.from) * (fest.village[0] + fest.village[1]) / 2 : -1;
@@ -25,6 +25,8 @@ export class Surprises {
       { id: 'juggler', need: ['gaukler'], go: () => this._juggler() },
       { id: 'goats', need: ['ziege'], go: () => this._crossing('ziege', 5, 'Meeeh!') },
       { id: 'dog', need: ['hund'], go: () => this._dog() },
+      { id: 'eagle', need: ['seeadler'], go: () => this._flyby('seeadler', 1, 'Screeech!') },
+      { id: 'gulls', need: ['moewe'], go: () => this._flyby('moewe', 6) },
       { id: 'crowd', need: ['junge', 'maedchen', 'alte_frau', 'bauer_sense', 'wache'], go: () => this._crowd() },
     ];
     this.fw = new Fireworks(world.scene);
@@ -39,12 +41,13 @@ export class Surprises {
   update(_, dt, cam, d) {
     const time = this.clock = (this.clock || 0) + Math.min(dt, 0.1); // own clock: the preview's world time jumps when scrubbing
     const v = Math.max(2, this.w.speed || 6);
+    if (time > this.next && this.f.tunnelNear?.(d, 20, 220)) this.next = time + 3; // nothing starts right before or inside a tunnel
     if (time > this.next) {
       const free = this.list.filter(s => s.need.some(n => this.A.find(n)) && (!s.sea || this._seaSide(d + 120)) && (!s.village || this._inVillage(d + 60)))
         .sort((a, b) => (this.used.get(a.id) || 0) - (this.used.get(b.id) || 0) || Math.random() - .5);
       const s = free[0];
-      if (s && s.go() !== false) { this.used.set(s.id, time); this.next = time + 25 + Math.random() * 15; }
-      else this.next = time + 6; // nothing fits here: look again soon
+      if (s && s.go() !== false) { this.used.set(s.id, time); this.next = time + 14 + Math.random() * 10; }
+      else this.next = time + 4; // nothing fits here: look again soon
     }
     for (const e of this.active) e.step(dt, v, cam), e.mixer?.update(Math.min(dt, 0.1));
     for (const e of this.active) if (e.dead) this.w.scene.remove(e.obj);
@@ -77,7 +80,7 @@ export class Surprises {
     const e = { ...s, t: 0, step: (dt, v) => {
       e.t += dt; const q = path(e.t, v, Math.min(dt, 0.1)); if (!q) { e.dead = true; return; }
       const p = this._pt(q.d, q.off), p2 = this._pt(q.d + (q.back ? -1 : 1), q.off + (q.doff || 0));
-      e.obj.position.set(p.x, Math.max(q.water ? 0 : -50, q.water ? 0 : p.y), p.z);
+      e.obj.position.set(p.x, q.fly != null ? Math.max(p.y, p.e) + q.fly : Math.max(q.water ? 0 : -50, q.water ? 0 : p.y), p.z);
       e.obj.rotation.y = Math.atan2(p2.x - p.x, p2.z - p.z);
     } };
     this.active.push(e); return e;
@@ -101,7 +104,7 @@ export class Surprises {
     const d0 = this.w.d + 10;
     ['junge', 'maedchen', 'junge'].forEach((n, k) => {
       let dd = 0;
-      const e = this._run(n, [['Rennen', 1], ['Gehen', 1.8]], (t, v, dt) => { if (t > 9) return null; dd += Math.min(v, 5.5) * dt; return { d: d0 + k * 2.5 + dd, off: side * (ROAD_W + 2.2 + k * 1.4) }; });
+      const e = this._run(n, [['Rennen', 1], ['Gehen', 1.8]], (t, v, dt) => { if (t > 9) return null; dd += Math.min(v - 0.5, 5.5) * dt; return { d: d0 + 6 + k * 2.5 + dd, off: side * (ROAD_W + 2.2 + k * 1.4) }; });
       if (e) { if (!k) setTimeout(() => this._say(e.obj, 'Faster! Faster!', 2.4), 700); }
     });
   }
@@ -141,7 +144,7 @@ export class Surprises {
   _dog() { // a dog chases you for a while, barking
     const side = this._landSide(this.w.d + 15); if (!side) return false;
     const d0 = this.w.d + 8; let dd = 0;
-    const e = this._run('hund', 'Rennen', (t, v, dt) => { if (t > 11) return null; dd += Math.min(v + 0.5, 9) * dt; return { d: d0 + dd, off: side * (ROAD_W + 0.8) }; });
+    const e = this._run('hund', 'Rennen', (t, v, dt) => { if (t > 12) return null; dd += Math.min(v - 0.7, 9) * dt; return { d: d0 + 10 + dd, off: side * (ROAD_W + 0.8) }; }); // runs just ahead: always in view
     if (!e) return false;
     setTimeout(() => this._say(e.obj, 'Woof! Woof!', 1.8), 500);
   }
@@ -153,6 +156,14 @@ export class Surprises {
       const side = k % 2 ? 1 : -1, dk = d0 + Math.floor(k / 2) * 5 + Math.random() * 2, n = who[k % who.length];
       const e = this._run(n, [['Jubeln', 1], ['Winken', 1], ['Stehen', 1]], () => this.w.d > dk + 12 ? null : { d: dk, off: side * (ROAD_W + 1.6 + Math.random() * 0.2), doff: -side * 3 });
       if (e && k % 3 === 0) setTimeout(() => this._say(e.obj, calls[(k / 3) % calls.length], 2), 600 + k * 250);
+    }
+  }
+  _flyby(name, n, call) { // birds come in low from ahead and sweep right over your head
+    const side = Math.random() < .5 ? -1 : 1, d0 = this.w.d + 90;
+    for (let k = 0; k < n; k++) {
+      const e = this._run(name, [['Fluegelschlag', 1.2], ['Fliegen', 1.2], ['Gleiten', 1]], (t, v) => { const u = t / 7; if (u > 1) return null;
+        return { d: d0 + k * 3 - (14 + v) * t, off: side * (18 - 36 * u) + (k % 3 - 1) * 3, back: true, fly: 2.6 + 10 * Math.abs(u - 0.55) + k * 0.7, doff: -side * 4 }; });
+      if (e && !k && call) setTimeout(() => this._say(e.obj, call, 1.6), 1500);
     }
   }
   _salvo(d, n) { // fireworks above the road ahead

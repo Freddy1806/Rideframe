@@ -268,8 +268,8 @@ input[type=number]::-webkit-inner-spin-button, input[type=number]::-webkit-outer
 .camchip { cursor: pointer; border: 0; color: inherit; font: inherit; text-align: left; }
 .flash { position: absolute; left: 50%; top: 18%; transform: translateX(-50%); padding: 12px 22px; border-radius: 14px; font-weight: 700; font-size: 22px; opacity: 0; transition: opacity .25s; pointer-events: none; z-index: 20; }
 .flash.on { opacity: 1; }
-.rf-bubble { position: absolute; left: 0; top: 0; max-width: 300px; white-space: normal !important; text-align: center; padding: 8px 14px; border-radius: 14px; background: rgba(250,246,236,.94); color: #1b1712; font: 600 18px/1.25 Georgia, 'Times New Roman', serif; font-style: italic; box-shadow: 0 6px 24px rgba(0,0,0,.25); width: max-content; animation: rfpop .25s ease-out; }
-.rf-bubble::after { content: ''; position: absolute; left: 50%; bottom: -8px; border: 8px solid transparent; border-top-color: rgba(250,246,236,.94); border-bottom: 0; transform: translateX(-50%); }
+.rf-bubble { position: absolute; left: 0; top: 0; max-width: 300px; white-space: normal !important; text-align: center; padding: 8px 14px; border-radius: 5px; background: rgba(238,226,198,.84); border: 1px solid rgba(96,72,40,.45); color: #2a1f12; font: 600 18px/1.25 Georgia, 'Times New Roman', serif; font-style: italic; box-shadow: 0 6px 24px rgba(0,0,0,.25); width: max-content; animation: rfpop .25s ease-out; }
+.rf-bubble::after { content: none; } /* parchment note, no comic tail */
 @keyframes rfpop { from { opacity: 0; transform: scale(.8); } }
 
 /* 3D world: a slim, see-through instrument strip so the road and the handlebar stay in view */
