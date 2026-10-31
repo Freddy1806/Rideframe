@@ -708,7 +708,7 @@ export class Siege {
     const T = this.falls.find(f => f.kind === 'tower' && f.glb), g = T?.glb;
     if (g && g.t < 0 && !g.armed && !jump) { // baked tower: clip starts 12 m + 2.3 s x v before it, a fireball from across the road hits at .33 s
       const v = Math.max(3, this.w.speed || 6), relT = g.dT - d, Tf = 2.2;
-      if (relT <= 50 + v * (g.crown + Tf - g.impact) && relT > -20) { // crown lands ~50 m ahead (peak at 60-80 m); the wall breaks with the same impact
+      if (relT <= 62 + v * (g.crown + Tf - g.impact) && relT > -20) { // crown lands ~62 m ahead (peak at 70-90 m, tower still clear of the right edge); the wall breaks with the same impact
         g.armed = true; const q = this.spot(g.dT + 25, -rnd(70, 85), new THREE.Vector3()); q.y = Math.max(0, this.f.height(q.x, q.z)) + 2;
         this._launch(q, g.hit, Tf); this.timed.push({ at: this.t + Tf - g.impact, fn: () => this._glbStart(T, true) }, { at: this.t + Tf, fn: () => this._collapse() });
       }
