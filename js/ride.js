@@ -110,7 +110,7 @@ export class RideSession {
       if (!this.player) this.player = new DemoScene(c, this.track);
       this.player.currentTime = timeAt(this.track, this.d);
       this.player.setLens?.(this.state.settings.lensMm || 0); this.player.setView?.(this.state.settings.view3d || 0); this.player.setCockpit?.(this.state.settings.cockpit !== false);
-      el.classList.toggle('world3d', !!this.player.setLens); this.player.cockpitK = 0.42; // compact HUD over the 3D world, hoods higher above it
+      el.classList.toggle('world3d', !!this.player.setLens); // compact HUD over the 3D world
       this.player._placeCockpit?.();
       if (this.player.ready) { // 3D world: show a loading card instead of a black screen until the ground around the start stands
         const ld = document.createElement('div'); ld.className = 'countdown loading'; ld.textContent = 'Welt wird geladen …'; el.append(ld);

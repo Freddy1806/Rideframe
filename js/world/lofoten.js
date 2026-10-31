@@ -874,11 +874,19 @@ export class WorldScene {
 
   /** Lens as a full-frame focal length (14 mm = very wide). null keeps the default 62° vertical view. */
   setLens(mm) { this.lensMm = mm || null; this._applyLens(); this.camera.updateProjectionMatrix(); this._placeCockpit(); }
-  _placeCockpit() { // the model has the bar centre 0.45 m below / 0.55 m ahead of the eye; slide it so the hoods sit in the lower third at any lens
-    if (!this.cockpit) return;
-    const a = THREE.MathUtils.degToRad(this.camera.fov / 2) * (this.cockpitK ?? 0.66), dist = 0.5;
-    this.cockpit.position.set(0, -dist * Math.tan(a) + 0.45, -dist + 0.55);
+  _placeCockpit() { // aim the hoods at fixed screen spots for every lens (reference photo: hood tops at 64 % height, hoods at 20 % / 80 % width)
+    const ck = this.cockpit; if (!ck) return;
+    if (!this.ckGeo) { // hood width and height from the bar itself (model: bar centre 0.45 m below / 0.55 m ahead of the eye)
+      const bar = ck.getObjectByName('lenker'), b = new THREE.Box3();
+      if (bar) { ck.updateMatrixWorld(true); const inv = new THREE.Matrix4().copy(ck.matrixWorld).invert(); b.setFromObject(bar).applyMatrix4(inv); }
+      this.ckGeo = bar && !b.isEmpty() ? { hx: Math.max(0.12, (b.max.x - b.min.x) / 2 * 0.85), top: b.max.y + 0.45 } : { hx: 0.21, top: 0.03 };
+    }
+    const { hx, top } = this.ckGeo, tv = Math.tan(THREE.MathUtils.degToRad(this.camera.fov / 2)), th = tv * this.camera.aspect;
+    const D = 0.42, X = this.cockpitX ?? 0.6, Y = this.cockpitY ?? -0.28; // target NDC
+    const s = X * D * th / hx, yTop = Y * D * tv;
+    ck.scale.setScalar(s); ck.position.set(0, yTop - top * s + 0.45 * s, -D + 0.55 * s);
   }
+
   _applyLens() {
     if (!this.lensMm) { this.camera.fov = 62; return; }
     const h = 2 * Math.atan(36 / (2 * this.lensMm)); // horizontal angle of a 36 mm wide sensor
@@ -980,7 +988,7 @@ export class WorldScene {
     const c = this.c, W = c.clientWidth || c.width, H = c.clientHeight || c.height;
     const r = this.renderer;
     if (this._w !== W || this._h !== H) {
-      r.setSize(W, H, false); this.camera.aspect = W / H; this._applyLens(); this.camera.updateProjectionMatrix(); this._w = W; this._h = H;
+      r.setSize(W, H, false); this.camera.aspect = W / H; this._applyLens(); this.camera.updateProjectionMatrix(); this._placeCockpit(); this._w = W; this._h = H;
       if (this.useAO && !this.composer) { // ambient occlusion: grounds houses, rocks and grass
         this.composer = new EffectComposer(r); this.composer.addPass(new RenderPass(this.scene, this.camera));
         const ao = this.aoPass = new GTAOPass(this.scene, this.camera, W, H); ao.blendIntensity = 0.85;
