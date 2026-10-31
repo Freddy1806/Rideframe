@@ -86,7 +86,7 @@ export class RideSession {
     this.gear = this.virtual ? this.gears[this.gi] : null;
     if (at && ghost?.samples?.length) this.elapsed = Math.max(0, (this.ghostTimeAt(this.d) || 0) - 14); // screenshots / resume
     this._tick = this._tick.bind(this); this._key = this._key.bind(this);
-    if (st.ueBridge || new URLSearchParams(location.search).has('ue')) this.ue = new UEBridge(route.id, this.track.length); // Unreal view (beta)
+    if (st.ueBridge || new URLSearchParams(location.search).has('ue')) this.ue = new UEBridge(route.id, { ...this.track, step: STEP }); // Unreal view (beta)
   }
 
   async start() {
