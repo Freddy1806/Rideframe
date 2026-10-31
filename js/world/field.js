@@ -105,14 +105,20 @@ export class Field {
   /** Nearest point on the dense centreline: signed lateral offset (+ = right of travel), road height, smoothed nearby height. */
   road(x, z) {
     let best = -1, bd = 1e12;
+    const nearest = l => { for (const i of l) { const dx = x - this.x[i], dz = z - this.z[i], d2 = dx * dx + dz * dz; if (d2 < bd) { bd = d2; best = i; } } };
+    const reach = () => Math.sqrt(4.24 * bd + 14400); // radius holding every sample with a smoothing weight > e^-9 (sig2 below)
     let list = this._query(this.fine, x, z, 120);
-    if (!list.length) list = this._query(this.huge, x, z, 7000);
-    for (const i of list) { const dx = x - this.x[i], dz = z - this.z[i], d2 = dx * dx + dz * dz; if (d2 < bd) { bd = d2; best = i; } }
+    if (list.length) nearest(list);
+    else { // away from the road: widen step by step instead of always scanning 7 km (coarse and huge hold the same samples)
+      list = this._query(this.coarse, x, z, 500); nearest(list);
+      if (best < 0 || reach() > 500) { best = -1; bd = 1e12; list = this._query(this.huge, x, z, 2500); nearest(list);
+        if (best < 0 || reach() > 2500) { best = -1; bd = 1e12; list = this._query(this.huge, x, z, 7000); nearest(list); } }
+    }
     if (best < 0) return null;
     // smooth averages over nearby road: the further away, the wider (no seams where the nearest sample flips)
     const sig2 = 1600 + bd * 0.36; let ws = 0, we = 0, wsea = 0, wcl = 0, wbe = 0;
     for (const i of list) {
-      const dx = x - this.x[i], dz = z - this.z[i], w = Math.exp(-(dx * dx + dz * dz - bd) / sig2);
+      const dx = x - this.x[i], dz = z - this.z[i], q = (dx * dx + dz * dz - bd) / sig2; if (q > 9) continue; const w = Math.exp(-q);
       ws += w; we += w * this.e[i]; wsea += w * this.sea[i]; wcl += w * this.cliff[i]; wbe += w * this.beach[i];
     }
     // refine on the dense samples around the hit, then project onto the segment
