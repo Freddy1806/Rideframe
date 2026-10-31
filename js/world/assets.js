@@ -27,8 +27,9 @@ export async function loadAssets() {
 function fake(e) { // box with the model's size, origin bottom centre, orange nose on the front (+Z)
   const g = new THREE.Group(), [w, h, d] = e.size;
   const col = { house: 0xb08060, house_big: 0xa07050, church: 0xcccccc, stall: 0xcc4444, cliff: 0x777777, boat: 0x6b4a2a, animal_land: 0xeeeeee, bird: 0x222222 }[e.category] ?? 0x4477aa;
-  const b = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), new THREE.MeshStandardMaterial({ color: col })); b.position.y = h / 2; b.castShadow = true; g.add(b);
-  const n = new THREE.Mesh(new THREE.BoxGeometry(w * 0.3, h * 0.3, 0.3), new THREE.MeshStandardMaterial({ color: 0xff5a1f })); n.position.set(0, h * 0.5, d / 2 + 0.15); g.add(n);
+  const z0 = e.category === 'waterfall' ? -d / 2 : 0; // waterfall models: origin on the road-side edge
+  const b = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), new THREE.MeshStandardMaterial({ color: col })); b.position.set(0, h / 2, z0); b.castShadow = true; g.add(b);
+  const n = new THREE.Mesh(new THREE.BoxGeometry(w * 0.3, h * 0.3, 0.3), new THREE.MeshStandardMaterial({ color: 0xff5a1f })); n.position.set(0, h * 0.5, z0 + d / 2 + 0.15); g.add(n);
   return { ...e, scene: g, farScene: e.far ? g.clone(true) : null, clips: [] };
 }
 

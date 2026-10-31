@@ -19,6 +19,7 @@ import { Water } from '../../vendor/jsm/objects/Water.js';
 import { mergeGeometries } from '../../vendor/jsm/utils/BufferGeometryUtils.js';
 import { loadAssets } from './assets.js';
 import { Events } from './events.js';
+import { placeWaterfalls } from './waterfalls.js';
 import { EffectComposer } from '../../vendor/jsm/postprocessing/EffectComposer.js';
 import { RenderPass } from '../../vendor/jsm/postprocessing/RenderPass.js';
 import { GTAOPass } from '../../vendor/jsm/postprocessing/GTAOPass.js';
@@ -543,6 +544,7 @@ export class WorldScene {
         if (s.top === 'lookout') put('lookout', i, -1, 12, 0);
       }
     }
+    this.falls = placeWaterfalls(this, null, []);
   }
 
   // ---- Blender assets along the route: villages with market, harbour life, animals, birds, whales, rock walls ----
@@ -714,6 +716,7 @@ export class WorldScene {
       }
       console.info('RIDEFRAME Bäume', n);
     }
+    this.falls = placeWaterfalls(this, A, taken); // before the rock walls, which then keep clear of them
     // big rock walls where the ground rises steeply beside the road (serpentines, cliffs)
     const cliffs = A.by.cliff || [];
     if (cliffs.length) for (let d = 300; d < t.length - 100; d += 140 + r() * 120) {
@@ -1025,6 +1028,7 @@ export class WorldScene {
 
   _life(time, dt, cam) {
     if (!this.props) return;
+    this.falls?.update(time, dt, cam);
     this.events?.update(time, dt, cam, this.d);
     if (this.cockpit) { this.cockpit.visible = !this.view && this.showCockpit !== false; if (this.cockpit.visible) this.cockpitMixer?.update(Math.min(dt, 0.1) * (0.4 + (this.speed || 0) / 8)); }
     // show only what is near (draw calls), animate only what is close
