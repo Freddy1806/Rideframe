@@ -80,6 +80,8 @@ export class Field {
       const o = new Float32Array(m); for (let j = 0; j < m; j++) { const lo = Math.max(0, j - r), hi = Math.min(m, j + r + 1); o[j] = (P[hi] - P[lo]) / (hi - lo); }
       return o; };
     this.sea = sm(sea, 120); this.cliff = sm(cliff, 120); this.beach = sm(beach, 120);
+    if (track.dem?.tunnels?.length) { this.tunnel = new Uint8Array(m); track.dem.tunnels.forEach(([a, b], k) => { if (track.dem.tunnelKinds?.[k] === 'avalanche_protector') return;
+      for (let j = Math.max(0, Math.floor((a + 12) / DS)); j <= Math.min(m - 1, (b - 12) / DS); j++) this.tunnel[j] = 1; }); }
     if (track.dem?.bridges?.length) { this.bridge = new Uint8Array(m); for (const [a, b] of track.dem.bridges) for (let j = Math.max(0, Math.floor(a / DS)); j <= Math.min(m - 1, b / DS); j++) this.bridge[j] = 1; }
     // spatial hashes over every 4th dense sample (10 m): fine and coarse
     this.fine = this._hash(40, SUB); this.coarse = this._hash(250, SUB * 8); this.huge = this._hash(1000, SUB * 8);
@@ -156,6 +158,7 @@ export class Field {
     if (this.real && real !== null) { // the DEM is the truth here: only a short flat shoulder blends into it, sea stays sea
       const ground = real <= 0.5 ? -4 - smooth(0, 40, out) * 12 : real + rough * smooth(20, 200, real);
       if (this.bridge?.[r.i]) return Math.min(ground, r.e - 3); // on a bridge: water (or the valley) right under the deck
+      if (this.tunnel?.[r.i]) return Math.max(ground, r.e + 9); // rock tunnel: the mountain stays closed above the tube
       const h = lerp(base + detail * smooth(0, 15, out), ground, smooth(3, 35, out));
       const hh = lerp(r.e - 0.25, h, flat);
       return out < 3 ? Math.min(hh, r.e - 0.25 + Math.max(0, out) * 0.4) : hh;
