@@ -406,6 +406,11 @@ export class WorldScene {
     const ox = tx * TILE + TILE / 2, oz = tz * TILE + TILE / 2;
     const H = new Float32Array(p.count);
     for (let i = 0; i < p.count; i++) { const x = p.getX(i) + ox, z = p.getZ(i) + oz; H[i] = f.vertexHeight(x, z, S); p.setY(i, H[i]); }
+    if (f.tunnelHole) { // drop triangles touching the cut-open slot behind tunnel mouths
+      const hole = new Uint8Array(p.count); let any = false;
+      for (let i = 0; i < p.count; i++) if (f.holeAt(p.getX(i) + ox, p.getZ(i) + oz)) hole[i] = any = 1;
+      if (any) { const ix = g.index.array, keep = []; for (let t = 0; t < ix.length; t += 3) if (!hole[ix[t]] && !hole[ix[t + 1]] && !hole[ix[t + 2]]) keep.push(ix[t], ix[t + 1], ix[t + 2]); g.setIndex(keep); }
+    }
     g.computeVertexNormals();
     const nrm = g.attributes.normal, spl = new Float32Array(p.count * 4);
     for (let i = 0; i < p.count; i++) paint(f, p.getX(i) + ox, p.getZ(i) + oz, H[i], nrm.getY(i), col, spl, i);
@@ -808,7 +813,8 @@ export class WorldScene {
   _tunnels() {
     const f = this.field, list = this.track.dem?.tunnels || [], kinds = this.track.dem?.tunnelKinds || []; if (!list.length) return;
     const wall = new THREE.MeshStandardMaterial({ color: 0x55534f, roughness: 0.95, side: THREE.DoubleSide });
-    const conc = new THREE.MeshStandardMaterial({ color: 0x7f7c76, roughness: 0.92 });
+    const conc = new THREE.MeshStandardMaterial({ color: 0x5f5d58, roughness: 0.95 });
+    const concD = new THREE.MeshStandardMaterial({ color: 0x5f5d58, roughness: 0.95, side: THREE.DoubleSide }); let collar = null;
     const lampM = new THREE.MeshBasicMaterial({ color: 0xffc27a }), box = new THREE.BoxGeometry(1, 1, 1);
     const lamps = [], cols = [], m4 = new THREE.Matrix4(), q = new THREE.Quaternion(), P = new THREE.Vector3(), S = new THREE.Vector3(), E = new THREE.Euler();
     const W = ROAD_W + 1.4, H = 6.2, K = 14; // half width, height, arch segments
@@ -823,6 +829,9 @@ export class WorldScene {
       // close the floor between the asphalt edge and the walls, so nothing outside shows through below
       if (gallery) ring.unshift([hill * (ROAD_W - 0.1), -0.02]); else { ring.unshift([ROAD_W - 0.1, -0.02]); ring.push([-(ROAD_W - 0.1), -0.02]); }
       const R = ring.length - 1;
+      if (!gallery && !collar) { const sh = new THREE.Shape(); sh.moveTo(-W - 0.2, -0.3); sh.lineTo(W + 0.2, -0.3); sh.lineTo(W + 0.2, H + 0.8); sh.lineTo(-W - 0.2, H + 0.8); sh.closePath();
+        const arch = ring.slice(1, -1).map(([u, v]) => new THREE.Vector2(u * 0.98, v * 0.98)); arch.push(new THREE.Vector2(arch[arch.length - 1].x, -0.3), new THREE.Vector2(arch[0].x, -0.3));
+        sh.holes.push(new THREE.Path(arch)); collar = new THREE.ShapeGeometry(sh); }
       for (let j = 0; j <= n; j++) {
         const d = a + (b - a) * j / n, p = f.at(d), l = Math.hypot(p.tx, p.tz) || 1, rx = -p.tz / l, rz = p.tx / l;
         for (const [u, v] of ring) pos.push(p.x + rx * u, p.e - 0.3 + v, p.z + rz * u);
@@ -835,8 +844,9 @@ export class WorldScene {
       if (!gallery) for (const [dd, dir] of [[a, 1], [b, -1]]) { // concrete portal frame at both mouths
         const p = f.at(dd + dir * 2), ang = Math.atan2(p.tx, p.tz); E.set(0, ang, 0); q.setFromEuler(E);
         const fr = new THREE.Group(); fr.position.set(p.x, p.e - 0.3, p.z); fr.quaternion.copy(q);
-        for (const [x, y, w, h] of [[-W - 0.6, H * 0.6, 1.2, H * 1.2], [W + 0.6, H * 0.6, 1.2, H * 1.2], [0, H + 0.6, W * 2 + 2.4, 1.2]]) {
+        for (const [x, y, w, h] of [[-W - 2, H * 0.6, 4, H * 1.2], [W + 2, H * 0.6, 4, H * 1.2], [0, H + 4.6, W * 2 + 8, 8]]) { // tall headwall: also hides the cut-open slot above the mouth
           const m = new THREE.Mesh(box, conc); m.position.set(x, y, 0); m.scale.set(w, h, 1.6); m.castShadow = true; fr.add(m); }
+        fr.add(new THREE.Mesh(collar, concD)); // closes the corners between the arch and the rectangular frame
         this.scene.add(fr);
       }
     });

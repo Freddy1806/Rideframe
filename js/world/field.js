@@ -81,7 +81,9 @@ export class Field {
       return o; };
     this.sea = sm(sea, 120); this.cliff = sm(cliff, 120); this.beach = sm(beach, 120);
     if (track.dem?.tunnels?.length) { this.tunnel = new Uint8Array(m); track.dem.tunnels.forEach(([a, b], k) => { if (track.dem.tunnelKinds?.[k] === 'avalanche_protector') return;
-      for (let j = Math.max(0, Math.floor((a + 12) / DS)); j <= Math.min(m - 1, (b - 12) / DS); j++) this.tunnel[j] = 1; }); }
+      const set = (lo, hi, arr) => { for (let j = Math.max(0, Math.floor(lo / DS)); j <= Math.min(m - 1, hi / DS); j++) arr[j] = 1; };
+      set(a + 1, b - 1, this.tunnel); // mountain raised over the whole tube
+      set(a - 1, Math.min(b, a + 22), this.tunnelHole ||= new Uint8Array(m)); set(Math.max(a, b - 22), b + 1, this.tunnelHole); }); } // terrain cut open at both mouths (see holeAt)
     if (track.dem?.bridges?.length) { this.bridge = new Uint8Array(m); for (const [a, b] of track.dem.bridges) for (let j = Math.max(0, Math.floor(a / DS)); j <= Math.min(m - 1, b / DS); j++) this.bridge[j] = 1; }
     // spatial hashes over every 4th dense sample (10 m): fine and coarse
     this.fine = this._hash(40, SUB); this.coarse = this._hash(250, SUB * 8); this.huge = this._hash(1000, SUB * 8);
@@ -182,6 +184,11 @@ export class Field {
   }
   /** Height of a terrain mesh vertex for a grid with spacing S: coarse grids are pulled down near the road
    *  so that the interpolated triangles never cover the asphalt. */
+  /** Terrain vertex inside the slot right behind a tunnel mouth: its triangles are left out, so the raised mountain never closes the tube. */
+  holeAt(x, z) {
+    if (!this.tunnelHole) return false;
+    const r = this.road(x, z); return !!(r && this.tunnelHole[r.i] && r.d < ROAD_W + 3);
+  }
   vertexHeight(x, z, S) {
     const h = this.height(x, z);
     if (S <= 2.1) return h;
