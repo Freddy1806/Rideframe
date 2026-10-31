@@ -8,6 +8,7 @@ import { ROAD_W } from './field.js';
 
 const G = 9.81, QS = typeof location !== 'undefined' ? new URLSearchParams(location.search) : new URLSearchParams();
 const NEAR = 900, AFTER = 700, WAR = 600; // active window and start of the bombardment (m before the castle)
+const SLOW = .55; // playback speed of the baked collapses
 const FIRE_N = 360, SMOKE_N = 420, EMBER_N = 400, STONE_N = 240, BLOCK_N = 80, BALL_N = 14, KNIGHT_N = 22, PARTS = 5;
 const _m = new THREE.Matrix4(), _m2 = new THREE.Matrix4(), _m3 = new THREE.Matrix4(), _m4 = new THREE.Matrix4();
 const _q = new THREE.Quaternion(), _q2 = new THREE.Quaternion(), _v = new THREE.Vector3(), _v2 = new THREE.Vector3(), _v3 = new THREE.Vector3();
@@ -506,13 +507,14 @@ export class Siege {
       obj.position.copy(pos); this.root.add(obj); obj.updateMatrixWorld(true);
       let act = null, wehen = null;
       if (mixer) { mixer.stopAllAction(); for (const c of ['Intakt', 'Wehen']) { const k = this.A.clip(e, c); if (k) mixer.clipAction(k).play(); }
-        wehen = this.A.clip(e, 'Wehen') && mixer.clipAction(this.A.clip(e, 'Wehen')); if (clip) { act = mixer.clipAction(clip); act.setLoop(THREE.LoopOnce); act.clampWhenFinished = true; } mixer.update(0); }
+        wehen = this.A.clip(e, 'Wehen') && mixer.clipAction(this.A.clip(e, 'Wehen')); if (clip) { act = mixer.clipAction(clip); act.setLoop(THREE.LoopOnce); act.clampWhenFinished = true; act.timeScale = SLOW; } mixer.update(0); }
       const batches = batchPieces(obj); for (const b of batches) this.root.add(b.bm); // ~100 pieces: one draw call per material
       const T = v => secs(v, e, dur), dir = (kind === 'tower' ? new THREE.Vector3(-.82, 0, .57) : new THREE.Vector3(0, 0, 1)).applyQuaternion(obj.quaternion).normalize(); // fall line (tower mirrored)
       const hit = obj.localToWorld(kind === 'tower' ? new THREE.Vector3(3.6, 1.8, 2.5) : new THREE.Vector3(0, 1, 1.1));
       const rd = this.f.road(pos.x, pos.z);
       f.glb = { e, obj, mixer, act, batches, wehen, intact: mixer && this.A.clip(e, 'Intakt') && mixer.clipAction(this.A.clip(e, 'Intakt')), t: -1, foot: pos.clone(), dir, hit, dT: rd ? rd.i * 2.5 : this.d0,
         impact: T(x.impact) ?? 8 / 24, fall: T(x.fall_start) ?? (kind === 'tower' ? 20 / 24 : 18 / 24), crown: T(x.crown) ?? (kind === 'tower' ? 56 / 24 : 18 / 24), rest: T(x.rest) ?? (kind === 'tower' ? 110 / 24 : 109 / 24) };
+      for (const k of ['impact', 'fall', 'crown', 'rest']) f.glb[k] /= SLOW; // played slower: a visible lean, then the break-up
       f.hide = [...f.orig, ...(f.cone ? [f.cone] : [])]; f.hide.forEach(o => { o.visible = false; });
     }
     this.props = [];
@@ -544,10 +546,10 @@ export class Siege {
     const g = f.glb; if (!g || g.t >= 0) return; f.on = true; g.t = 0; g.intact?.stop(); g.act?.reset().play();
     const tower = f.kind === 'tower', n = g.dir, t0 = this.t, at = (s, fn) => this.timed.push({ at: t0 + s, fn });
     if (!synced) at(g.impact, () => this._boom(g.hit, n, 1.1));
-    at(.5, () => { this._dust(g.foot, 20, 0); this.dustSrc.push(g.foot.clone().setY(g.foot.y + 1)); this.dustUntil = Math.max(this.dustUntil, this.t + g.rest + 2); });
+    at(g.impact + .3, () => { this._dust(g.foot, tower ? 50 : 30, 0); this.dustSrc.push(g.foot.clone().setY(g.foot.y + 1)); this.dustUntil = Math.max(this.dustUntil, this.t + g.rest + 2); });
     at(g.crown, () => g.wehen?.stop()); // the flag lies on the ground from here
-    at(g.crown - .15, () => { for (const [k, o] of (tower ? [[7, 0], [11, .1], [16, .2]] : [[4, 0], [8, .12], [12, .25]])) {
-      const p = g.foot.clone().addScaledVector(n, k); p.y = this.ground(p.x, p.z); this._dust(p, rnd(22, 25) * (tower ? 1 : .8), o); this.dustSrc.push(p); }
+    at(g.crown - .15, () => { for (const [k, o] of (tower ? [[7, 0], [12, .15], [18, .3], [24, .45]] : [[4, 0], [8, .12], [12, .25]])) {
+      const p = g.foot.clone().addScaledVector(n, k); p.y = this.ground(p.x, p.z); this._dust(p, rnd(22, 25) * (tower ? 2.5 : 1.6), o); this.dustSrc.push(p); }
       const p = g.foot.clone().addScaledVector(n, tower ? 11 : 6); p.y = this.ground(p.x, p.z) + 1; this.landed = 5; this._landed({ p: [p.x, p.y, p.z] }, 0, 9); // shock + dust ring
       if (!tower) for (const p of this.props) if (p.wall) p.obj.visible = false; });
     at(g.rest, () => { const p = g.foot.clone().addScaledVector(n, tower ? 11 : 4); p.y = this.ground(p.x, p.z); this.ruinFires ||= []; this.ruinFires.push(p.clone().setY(p.y + .6), g.foot.clone().setY(g.foot.y + 2)); this.ruinLight ||= p.clone().setY(p.y + 4); });
@@ -699,9 +701,9 @@ export class Siege {
     const T = this.falls.find(f => f.kind === 'tower' && f.glb), g = T?.glb;
     if (g && g.t < 0 && !g.armed && !jump) { // baked tower: clip starts 12 m + 2.3 s x v before it, a fireball from across the road hits at .33 s
       const v = Math.max(3, this.w.speed || 6), relT = g.dT - d, Tf = 2.2;
-      if (relT <= 135 + v * (g.crown + Tf - g.impact) && relT > -20) { // crown lands ~135 m ahead, after the wall
+      if (relT <= 100 + v * (g.crown + Tf - g.impact) && relT > -20) { // crown lands ~100 m ahead; the wall breaks with the same impact
         g.armed = true; const q = this.spot(g.dT + 25, -rnd(70, 85), new THREE.Vector3()); q.y = Math.max(0, this.f.height(q.x, q.z)) + 2;
-        this._launch(q, g.hit, Tf); this.timed.push({ at: this.t + Tf - g.impact, fn: () => this._glbStart(T, true) });
+        this._launch(q, g.hit, Tf); this.timed.push({ at: this.t + Tf - g.impact, fn: () => this._glbStart(T, true) }, { at: this.t + Tf, fn: () => this._collapse() });
       }
     }
     if ((this.state === 'war' || this.state === 'idle') && rel <= trig) {
@@ -709,7 +711,7 @@ export class Siege {
       else this._collapse();
     }
   }
-  _trig() { return 150 + Math.max(3, this.w.speed || 6) * 1.6; } // the wall peaks ~1.6 s after: 130-170 m ahead, near the centre
+  _trig() { return this.falls?.some(f => f.kind === 'tower' && f.glb) ? 40 : 100 + Math.max(3, this.w.speed || 6) * 1.6; } // baked tower: it sets off the collapse itself, this is only the fallback
   _prewarm(d) { // headless screenshot (one frame): simulate the last seconds; &siege=<s> sets how many
     this.prewarmed = true; this.silent = true;
     const rel = this.d0 - d, pre = QS.has('siege') ? +QS.get('siege') : null;
@@ -876,7 +878,7 @@ export class Siege {
     const wn = W ? W.nL.clone().applyQuaternion(q) : this.out.clone(), tn = T ? T.nL.clone().applyQuaternion(q) : this.out.clone();
     const along = new THREE.Vector3().crossVectors(_up, wn);
     // [time, position, outward normal, power, action]
-    this.timed.push({ at: this.t + 2.6, fn: () => this._cheer() });
+    this.timed.push({ at: this.t + (this.falls.some(f => f.glb) ? 4.4 : 2.6), fn: () => this._cheer() }); // when the tower is down
     this.sched = [
       [0, at(W, 1.4, 1.5), wn, 1.1, () => W?.glb ? this._glbStart(W) : this._startFall(W, .32)],
       [.42, at(W, 1, 6).addScaledVector(along, 7), wn, .7],
