@@ -13,7 +13,6 @@ export async function prepareWorld(track) {
   DEM = DEMS.get(key); useSatellite(DEM, track?.dem?.sat || 'lofoten_s2.jpg');
   console.info('RIDEFRAME Gelände', key, DEM ? `${DEM.n}² ${(DEM.size / 1000).toFixed(1)} km${DEM.real ? ' echt' : ''}` : 'fehlt');
 }
-await prepareWorld(null);
 import { asphalt, grassTuft, planks, stone } from './tex.js';
 import { terrainMaterial, tex, texReady, TIME, useSatellite } from './terrainmat.js';
 import { Water } from '../../vendor/jsm/objects/Water.js';

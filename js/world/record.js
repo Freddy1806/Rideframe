@@ -2,7 +2,7 @@
 // Clips fly along the road at drone speed; captions are drawn on top; result downloads as MP4/WebM.
 import { makeCoastTrack } from '../routes.js';
 import { timeAt } from '../track.js';
-import { WorldScene } from './lofoten.js';
+import { WorldScene, prepareWorld } from './lofoten.js';
 
 const CLIPS = [
   { from: 150, speed: 15, sec: 14, title: 'Fischerhafen', sub: 'Start · Rorbuer am Wasser' },
@@ -20,6 +20,7 @@ const q = new URLSearchParams(location.search);
 const st = document.getElementById('st');
 const gl = document.getElementById('gl'), out = document.getElementById('out'), ctx = out.getContext('2d');
 const track = makeCoastTrack();
+await prepareWorld(track);
 const world = new WorldScene(gl, track);
 world.paused = true;
 // take over the loop: we drive time ourselves
