@@ -363,6 +363,8 @@ function assetGeo(e, size) {
 
 /** Rigid animated pieces (nodes 'bruch_###') drawn as one BatchedMesh per material instead of one draw call each.
  *  The original nodes stay (hidden) for the animation; call syncPieces() after the mixer moved them. */
+/** remove lights from a model that gets hidden and shown (a light toggling recompiles every shader in the scene) */
+export function noLights(obj) { const l = []; obj.traverse(o => { if (o.isLight) l.push(o); }); for (const o of l) o.removeFromParent(); return obj; }
 export function batchPieces(obj, test = /bruch/i) {
   obj.updateMatrixWorld(true);
   const groups = new Map(), out = [];
@@ -444,7 +446,7 @@ export class Siege {
     // flipbooks from the Mac when they exist (fall back to the puffs): [file, grid, frames, fps, anchor, additive, pool]
     this.fx = {}; const L = new THREE.TextureLoader();
     const fkE = find('feuerkugel');
-    if (fkE) for (const b of this.ball) { b.obj = flickers(this.A.make(fkE).obj, this.flk); b.obj.visible = false; root.add(b.obj);
+    if (fkE) for (const b of this.ball) { b.obj = flickers(noLights(this.A.make(fkE).obj), this.flk); b.obj.visible = false; root.add(b.obj);
       b.obj.traverse(o => { if (o.isMesh && /feuer/i.test(o.material?.name || '')) { Object.assign(o.material, { blending: THREE.AdditiveBlending, depthWrite: false, transparent: true }); o.castShadow = false; } }); }
     for (const [k, file, grid, frames, fps, anchor, add, n] of [['boom', 'explosion_flipbook', 8, 64, 24, [.56, .26], false, 12], ['spark', 'funken_flipbook', 8, 64, 24, [.5, .32], true, 12],
       ['dust', 'staub_flipbook', 8, 64, 24, [.5, .14], false, 10], ['ball', 'feuerkugel', 2, 4, 0, [.5, .5], true, BALL_N]])
@@ -518,7 +520,7 @@ export class Siege {
     const n = W.nL.clone().applyQuaternion(q), along = new THREE.Vector3().crossVectors(_up, n), face = W.base.clone().addScaledVector(n, Math.min(W.dims[0], W.dims[2]) / 2);
     const top = W.base.y + W.L + 2.5, lad = find('leiter'), ram = find('rammbock');
     if (lad) for (const a of [-6, 5]) { // hook (local y 9.13, z -2.97) on the wall crown
-      const { obj } = this.A.make(lad); obj.rotation.y = Math.atan2(n.x, n.z);
+      const { obj } = this.A.make(lad); noLights(obj); obj.rotation.y = Math.atan2(n.x, n.z);
       obj.position.copy(face).addScaledVector(along, a).setY(top).sub(_v.set(0, 9.13, -2.97).applyAxisAngle(_up, obj.rotation.y));
       this.root.add(obj); this.props.push({ obj, wall: true, p: obj.position.clone(), q: obj.quaternion.clone() });
     }
@@ -532,6 +534,11 @@ export class Siege {
       let morph = null; obj.traverse(o => { const i = o.morphTargetDictionary?.Stoss; if (i !== undefined && !morph) morph = { o, i }; });
       this.props.push({ obj, ram: morph, p: p.clone(), q: obj.quaternion.clone() });
     }
+  }
+  _syncGround(g) { // like syncPieces, but a piece that falls beyond the foot lands on the terrain there, not on the foot's level
+    const k = sstep(g.fall, Math.max(g.crown, g.fall + .4), g.t), y0 = g.foot.y;
+    for (const b of g.batches) for (let i = 0; i < b.ids.length; i++) { const e = b.list[i].matrixWorld.elements;
+      const dy = k * Math.min(0, this.ground(e[12], e[14]) - y0); _m.copy(b.list[i].matrixWorld); _m.elements[13] += dy; b.bm.setMatrixAt(b.ids[i], _m); }
   }
   _glbStart(f, synced = false) { // play the baked collapse: impact, dust at the foot, dust along the fall line when the crown lands
     const g = f.glb; if (!g || g.t >= 0) return; f.on = true; g.t = 0; g.intact?.stop(); g.act?.reset().play();
@@ -611,22 +618,22 @@ export class Siege {
         if (row === 1 && front[col]) { const a = front[col]; tgt = a.tgt.clone().addScaledVector(wn, 2.2); v = a.v; } // the rear carrier of a ladder
       }
       const lead = j < 0 ? 0 : (row === 1 && front[col] ? front[col].lead : s.distanceTo(tgt) / v - 8); // still running across the bank when the wall falls, then on into the breach as the rider comes by
-      if (j >= 0) trig = this.d0 - 121 - 13 * lead; // at 13 m/s; _knights recomputes with the real speed
+      if (j >= 0) trig = this.d0 - 171 - 13 * lead; // at 13 m/s; _knights recomputes with the real speed
       const k = { start: s.clone(), p: s.clone(), tgt, tgt0: tgt.clone(), yaw: 0, st: 'wait', trig, v, lead, wave: j >= 0, ph: rnd(0, 6), lean: 0, vy: 0, vel: new THREE.Vector3(), spin: 0, t: 0,
         col: [0x8a1c1c, 0x23407a, 0x6b6f75, 0x7a5a1c][i % 4] };
       if (row === 0 && j >= 0) front[col] = k; if (row === 1 && front[col]) this.ladders.push({ a: front[col], b: k });
       k.yaw = Math.atan2(tgt.x - s.x, tgt.z - s.z);
-      if (names.length) { const { obj, mixer } = A.make(names[i % names.length], 'Rennen'); applyFlames(flickers(obj, this.flk)); k.obj = obj; k.mixer = mixer; k.e = names[i % names.length]; obj.rotation.order = 'YXZ'; this.root.add(obj); }
+      if (names.length) { const { obj, mixer } = A.make(names[i % names.length], 'Rennen'); applyFlames(flickers(obj, this.flk)); noLights(obj); k.obj = obj; k.mixer = mixer; k.e = names[i % names.length]; obj.rotation.order = 'YXZ'; this.root.add(obj); }
       this.kn.push(k);
     }
     // the roadside group: waits ~175 m before the castle, 3-6 m off the asphalt, runs with the rider (who overtakes slowly), then veers off to the wall
     const foot = names.filter(e => !/bogen|reiter/.test(e.file || e.name || '')), nn = names.length ? 7 : 8;
     for (let i = 0; i < nn; i++) {
-      const row = Math.floor(i / 3), s0 = this.d0 - 172 - row * 2.6 + rnd(-.4, .4), off = ROAD_W + 3 + (i % 3) * 1.4 + rnd(-.3, .3);
+      const row = Math.floor(i / 3), s0 = this.d0 - 215 - row * 2.6 + rnd(-.4, .4), off = ROAD_W + 3 + (i % 3) * 1.4 + rnd(-.3, .3);
       const tgt = wallC.clone().addScaledVector(along, rnd(-8, 8)), p = this.spot(s0, off); p.y = this.f.height(p.x, p.z);
       const k = { near: true, s0, s: s0, off, start: p.clone(), p, tgt, tgt0: tgt.clone(), yaw: 0, st: 'wait', trig: Infinity, v: rnd(3, 3.4), vg: 5, ph: rnd(0, 6), lean: 0, vy: 0, vel: new THREE.Vector3(), spin: 0, t: 0, col: [0x8a1c1c, 0x7a5a1c][i % 2] };
       const fr = this.f.at(s0); k.yaw = Math.atan2(fr.tx, fr.tz);
-      if (names.length) { const e = (foot.length ? foot : names)[i % (foot.length || names.length)], { obj, mixer } = A.make(e, 'Rennen'); applyFlames(flickers(obj, this.flk)); k.obj = obj; k.mixer = mixer; k.e = e; obj.rotation.order = 'YXZ'; this.root.add(obj); }
+      if (names.length) { const e = (foot.length ? foot : names)[i % (foot.length || names.length)], { obj, mixer } = A.make(e, 'Rennen'); applyFlames(flickers(obj, this.flk)); noLights(obj); k.obj = obj; k.mixer = mixer; k.e = e; obj.rotation.order = 'YXZ'; this.root.add(obj); }
       this.kn.push(k);
     }
     this.near = this.kn.filter(k => k.near); this.cries = 0; this.voices = [0, 1, 2, 3].map(() => { const o = new THREE.Object3D(); o.userData.h = 1.9; return o; });
@@ -692,7 +699,7 @@ export class Siege {
     const T = this.falls.find(f => f.kind === 'tower' && f.glb), g = T?.glb;
     if (g && g.t < 0 && !g.armed && !jump) { // baked tower: clip starts 12 m + 2.3 s x v before it, a fireball from across the road hits at .33 s
       const v = Math.max(3, this.w.speed || 6), relT = g.dT - d, Tf = 2.2;
-      if (relT <= 85 + v * (g.crown + Tf - g.impact) && relT > -20) { // crown lands ~85 m ahead, after the wall
+      if (relT <= 135 + v * (g.crown + Tf - g.impact) && relT > -20) { // crown lands ~135 m ahead, after the wall
         g.armed = true; const q = this.spot(g.dT + 25, -rnd(70, 85), new THREE.Vector3()); q.y = Math.max(0, this.f.height(q.x, q.z)) + 2;
         this._launch(q, g.hit, Tf); this.timed.push({ at: this.t + Tf - g.impact, fn: () => this._glbStart(T, true) });
       }
@@ -702,7 +709,7 @@ export class Siege {
       else this._collapse();
     }
   }
-  _trig() { return 100 + Math.max(3, this.w.speed || 6) * 1.6; } // the wall peaks ~1.6 s after: 80-120 m ahead, right of centre
+  _trig() { return 150 + Math.max(3, this.w.speed || 6) * 1.6; } // the wall peaks ~1.6 s after: 130-170 m ahead, near the centre
   _prewarm(d) { // headless screenshot (one frame): simulate the last seconds; &siege=<s> sets how many
     this.prewarmed = true; this.silent = true;
     const rel = this.d0 - d, pre = QS.has('siege') ? +QS.get('siege') : null;
@@ -736,7 +743,7 @@ export class Siege {
     if (this.ruinFires && (this.state === 'ruin' || this.state !== 'fall')) this._ruinFires(dt);
     for (let i = 0; i < this.timed.length; i++) if (this.t >= this.timed[i].at) { const e = this.timed[i]; this.timed.splice(i--, 1); e.fn(); }
     for (const f of this.falls) if (f.glb) { const g = f.glb; g.mixer?.update(dt); // flag waves; pieces move only while it falls
-      if (g.t >= 0) { g.t += dt; if (g.t < g.rest + 1 && g.batches.length) { g.obj.updateMatrixWorld(true); syncPieces(g.batches); } } }
+      if (g.t >= 0) { g.t += dt; if (g.t < g.rest + 1 && g.batches.length) { g.obj.updateMatrixWorld(true); this._syncGround(g); } } }
     for (const p of this.props) if (p.ram) p.ram.o.morphTargetInfluences[p.ram.i] = this.state === 'war' ? Math.pow(Math.max(0, Math.sin(this.t * 1.4)), 3) : 0;
     flameTime.value = this.t;
     for (const f of this.flk) f.o.morphTargetInfluences[f.i] = .5 + .5 * Math.sin(this.t * 13 + f.ph) * Math.sin(this.t * 7.7 + f.ph * 2);
@@ -975,9 +982,9 @@ export class Siege {
     for (const k of this.kn) {
       k.ph += dt * (k.st === 'run' ? k.v * 3 : k.st === 'pace' ? k.vg * 2.2 : 4); k.t += dt;
       if (k.near && (k.st === 'wait' || k.st === 'pace')) { // along the road with the rider
-        const v = Math.max(3, this.w.speed || 6), go = this.d0 - 255;
+        const v = Math.max(3, this.w.speed || 6), go = this.d0 - 300;
         if (k.st === 'wait' && d >= go) { k.st = 'pace'; k.vg = Math.max(3.5, Math.min(7, v * .5)); k.s = Math.max(k.s, k.s0 + (d - go) * k.vg / v); }
-        if (k.st === 'pace') { k.s += k.vg * dt; if (k.s > this.d0 - 92 + (k.off - ROAD_W) * 2 || this.state !== 'war') { k.st = 'run'; k.v = Math.max(k.v, 4); } }
+        if (k.st === 'pace') { k.s += k.vg * dt; if (k.s > this.d0 - 120 + (k.off - ROAD_W) * 2 || this.state !== 'war') { k.st = 'run'; k.v = Math.max(k.v, 4); } }
         this.spot(k.s, k.off, k.p); k.p.y = this.f.height(k.p.x, k.p.z); const fr = this.f.at(k.s); k.yaw = Math.atan2(fr.tx, fr.tz);
         continue;
       }
@@ -995,7 +1002,7 @@ export class Siege {
       if (k.st !== 'gone') k.p.y = this.ground(k.p.x, k.p.z);
     }
     if (this.near?.length && !this.silent && !this.w.instant) {
-      const rel = this.d0 - d, cry = [[245, 'For the King!'], [185, 'Storm the walls!'], [140, 'Bring down the tower!']][this.cries];
+      const rel = this.d0 - d, cry = [[290, 'For the King!'], [240, 'Storm the walls!'], [195, 'Bring down the tower!']][this.cries];
       if (cry && rel <= cry[0] && this.state === 'war') { this.cries++; this._say(this.near[(this.cries * 2) % this.near.length], cry[1], 2.6); }
     }
     for (const o of this.voices || []) if (o.k) o.position.copy(o.k.p);
