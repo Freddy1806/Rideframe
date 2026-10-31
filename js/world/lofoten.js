@@ -237,7 +237,7 @@ export class WorldScene {
     sky.material.fragmentShader = skyGrade(sky.material.fragmentShader);
     this.sky2 = sky.clone(); this.envScene = new THREE.Scene(); this.envScene.add(this.sky2);
     this.pmrem = new THREE.PMREMGenerator(renderer);
-    scene.environmentIntensity = 0.75;
+    scene.environmentIntensity = 0.95;
     scene.fog = new THREE.FogExp2(0xa9b9d0, 0.00022);
     this.clouds = cloudLayer(sun); scene.add(this.clouds);
 
@@ -250,7 +250,7 @@ export class WorldScene {
     scene.add(light, light.target);
     // strong cool sky fill from above, dim green-grey bounce from below: shadow sides read blue-green, never black;
     // sunlit faces warm (golden-hour contrast)
-    this.hemi = new THREE.HemisphereLight(0x8fb0e2, 0x4f5442, 1.0); scene.add(this.hemi);
+    this.hemi = new THREE.HemisphereLight(0x8fb0e2, 0x66705a, 1.45); scene.add(this.hemi);
 
     // materials
     const dt = detailTex(); dt.repeat.set(1, 1);
@@ -745,7 +745,7 @@ export class WorldScene {
     for (const o of this.props) if (!moving.has(o) && !o.userData.walk && !o.userData.circle) { let wheel = false; o.traverse(c => { if (c.userData.millWheel) wheel = true; }); if (!wheel) { freeze(o); o.userData.still = true; } }
     const ck = A.by.cockpit?.[0]; // handlebar, hoods and forearms in the rider's view, hung on the camera
     if (ck) { const { obj, mixer } = A.make(ck, 'Treten'); obj.traverse(c => { c.castShadow = false; c.layers.set(1); c.frustumCulled = false; });
-      this.camera.add(obj); this.scene.add(this.camera); this.cockpit = obj; this.cockpitMixer = mixer; }
+      this.camera.add(obj); this.scene.add(this.camera); this.cockpit = obj; this.cockpitMixer = mixer; this._placeCockpit(); }
     this.events = new Events(this, A); // villagers calling out, birds, carts: before batching, which drops the props list
     if (!/[?&]nobatch/.test(location.search)) this._batch();
     // the sea mirror renders the scene a second time (was the biggest GPU cost): only terrain, road and big buildings go in
@@ -873,7 +873,12 @@ export class WorldScene {
   }
 
   /** Lens as a full-frame focal length (14 mm = very wide). null keeps the default 62° vertical view. */
-  setLens(mm) { this.lensMm = mm || null; this._applyLens(); this.camera.updateProjectionMatrix(); }
+  setLens(mm) { this.lensMm = mm || null; this._applyLens(); this.camera.updateProjectionMatrix(); this._placeCockpit(); }
+  _placeCockpit() { // the model has the bar centre 0.45 m below / 0.55 m ahead of the eye; slide it so the hoods sit in the lower third at any lens
+    if (!this.cockpit) return;
+    const a = THREE.MathUtils.degToRad(this.camera.fov / 2) * 0.66, dist = 0.5;
+    this.cockpit.position.set(0, -dist * Math.tan(a) + 0.45, -dist + 0.55);
+  }
   _applyLens() {
     if (!this.lensMm) { this.camera.fov = 62; return; }
     const h = 2 * Math.atan(36 / (2 * this.lensMm)); // horizontal angle of a 36 mm wide sensor
@@ -928,7 +933,7 @@ export class WorldScene {
     // direct light: warm, a bit warmer as the sun sinks, dimmer behind the veil; never orange enough to rust the rock
     this.light.color.lerpColors(W_HIGH, W_LOW, low);
     this.light.intensity = 3.1 * (1 - 0.38 * veil) * (1 - 0.12 * cover) * (1 - 0.12 * low);
-    this.hemi.intensity = 1.0 + 0.12 * cover + 0.05 * veil;
+    this.hemi.intensity = 1.45 + 0.12 * cover + 0.05 * veil; // shadow slopes ~40 % of the sunlit side, not black
     this.hemi.color.lerpColors(H_CLEAR, H_GREY, cover * 0.7);
     // haze: cool lavender away from the sun, glowing red-orange towards it (weaker behind the veil)
     this.scene.fog.color.lerpColors(F_CLEAR, F_GREY, cover * 0.6);
