@@ -188,6 +188,7 @@ class Bodies {
     if (this.n >= this.max) return -1;
     const i = this.n++, i3 = i * 3;
     this.p[i3] = x; this.p[i3 + 1] = y; this.p[i3 + 2] = z; this.v[i3] = vx; this.v[i3 + 1] = vy; this.v[i3 + 2] = vz;
+    this.onAdd?.(i3);
     this.q[i * 4] = q.x; this.q[i * 4 + 1] = q.y; this.q[i * 4 + 2] = q.z; this.q[i * 4 + 3] = q.w;
     this.w[i3] = (Math.random() - .5) * w; this.w[i3 + 1] = (Math.random() - .5) * w; this.w[i3 + 2] = (Math.random() - .5) * w;
     this.s[i3] = sx; this.s[i3 + 1] = sy; this.s[i3 + 2] = sz; this.c[i3] = col.r; this.c[i3 + 1] = col.g; this.c[i3 + 2] = col.b;
@@ -417,7 +418,7 @@ export class Siege {
     this.keep = kids.find(o => o.geometry.type === 'BoxGeometry' && P(o).height >= 15) || null;
     const wp = o => o.getWorldPosition(new THREE.Vector3()), dotOut = o => { const q = wp(o).sub(this.c); q.y = 0; return q.normalize().dot(this.out); };
     const wall = walls.sort((a, b) => dotOut(b) - dotOut(a))[0];
-    const tower = towers.filter(o => dotOut(o) > 0).sort((a, b) => wp(a).sub(this.c).dot(this.tan) - wp(b).sub(this.c).dot(this.tan))[0];
+    const tower = towers.filter(o => dotOut(o) > 0).sort((a, b) => wp(b).sub(this.c).dot(this.tan) - wp(a).sub(this.c).dot(this.tan))[0]; // the far road-side tower: it falls on, away from the rider
     const cone = tower && cones.sort((a, b) => wp(a).distanceTo(wp(tower)) - wp(b).distanceTo(wp(tower)))[0];
     this.targets = [...walls, ...towers, ...(this.keep ? [this.keep] : [])].map(o => { o.updateMatrixWorld(true); return { o, box: new THREE.Box3().setFromObject(o) }; });
     this.stoneMat = (wall || this.keep || kids[0])?.material?.clone() || new THREE.MeshStandardMaterial({ color: 0x9d9484, roughness: .95 });
@@ -429,6 +430,10 @@ export class Siege {
     this.blocks.onLand = (i, vy) => this._landed(this.blocks, i, vy);
     const clear = B => i => { const r = this.f.road(B.p[i * 3], B.p[i * 3 + 2]); if (r && r.d < 9) { B.keep[i] = 0; B.bury[i] = B.r[i] * 2.4; B.t[i] = 3.5; } }; // nothing stays on or by the road
     this.blocks.onRest = clear(this.blocks); this.stones.onRest = clear(this.stones);
+    const away = B => i3 => { const o = this.out, v = B.v, t = v[i3] * o.x + v[i3 + 2] * o.z; // no velocity towards the road; near it, a push back
+      if (t > 0) { v[i3] -= o.x * t * 1.3; v[i3 + 2] -= o.z * t * 1.3; }
+      const r = this.f.road(B.p[i3], B.p[i3 + 2]); if (r && r.d < ROAD_W + 16) { v[i3] -= o.x * 4; v[i3 + 2] -= o.z * 4; } };
+    this.blocks.onAdd = away(this.blocks); this.stones.onAdd = away(this.stones);
     const tex = puffTexture(); this.fire = new Puffs(FIRE_N, true, tex); this.smoke = new Puffs(SMOKE_N, false, tex); this.embers = new Embers(EMBER_N);
     // fireballs: the Blender pitch ball with flame cards when present, else glowing spheres; the trail and light are ours
     this.balls = new THREE.InstancedMesh(new THREE.SphereGeometry(.7, 12, 8), new THREE.MeshBasicMaterial({ color: new THREE.Color(5, 2.3, .6) }), BALL_N);
@@ -472,7 +477,7 @@ export class Siege {
       const top = new THREE.Mesh(new THREE.CylinderGeometry(P.radiusTop, rAt(h0), P.height - h0, 14), tower.material), stub = new THREE.Mesh(new THREE.CylinderGeometry(rAt(h0), P.radiusBottom, h0, 14), tower.material);
       for (const m of [top, stub]) { m.castShadow = m.receiveShadow = true; m.visible = false; }
       stub.position.set(tower.position.x, base + h0 / 2, tower.position.z); this.castle.add(stub);
-      const fd = outL.clone().multiplyScalar(.3).addScaledVector(tanL, -.95).normalize(); // back towards the rider, a little outwards
+      const fd = outL.clone().multiplyScalar(-.45).addScaledVector(tanL, .9).normalize(); // along the road away from the rider, a little away from it
       const pivot = new THREE.Group(); pivot.position.set(tower.position.x, base + h0, tower.position.z).addScaledVector(fd, rAt(h0)); this.castle.add(pivot);
       top.position.set(tower.position.x, base + h0 + (P.height - h0) / 2, tower.position.z).sub(pivot.position); pivot.add(top);
       const parts = [top]; let coneOrig = null;
@@ -491,9 +496,10 @@ export class Siege {
     for (const [name, kind] of [['turm_einsturz', 'tower'], ['mauer_bresche', 'wall']]) {
       const e = find(name), f = this.falls.find(x => x.kind === kind); if (!e || !f) continue;
       const { obj, mixer } = this.A.make(e); flickers(obj, this.flk);
+      obj.traverse(o => { if (o.isLight) o.intensity *= .35; if (o.isMesh && /bruch|granit/i.test(o.material?.name || '') && !o.material._grey) { o.material._grey = true; o.material.color?.multiply(_c.setRGB(.62, .66, .7)); } }); // granite grey under the fire light
       const clip = this.A.clip(e, 'Einsturz') || e.clips[0], x = e.extras || e.timing || {}, dur = clip?.duration || 5;
       const pos = f.base.clone(), toRoad = this.out.clone();
-      if (kind === 'tower') { const r = this.f.road(pos.x, pos.z); if (r && r.d < 22) pos.addScaledVector(toRoad, -(22 - r.d)); pos.y = this.ground(pos.x, pos.z); obj.scale.x = -1; obj.rotation.y = Math.atan2(toRoad.x, toRoad.z); }
+      if (kind === 'tower') { const r = this.f.road(pos.x, pos.z); if (r && r.d < 22) pos.addScaledVector(toRoad, -(22 - r.d)); pos.y = this.ground(pos.x, pos.z); obj.scale.x = -1; const D = this.tan.clone().multiplyScalar(.9).addScaledVector(this.out, -.45); obj.rotation.y = Math.atan2(D.x, D.z) - Math.atan2(-.82, .57); } // baked fall line (-.82, 0, .57) mirrored, turned onto D
       else { const n = f.nL.clone().applyQuaternion(q); obj.rotation.y = Math.atan2(n.x, n.z); }
       obj.position.copy(pos); this.root.add(obj); obj.updateMatrixWorld(true);
       let act = null, wehen = null;
@@ -592,7 +598,7 @@ export class Siege {
     const n = names.length ? 7 : KNIGHT_N, pre = names.length ? 1 : 4; // a few fight at the wall already, the rest storms as one group (skinned: 7 here + 7 by the road = 14)
     const wn = fw ? fw.nL.clone().applyQuaternion(this.castle.quaternion) : this.out.clone(), S = new THREE.Vector3();
     for (let tries = 0; tries < 10; tries++) { // the group: between road and castle, back towards the rider, so it runs across the foreground
-      S.copy(this.c).addScaledVector(this.out, this.roadDist - 8 - tries * 2).addScaledVector(this.tan, -95); const r = this.f.road(S.x, S.z); if (!r || r.d > 9.5) break; }
+      S.copy(this.c).addScaledVector(this.out, this.roadDist - 14 - tries * 2).addScaledVector(this.tan, -95); const r = this.f.road(S.x, S.z); if (!r || r.d > 9.5) break; }
     const dir = wallC.clone().sub(S).setY(0).normalize(), perp = new THREE.Vector3().crossVectors(_up, dir);
     this.ladders = []; const front = [];
     for (let i = 0; i < n; i++) {
@@ -745,9 +751,9 @@ export class Siege {
     let I = this.flash;
     if (this.ruinLight && (this.state !== 'fall' || this.ft > 2.5)) { // burning ruins: flicker
       const fl = .75 + .25 * Math.sin(this.t * 17) * Math.sin(this.t * 7.3 + 1) + .1 * Math.sin(this.t * 31);
-      if (380 * fl > I) { I = 380 * fl; this.light.position.copy(this.ruinLight); }
+      if (150 * fl > I) { I = 150 * fl; this.light.position.copy(this.ruinLight); }
     }
-    this.light.intensity = I;
+    this.light.intensity = I; this.light.distance = I > 400 ? 120 : 55; // the ruin glow stays local
     if (!quiet) this._write();
   }
   _write() {
@@ -1025,16 +1031,10 @@ export class Siege {
       this.ban.count = nb; this.ban.instanceMatrix.needsUpdate = true; }
     let nl = 0; // ladders: carried rear -> front at the shoulders, or leaning on the crown; gone once the wall falls
     for (const L of this.ladders) { const a = L.a, b = L.b;
-      if (a.st === 'wait') L.M = null;
-      if (L.M) { this.lad.setMatrixAt(nl++, L.M); continue; }
       const carried = a.st === 'wait' || (a.st === 'run' && !a.won);
       if (['fly', 'down', 'gone'].includes(a.st)) continue;
-      if (!carried && this.state !== 'war' && this.state !== 'idle') { // the wall is down: carried ones are dropped where they are, the ones on the wall fell with it
-        a.won = true; if (!L.wasCarried) continue;
-        _v.subVectors(a.p, b.p).setY(0).normalize(); _v2.copy(b.p).setY(this.ground(b.p.x, b.p.z) + .08); _v3.copy(_v2).addScaledVector(_v, 9); _v3.y = this.ground(_v3.x, _v3.z) + .08;
-        _v.subVectors(_v3, _v2); const len = _v.length(); _v.divideScalar(len); _v4.crossVectors(_up, _v).normalize(); _v5.crossVectors(_v4, _v);
-        L.M = new THREE.Matrix4().makeBasis(_v4, _v.multiplyScalar(len), _v5).setPosition(_v2); this.lad.setMatrixAt(nl++, L.M); continue; }
-      L.wasCarried = carried;
+      if (!carried && this.state !== 'war' && this.state !== 'idle') { // the wall is down: ladders go (nothing long left lying about near the road)
+        a.won = true; continue; }
       if (carried) { _v.subVectors(a.p, b.p).setY(0); if (_v.lengthSq() < .01) _v.set(Math.sin(a.yaw), 0, Math.cos(a.yaw)); _v.normalize();
         _v2.copy(b.p).addScaledVector(_v, -1.2); _v2.y = (a.p.y + b.p.y) / 2 + 1.72 + Math.sin(a.ph) * .05; _v3.copy(_v).multiplyScalar(9).add(_v2); }
       else { _v2.copy(a.tgt).addScaledVector(this.wallN, 1.8); _v2.y = this.ground(_v2.x, _v2.z); _v3.copy(a.tgt).addScaledVector(this.wallN, -1.2).setY(this.wallTop + .4); }
