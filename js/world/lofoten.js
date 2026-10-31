@@ -785,19 +785,22 @@ export class WorldScene {
   // real routes: concrete bridges (deck slab, parapets, piers into the water) where the road crosses a sound
   _bridges() {
     const f = this.field, list = this.track.dem?.bridges || []; if (!list.length) return;
-    const mat = new THREE.MeshStandardMaterial({ color: 0xb9b6ae, roughness: 0.85 }), box = new THREE.BoxGeometry(1, 1, 1);
-    const parts = { slab: [], wall: [], pier: [] }, m4 = new THREE.Matrix4(), q = new THREE.Quaternion(), up = new THREE.Vector3(0, 1, 0), P = new THREE.Vector3(), S = new THREE.Vector3();
+    const mat = new THREE.MeshStandardMaterial({ color: 0x8a8781, roughness: 0.9 }), box = new THREE.BoxGeometry(1, 1, 1);
+    const parts = { slab: [], wall: [], pier: [], rail: [] }, m4 = new THREE.Matrix4(), q = new THREE.Quaternion(), up = new THREE.Vector3(0, 1, 0), P = new THREE.Vector3(), S = new THREE.Vector3();
     for (const [a, b] of list) {
       for (let d = a - 10; d < b + 10; d += 5) {
         const p = f.at(d), l = Math.hypot(p.tx, p.tz) || 1, ang = Math.atan2(p.tx, p.tz), rx = -p.tz / l, rz = p.tx / l;
         const p2 = f.at(d + 5), grade = Math.atan2(p2.e - p.e, 5); q.setFromEuler(new THREE.Euler(-grade, ang, 0, 'YXZ'));
         parts.slab.push(m4.compose(P.set(p.x, p.e - 0.55, p.z), q, S.set(ROAD_W * 2 + 1.6, 1.0, 5.2)).clone());
-        for (const s of [-1, 1]) parts.wall.push(m4.compose(P.set(p.x + rx * s * (ROAD_W + 0.6), p.e + 0.35, p.z + rz * s * (ROAD_W + 0.6)), q, S.set(0.35, 0.9, 5.2)).clone());
+        for (const s of [-1, 1]) { // low concrete parapet with a steel rail on top (~1.05 m)
+          parts.wall.push(m4.compose(P.set(p.x + rx * s * (ROAD_W + 0.6), p.e + 0.2, p.z + rz * s * (ROAD_W + 0.6)), q, S.set(0.32, 0.6, 5.2)).clone());
+          parts.rail.push(m4.compose(P.set(p.x + rx * s * (ROAD_W + 0.6), p.e + 1.0, p.z + rz * s * (ROAD_W + 0.6)), q, S.set(0.08, 0.08, 5.2)).clone()); }
         if (Math.round((d - a) / 5) % 7 === 3 && d > a + 5 && d < b - 5) { const g = Math.min(-2, f.height(p.x + rx * 9, p.z + rz * 9)); // pier pair down to the bottom
           for (const s of [-1, 1]) parts.pier.push(m4.compose(P.set(p.x + rx * s * 2.2, (p.e - 1 + g) / 2, p.z + rz * s * 2.2), q.setFromAxisAngle(up, ang), S.set(1.6, p.e - 1 - g, 2.2)).clone()); }
       }
     }
-    for (const k in parts) { const im = new THREE.InstancedMesh(box, mat, parts[k].length); parts[k].forEach((x, i) => im.setMatrixAt(i, x));
+    const steel = new THREE.MeshStandardMaterial({ color: 0x6d7378, roughness: 0.4, metalness: 0.6 });
+    for (const k in parts) { const im = new THREE.InstancedMesh(box, k === 'rail' ? steel : mat, parts[k].length); parts[k].forEach((x, i) => im.setMatrixAt(i, x));
       im.castShadow = k !== 'slab'; im.receiveShadow = true; im.computeBoundingSphere(); this.scene.add(im); }
     console.info('RIDEFRAME Brücken', list.length);
   }
@@ -805,7 +808,7 @@ export class WorldScene {
   _tunnels() {
     const f = this.field, list = this.track.dem?.tunnels || [], kinds = this.track.dem?.tunnelKinds || []; if (!list.length) return;
     const wall = new THREE.MeshStandardMaterial({ color: 0x55534f, roughness: 0.95, side: THREE.DoubleSide });
-    const conc = new THREE.MeshStandardMaterial({ color: 0xa9a59c, roughness: 0.9 });
+    const conc = new THREE.MeshStandardMaterial({ color: 0x7f7c76, roughness: 0.92 });
     const lampM = new THREE.MeshBasicMaterial({ color: 0xffc27a }), box = new THREE.BoxGeometry(1, 1, 1);
     const lamps = [], cols = [], m4 = new THREE.Matrix4(), q = new THREE.Quaternion(), P = new THREE.Vector3(), S = new THREE.Vector3(), E = new THREE.Euler();
     const W = ROAD_W + 1.4, H = 6.2, K = 14; // half width, height, arch segments
@@ -817,15 +820,18 @@ export class WorldScene {
       for (let i = 0; i <= K; i++) { const t = i / K; // cross-section: walls up, then an arch (galleries: only the hill side and a flat roof)
         if (gallery) ring.push(t < 0.4 ? [hill * W, (t / 0.4) * H] : [hill * W * (1 - (t - 0.4) / 0.6 * 2), H]);
         else { const ang = Math.PI * t; ring.push([Math.cos(ang) * W, t < 0.08 || t > 0.92 ? H * 0.55 * (t < .5 ? t / 0.08 : (1 - t) / 0.08) : H * 0.55 + Math.sin(ang) * H * 0.45]); } }
+      // close the floor between the asphalt edge and the walls, so nothing outside shows through below
+      if (gallery) ring.unshift([hill * (ROAD_W - 0.1), -0.02]); else { ring.unshift([ROAD_W - 0.1, -0.02]); ring.push([-(ROAD_W - 0.1), -0.02]); }
+      const R = ring.length - 1;
       for (let j = 0; j <= n; j++) {
         const d = a + (b - a) * j / n, p = f.at(d), l = Math.hypot(p.tx, p.tz) || 1, rx = -p.tz / l, rz = p.tx / l;
         for (const [u, v] of ring) pos.push(p.x + rx * u, p.e - 0.3 + v, p.z + rz * u);
-        if (j < n) for (let i = 0; i < K; i++) { const A = j * (K + 1) + i, B = A + K + 1; idx.push(A, B, A + 1, A + 1, B, B + 1); }
+        if (j < n) for (let i = 0; i < R; i++) { const A = j * (R + 1) + i, B = A + R + 1; idx.push(A, B, A + 1, A + 1, B, B + 1); }
         if (j % 6 === 3) lamps.push(m4.compose(P.set(p.x, p.e - 0.3 + H - 0.25, p.z), q.setFromAxisAngle(_v.set(0, 1, 0), Math.atan2(p.tx, p.tz)), S.set(0.5, 0.12, 2.2)).clone());
         if (gallery && j % 2 === 0) cols.push(m4.compose(P.set(p.x - rx * hill * W, p.e - 0.3 + H / 2, p.z - rz * hill * W), q.setFromAxisAngle(_v.set(0, 1, 0), Math.atan2(p.tx, p.tz)), S.set(0.6, H, 0.8)).clone());
       }
       const g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3)); g.setIndex(idx); g.computeVertexNormals();
-      const tube = new THREE.Mesh(g, wall); tube.castShadow = true; tube.receiveShadow = true; this.scene.add(tube);
+      const tube = new THREE.Mesh(g, wall); tube.castShadow = true; tube.receiveShadow = true; this.scene.add(tube); (this.tunnelMeshes ||= []).push(tube); // __world.tunnelMeshes: perf checks on the Mac
       if (!gallery) for (const [dd, dir] of [[a, 1], [b, -1]]) { // concrete portal frame at both mouths
         const p = f.at(dd + dir * 2), ang = Math.atan2(p.tx, p.tz); E.set(0, ang, 0); q.setFromEuler(E);
         const fr = new THREE.Group(); fr.position.set(p.x, p.e - 0.3, p.z); fr.quaternion.copy(q);

@@ -130,6 +130,7 @@ export class Field {
     const D = this.dem.data, N = this.dem.n, px_m = this.demSize / N;
     let px = (this.dc * x - this.ds * z) / px_m + this.p0[0] * N, py = (this.ds * x + this.dc * z) / px_m + this.p0[1] * N;
     const M = N - 1, w = v => { v = Math.abs(v) % (2 * M); return v > M ? 2 * M - v : v; };
+    this.demOut = Math.max(0, -px, px - M, -py, py - M) * px_m; // metres beyond the DEM edge (real routes fade into open sea there)
     px = w(px); py = w(py);
     const i = Math.min(M - 1, Math.floor(px)), j = Math.min(M - 1, Math.floor(py)), u = px - i, v = py - j, k = j * N + i;
     return ((D[k] * (1 - u) + D[k + 1] * u) * (1 - v) + (D[k + N] * (1 - u) + D[k + N + 1] * u) * v) * 0.1;
@@ -156,7 +157,7 @@ export class Field {
     const nearLand = base + Math.min(35, Math.max(0, out) * 0.18) + detail * smooth(0, 15, out);
     const target = real === null ? Math.max(mtn, nearLand) : lerp(mtn, Math.max(mtn, nearLand), smooth(0, 30, real));
     if (this.real && real !== null) { // the DEM is the truth here: only a short flat shoulder blends into it, sea stays sea
-      const ground = real <= 0.5 ? -4 - smooth(0, 40, out) * 12 : real + rough * smooth(20, 200, real);
+      const ground = lerp(real <= 0.5 ? -4 - smooth(0, 40, out) * 12 : real + rough * smooth(20, 200, real), -16, smooth(0, 1200, this.demOut));
       if (this.bridge?.[r.i]) return Math.min(ground, r.e - 3); // on a bridge: water (or the valley) right under the deck
       if (this.tunnel?.[r.i]) return Math.max(ground, r.e + 9); // rock tunnel: the mountain stays closed above the tube
       const h = lerp(base + detail * smooth(0, 15, out), ground, smooth(3, 35, out));
