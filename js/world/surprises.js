@@ -1,5 +1,5 @@
 // The ride as a roller coaster: never more than about half a minute without something happening.
-// A director fires one surprise every 14–24 s, close (15–40 m) and in view, whichever fits the spot (sea beside the road, a village, open land),
+// A director fires one surprise every 11–19 s, close (15–40 m) and in view, whichever fits the spot (sea beside the road, a village, open land),
 // plus fireworks over the festival and at the finish. Every surprise starts ahead of the camera and uses the
 // Mac's models when present; without a model that surprise is simply skipped.
 import * as THREE from 'three';
@@ -48,7 +48,7 @@ export class Surprises {
       const free = this.list.filter(s => (!s.need.length || s.need.some(n => this.A.find(n))) && (!s.sea || this._seaSide(d + 120)) && (!s.village || this._inVillage(d + 60)))
         .sort((a, b) => (this.used.get(a.id) || 0) - (this.used.get(b.id) || 0) || Math.random() - .5);
       const s = free[0];
-      if (s && s.go() !== false) { this.used.set(s.id, time); this.next = time + 14 + Math.random() * 10; }
+      if (s && s.go() !== false) { this.used.set(s.id, time); this.next = time + 11 + Math.random() * 8; }
       else this.next = time + 4; // nothing fits here: look again soon
     }
     for (const e of this.active) e.step(dt, v, cam), e.mixer?.update(Math.min(dt, 0.1));
@@ -163,8 +163,8 @@ export class Surprises {
   _flyby(name, n, call) { // birds come in low from ahead and sweep right over your head
     const side = Math.random() < .5 ? -1 : 1, d0 = this.w.d + 90;
     for (let k = 0; k < n; k++) {
-      const e = this._run(name, [['Fluegelschlag', 1.2], ['Fliegen', 1.2], ['Gleiten', 1]], (t, v) => { const u = t / 7; if (u > 1) return null;
-        return { d: d0 + k * 3 - (14 + v) * t, off: side * (18 - 36 * u) + (k % 3 - 1) * 3, back: true, fly: 2.6 + 10 * Math.abs(u - 0.55) + k * 0.7, doff: -side * 4 }; });
+      const e = this._run(name, [['Fliegen', 1.3], ['Gleiten', 1]], (t, v) => { const u = t / 7; if (u > 1) return null;
+        return { d: d0 + k * 3 - (14 + v) * t, off: side * (18 - 36 * u) + (k % 3 - 1) * 3, back: true, fly: 1.9 + 5 * Math.abs(u - 0.5) + k * 0.6, doff: -side * 4 }; });
       if (e && !k && call) setTimeout(() => this._say(e.obj, call, 1.6), 1500);
     }
   }
