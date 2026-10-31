@@ -902,7 +902,8 @@ export class WorldScene {
     // fast preview: a road chunk shows only once the ground under it stands, never as a band in the sky
     const has = d => { const q = f.at(Math.min(d, this.track.length)); return this.tiles.has(Math.floor(q.x / TILE) + ',' + Math.floor(q.z / TILE)); };
     for (const [k, c] of this.roadChunks) c.visible = k <= k0 + 1 || has(k * 500) && has(k * 500 + 250); // the road under and just ahead of the rider always shows
-    if (this.loading && hole >= 500) { this.loading = false; this._readyRes(); }
+    if (this.loading && hole >= 500) { this.loading = false; const done = () => this._readyRes(); // compile every shader of the start area first: no stutter in the first seconds
+      (this.renderer.compileAsync ? this.renderer.compileAsync(this.scene, this.camera) : Promise.resolve()).then(done, done); }
   }
 
   _far(cx, cz) { // 16 km backdrop (60 m grid) for peaks and islands; rebuilt every 2 km, a few rows per frame
