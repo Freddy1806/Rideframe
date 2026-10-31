@@ -27,6 +27,8 @@ export class Surprises {
       { id: 'dog', need: ['hund'], go: () => this._dog() },
       { id: 'eagle', need: ['seeadler'], go: () => this._flyby('seeadler', 1, 'Screeech!') },
       { id: 'gulls', need: ['moewe'], go: () => this._flyby('moewe', 6) },
+      { id: 'spray', need: [], sea: true, go: () => this._spray() },
+      { id: 'rainbow', need: [], go: () => this._rainbow() },
       { id: 'crowd', need: ['junge', 'maedchen', 'alte_frau', 'bauer_sense', 'wache'], go: () => this._crowd() },
     ];
     this.fw = new Fireworks(world.scene);
@@ -43,7 +45,7 @@ export class Surprises {
     const v = Math.max(2, this.w.speed || 6);
     if (time > this.next && this.f.tunnelNear?.(d, 20, 220)) this.next = time + 3; // nothing starts right before or inside a tunnel
     if (time > this.next) {
-      const free = this.list.filter(s => s.need.some(n => this.A.find(n)) && (!s.sea || this._seaSide(d + 120)) && (!s.village || this._inVillage(d + 60)))
+      const free = this.list.filter(s => (!s.need.length || s.need.some(n => this.A.find(n))) && (!s.sea || this._seaSide(d + 120)) && (!s.village || this._inVillage(d + 60)))
         .sort((a, b) => (this.used.get(a.id) || 0) - (this.used.get(b.id) || 0) || Math.random() - .5);
       const s = free[0];
       if (s && s.go() !== false) { this.used.set(s.id, time); this.next = time + 14 + Math.random() * 10; }
@@ -55,7 +57,7 @@ export class Surprises {
     // fireworks: over the festival town and for the last few hundred metres
     if (this.festD > 0 && !this.festFired && d > this.festD - 260 && d < this.festD) { this.festFired = true; this._salvo(this.festD + 40, 7); }
     if (this.track.length - d < 450 && time > (this.fwNext || 0)) { this.fwNext = time + 0.7 + Math.random() * 0.8; this._salvo(Math.min(this.track.length - 5, d + 160), 1); }
-    this.fw.update(dt); this.smoke.update(dt, cam);
+    this.fw.update(dt); this.smoke.update(dt, cam); this.bow?.update(dt, cam, this.f.at(Math.min(this.track.length - 1, d + 30)));
   }
 
   // ---- helpers ----
@@ -166,11 +168,49 @@ export class Surprises {
       if (e && !k && call) setTimeout(() => this._say(e.obj, call, 1.6), 1500);
     }
   }
+  _spray() { // a big wave hits the rocks right beside the road: a burst of white spray
+    const side = Math.sign(this._seaSide(this.w.d + 50)); if (!side) return false;
+    let q = null; for (let o = ROAD_W + 6; o < 70 && !q; o += 4) { const p = this._pt(this.w.d + 50, side * o); if (p.y < 0.3) q = p; }
+    if (!q) return false;
+    for (let w = 0; w < 3; w++) setTimeout(() => { for (let k = 0; k < 260; k++) { const a = Math.random() * 6.28, h = 7 + Math.random() * 12, r = Math.random() * 4;
+      const c = 0.85 + Math.random() * 0.15; this.fw._p(q.x + Math.cos(a) * r * 2, 0.3, q.z + Math.sin(a) * r * 2, Math.cos(a) * r, h, Math.sin(a) * r, c * 0.9, c * 0.95, c, 1.6 + Math.random()); }
+      this.fw.pts.visible = true; }, w * 650);
+  }
+  _rainbow() { // once in a while a rainbow rises over the road ahead and fades again (weather after a shower)
+    if (this.bow && this.bow.busy()) return false;
+    if ((this.clock || 0) < (this.bowNext || 0)) return false;
+    this.bowNext = (this.clock || 0) + 360; (this.bow ||= new Rainbow(this.w.scene)).start();
+  }
   _salvo(d, n) { // fireworks above the road ahead
     for (let k = 0; k < n; k++) setTimeout(() => {
       const p = this._pt(d + (Math.random() - .5) * 60, (Math.random() - .5) * 80);
       this.fw.launch(p.x, Math.max(p.y, 0), p.z, 55 + Math.random() * 30);
     }, k * 380);
+  }
+}
+
+// a big soft rainbow arc far ahead, always facing the camera; fades in, holds, fades out
+class Rainbow {
+  constructor(scene) {
+    this.mat = new THREE.ShaderMaterial({ transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, fog: false, uniforms: { uA: { value: 0 } },
+      vertexShader: 'varying vec2 vUv; void main() { vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.); }',
+      fragmentShader: `varying vec2 vUv; uniform float uA;
+        vec3 spec(float t) { return clamp(vec3(abs(t * 6. - 3.) - 1., 2. - abs(t * 6. - 2.), 2. - abs(t * 6. - 4.)), 0., 1.); }
+        void main() { float r = length(vUv - .5) * 2.; float t = (r - .86) / .12; if (t < 0. || t > 1.) discard;
+          float a = smoothstep(0., .15, t) * smoothstep(1., .8, t) * uA * smoothstep(-.02, .25, vUv.y - .5) * .38;
+          gl_FragColor = vec4(spec(1. - t) * a, a); }` });
+    this.mesh = new THREE.Mesh(new THREE.PlaneGeometry(1, 1), this.mat); this.mesh.visible = false; this.mesh.frustumCulled = false; this.mesh.layers.set(1); this.mesh.renderOrder = -1;
+    scene.add(this.mesh); this.t = -1;
+  }
+  busy() { return this.t >= 0; }
+  start() { this.t = 0; this.mesh.visible = true; }
+  update(dt, cam, ahead) {
+    if (this.t < 0) return;
+    this.t += Math.min(dt, 0.1); const T = 38, a = Math.min(1, this.t / 5) * Math.min(1, (T - this.t) / 6);
+    if (this.t > T) { this.t = -1; this.mesh.visible = false; return; }
+    const l = Math.hypot(ahead.tx, ahead.tz) || 1, D = 900;
+    this.mesh.position.set(cam.x + ahead.tx / l * D, cam.y - 60, cam.z + ahead.tz / l * D); this.mesh.scale.setScalar(D * 1.5);
+    this.mesh.lookAt(cam.x, cam.y - 60, cam.z); this.mat.uniforms.uA.value = a;
   }
 }
 
