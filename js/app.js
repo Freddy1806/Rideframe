@@ -41,8 +41,10 @@ async function boot() {
   const params = new URLSearchParams(location.search);
   if (params.get('accent')) state.settings.accent = params.get('accent');
   applyAccent();
-  const real = await loadRealTrack('kueste60'); // 60 km real coast road, present once the Mac has built its terrain
-  if (real) BUILTIN.kueste60 = () => ({ id: 'kueste60', name: real.name || 'Küstenweg', place: `${(real.length / 1000).toFixed(0)} km echte Küstenstraße · fast flach, leicht wellig · ${real.gain} Hm`, source: 'demo', parts: [], track: real, createdAt: 2, thumb: demoThumb(real, 1200) });
+  // real Lofoten roads on their real terrain, present once the Mac has built them (assets/dem/<id>.json + .bin)
+  const REAL = { kueste60: 'echte Küstenstraße · fast flach, leicht wellig', reine_aa: 'Lofoten-Klassiker · Fischerdörfer, Brücken, Tunnel' };
+  await Promise.all(Object.entries(REAL).map(async ([id, what], k) => { const real = await loadRealTrack(id); if (!real) return;
+    BUILTIN[id] = () => ({ id, name: real.name || id, place: `${(real.length / 1000).toFixed(0)} km ${what} · ${real.gain} Hm`, source: 'demo', parts: [], track: real, createdAt: 2 + k, thumb: demoThumb(real, 1200) }); }));
   await reload();
   if (params.has('seed')) await seedDemoRides();
   document.querySelectorAll('.tab').forEach(t => t.addEventListener('click', () => go(t.dataset.view)));

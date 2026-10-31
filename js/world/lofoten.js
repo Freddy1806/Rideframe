@@ -499,7 +499,7 @@ export class WorldScene {
   // ---- villages, harbour, landmarks at the climb tops ----
   _placeLandmarks() {
     this.props = []; this.mixers = []; this.birds = []; this.whales = []; this.wheels = [];
-    this._bridges();
+    this._bridges(); this._tunnels();
     if (ASSETS.count) return this._placeAssets();
     const f = this.field, t = this.track, r = rng(4242), segs = t.segments || [];
     const put = (kind, i, side, off, rot = 0, yOff = 0) => {
@@ -801,6 +801,43 @@ export class WorldScene {
       im.castShadow = k !== 'slab'; im.receiveShadow = true; im.computeBoundingSphere(); this.scene.add(im); }
     console.info('RIDEFRAME Brücken', list.length);
   }
+  // real routes: rock tunnels (closed tube with lamps, concrete portals) and avalanche galleries (roof + hill wall, open pillars on the sea side)
+  _tunnels() {
+    const f = this.field, list = this.track.dem?.tunnels || [], kinds = this.track.dem?.tunnelKinds || []; if (!list.length) return;
+    const wall = new THREE.MeshStandardMaterial({ color: 0x55534f, roughness: 0.95, side: THREE.DoubleSide });
+    const conc = new THREE.MeshStandardMaterial({ color: 0xa9a59c, roughness: 0.9 });
+    const lampM = new THREE.MeshBasicMaterial({ color: 0xffc27a }), box = new THREE.BoxGeometry(1, 1, 1);
+    const lamps = [], cols = [], m4 = new THREE.Matrix4(), q = new THREE.Quaternion(), P = new THREE.Vector3(), S = new THREE.Vector3(), E = new THREE.Euler();
+    const W = ROAD_W + 1.4, H = 6.2, K = 14; // half width, height, arch segments
+    list.forEach(([a, b], k) => {
+      const gallery = kinds[k] === 'avalanche_protector', pos = [], idx = [];
+      const p0 = f.at(a + 5), l0 = Math.hypot(p0.tx, p0.tz) || 1;
+      const hill = gallery ? (f.height(p0.x - p0.tz / l0 * 14, p0.z + p0.tx / l0 * 14) > f.height(p0.x + p0.tz / l0 * 14, p0.z - p0.tx / l0 * 14) ? 1 : -1) : 0;
+      const n = Math.max(2, Math.ceil((b - a) / 4)), ring = [];
+      for (let i = 0; i <= K; i++) { const t = i / K; // cross-section: walls up, then an arch (galleries: only the hill side and a flat roof)
+        if (gallery) ring.push(t < 0.4 ? [hill * W, (t / 0.4) * H] : [hill * W * (1 - (t - 0.4) / 0.6 * 2), H]);
+        else { const ang = Math.PI * t; ring.push([Math.cos(ang) * W, t < 0.08 || t > 0.92 ? H * 0.55 * (t < .5 ? t / 0.08 : (1 - t) / 0.08) : H * 0.55 + Math.sin(ang) * H * 0.45]); } }
+      for (let j = 0; j <= n; j++) {
+        const d = a + (b - a) * j / n, p = f.at(d), l = Math.hypot(p.tx, p.tz) || 1, rx = -p.tz / l, rz = p.tx / l;
+        for (const [u, v] of ring) pos.push(p.x + rx * u, p.e - 0.3 + v, p.z + rz * u);
+        if (j < n) for (let i = 0; i < K; i++) { const A = j * (K + 1) + i, B = A + K + 1; idx.push(A, B, A + 1, A + 1, B, B + 1); }
+        if (j % 6 === 3) lamps.push(m4.compose(P.set(p.x, p.e - 0.3 + H - 0.25, p.z), q.setFromAxisAngle(_v.set(0, 1, 0), Math.atan2(p.tx, p.tz)), S.set(0.5, 0.12, 2.2)).clone());
+        if (gallery && j % 2 === 0) cols.push(m4.compose(P.set(p.x - rx * hill * W, p.e - 0.3 + H / 2, p.z - rz * hill * W), q.setFromAxisAngle(_v.set(0, 1, 0), Math.atan2(p.tx, p.tz)), S.set(0.6, H, 0.8)).clone());
+      }
+      const g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3)); g.setIndex(idx); g.computeVertexNormals();
+      const tube = new THREE.Mesh(g, wall); tube.castShadow = true; tube.receiveShadow = true; this.scene.add(tube);
+      if (!gallery) for (const [dd, dir] of [[a, 1], [b, -1]]) { // concrete portal frame at both mouths
+        const p = f.at(dd + dir * 2), ang = Math.atan2(p.tx, p.tz); E.set(0, ang, 0); q.setFromEuler(E);
+        const fr = new THREE.Group(); fr.position.set(p.x, p.e - 0.3, p.z); fr.quaternion.copy(q);
+        for (const [x, y, w, h] of [[-W - 0.6, H * 0.6, 1.2, H * 1.2], [W + 0.6, H * 0.6, 1.2, H * 1.2], [0, H + 0.6, W * 2 + 2.4, 1.2]]) {
+          const m = new THREE.Mesh(box, conc); m.position.set(x, y, 0); m.scale.set(w, h, 1.6); m.castShadow = true; fr.add(m); }
+        this.scene.add(fr);
+      }
+    });
+    if (lamps.length) { const im = new THREE.InstancedMesh(box, lampM, lamps.length); lamps.forEach((x, i) => im.setMatrixAt(i, x)); im.computeBoundingSphere(); this.scene.add(im); }
+    if (cols.length) { const im = new THREE.InstancedMesh(box, conc, cols.length); cols.forEach((x, i) => im.setMatrixAt(i, x)); im.castShadow = true; im.computeBoundingSphere(); this.scene.add(im); }
+    console.info('RIDEFRAME Tunnel', list.length);
+  }
   _placeLegacyTops(segs) { // castle + lookout have no Blender model yet: keep the built-in ones
     const f = this.field;
     for (const s of segs) {
@@ -943,8 +980,8 @@ export class WorldScene {
     su.sunPosition.value.copy(s); su.uCover.value = cover; su.uVeil.value = veil; su.uLow.value = low;
     // direct light: warm, a bit warmer as the sun sinks, dimmer behind the veil; never orange enough to rust the rock
     this.light.color.lerpColors(W_HIGH, W_LOW, low);
-    this.light.intensity = 3.1 * (1 - 0.38 * veil) * (1 - 0.12 * cover) * (1 - 0.12 * low);
-    this.hemi.intensity = 1.45 + 0.12 * cover + 0.05 * veil; // shadow slopes ~40 % of the sunlit side, not black
+    this.light.intensity = 3.1 * (1 - 0.38 * veil) * (1 - 0.12 * cover) * (1 - 0.12 * low) * (1 - 0.85 * (this.tunnelK || 0));
+    this.hemi.intensity = (1.45 + 0.12 * cover + 0.05 * veil) * (1 - 0.75 * (this.tunnelK || 0)); // shadow slopes ~40 % of the sunlit side, not black; dim inside rock tunnels
     this.hemi.color.lerpColors(H_CLEAR, H_GREY, cover * 0.7);
     // haze: cool lavender away from the sun, glowing red-orange towards it (weaker behind the veil)
     this.scene.fog.color.lerpColors(F_CLEAR, F_GREY, cover * 0.6);
@@ -1027,6 +1064,8 @@ export class WorldScene {
   }
 
   _life(time, dt, cam) {
+    if (this.field.tunnel) this.tunnelK = lerp(this.tunnelK || 0, this.field.tunnel[Math.max(0, Math.min(this.field.n - 1, Math.round(this.d / DS)))] ? 1 : 0, Math.min(1, dt * 1.5)); // eyes adjust to the tunnel
+    if (this.field.tunnel) this.scene.environmentIntensity = 0.95 * (1 - 0.75 * this.tunnelK);
     if (!this.props) return;
     this.falls?.update(time, dt, cam);
     this.events?.update(time, dt, cam, this.d);
