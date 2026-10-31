@@ -347,18 +347,22 @@ export function placeWaterfalls(world, A, taken = []) {
     const y = H(tx0, tz0); // ground at the foot; the footprint is levelled to it
     pads.push({ x: cx, z: cz, y, ri: Math.max(sz.x, sz.z) * 0.6, ro: Math.max(sz.x, sz.z) * 0.6 + 10 });
     obj.position.set(ox, y, oz); obj.rotation.y = ang; obj.updateMatrixWorld(true);
+    let nWet = 0;
     obj.traverse(c => {
       c.layers.set(1);
-      const wet = /^(wasserfall_wasser|gerinne_wasser|wasserfall_gischt|bach_wasser)/.exec(c.name);
-      if (wet || c.material?.name === 'Water') { // keep the model's own material; fall and flume scroll at 2.0/s, spray and brook at 0.5/s
-        c.castShadow = false;
-        for (const m of [].concat(c.material || [])) { m.transparent = true; m.depthWrite = false; if (c.geometry?.attributes.color) m.vertexColors = true; m.needsUpdate = true;
-          if (m.map) scroll.set(m.map, /^(wasserfall_wasser|gerinne_wasser)/.test(wet?.[1] || '') ? 2.0 : 0.5); } }
+      let wet = null; for (let o = c; o && o !== obj.parent && !wet; o = o.parent) wet = /(wasserfall_wasser|gerinne_wasser|wasserfall_gischt|bach_wasser)/.exec(o.name); // the mesh is often a child of the named node
+      if (c.isMesh && (wet || /water|wasser/i.test(c.material?.name || ''))) { // the model's own water material rendered nothing on the Mac: unlit, see-through, its texture kept and scrolled
+        c.castShadow = false; c.receiveShadow = false; nWet++;
+        const fast = /(wasserfall_wasser|gerinne_wasser)/.test(wet?.[1] || c.material?.name || '');
+        c.material = [].concat(c.material || []).map(m0 => { const map = m0?.map || null; if (map) { map.colorSpace = THREE.SRGBColorSpace; map.wrapT = map.wrapS = THREE.RepeatWrapping; scroll.set(map, fast ? 2.0 : 0.5); }
+          return new THREE.MeshBasicMaterial({ map, color: map ? 0xffffff : 0xe8f0f2, transparent: true, opacity: fast ? 0.9 : 0.75, depthWrite: false, side: THREE.DoubleSide, fog: true }); });
+        if (c.material.length === 1) c.material = c.material[0]; }
       if (c.userData.millWheel) F.glbWheel = c;
       const src = /^gischt_quelle_(unten|mitte|rad)/.exec(c.name);
       if (src) { const w = c.getWorldPosition(new THREE.Vector3()), rad = c.userData.radius_m ?? { unten: 3.5, mitte: 2.5, rad: 1.2 }[src[1]];
         for (let k = 0; k < 8; k++) { const an = r() * 6.28, rr = Math.sqrt(r()) * rad; mist.push([w.x + Math.cos(an) * rr, w.y + r() * rad * 0.4, w.z + Math.sin(an) * rr, 3 + r() * 3, 0.3 + r() * 0.2, r(), 700]); } }
     });
+    console.info(`RIDEFRAME Wasserfall-Modell ${kind}: ${nWet} Wasser-Meshes`);
     scene.add(obj); F.objs.push(obj); F.glbObj = obj;
     if (F.glbWheel) { obj.traverse(c => { c.matrixAutoUpdate = c === F.glbWheel; }); } else freeze(obj);
     taken.push([F.x, F.z, Math.max(e.size[0], e.size[2]) * 0.55]);
