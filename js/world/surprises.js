@@ -1,5 +1,5 @@
-// The ride as a roller coaster: never more than about a minute without something happening.
-// A director fires one surprise every 45–75 s, whichever fits the spot (sea beside the road, a village, open land),
+// The ride as a roller coaster: never more than about half a minute without something happening.
+// A director fires one surprise every 25–40 s, close (15–40 m) and in view, whichever fits the spot (sea beside the road, a village, open land),
 // plus fireworks over the festival and at the finish. Every surprise starts ahead of the camera and uses the
 // Mac's models when present; without a model that surprise is simply skipped.
 import * as THREE from 'three';
@@ -11,7 +11,7 @@ const layer1 = o => o.traverse(c => c.layers.set(1)); // not in the water reflec
 export class Surprises {
   constructor(world, assets, events) {
     this.w = world; this.A = assets; this.ev = events; this.f = world.field; this.track = world.track;
-    this.next = 35; this.active = []; this.used = new Map();
+    this.next = 20; this.active = []; this.used = new Map();
     const villages = (this.track.segments || []).filter(s => s.village);
     const fest = villages.sort((p, q) => (q.to - q.from) * (q.village[1] - q.village[0]) - (p.to - p.from) * (p.village[1] - p.village[0]))[0];
     this.festD = fest ? fest.from + (fest.to - fest.from) * (fest.village[0] + fest.village[1]) / 2 : -1;
@@ -19,14 +19,20 @@ export class Surprises {
     this.list = [
       { id: 'knight', need: ['reiter_ritter', 'pferd'], go: () => this._knight() },
       { id: 'kids', need: ['junge', 'maedchen'], village: true, go: () => this._kids() },
-      { id: 'sheep', need: ['schaf'], go: () => this._crossing(this.A.find('schaf_weiss') ? 'schaf_weiss' : 'schaf', 4, 'Baaa!') },
+      { id: 'sheep', need: ['schaf'], go: () => this._crossing(this.A.find('schaf_weiss') ? 'schaf_weiss' : 'schaf', 7, 'Baaa!') },
       { id: 'pig', need: ['schwein'], go: () => this._pig() },
       { id: 'ship', need: ['langschiff'], sea: true, go: () => this._ship() },
       { id: 'juggler', need: ['gaukler'], go: () => this._juggler() },
-      { id: 'goats', need: ['ziege'], go: () => this._crossing('ziege', 3, 'Meeeh!') },
+      { id: 'goats', need: ['ziege'], go: () => this._crossing('ziege', 5, 'Meeeh!') },
       { id: 'dog', need: ['hund'], go: () => this._dog() },
+      { id: 'crowd', need: ['junge', 'maedchen', 'alte_frau', 'bauer_sense', 'wache'], go: () => this._crowd() },
     ];
     this.fw = new Fireworks(world.scene);
+    // background life: smoke curling from some chimneys, so villages never look empty
+    const b = new THREE.Box3(), r = (() => { let x = 7; return () => (x = (x * 16807) % 2147483647) / 2147483647; })();
+    const chim = world.props.filter(o => /rorbu|steinhaus|fachwerk/.test(o.userData.asset || '') && r() < 0.45)
+      .map(o => { b.setFromObject(o); return { x: o.position.x + (r() - .5) * 2, y: b.max.y - 0.3, z: o.position.z + (r() - .5) * 2, acc: r() }; });
+    this.smoke = new Smoke(world.scene, chim);
     this.festFired = false;
   }
 
@@ -37,7 +43,7 @@ export class Surprises {
       const free = this.list.filter(s => s.need.some(n => this.A.find(n)) && (!s.sea || this._seaSide(d + 120)) && (!s.village || this._inVillage(d + 60)))
         .sort((a, b) => (this.used.get(a.id) || 0) - (this.used.get(b.id) || 0) || Math.random() - .5);
       const s = free[0];
-      if (s && s.go() !== false) { this.used.set(s.id, time); this.next = time + 45 + Math.random() * 30; }
+      if (s && s.go() !== false) { this.used.set(s.id, time); this.next = time + 25 + Math.random() * 15; }
       else this.next = time + 6; // nothing fits here: look again soon
     }
     for (const e of this.active) e.step(dt, v, cam), e.mixer?.update(Math.min(dt, 0.1));
@@ -46,7 +52,7 @@ export class Surprises {
     // fireworks: over the festival town and for the last few hundred metres
     if (this.festD > 0 && !this.festFired && d > this.festD - 260 && d < this.festD) { this.festFired = true; this._salvo(this.festD + 40, 7); }
     if (this.track.length - d < 450 && time > (this.fwNext || 0)) { this.fwNext = time + 0.7 + Math.random() * 0.8; this._salvo(Math.min(this.track.length - 5, d + 160), 1); }
-    this.fw.update(dt);
+    this.fw.update(dt); this.smoke.update(dt, cam);
   }
 
   // ---- helpers ----
@@ -93,28 +99,29 @@ export class Surprises {
   _kids() { // children run beside you for a few seconds, cheering
     const side = this._landSide(this.w.d + 20); if (!side) return false;
     const d0 = this.w.d + 10;
-    ['junge', 'maedchen'].forEach((n, k) => {
+    ['junge', 'maedchen', 'junge'].forEach((n, k) => {
       let dd = 0;
       const e = this._run(n, [['Rennen', 1], ['Gehen', 1.8]], (t, v, dt) => { if (t > 9) return null; dd += Math.min(v, 5.5) * dt; return { d: d0 + k * 2.5 + dd, off: side * (ROAD_W + 2.2 + k * 1.4) }; });
       if (e) { if (!k) setTimeout(() => this._say(e.obj, 'Faster! Faster!', 2.4), 700); }
     });
   }
   _crossing(name, n, call) { // a little herd crosses the road ahead of you
-    const d0 = this.w.d + 75, side = Math.random() < .5 ? -1 : 1;
+    const d0 = this.w.d + 45, side = Math.random() < .5 ? -1 : 1;
     for (let k = 0; k < n; k++) {
       const e = this._run(name, [['Schritt', 1.4], ['Gehen', 1.4]], t => { const u = (t - k * 0.9) / 11; if (u > 1) return null;
         return { d: d0 + k * 2.2 + Math.sin(k) * 1.5, off: side * (16 - 32 * Math.max(0, u)), doff: -side * 3 }; });
       if (e && k === 0) setTimeout(() => this._say(e.obj, call, 2), 1800);
     }
   }
-  _pig() { // a runaway pig dashes along your lane, then bolts into the field
-    const d0 = this.w.d + 45, side = Math.random() < .5 ? -1 : 1; let dd = 0;
-    const e = this._run('schwein', 'Rennen', (t, v, dt) => { if (t > 12) return null; dd += 4.2 * dt;
-      return { d: d0 + dd, off: side * (1.2 + Math.max(0, t - 6) * 3), doff: t > 6 ? side * 2 : 0 }; });
+  _pig() { // a runaway pig dashes along your lane with the farmer right behind it, then both bolt into the field
+    const d0 = this.w.d + 32, side = Math.random() < .5 ? -1 : 1; let dd = 0;
+    const path = lag => (t, v, dt) => { if (t > 13) return null; if (!lag) dd += 4.6 * dt;
+      return { d: d0 + dd - lag, off: side * (1.4 + lag * 0.3 + Math.max(0, t - 7) * 3), doff: t > 7 ? side * 2 : 0 }; };
+    const e = this._run('schwein', 'Rennen', path(0));
     if (!e) return false;
-    setTimeout(() => this._say(e.obj, 'Oink!', 1.6), 600);
-    const farmer = this._run('bauer_sense', [['Rennen', 1], ['Gehen', 1.9]], t => { if (t > 12) return null; return { d: d0 - 6 + t * 3.6, off: side * (ROAD_W + 1.5) }; });
-    if (farmer) setTimeout(() => this._say(farmer.obj, 'Stop that swine!', 2.6), 2400);
+    setTimeout(() => this._say(e.obj, 'Oink! Oink!', 1.6), 500);
+    const farmer = this._run('bauer_sense', [['Rennen', 1], ['Gehen', 2.2]], path(4.5));
+    if (farmer) setTimeout(() => this._say(farmer.obj, 'Stop that swine!', 2.6), 1800);
   }
   _ship() { // a viking longship rows along the coast with you, a little faster
     const off = this._seaSide(this.w.d + 120); if (!off) return false;
@@ -137,6 +144,16 @@ export class Surprises {
     const e = this._run('hund', 'Rennen', (t, v, dt) => { if (t > 11) return null; dd += Math.min(v + 0.5, 9) * dt; return { d: d0 + dd, off: side * (ROAD_W + 0.8) }; });
     if (!e) return false;
     setTimeout(() => this._say(e.obj, 'Woof! Woof!', 1.8), 500);
+  }
+  _crowd() { // villagers line both sides of the road and cheer you through, like a mountain stage
+    const d0 = this.w.d + 38, who = ['junge', 'maedchen', 'alte_frau', 'bauer_sense', 'wache', 'ritter', 'fischerin', 'haendler'].filter(n => this.A.find(n));
+    if (!who.length) return false;
+    const calls = ['Allez! Allez!', 'Huzzah!', 'Go, go, go!', 'For the King!', 'Glory!'];
+    for (let k = 0; k < 10; k++) {
+      const side = k % 2 ? 1 : -1, dk = d0 + Math.floor(k / 2) * 5 + Math.random() * 2, n = who[k % who.length];
+      const e = this._run(n, [['Jubeln', 1], ['Winken', 1], ['Stehen', 1]], () => this.w.d > dk + 12 ? null : { d: dk, off: side * (ROAD_W + 1.6 + Math.random() * 0.2), doff: -side * 3 });
+      if (e && k % 3 === 0) setTimeout(() => this._say(e.obj, calls[(k / 3) % calls.length], 2), 600 + k * 250);
+    }
   }
   _salvo(d, n) { // fireworks above the road ahead
     for (let k = 0; k < n; k++) setTimeout(() => {
@@ -186,5 +203,38 @@ class Fireworks {
     }
     this.pts.geometry.attributes.position.needsUpdate = true; this.pts.geometry.attributes.color.needsUpdate = true;
     if (!alive) this.pts.visible = false;
+  }
+}
+
+// chimney smoke: soft puffs that rise, drift with the wind, grow and fade; one draw call, only near the camera
+class Smoke {
+  constructor(scene, emitters) {
+    this.em = emitters; const N = this.N = 700;
+    this.pos = new Float32Array(N * 3); this.age = new Float32Array(N).fill(99); this.life = new Float32Array(N).fill(1); this.i = 0;
+    const g = new THREE.BufferGeometry();
+    g.setAttribute('position', new THREE.BufferAttribute(this.pos, 3).setUsage(THREE.DynamicDrawUsage));
+    g.setAttribute('aT', new THREE.BufferAttribute(new Float32Array(N), 1).setUsage(THREE.DynamicDrawUsage));
+    this.mat = new THREE.ShaderMaterial({ transparent: true, depthWrite: false, uniforms: { uScale: { value: 600 } },
+      vertexShader: 'attribute float aT; varying float vT; uniform float uScale; void main() { vT = aT; vec4 mv = modelViewMatrix * vec4(position, 1.); gl_Position = projectionMatrix * mv; gl_PointSize = (1.2 + aT * 7.) * uScale / -mv.z; }',
+      fragmentShader: 'varying float vT; void main() { vec2 p = gl_PointCoord - .5; float a = smoothstep(.5, .1, length(p)) * smoothstep(1., .55, vT) * smoothstep(0., .08, vT) * .42; if (a < .01) discard; gl_FragColor = vec4(vec3(.78, .78, .8) - vT * .08, a); }' });
+    this.pts = new THREE.Points(g, this.mat); this.pts.frustumCulled = false; this.pts.layers.set(1); scene.add(this.pts);
+    this.t = 0;
+  }
+  update(dt, cam) {
+    if (!this.em.length) return;
+    dt = Math.min(dt, 0.1); this.t += dt;
+    for (const e of this.em) { // emit only near the camera
+      if (Math.abs(e.x - cam.x) > 450 || Math.abs(e.z - cam.z) > 450) continue;
+      e.acc += dt * 2.2; while (e.acc > 1) { e.acc -= 1; const i = this.i = (this.i + 1) % this.N, k = i * 3;
+        this.pos[k] = e.x; this.pos[k + 1] = e.y; this.pos[k + 2] = e.z; this.age[i] = 0; this.life[i] = 7 + Math.random() * 4; }
+    }
+    const aT = this.pts.geometry.attributes.aT.array, wx = Math.cos(this.t * .05) * .9, wz = Math.sin(this.t * .05) * .5 + .6;
+    for (let i = 0; i < this.N; i++) {
+      if (this.age[i] > this.life[i]) { aT[i] = 1; continue; }
+      const k = i * 3, a = this.age[i] += dt, u = a / this.life[i];
+      this.pos[k] += wx * u * dt * 2; this.pos[k + 1] += (1.1 - u * 0.6) * dt; this.pos[k + 2] += wz * u * dt * 2; aT[i] = u;
+    }
+    this.mat.uniforms.uScale.value = innerHeight * 0.5;
+    this.pts.geometry.attributes.position.needsUpdate = true; this.pts.geometry.attributes.aT.needsUpdate = true;
   }
 }
