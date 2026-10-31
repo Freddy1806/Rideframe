@@ -92,14 +92,14 @@ export class Field {
   _hash(cell, every) {
     const m = new Map();
     for (let i = 0; i < this.n; i += every) {
-      const k = Math.floor(this.x[i] / cell) + ',' + Math.floor(this.z[i] / cell);
+      const k = (Math.floor(this.x[i] / cell) + 32768) * 65536 + Math.floor(this.z[i] / cell) + 32768; // numeric key: no string building per lookup
       (m.get(k) || m.set(k, []).get(k)).push(i);
     }
     return { m, cell };
   }
   _query(h, x, z, rad) {
     const out = [], cx = Math.floor(x / h.cell), cz = Math.floor(z / h.cell), rc = Math.ceil(rad / h.cell);
-    for (let a = -rc; a <= rc; a++) for (let b = -rc; b <= rc; b++) { const l = h.m.get((cx + a) + ',' + (cz + b)); if (l) for (const i of l) out.push(i); }
+    for (let a = -rc; a <= rc; a++) for (let b = -rc; b <= rc; b++) { const l = h.m.get((cx + a + 32768) * 65536 + cz + b + 32768); if (l) for (const i of l) out.push(i); }
     return out;
   }
   /** Nearest point on the dense centreline: signed lateral offset (+ = right of travel), road height, smoothed nearby height. */
