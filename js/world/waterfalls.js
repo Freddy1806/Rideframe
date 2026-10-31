@@ -87,7 +87,7 @@ export function placeWaterfalls(world, A, taken = []) {
   // 4-5 strands that split apart and rejoin over ledges, a soft wet halo, a mist plume, pool and river at the foot
   for (const b of big) {
     const F = fall('big', b.d, b.side, b.mid[0], b.mid[2], 2200, { size: Math.round(b.drop), y: b.mid[1], ahead: b.ahead, shot: b.ahead >= 10 ? b.aheadAt + 60 : b.d - 600 });
-    const P = b.path, n = P.length, Wt = 30 + Math.min(28, b.drop / 4.5), K = b.drop > 90 ? 5 : 4, parts = [];
+    const P = b.path, n = P.length, Wt = (30 + Math.min(28, b.drop / 4.5)) * 1.7, K = b.drop > 90 ? 6 : 5, parts = [];
     const perp = P.map((p, i) => { const A = P[Math.max(0, i - 1)], B = P[Math.min(n - 1, i + 1)], l = Math.hypot(B[0] - A[0], B[2] - A[2]) || 1; return [-(B[2] - A[2]) / l, (B[0] - A[0]) / l]; });
     const along = (off, i) => [P[i][0] + perp[i][0] * off, P[i][1], P[i][2] + perp[i][1] * off];
     parts.push(drapeStrip(P, i => Wt * (0.9 + 0.9 * i / n), 0.35, H, 0, 2)); // wet halo
@@ -336,10 +336,11 @@ export function placeWaterfalls(world, A, taken = []) {
     obj.updateMatrixWorld(true);
     const box = new THREE.Box3().setFromObject(obj), mc = box.getCenter(new THREE.Vector3()), sz = box.getSize(new THREE.Vector3());
     const wc = new THREE.Vector3(), tv = new THREE.Vector3(); let nw = 0;
-    obj.traverse(c => { if (c.userData.millWheel || /^wasserfall_wasser/.test(c.name)) { wc.add(c.getWorldPosition(tv)); nw++; } });
+    obj.traverse(c => { if (c.userData.millWheel || /wasserfall_wasser/.test(c.name)) { wc.add(c.getWorldPosition(tv)); nw++; } });
     let fx = 0, fz = 1;
     if (nw) { wc.divideScalar(nw); const dx = wc.x - mc.x, dz = wc.z - mc.z; if (Math.hypot(dx, dz) > 0.08 * Math.max(sz.x, sz.z)) { if (Math.abs(dx) > Math.abs(dz)) { fx = Math.sign(dx); fz = 0; } else fz = Math.sign(dz); } }
-    const ang = Math.atan2(-nx, -nz) - Math.atan2(fx, fz), ca = Math.cos(ang), sa = Math.sin(ang);
+    const tl = Math.hypot(p.tx, p.tz) || 1, yaw = 0.62; // turned ~35 deg towards the oncoming rider: the fall is seen from the front while riding up, not only sideways
+    const ang = Math.atan2(-nx * Math.cos(yaw) - p.tx / tl * Math.sin(yaw), -nz * Math.cos(yaw) - p.tz / tl * Math.sin(yaw)) - Math.atan2(fx, fz), ca = Math.cos(ang), sa = Math.sin(ang);
     const hf = (Math.abs(fx) * sz.x + Math.abs(fz) * sz.z) / 2, fex = mc.x + fx * hf, fez = mc.z + fz * hf; // front edge middle, model space
     const tx0 = p.x + nx * o0, tz0 = p.z + nz * o0, ox = tx0 - (fex * ca + fez * sa), oz = tz0 - (-fex * sa + fez * ca);
     const cx = ox + mc.x * ca + mc.z * sa, cz = oz - mc.x * sa + mc.z * ca;
