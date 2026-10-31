@@ -271,3 +271,10 @@ input[type=number]::-webkit-inner-spin-button, input[type=number]::-webkit-outer
 .rf-bubble { position: absolute; left: 0; top: 0; max-width: 260px; padding: 8px 14px; border-radius: 14px; background: rgba(250,246,236,.94); color: #1b1712; font: 600 18px/1.25 Georgia, 'Times New Roman', serif; font-style: italic; box-shadow: 0 6px 24px rgba(0,0,0,.25); white-space: nowrap; animation: rfpop .25s ease-out; }
 .rf-bubble::after { content: ''; position: absolute; left: 50%; bottom: -8px; border: 8px solid transparent; border-top-color: rgba(250,246,236,.94); border-bottom: 0; transform: translateX(-50%); }
 @keyframes rfpop { from { opacity: 0; transform: scale(.8); } }
+
+/* 3D world: a slim, see-through instrument strip so the road and the handlebar stay in view */
+.ride.world3d .hud-bottom { left: 50%; right: auto; width: min(1100px, calc(100% - 56px)); transform: translateX(-50%); bottom: 14px; padding: 10px 20px 8px; background: rgba(11,11,11,.38); }
+.ride.world3d .metric .v { font-size: 34px; margin-top: 4px; }
+.ride.world3d .metric.power .v { font-size: 56px; }
+.ride.world3d .metric .sub { margin-top: 4px; font-size: 11px; }
+.ride.world3d .hud-profile { margin-top: 8px; height: 38px; }

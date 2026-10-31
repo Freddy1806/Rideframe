@@ -876,7 +876,7 @@ export class WorldScene {
   setLens(mm) { this.lensMm = mm || null; this._applyLens(); this.camera.updateProjectionMatrix(); this._placeCockpit(); }
   _placeCockpit() { // the model has the bar centre 0.45 m below / 0.55 m ahead of the eye; slide it so the hoods sit in the lower third at any lens
     if (!this.cockpit) return;
-    const a = THREE.MathUtils.degToRad(this.camera.fov / 2) * 0.66, dist = 0.5;
+    const a = THREE.MathUtils.degToRad(this.camera.fov / 2) * (this.cockpitK ?? 0.66), dist = 0.5;
     this.cockpit.position.set(0, -dist * Math.tan(a) + 0.45, -dist + 0.55);
   }
   _applyLens() {

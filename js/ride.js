@@ -89,6 +89,7 @@ export class RideSession {
 
   async start() {
     const el = this.el = document.createElement('div'); el.className = 'ride';
+    document.addEventListener('keydown', this._key); // early: watts set with ↑↓ while the world loads are kept
     el.innerHTML = this._hudHTML();
     document.body.append(el);
     if (this.route.parts?.length) {
@@ -109,6 +110,8 @@ export class RideSession {
       if (!this.player) this.player = new DemoScene(c, this.track);
       this.player.currentTime = timeAt(this.track, this.d);
       this.player.setLens?.(this.state.settings.lensMm || 0); this.player.setView?.(this.state.settings.view3d || 0); this.player.setCockpit?.(this.state.settings.cockpit !== false);
+      el.classList.toggle('world3d', !!this.player.setLens); this.player.cockpitK = 0.42; // compact HUD over the 3D world, hoods higher above it
+      this.player._placeCockpit?.();
       if (this.player.ready) { // 3D world: show a loading card instead of a black screen until the ground around the start stands
         const ld = document.createElement('div'); ld.className = 'countdown loading'; ld.textContent = 'Welt wird geladen …'; el.append(ld);
         await Promise.race([this.player.ready, new Promise(r => setTimeout(r, 30000))]); ld.remove();
@@ -116,7 +119,6 @@ export class RideSession {
     }
     this.profile = el.querySelector('#hudProfile');
     this.q = s => el.querySelector(s);
-    document.addEventListener('keydown', this._key);
     el.querySelector('#hCam')?.addEventListener('click', () => this._cycleView());
     let hideT; el.addEventListener('mousemove', () => { el.classList.add('cursor'); clearTimeout(hideT); hideT = setTimeout(() => el.classList.remove('cursor'), 2000); });
     try { await document.documentElement.requestFullscreen?.(); } catch {}
@@ -323,6 +325,7 @@ export class RideSession {
   }
 
   _key(e) {
+    if (!this.running && !e.key.startsWith('Arrow')) return; // still loading / counting down: only the power keys
     if (e.key === 'ArrowUp') { this.manualPower = Math.min(1500, this.manualPower + (e.shiftKey ? 50 : 10)); e.preventDefault(); }
     else if (e.key === 'ArrowDown') { this.manualPower = Math.max(0, this.manualPower - (e.shiftKey ? 50 : 10)); e.preventDefault(); }
     else if (e.key === 'q' || e.key === ',' || e.key === '-') this.shift(-1);
