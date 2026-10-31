@@ -426,7 +426,7 @@ export class Siege {
     const clear = B => i => { const r = this.f.road(B.p[i * 3], B.p[i * 3 + 2]); if (r && r.d < 9) { B.keep[i] = 0; B.bury[i] = B.r[i] * 2.4; B.t[i] = 3.5; } }; // nothing stays on or by the road
     this.blocks.onRest = clear(this.blocks); this.stones.onRest = clear(this.stones);
     const tex = puffTexture(); this.fire = new Puffs(FIRE_N, true, tex); this.smoke = new Puffs(SMOKE_N, false, tex); this.embers = new Embers(EMBER_N);
-    // procedural fireballs (glowing spheres + trail + light); the Blender fireball was rejected and is being redone
+    // fireballs: the Blender pitch ball with flame cards when present, else glowing spheres; the trail and light are ours
     this.balls = new THREE.InstancedMesh(new THREE.SphereGeometry(.7, 12, 8), new THREE.MeshBasicMaterial({ color: new THREE.Color(5, 2.3, .6) }), BALL_N);
     this.balls.count = 0; this.balls.frustumCulled = false; this.balls.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
     this.ball = Array.from({ length: BALL_N }, () => ({ on: false, p: new THREE.Vector3(), p0: new THREE.Vector3(), v: new THREE.Vector3(), tgt: new THREE.Vector3(), n: new THREE.Vector3(), t: 0, T: 1, trail: 0 }));
@@ -434,6 +434,9 @@ export class Siege {
     this.timed = []; this.dustSrc = []; this.dustUntil = 0; this.flk = [];
     // flipbooks from the Mac when they exist (fall back to the puffs): [file, grid, frames, fps, anchor, additive, pool]
     this.fx = {}; const L = new THREE.TextureLoader();
+    const fkE = find('feuerkugel');
+    if (fkE) for (const b of this.ball) { b.obj = flickers(this.A.make(fkE).obj, this.flk); b.obj.visible = false; root.add(b.obj);
+      b.obj.traverse(o => { if (o.isMesh && /feuer/i.test(o.material?.name || '')) { Object.assign(o.material, { blending: THREE.AdditiveBlending, depthWrite: false, transparent: true }); o.castShadow = false; } }); }
     for (const [k, file, grid, frames, fps, anchor, add, n] of [['boom', 'explosion_flipbook', 8, 64, 24, [.56, .26], false, 12], ['spark', 'funken_flipbook', 8, 64, 24, [.5, .32], true, 12],
       ['dust', 'staub_flipbook', 8, 64, 24, [.5, .14], false, 10], ['ball', 'feuerkugel', 2, 4, 0, [.5, .5], true, BALL_N]])
       L.load(new URL(`../../assets/world/fx/${file}.png`, import.meta.url).href, t => { const f = this.fx[k] = new Flip(n, t, grid, frames, fps, anchor, add); this.root.add(f.mesh); }, undefined, () => {});
@@ -489,14 +492,15 @@ export class Siege {
       if (kind === 'tower') { const r = this.f.road(pos.x, pos.z); if (r && r.d < 22) pos.addScaledVector(toRoad, -(22 - r.d)); pos.y = this.ground(pos.x, pos.z); obj.scale.x = -1; obj.rotation.y = Math.atan2(toRoad.x, toRoad.z); }
       else { const n = f.nL.clone().applyQuaternion(q); obj.rotation.y = Math.atan2(n.x, n.z); }
       obj.position.copy(pos); this.root.add(obj); obj.updateMatrixWorld(true);
-      let act = null;
-      if (mixer) { mixer.stopAllAction(); for (const c of ['Intakt', 'Wehen']) { const k = this.A.clip(e, c); if (k) mixer.clipAction(k).play(); } if (clip) { act = mixer.clipAction(clip); act.setLoop(THREE.LoopOnce); act.clampWhenFinished = true; } mixer.update(0); }
+      let act = null, wehen = null;
+      if (mixer) { mixer.stopAllAction(); for (const c of ['Intakt', 'Wehen']) { const k = this.A.clip(e, c); if (k) mixer.clipAction(k).play(); }
+        wehen = this.A.clip(e, 'Wehen') && mixer.clipAction(this.A.clip(e, 'Wehen')); if (clip) { act = mixer.clipAction(clip); act.setLoop(THREE.LoopOnce); act.clampWhenFinished = true; } mixer.update(0); }
       const batches = batchPieces(obj); for (const b of batches) this.root.add(b.bm); // ~100 pieces: one draw call per material
       const T = v => secs(v, e, dur), dir = (kind === 'tower' ? new THREE.Vector3(-.82, 0, .57) : new THREE.Vector3(0, 0, 1)).applyQuaternion(obj.quaternion).normalize(); // fall line (tower mirrored)
       const hit = obj.localToWorld(kind === 'tower' ? new THREE.Vector3(3.6, 1.8, 2.5) : new THREE.Vector3(0, 1, 1.1));
       const rd = this.f.road(pos.x, pos.z);
-      f.glb = { e, obj, mixer, act, batches, intact: mixer && this.A.clip(e, 'Intakt') && mixer.clipAction(this.A.clip(e, 'Intakt')), t: -1, foot: pos.clone(), dir, hit, dT: rd ? rd.i * 2.5 : this.d0,
-        impact: T(x.impact) ?? .33, fall: T(x.fall_start) ?? (kind === 'tower' ? .83 : .67), crown: T(x.crown) ?? (kind === 'tower' ? 2.3 : 1.25), rest: T(x.rest) ?? 4.6 };
+      f.glb = { e, obj, mixer, act, batches, wehen, intact: mixer && this.A.clip(e, 'Intakt') && mixer.clipAction(this.A.clip(e, 'Intakt')), t: -1, foot: pos.clone(), dir, hit, dT: rd ? rd.i * 2.5 : this.d0,
+        impact: T(x.impact) ?? 8 / 24, fall: T(x.fall_start) ?? (kind === 'tower' ? 20 / 24 : 18 / 24), crown: T(x.crown) ?? (kind === 'tower' ? 56 / 24 : 18 / 24), rest: T(x.rest) ?? (kind === 'tower' ? 110 / 24 : 109 / 24) };
       f.hide = [...f.orig, ...(f.cone ? [f.cone] : [])]; f.hide.forEach(o => { o.visible = false; });
     }
     this.props = [];
@@ -520,7 +524,8 @@ export class Siege {
     const tower = f.kind === 'tower', n = g.dir, t0 = this.t, at = (s, fn) => this.timed.push({ at: t0 + s, fn });
     if (!synced) at(g.impact, () => this._boom(g.hit, n, 1.1));
     at(.5, () => { this._dust(g.foot, 20, 0); this.dustSrc.push(g.foot.clone().setY(g.foot.y + 1)); this.dustUntil = Math.max(this.dustUntil, this.t + g.rest + 2); });
-    at(g.crown - .15, () => { for (const [k, o] of (tower ? [[7, 0], [11, .1], [16, .2]] : [[4, 0], [8, .12]])) {
+    at(g.crown, () => g.wehen?.stop()); // the flag lies on the ground from here
+    at(g.crown - .15, () => { for (const [k, o] of (tower ? [[7, 0], [11, .1], [16, .2]] : [[4, 0], [8, .12], [12, .25]])) {
       const p = g.foot.clone().addScaledVector(n, k); p.y = this.ground(p.x, p.z); this._dust(p, rnd(22, 25) * (tower ? 1 : .8), o); this.dustSrc.push(p); }
       const p = g.foot.clone().addScaledVector(n, tower ? 11 : 6); p.y = this.ground(p.x, p.z) + 1; this.landed = 5; this._landed({ p: [p.x, p.y, p.z] }, 0, 9); // shock + dust ring
       if (!tower) for (const p of this.props) if (p.wall) p.obj.visible = false; });
@@ -629,7 +634,7 @@ export class Siege {
   }
   _decide(d, jump) {
     if (this.state === 'idle' && d >= this.d0 - WAR) this.state = 'war';
-    const rel = this.d0 - d, trig = Math.max(45, Math.min(80, (this.w.speed || 6) * 5.5));
+    const rel = this.d0 - d, trig = Math.max(18, Math.min(60, (this.w.speed || 6) * 2.4)); // the wall comes down ~1.6 s later: peak when level with the castle
     const T = this.falls.find(f => f.kind === 'tower' && f.glb), g = T?.glb;
     if (g && g.t < 0 && !g.armed && !jump) { // baked tower: clip starts 12 m + 2.3 s x v before it, a fireball from across the road hits at .33 s
       const v = Math.max(3, this.w.speed || 6), relT = g.dT - d, Tf = 2.2;
@@ -656,7 +661,7 @@ export class Siege {
   _reset() {
     for (const s of this.saved) { s.parent.add(s.o); s.o.position.copy(s.p); s.o.quaternion.copy(s.q); s.o.visible = s.vis; s.o.layers.mask = s.mask; }
     for (const f of this.falls) { f.th = f.om = 0; f.on = f.broken = false; f.pivot.quaternion.identity(); f.show.forEach(m => { m.visible = false; }); }
-    for (const f of this.falls) { f.hide?.forEach(o => { o.visible = false; }); if (f.glb) { f.glb.t = -1; f.glb.armed = false; f.glb.act?.stop(); f.glb.intact?.play(); f.glb.mixer?.update(0); f.glb.obj.updateMatrixWorld(true); syncPieces(f.glb.batches); } }
+    for (const f of this.falls) { f.hide?.forEach(o => { o.visible = false; }); if (f.glb) { f.glb.t = -1; f.glb.armed = false; f.glb.act?.stop(); f.glb.intact?.play(); f.glb.wehen?.play(); f.glb.mixer?.update(0); f.glb.obj.updateMatrixWorld(true); syncPieces(f.glb.batches); } }
     for (const k in this.fx) this.fx[k].n = 0;
     for (const p of this.props) { this.root.attach(p.obj); p.obj.position.copy(p.p); p.obj.quaternion.copy(p.q); p.obj.visible = true; }
     this.timed.length = 0; this.dustSrc.length = 0; this.dustUntil = 0; this.ruinFires = null; this.ruinLight = null;
@@ -704,8 +709,9 @@ export class Siege {
     // fireballs in flight (+ glow sprite, + the light on the nearest) and the ones lying burning in the catapult cups
     let n = 0, near = 1e9; _q.identity(); _s.set(1, 1, 1); const BS = this.fx.ball; if (BS) BS.n = 0; this.ballLight.intensity = 0;
     for (let i = 0; i < this.ball.length; i++) { const b = this.ball[i];
+      if (b.obj) { b.obj.visible = b.on; if (b.on) { b.obj.position.copy(b.p); b.obj.lookAt(_v.copy(b.p).add(b.v).setY(b.p.y + b.v.y - G * b.t)); } }
       if (!b.on) continue;
-      _m.compose(b.p, _q, _s); this.balls.setMatrixAt(n++, _m);
+      if (!b.obj) { _m.compose(b.p, _q, _s); this.balls.setMatrixAt(n++, _m); }
       BS?.put(b.p.x, b.p.y, b.p.z, 2, Math.floor((this.t + i * .37) / .08) % 4, 0);
       const dc = b.p.distanceToSquared(cam.position); if (dc < near) { near = dc; this.ballLight.position.copy(b.p); this.ballLight.intensity = 400; } }
     BS?.write(fog.color, fog.density);
