@@ -101,6 +101,12 @@ function TILE_S(res) { return 192 / res; }
   }));
   walk(dir);
   report('Kein Code im Kommentar verschluckt', bad.length === 0, bad.length ? bad.join(', ') : 'ok');
+  // every module must parse as an ES module: a syntax error drops the ride to the 2D scene (plain node --check parses .js as CommonJS and misses some)
+  const { execFileSync } = await import('node:child_process'), files = [], syn = [];
+  const walk2 = d => fs.readdirSync(d, { withFileTypes: true }).forEach(e => e.isDirectory() ? walk2(path.join(d, e.name)) : e.name.endsWith('.js') && files.push(path.join(d, e.name)));
+  walk2(dir);
+  for (const f of files) try { execFileSync(process.execPath, ['--input-type=module', '--check'], { input: fs.readFileSync(f), stdio: 'pipe' }); } catch (e) { syn.push(`${path.basename(f)}: ${String(e.stderr).split('\n').find(l => /Error/.test(l)) || 'Syntaxfehler'}`); }
+  report('Alle Module syntaktisch gültig', syn.length === 0, syn.length ? syn.join(' | ') : `${files.length} Dateien ok`);
 }
 
 console.log(res.join('\n'));

@@ -545,7 +545,7 @@ export class Siege {
   _syncGround(g) { // like syncPieces, but a piece that falls beyond the foot lands on the terrain there, not on the foot's level
     const k = sstep(g.fall, Math.max(g.crown, g.fall + .4), g.t), y0 = g.foot.y;
     for (const b of g.batches) for (let i = 0; i < b.ids.length; i++) { const e = b.list[i].matrixWorld.elements;
-      const rd = this.f.road(e[12], e[14]), dy = k * Math.min(0, this.ground(e[12], e[14]) - y0) - (rd && rd.d < ROAD_W + 5.5 ? 40 : 0); _m.copy(b.list[i].matrixWorld); _m.elements[13] += dy; // within ~4 m of the asphalt: gone underground b.bm.setMatrixAt(b.ids[i], _m); }
+      const rd = this.f.road(e[12], e[14]), dy = k * Math.min(0, this.ground(e[12], e[14]) - y0) - (rd && rd.d < ROAD_W + 5.5 ? 40 : 0); _m.copy(b.list[i].matrixWorld); _m.elements[13] += dy; b.bm.setMatrixAt(b.ids[i], _m); } // within ~4 m of the asphalt: gone underground
   }
   _glbStart(f, synced = false) { // play the baked collapse: impact, dust at the foot, dust along the fall line when the crown lands
     const g = f.glb; if (!g || g.t >= 0) return; f.on = true; g.t = 0; g.intact?.stop(); g.act?.reset().play();
