@@ -20,6 +20,7 @@ import { mergeGeometries } from '../../vendor/jsm/utils/BufferGeometryUtils.js';
 import { loadAssets } from './assets.js';
 import { Events } from './events.js';
 import { placeWaterfalls } from './waterfalls.js';
+import { Siege } from './siege.js';
 import { EffectComposer } from '../../vendor/jsm/postprocessing/EffectComposer.js';
 import { RenderPass } from '../../vendor/jsm/postprocessing/RenderPass.js';
 import { GTAOPass } from '../../vendor/jsm/postprocessing/GTAOPass.js';
@@ -184,7 +185,7 @@ function house(kind) {
     }
     box(9, 20, 9, st, 2, 10, 0);
     const flag = box(2.6, 1.6, .05, M(0xff5a1f, .6), 3.6, 23, 0); flag.userData.flag = true;
-    box(.12, 4, .12, M(0x222222), 2.2, 22, 0);
+    box(.12, 4, .12, M(0x222222), 2.2, 22, 0); g.userData.castle = true;
   } else if (kind === 'mill') {
     const st = M(0xb1a690, .95, stone());
     const tw = new THREE.Mesh(new THREE.CylinderGeometry(2.4, 3.2, 10, 16), st); tw.position.y = 5; tw.castShadow = true; g.add(tw);
@@ -319,6 +320,7 @@ export class WorldScene {
     Object.assign(this.farMat, { polygonOffset: true, polygonOffsetFactor: 4, polygonOffsetUnits: 4 });
     this.tiles = new Map(); this.queue = []; this.roadChunks = new Map(); this.animated = [];
     this._placeLandmarks();
+    { const c = this.scene.children.find(o => o.userData.castle); if (c) this.siege = new Siege(this, c, this.field.road(c.position.x, c.position.z).i * DS); } // the siege at the castle (siege.js)
     this.d = 0; this.camPos = null;
     this.instant = new URLSearchParams(location.search).has('shot');
     // quality steps, lowered automatically while the frame rate stays under 50 fps (a trainer ride needs smooth video):
@@ -970,6 +972,9 @@ export class WorldScene {
     } else if (this.view === 2) this.camera.lookAt(2 * cam.x - this.lookPos.x, this.lookPos.y, 2 * cam.z - this.lookPos.z);
     if (fast > 0 && !this.instant) { const t = performance.now() / 1000, a = fast * 0.004;
       this.camera.rotation.z += Math.sin(t * 23) * a + Math.sin(t * 37) * a * 0.6; this.camera.rotation.x += Math.sin(t * 29) * a * 0.7; }
+    if (this.shakeImpulse > 0.01 && !this.instant) { const t = performance.now() / 1000, a = this.shakeImpulse * 0.014; // explosions (siege.js)
+      this.camera.rotation.x += Math.sin(t * 41) * a + Math.sin(t * 17) * a * 0.5; this.camera.rotation.y += Math.sin(t * 33) * a * 0.6; this.camera.rotation.z += Math.sin(t * 27) * a * 0.7;
+      this.shakeImpulse *= Math.exp(-dt * 2.8); }
     if (this.debugTop) { this.camera.position.set(cam.x, cam.y + this.debugTop, cam.z + 0.01); this.camera.lookAt(cam.x, cam.y, cam.z); } // test view from above
     return cam;
   }
@@ -1086,6 +1091,7 @@ export class WorldScene {
     if (!this.props) return;
     this.falls?.update(time, dt, cam);
     this.events?.update(time, dt, cam, this.d);
+    this.siege?.update(time, dt, cam, this.d);
     if (this.cockpit) { this.cockpit.visible = !this.view && this.showCockpit !== false; if (this.cockpit.visible) this.cockpitMixer?.update(Math.min(dt, 0.1) * (0.4 + (this.speed || 0) / 8)); }
     // show only what is near (draw calls), animate only what is close
     if (!this._cullT || time - this._cullT > 0.5 || this.instant) {
