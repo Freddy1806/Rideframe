@@ -87,7 +87,7 @@ export function placeWaterfalls(world, A, taken = []) {
   // 4-5 strands that split apart and rejoin over ledges, a soft wet halo, a mist plume, pool and river at the foot
   for (const b of big) {
     const F = fall('big', b.d, b.side, b.mid[0], b.mid[2], 2200, { size: Math.round(b.drop), y: b.mid[1], ahead: b.ahead, shot: b.ahead >= 10 ? b.aheadAt + 60 : b.d - 600 });
-    const P = b.path, n = P.length, Wt = (30 + Math.min(28, b.drop / 4.5)) * 1.7, K = b.drop > 90 ? 6 : 5, parts = [];
+    const P = b.path, n = P.length, Wt = (30 + Math.min(28, b.drop / 4.5)) * 1.3, K = b.drop > 90 ? 6 : 5, parts = [];
     const perp = P.map((p, i) => { const A = P[Math.max(0, i - 1)], B = P[Math.min(n - 1, i + 1)], l = Math.hypot(B[0] - A[0], B[2] - A[2]) || 1; return [-(B[2] - A[2]) / l, (B[0] - A[0]) / l]; });
     const along = (off, i) => [P[i][0] + perp[i][0] * off, P[i][1], P[i][2] + perp[i][1] * off];
     parts.push(drapeStrip(P, i => Wt * (0.9 + 0.9 * i / n), 0.35, H, 0, 2)); // wet halo
@@ -95,8 +95,8 @@ export function placeWaterfalls(world, A, taken = []) {
     for (let k = 0; k < K; k++) {
       const base = (k / (K - 1) - 0.5) * (Wt - Wt / K), ph = r() * 6.28, wk = Wt / K * (0.75 + r() * 0.5);
       // spread 0.3 = the strands meet (over a ledge), 1 = fully apart
-      const spread = i => { const u = i / (n - 1); return 0.3 + 0.7 * (0.5 - 0.5 * Math.cos(u * Math.PI * 2 * ledges + ph * 0.25)) * smooth(0, 0.12, u); };
-      const Pk = P.map((p, i) => along(base * spread(i) + Math.sin(i * 0.31 + ph) * wk * 0.25, i));
+      const spread = i => { const u = i / (n - 1); return 0.3 + 0.25 * smooth(0.55, 1, u); }; // strands stay together, fan out a little only near the foot (from far, splitting strands read as loops)
+      const Pk = P.map((p, i) => along(base * spread(i), i));
       const top = k === 0 || k === K - 1 ? Math.floor(n * (0.1 + r() * 0.2)) : 0; // the outer strands start lower
       parts.push(drapeStrip(Pk.slice(top), i => wk * (1.35 - 0.55 * spread(i + top)) * (0.8 + 0.4 * (i + top) / n), 0.6 + k * 0.03, H, r() * 10, 3));
     }
@@ -444,7 +444,7 @@ function findBig(f, L, frame, spot, H) {
   for (const b of res.sort((a, b) => b.score - a.score)) if (out.length < 3 && !out.some(o => Math.abs(o.d - b.d) < 5000)) out.push(b);
   return out.map(b => {
     // smooth the path (descent zigzags in gullies), then the strands follow the surface
-    let P = b.pts; for (let it = 0; it < 3; it++) P = P.map((p, i) => i === 0 || i === P.length - 1 ? p : [(P[i - 1][0] + p[0] * 2 + P[i + 1][0]) / 4, 0, (P[i - 1][2] + p[2] * 2 + P[i + 1][2]) / 4]);
+    let P = b.pts; for (let it = 0; it < 10; it++) P = P.map((p, i) => i === 0 || i === P.length - 1 ? p : [(P[i - 1][0] + p[0] * 2 + P[i + 1][0]) / 4, 0, (P[i - 1][2] + p[2] * 2 + P[i + 1][2]) / 4]);
     return { ...b, path: P.map(p => [p[0], H(p[0], p[2]), p[2]]) };
   }).sort((a, b) => a.d - b.d);
 }
