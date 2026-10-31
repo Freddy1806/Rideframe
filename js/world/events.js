@@ -4,6 +4,7 @@
 // without them the calls still show as speech bubbles.
 import * as THREE from 'three';
 import { ROAD_W } from './field.js';
+import { Surprises } from './surprises.js';
 
 const LINES = [
   'Godspeed, rider!', 'Faster! The King awaits!', 'Make way for the rider!', 'Huzzah!', 'Ride on, brave soul!',
@@ -27,6 +28,11 @@ export class Events {
     this.herds = this._groups(world.props.filter(o => o.userData.sheep), 40).filter(g => g.length >= 3).map(g => ({ members: g, x: avg(g, 'x'), z: avg(g, 'z'), done: false }));
     this.nextOrca = 0; this.lastEvent = 0;
     this.sounds = null; this._loadSounds();
+    this.surprises = new Surprises(world, assets, this); this.time = 0;
+  }
+  /** speech bubble over any object (surprises use it too) */
+  say(o, text, dur = 3) {
+    const b = document.createElement('div'); b.className = 'rf-bubble'; b.textContent = text; b._o = o; b._until = this.time + dur; this.overlay.append(b);
   }
 
   async _loadSounds() {
@@ -65,6 +71,8 @@ export class Events {
 
   update(time, dt, cam, d) {
     if (this.w.instant) return;
+    this.time = time;
+    this.surprises.update(time, dt, cam, d);
     this._bands(cam);
     this._wolf(time, dt, cam);
     this._orcas(time, dt, cam, d);
