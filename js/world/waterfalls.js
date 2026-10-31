@@ -431,14 +431,14 @@ function findBig(f, L, frame, spot, H) {
     const dn = rr.i * DS, pa = pts[Math.floor(pts.length * 0.2)], e = pts[Math.floor(pts.length * 0.7)], fl = Math.hypot(e[0] - pa[0], e[2] - pa[2]) || 1, fx = (e[0] - pa[0]) / fl, fz = (e[2] - pa[2]) / fl;
     const faces = q => { const dx = q.x - mid[0], dz = q.z - mid[2]; return (dx * fx + dz * fz) / (Math.hypot(dx, dz) || 1) > 0.5; }; // not seen edge-on
     let vis = 0, n = 0, aheadM = 0, run = 0, aheadAt = 0;
-    for (let dd = -1000; dd <= 0; dd += 125) { n++; const q = frame(Math.max(0, dn + dd)); vis += !inT(Math.max(0, dn + dd)) && faces(q) && LOS(q, mid, 16); } // seen while riding towards it
+    for (let dd = -1000; dd <= 0; dd += 125) { n++; const q = frame(Math.max(0, dn + dd)); vis += !inT(Math.max(0, dn + dd)) && faces(q) && (mid[1] - q.e) / (Math.hypot(mid[0] - q.x, mid[2] - q.z) || 1) < 0.36 && LOS(q, mid, 16); } // below ~20 deg: in the picture, not above its top edge // seen while riding towards it
     // straight ahead: within +-26 deg of the riding direction, not too high in the view, line of sight free
     for (let d = Math.max(0, dn - 1800); d < dn; d += 60) {
       const q = frame(d), dx = mid[0] - q.x, dz = mid[2] - q.z, dl = Math.hypot(dx, dz);
       const ok = !inT(d) && dl < 1300 && (dx * q.tx + dz * q.tz) / dl > 0.9 && (mid[1] - q.e) / dl < 0.4 && faces(q) && LOS(q, mid, 14);
       run = ok ? run + 60 : 0; if (run > aheadM) { aheadM = run; aheadAt = d - run + 60; }
     }
-    if (vis / n < 0.35 && aheadM < 180) continue;
+    if (vis / n < 0.35 && aheadM < 180 || f.real && aheadM < 135 && vis / n < 0.5) continue; // real routes: at least ~15 s in view
     res.push({ d: dn, side: Math.sign(rr.side) || 1, pts, drop, mid, ahead: Math.round(aheadM / 9), aheadAt,
       score: drop * (vis / n + aheadM / 300) * Math.min(2, c.sl) * 600 / (rr.d + 300) });
   }

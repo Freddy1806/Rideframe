@@ -92,6 +92,7 @@ export class Events {
       const bw = b.offsetWidth || 200, bh = b.offsetHeight || 40; // keep the whole bubble on screen
       const px = Math.max(bw / 2 + 8, Math.min(W - bw / 2 - 8, (v.x * .5 + .5) * W)), py = Math.max(bh + 8, Math.min(H - 8, (-v.y * .5 + .5) * H));
       b.style.transform = `translate(${px}px, ${py}px) translate(-50%, -100%)`;
+      b.style.visibility = o.visible === false || Math.abs(v.x) > 1.15 || v.y > 1.35 || v.y < -1.1 ? 'hidden' : ''; // speaker out of view: no orphan bubble
     }
     if (time < this.nextShout) return;
     const fwd = this.w.camera.getWorldDirection(new THREE.Vector3());
