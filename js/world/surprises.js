@@ -19,7 +19,7 @@ export class Surprises {
     this.list = [
       { id: 'knight', need: ['reiter_ritter', 'pferd'], go: () => this._knight() },
       { id: 'kids', need: ['junge', 'maedchen'], village: true, go: () => this._kids() },
-      { id: 'sheep', need: ['schaf'], go: () => this._crossing('schaf', 4, 'Baaa!') },
+      { id: 'sheep', need: ['schaf'], go: () => this._crossing(this.A.find('schaf_weiss') ? 'schaf_weiss' : 'schaf', 4, 'Baaa!') },
       { id: 'pig', need: ['schwein'], go: () => this._pig() },
       { id: 'ship', need: ['langschiff'], sea: true, go: () => this._ship() },
       { id: 'juggler', need: ['gaukler'], go: () => this._juggler() },
@@ -58,9 +58,12 @@ export class Surprises {
     let best = 0, bs = 1e9;
     for (const s of [-1, 1]) { let rough = 0; for (const o of [5, 9, 14]) rough += Math.abs(this._pt(d, s * o).y - this._pt(d, 0).e); if (rough < bs) { bs = rough; best = s; } }
     return bs < 12 ? best : 0; }
-  _spawn(name, anim, scale = 1) {
+  _spawn(name, anim, scale = 1) { // anim: one clip name or a list of [name, playback speed] in order of preference
     const e = this.A.find(name); if (!e) return null;
-    const { obj, mixer } = this.A.make(e, anim); obj.scale.setScalar(scale); layer1(obj); this.w.scene.add(obj); return { obj, mixer, e };
+    const pref = (Array.isArray(anim) ? anim : [[anim, 1]]).map(a => Array.isArray(a) ? a : [a, 1]);
+    const [clip, ts] = pref.find(([n]) => e.clips.some(c => c.name === n)) || pref[0];
+    const { obj, mixer } = this.A.make(e, clip); if (mixer) mixer.timeScale = ts;
+    obj.scale.setScalar(scale); layer1(obj); this.w.scene.add(obj); return { obj, mixer, e };
   }
   _say(obj, text, t = 2.6) { this.ev?.say?.(obj, text, t); }
   _run(name, anim, path, opts = {}) { // generic mover: path(t, v) -> {d, off} along the road, or null when finished
@@ -79,7 +82,7 @@ export class Surprises {
     const side = this._landSide(this.w.d + 30); if (!side) return false;
     const name = this.A.find('reiter_ritter') ? 'reiter_ritter' : 'pferd', d0 = this.w.d + 14;
     let dd = 0;
-    const e = this._run(name, 'Rennen', (t, v, dt) => {
+    const e = this._run(name, [['Rennen', 1], ['Trab', 1.7], ['Schritt', 2.6]], (t, v, dt) => {
       if (t > 26) return null;
       dd += (t < 16 ? v + 0.6 : v + 2 + (t - 16) * 1.6) * dt;
       return { d: d0 + dd, off: side * (ROAD_W + 3.5 + Math.max(0, t - 19) * 4), doff: t > 19 ? side * 2 : 0 };
@@ -92,14 +95,14 @@ export class Surprises {
     const d0 = this.w.d + 10;
     ['junge', 'maedchen'].forEach((n, k) => {
       let dd = 0;
-      const e = this._run(n, 'Rennen', (t, v, dt) => { if (t > 9) return null; dd += Math.min(v, 5.5) * dt; return { d: d0 + k * 2.5 + dd, off: side * (ROAD_W + 2.2 + k * 1.4) }; });
+      const e = this._run(n, [['Rennen', 1], ['Gehen', 1.8]], (t, v, dt) => { if (t > 9) return null; dd += Math.min(v, 5.5) * dt; return { d: d0 + k * 2.5 + dd, off: side * (ROAD_W + 2.2 + k * 1.4) }; });
       if (e) { if (!k) setTimeout(() => this._say(e.obj, 'Faster! Faster!', 2.4), 700); }
     });
   }
   _crossing(name, n, call) { // a little herd crosses the road ahead of you
     const d0 = this.w.d + 75, side = Math.random() < .5 ? -1 : 1;
     for (let k = 0; k < n; k++) {
-      const e = this._run(name, 'Gehen', t => { const u = (t - k * 0.9) / 11; if (u > 1) return null;
+      const e = this._run(name, [['Schritt', 1.4], ['Gehen', 1.4]], t => { const u = (t - k * 0.9) / 11; if (u > 1) return null;
         return { d: d0 + k * 2.2 + Math.sin(k) * 1.5, off: side * (16 - 32 * Math.max(0, u)), doff: -side * 3 }; });
       if (e && k === 0) setTimeout(() => this._say(e.obj, call, 2), 1800);
     }
@@ -110,7 +113,7 @@ export class Surprises {
       return { d: d0 + dd, off: side * (1.2 + Math.max(0, t - 6) * 3), doff: t > 6 ? side * 2 : 0 }; });
     if (!e) return false;
     setTimeout(() => this._say(e.obj, 'Oink!', 1.6), 600);
-    const farmer = this._run('bauer', 'Rennen', t => { if (t > 12) return null; return { d: d0 - 6 + t * 3.6, off: side * (ROAD_W + 1.5) }; });
+    const farmer = this._run('bauer_sense', [['Rennen', 1], ['Gehen', 1.9]], t => { if (t > 12) return null; return { d: d0 - 6 + t * 3.6, off: side * (ROAD_W + 1.5) }; });
     if (farmer) setTimeout(() => this._say(farmer.obj, 'Stop that swine!', 2.6), 2400);
   }
   _ship() { // a viking longship rows along the coast with you, a little faster

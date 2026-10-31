@@ -79,7 +79,7 @@ export class Events {
     this._shouts(time, cam);
     this._birds(time, dt, cam);
     this._carts(dt, d);
-    for (const e of this.active) e.mixer?.update(Math.min(dt, 0.1));
+    for (const e of this.active) { e.mixer?.update(Math.min(dt, 0.1)); e.mixer2?.update(Math.min(dt, 0.1)); }
   }
 
   // ---- calls from villagers ----
@@ -88,7 +88,9 @@ export class Events {
       const o = b._o; const v = new THREE.Vector3(o.position.x, o.position.y + (o.userData.h || 1.9) + 0.4, o.position.z).project(this.w.camera);
       const W = this.overlay.clientWidth, H = this.overlay.clientHeight;
       if (v.z > 1 || time > b._until) { b.remove(); continue; }
-      b.style.transform = `translate(${(v.x * .5 + .5) * W}px, ${(-v.y * .5 + .5) * H}px) translate(-50%, -100%)`;
+      const bw = b.offsetWidth || 200, bh = b.offsetHeight || 40; // keep the whole bubble on screen
+      const px = Math.max(bw / 2 + 8, Math.min(W - bw / 2 - 8, (v.x * .5 + .5) * W)), py = Math.max(bh + 8, Math.min(H - 8, (-v.y * .5 + .5) * H));
+      b.style.transform = `translate(${px}px, ${py}px) translate(-50%, -100%)`;
     }
     if (time < this.nextShout) return;
     const fwd = this.w.camera.getWorldDirection(new THREE.Vector3());
@@ -135,20 +137,22 @@ export class Events {
 
   // ---- horse and cart coming the other way ----
   _carts(dt, d) {
-    const cartE = this.A.list.find(x => x.file.includes('kutsche')), horseE = this.A.list.find(x => x.file.includes('pferd'));
+    const cartE = this.A.find('personenkutsche') || this.A.list.find(x => x.file.includes('kutsche')), horseE = this.A.list.find(x => x.file.includes('pferd'));
     for (const c of this.carts) {
       if (c.done || !cartE || d < c.at - 260 || d > c.at) continue;
       c.done = true;
-      const cart = this.A.make(cartE).obj, horse = horseE ? this.A.make(horseE, 'Gehen') : null;
+      const cm = this.A.make(cartE, 'Schaukeln'), cart = cm.obj, horse = horseE ? this.A.make(horseE, 'Gehen') : null;
       const grp = new THREE.Group(); grp.add(cart); if (horse) { horse.obj.position.z = cartE.size[2] / 2 + horseE.size[2] / 2 + 0.3; grp.add(horse.obj); }
       this.w.scene.add(grp);
-      this.active.push({ obj: grp, mixer: horse?.mixer, kind: 'cart', d: c.at + 120, v: -3.2, w: Math.min(cartE.size[0], cartE.size[2]) }); // starts ahead, rolls towards the rider
+      this.active.push({ obj: grp, mixer: horse?.mixer, mixer2: cm.mixer, kind: 'cart', d: c.at + 120, v: -3.2, w: Math.min(cartE.size[0], cartE.size[2]) }); // starts ahead, rolls towards the rider
     }
     for (const e of this.active) if (e.kind === 'cart') {
       e.d += e.v * Math.min(dt, 0.1); if (e.d < d - 80) { e.dead = true; continue; }
       const p = this.f.at(e.d), l = Math.hypot(p.tx, p.tz) || 1, off = -Math.min(2.5, ROAD_W - (e.w || 2) / 2 - 0.15); // keep inside the oncoming lane, clear of the rider
       const x = p.x - p.tz / l * off, z = p.z + p.tx / l * off;
       e.obj.position.set(x, this.f.height(x, z), z); e.obj.rotation.y = Math.atan2(-p.tx, -p.tz);
+      if (!e.wheels) { e.wheels = []; e.obj.traverse(o => { if (/^rad_(vorne|hinten)/.test(o.name)) e.wheels.push([o, o.name.includes('vorne') ? 0.72 : 0.58]); }); }
+      for (const [w, rad] of e.wheels) w.rotation.x += -e.v / rad * Math.min(dt, 0.1); // wheels roll with the coach
     }
     this._sweep();
   }
