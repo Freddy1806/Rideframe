@@ -545,7 +545,7 @@ export class Siege {
   _syncGround(g) { // like syncPieces, but a piece that falls beyond the foot lands on the terrain there, not on the foot's level
     const k = sstep(g.fall, Math.max(g.crown, g.fall + .4), g.t), y0 = g.foot.y;
     for (const b of g.batches) for (let i = 0; i < b.ids.length; i++) { const e = b.list[i].matrixWorld.elements;
-      const dy = k * Math.min(0, this.ground(e[12], e[14]) - y0); _m.copy(b.list[i].matrixWorld); _m.elements[13] += dy; b.bm.setMatrixAt(b.ids[i], _m); }
+      const rd = this.f.road(e[12], e[14]), dy = k * Math.min(0, this.ground(e[12], e[14]) - y0) - (rd && rd.d < ROAD_W + 5.5 ? 40 : 0); _m.copy(b.list[i].matrixWorld); _m.elements[13] += dy; // within ~4 m of the asphalt: gone underground b.bm.setMatrixAt(b.ids[i], _m); }
   }
   _glbStart(f, synced = false) { // play the baked collapse: impact, dust at the foot, dust along the fall line when the crown lands
     const g = f.glb; if (!g || g.t >= 0) return; f.on = true; g.t = 0; g.intact?.stop(); g.act?.reset().play();
@@ -763,6 +763,8 @@ export class Siege {
     this._knights(dt, d);
     this._balls(dt);
     this.blocks.step(dt); this.stones.step(dt);
+    if ((this.clrT = (this.clrT || 0) + dt) > .1) { this.clrT = 0; for (const B of [this.blocks, this.stones]) for (let i = 0; i < B.n; i++) { // nothing within 4 m of the asphalt
+      const r = this.f.road(B.p[i * 3], B.p[i * 3 + 2]); if (r && r.d < ROAD_W + 4 + B.r[i]) { B._move(i, --B.n); i--; } } }
     for (const k of ['boom', 'spark', 'dust']) this.fx[k]?.step(dt);
     this.fire.step(dt, wx, wz); this.smoke.step(dt, wx * 1.6, wz * 1.6); this.embers.step(dt, this.t, wx, wz);
     this.flash *= Math.exp(-dt * 6.5);
