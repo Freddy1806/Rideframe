@@ -5,6 +5,7 @@
 import * as THREE from 'three';
 import { ROAD_W } from './field.js';
 import { Surprises } from './surprises.js';
+import { Sound } from './sound.js';
 
 const LINES = [
   'Godspeed, rider!', 'Faster! The King awaits!', 'Make way for the rider!', 'Huzzah!', 'Ride on, brave soul!',
@@ -27,19 +28,27 @@ export class Events {
     this.bands = this._groups(world.props.filter(o => o.userData.musician), 25).map(g => ({ members: g, x: avg(g, 'x'), z: avg(g, 'z') }));
     this.herds = this._groups(world.props.filter(o => o.userData.sheep), 40).filter(g => g.length >= 3).map(g => ({ members: g, x: avg(g, 'x'), z: avg(g, 'z'), done: false }));
     this.nextOrca = 0; this.lastEvent = 0;
-    this.sounds = null; this._loadSounds();
+    this.sound = new Sound(); this.sounds = null; this._loadSounds();
     this.surprises = new Surprises(world, assets, this); this.time = 0;
   }
   /** speech bubble over any object (surprises use it too) */
-  say(o, text, dur = 3) {
+  say(o, text, dur = 3, style = 'call') {
     if (this.f.tunnelNear?.(this.w.d)) return; // a call with no one to see, right at a tunnel mouth, looks broken
     const b = document.createElement('div'); b.className = 'rf-bubble'; b.textContent = text; b._o = o; b._until = this.time + dur; this.overlay.append(b);
+    this._voice(o, text, style);
   }
+  /** the line is also spoken, quieter the further away the speaker is */
+  _voice(o, text, style) {
+    const c = this.w.camera.position, dist = Math.hypot(o.position.x - c.x, o.position.z - c.z);
+    this.sound.speak(text, Math.max(0, 1 - dist / (style === 'shout' ? 160 : 70)), style, (o.id ?? 0) + text.length);
+  }
+  /** world sound effects (siege, waterfalls): synthesised unless a recording is in the manifest */
+  sfx(name, vol, pan) { if (!this.w.instant) this.sound.sfx(name, vol, pan); }
 
   async _loadSounds() {
     try {
       const m = await (await fetch('assets/audio/manifest.json')).json();
-      this.sounds = m; this.lines = (m.shouts || []).map(s => s.text);
+      this.sounds = m; this.lines = (m.shouts || []).map(s => s.text); this.sound.setManifest(m);
     } catch { this.sounds = {}; }
   }
   _play(file, pan = 0, vol = 1) {
@@ -73,6 +82,7 @@ export class Events {
   update(time, dt, cam, d) {
     if (this.w.instant) return;
     this.time = time;
+    this.sound.tick();
     this.surprises.update(time, dt, cam, d);
     this._bands(cam);
     this._wolf(time, dt, cam);
@@ -110,7 +120,7 @@ export class Events {
     const b = document.createElement('div'); b.className = 'rf-bubble'; b.textContent = pick.text; b._o = best; b._until = time + 3.2;
     this.overlay.append(b);
     const side = new THREE.Vector3().subVectors(best.position, cam).cross(fwd).y; // which ear
-    this._play(pick.file && 'assets/audio/' + pick.file, -Math.sign(side) * 0.6, 0.9);
+    if (pick.file) this._play('assets/audio/' + pick.file, -Math.sign(side) * 0.6, 0.9); else this._voice(best, pick.text, 'call');
   }
 
   // ---- a bird sweeping close past the camera ----

@@ -338,10 +338,10 @@ export class WorldScene {
     this._loop = this._loop.bind(this); requestAnimationFrame(this._loop);
   }
 
-  play() { this.paused = false; return Promise.resolve(); }
-  pause() { this.paused = true; }
+  play() { this.paused = false; this.events?.sound.resume(); return Promise.resolve(); }
+  pause() { this.paused = true; this.events?.sound.pause(); }
   destroy() {
-    this.dead = true;
+    this.dead = true; this.events?.sound.destroy();
     this.scene.traverse(o => { o.geometry?.dispose?.(); });
     this.renderer.dispose();
   }

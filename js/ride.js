@@ -120,6 +120,8 @@ export class RideSession {
     this.profile = el.querySelector('#hudProfile');
     this.q = s => el.querySelector(s);
     el.querySelector('#hCam')?.addEventListener('click', () => this._cycleView());
+    el.querySelector('#hBar')?.addEventListener('click', () => this._toggleBar());
+    el.querySelector('#hWide')?.addEventListener('click', () => this._lens(-1, true));
     let hideT; el.addEventListener('mousemove', () => { el.classList.add('cursor'); clearTimeout(hideT); hideT = setTimeout(() => el.classList.remove('cursor'), 2000); });
     try { await document.documentElement.requestFullscreen?.(); } catch {}
     try { this.wake = await navigator.wakeLock?.request('screen'); } catch {}
@@ -140,7 +142,7 @@ export class RideSession {
           ${ghostChip}
           <div class="chip glass gearchip"><div class="label" id="hGearL">${this.virtual ? 'Virtueller Gang' : 'Gang'}</div><div class="v num" id="hGear">–</div><div class="gearbar" id="hGearBar">${this.virtual ? this.gears.map(() => '<i></i>').join('') : ''}</div></div>
           <div class="chip glass"><div class="label">Zeit</div><div class="v num" id="hTime">0:00</div></div>
-          ${this.track.world ? '<button class="chip glass camchip" id="hCam" title="Kamera wechseln (V)"><div class="label">Kamera</div><div class="v">⟲</div></button>' : ''}
+          ${this.track.world ? '<button class="chip glass camchip" id="hCam" title="Kamera wechseln (V)"><div class="label">Kamera</div><div class="v">⟲</div></button><button class="chip glass camchip" id="hBar" title="Lenker ein/aus (H)"><div class="label">Lenker</div><div class="v">⊓</div></button><button class="chip glass camchip" id="hWide" title="Weitwinkel ([ und ])"><div class="label">Sicht</div><div class="v">↔</div></button>' : ''}
         </div>
       </div>
       <div class="grade-tag" id="hGradeTag"><div class="g num"><span class="arrow"></span><span id="hGrade">0,0</span><small>%</small></div><div class="next glass" id="hNext"></div></div>
@@ -335,6 +337,12 @@ export class RideSession {
     else if (e.key === 'f') document.documentElement.requestFullscreen?.();
     else if (e.key === 'v' || e.key === 'c') this._cycleView();
     else if (e.key === '[' || e.key === ']') this._lens(e.key === ']' ? 1 : -1);
+    else if (e.key === 'h') this._toggleBar();
+  }
+  _toggleBar() { // handlebar and forearms in the rider's view on/off
+    if (!this.player.setCockpit) return;
+    const s = this.state.settings; s.cockpit = s.cockpit === false; this.player.setCockpit(s.cockpit);
+    this._flash(s.cockpit ? 'Lenker eingeblendet' : 'Nur Sicht, ohne Lenker'); import('./app.js').then(m => m.saveSettings());
   }
 
   _cycleView() {
@@ -342,10 +350,11 @@ export class RideSession {
     const s = this.state.settings; s.view3d = ((s.view3d || 0) + 1) % 3; this.player.setView(s.view3d);
     this._flash(['Fahrersicht', 'Verfolger', 'Rückblick'][s.view3d]); import('./app.js').then(m => m.saveSettings());
   }
-  _lens(dir) { // [ wider, ] narrower
+  _lens(dir, wrap = false) { // [ wider, ] narrower; the HUD button steps wider and wraps back to normal
     if (!this.player.setLens) return;
-    const steps = [12, 14, 0, 24, 35], s = this.state.settings, i = Math.max(0, steps.indexOf(s.lensMm || 0));
-    s.lensMm = steps[Math.max(0, Math.min(steps.length - 1, i + dir))]; this.player.setLens(s.lensMm);
+    const steps = [6, 8, 10, 12, 14, 0, 24, 35], s = this.state.settings, i = Math.max(0, steps.indexOf(s.lensMm || 0));
+    let j = i + dir; if (wrap && j < 0) j = steps.indexOf(0);
+    s.lensMm = steps[Math.max(0, Math.min(steps.length - 1, j))]; this.player.setLens(s.lensMm);
     this._flash(s.lensMm ? `Sichtfeld ${s.lensMm} mm` : 'Sichtfeld normal'); import('./app.js').then(m => m.saveSettings());
   }
   _flash(text) {

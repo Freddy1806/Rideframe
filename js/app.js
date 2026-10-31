@@ -265,7 +265,7 @@ function wireSeg(root, id, onChange) {
   el.querySelectorAll('button').forEach(b => b.onclick = () => { el.querySelectorAll('button').forEach(x => x.classList.toggle('on', x === b)); onChange(b.dataset.v); });
 }
 const SHIFT_OPTS = [['real', 'Echt am Rad'], ['virtual', 'Virtuell']];
-const LENS_OPTS = [['35', '35 mm'], ['24', '24 mm'], ['0', 'Normal'], ['14', '14 mm'], ['12', '12 mm']];
+const LENS_OPTS = [['35', '35 mm'], ['24', '24 mm'], ['0', 'Normal'], ['14', '14 mm'], ['12', '12 mm'], ['10', '10 mm'], ['8', '8 mm'], ['6', '6 mm']];
 const VIEW_OPTS = [['0', 'Fahrer'], ['1', 'Verfolger'], ['2', 'Rückblick']];
 
 function shiftHint(m) {
@@ -338,8 +338,8 @@ function settings() {
         <div class="field"><div>Speicher<div class="hint" id="usage">…</div></div></div>
       </div>
       <div class="panel"><h3>Ansicht 3D-Welt</h3>
-        <label class="field"><div>Sichtfeld (Brennweite)<div class="hint">Kleinere mm = weiter Blick. Normal entspricht ca. 17 mm. Während der Fahrt: Tasten [ und ].</div></div>${seg('lensMm', String(s.lensMm || 0), LENS_OPTS)}</label>
-        <label class="field"><div>Lenker im Bild<div class="hint">Rennlenker mit Griffen und Unterarmen in der Fahrersicht.</div></div><input type="checkbox" class="toggle" id="cockpit" ${s.cockpit !== false ? 'checked' : ''}></label>
+        <label class="field"><div>Sichtfeld (Brennweite)<div class="hint">Kleinere mm = weiter Blick. Normal entspricht ca. 17 mm. Während der Fahrt: Tasten [ und ] oder Knopf „Sicht“. 6–8 mm = extremer Weitwinkel.</div></div>${seg('lensMm', String(s.lensMm || 0), LENS_OPTS)}</label>
+        <label class="field"><div>Lenker im Bild<div class="hint">Rennlenker mit Griffen und Unterarmen in der Fahrersicht. Aus = nur freie Sicht. Während der Fahrt: Taste H oder Knopf „Lenker“.</div></div><input type="checkbox" class="toggle" id="cockpit" ${s.cockpit !== false ? 'checked' : ''}></label>
         <label class="field"><div>Kamera<div class="hint">Während der Fahrt umschalten mit Taste V oder dem Kamera-Knopf.</div></div>${seg('view3d', String(s.view3d || 0), VIEW_OPTS)}</label>
       </div>
       <div class="panel"><h3>Design</h3>

@@ -685,6 +685,17 @@ export class Siege {
     if (jump && d < this.d0 - NEAR + 100 && this.state !== 'idle') this._reset();
     this._decide(d, jump);
     this._step(Math.min(dt, .1), d);
+    this._ambience();
+  }
+  _ambience() { // drums and the army while it is war, crackling fire in the ruins afterwards
+    const ev = this.w.events; if (!ev?.sfx || this.silent || this.w.instant) return;
+    const cam = this.w.camera.position;
+    if (this.state === 'war' || this.state === 'fall') { const v = Math.max(0, 1 - cam.distanceTo(this.c) / 650); this._sfxLoop('battle', this.c, (this.state === 'fall' ? .6 : 1) * v * v); }
+    const p = this.ruinFires?.[0]; if (p) { const v = Math.max(0, 1 - cam.distanceTo(p) / 180); this._sfxLoop('fire', p, v * v); }
+  }
+  _sfxLoop(name, p, vol) {
+    const cam = this.w.camera, dist = cam.position.distanceTo(p) || 1; _v3.set(1, 0, 0).applyQuaternion(cam.quaternion);
+    this.w.events.sfx(name, vol, ((p.x - cam.position.x) * _v3.x + (p.z - cam.position.z) * _v3.z) / dist);
   }
   _activate(d) {
     this.active = true;
@@ -883,6 +894,7 @@ export class Siege {
   _collapse() {
     if (this.state === 'fall' || this.state === 'ruin') return;
     this.state = 'fall'; this.ft = 0; this.ev = 0; this.dustT = 0; this.landed = 0;
+    this._sfx('crash', this.c, 1); // the wall gives way
     for (const b of this.ball) if (b.on) { b.on = false; this._boom(b.tgt, b.n, .4); }
     const q = this.castle.quaternion, W = this.falls.find(f => f.kind === 'wall'), T = this.falls.find(f => f.kind === 'tower');
     const at = (f, k, h) => f ? f.base.clone().addScaledVector(f.nL.clone().applyQuaternion(q), k).setY(f.base.y + h) : this.c.clone().setY(this.c.y + h);
@@ -985,7 +997,7 @@ export class Siege {
   }
 
   // ---- knights ----
-  _say(k, text, dur) { const o = this.voices.find(o => !o.k || this.t > o.until) || this.voices[0]; o.k = k; o.until = this.t + dur; o.position.copy(k.p); this.w.events?.say?.(o, text, dur); }
+  _say(k, text, dur) { const o = this.voices.find(o => !o.k || this.t > o.until) || this.voices[0]; o.k = k; o.until = this.t + dur; o.position.copy(k.p); this.w.events?.say?.(o, text, dur, 'shout'); }
   _cheer() { // the tower is down: the roadside group stops and cheers, then runs into the breach
     for (const k of this.near || []) if (['pace', 'run', 'fight', 'wait'].includes(k.st)) { k.st = 'cheer'; k.t = 0; }
     const k = this.near?.find(k => k.st === 'cheer'); if (k && !this.silent && !this.w.instant) this._say(k, 'Huzzah! The tower falls!', 2.8);
