@@ -8,7 +8,7 @@ import { ROAD_W } from './field.js';
 
 const G = 9.81, QS = typeof location !== 'undefined' ? new URLSearchParams(location.search) : new URLSearchParams();
 const NEAR = 900, AFTER = 700, WAR = 600; // active window and start of the bombardment (m before the castle)
-const SLOW = .55; // playback speed of the baked collapses
+const SLOW = .55, TS = 1.4; // TS: turm_einsturz scale, it reads from the road // playback speed of the baked collapses
 const FIRE_N = 360, SMOKE_N = 420, EMBER_N = 400, STONE_N = 240, BLOCK_N = 80, BALL_N = 14, KNIGHT_N = 22, PARTS = 5;
 const _m = new THREE.Matrix4(), _m2 = new THREE.Matrix4(), _m3 = new THREE.Matrix4(), _m4 = new THREE.Matrix4();
 const _q = new THREE.Quaternion(), _q2 = new THREE.Quaternion(), _v = new THREE.Vector3(), _v2 = new THREE.Vector3(), _v3 = new THREE.Vector3();
@@ -421,7 +421,12 @@ export class Siege {
     this.keep = kids.find(o => o.geometry.type === 'BoxGeometry' && P(o).height >= 15) || null;
     const wp = o => o.getWorldPosition(new THREE.Vector3()), dotOut = o => { const q = wp(o).sub(this.c); q.y = 0; return q.normalize().dot(this.out); };
     const wall = walls.sort((a, b) => dotOut(b) - dotOut(a))[0];
-    const tower = towers.filter(o => dotOut(o) > 0).sort((a, b) => wp(b).sub(this.c).dot(this.tan) - wp(a).sub(this.c).dot(this.tan))[0]; // the far road-side tower: it falls on, away from the rider
+    // the tower that stands furthest right on screen from the approach (~90 m out): right of the keep, free against the sky
+    const cp = this.f.at(this.d0 - 90), cl = Math.hypot(cp.tx, cp.tz) || 1, fw = new THREE.Vector3(cp.tx / cl, 0, cp.tz / cl), rt = new THREE.Vector3(-fw.z, 0, fw.x);
+    const sx = o => { const q = wp(o).sub(_v.set(cp.x, 0, cp.z)).setY(0), z = q.dot(fw); return z > 5 ? q.dot(rt) / z : -9; };
+    const tower = towers.sort((a, b) => sx(b) - sx(a))[0];
+    if (tower) { const o = wp(tower).sub(this.c).setY(0).normalize(); // falls outwards, away from the road and not towards the rider
+      this.towerD = this.out.clone().multiplyScalar(Math.min(o.dot(this.out), -.3)).addScaledVector(this.tan, Math.max(o.dot(this.tan), -.35)).normalize(); }
     const cone = tower && cones.sort((a, b) => wp(a).distanceTo(wp(tower)) - wp(b).distanceTo(wp(tower)))[0];
     this.targets = [...walls, ...towers, ...(this.keep ? [this.keep] : [])].map(o => { o.updateMatrixWorld(true); return { o, box: new THREE.Box3().setFromObject(o) }; });
     this.stoneMat = (wall || this.keep || kids[0])?.material?.clone() || new THREE.MeshStandardMaterial({ color: 0x9d9484, roughness: .95 });
@@ -450,7 +455,7 @@ export class Siege {
     if (fkE) for (const b of this.ball) { b.obj = flickers(noLights(this.A.make(fkE).obj), this.flk); b.obj.visible = false; root.add(b.obj);
       b.obj.traverse(o => { if (o.isMesh && /feuer/i.test(o.material?.name || '')) { Object.assign(o.material, { blending: THREE.AdditiveBlending, depthWrite: false, transparent: true }); o.castShadow = false; } }); }
     for (const [k, file, grid, frames, fps, anchor, add, n] of [['boom', 'explosion_flipbook', 8, 64, 24, [.56, .26], false, 12], ['spark', 'funken_flipbook', 8, 64, 24, [.5, .32], true, 12],
-      ['dust', 'staub_flipbook', 8, 64, 24, [.5, .14], false, 10], ['ball', 'feuerkugel', 2, 4, 0, [.5, .5], true, BALL_N]])
+      ['dust', 'staub_flipbook', 8, 64, 24, [.5, .14], false, 16], ['ball', 'feuerkugel', 2, 4, 0, [.5, .5], true, BALL_N]])
       L.load(new URL(`../../assets/world/fx/${file}.png`, import.meta.url).href, t => { const f = this.fx[k] = new Flip(n, t, grid, frames, fps, anchor, add); this.root.add(f.mesh); if (this.compiled) this._warm(f.mesh); }, undefined, () => {});
     this.saved = kids.map(o => ({ o, parent: o.parent, p: o.position.clone(), q: o.quaternion.clone(), vis: o.visible, mask: o.layers.mask }));
     this._planFall(wall, tower, cone);
@@ -480,7 +485,7 @@ export class Siege {
       const top = new THREE.Mesh(new THREE.CylinderGeometry(P.radiusTop, rAt(h0), P.height - h0, 14), tower.material), stub = new THREE.Mesh(new THREE.CylinderGeometry(rAt(h0), P.radiusBottom, h0, 14), tower.material);
       for (const m of [top, stub]) { m.castShadow = m.receiveShadow = true; m.visible = false; }
       stub.position.set(tower.position.x, base + h0 / 2, tower.position.z); this.castle.add(stub);
-      const fd = outL.clone().multiplyScalar(-.45).addScaledVector(tanL, .9).normalize(); // along the road away from the rider, a little away from it
+      const fd = this.towerD.clone().applyQuaternion(inv); // outwards, away from the road
       const pivot = new THREE.Group(); pivot.position.set(tower.position.x, base + h0, tower.position.z).addScaledVector(fd, rAt(h0)); this.castle.add(pivot);
       top.position.set(tower.position.x, base + h0 + (P.height - h0) / 2, tower.position.z).sub(pivot.position); pivot.add(top);
       const parts = [top]; let coneOrig = null;
@@ -502,7 +507,7 @@ export class Siege {
       obj.traverse(o => { if (o.isLight) o.intensity *= .35; if (o.isMesh && /bruch|granit/i.test(o.material?.name || '') && !o.material._grey) { o.material._grey = true; o.material.color?.multiply(_c.setRGB(.62, .66, .7)); } }); // granite grey under the fire light
       const clip = this.A.clip(e, 'Einsturz') || e.clips[0], x = e.extras || e.timing || {}, dur = clip?.duration || 5;
       const pos = f.base.clone(), toRoad = this.out.clone();
-      if (kind === 'tower') { const r = this.f.road(pos.x, pos.z); if (r && r.d < 22) pos.addScaledVector(toRoad, -(22 - r.d)); pos.y = this.ground(pos.x, pos.z); obj.scale.x = -1; const D = this.tan.clone().multiplyScalar(.9).addScaledVector(this.out, -.45); obj.rotation.y = Math.atan2(D.x, D.z) - Math.atan2(-.82, .57); } // baked fall line (-.82, 0, .57) mirrored, turned onto D
+      if (kind === 'tower') { const r = this.f.road(pos.x, pos.z); if (r && r.d < 22) pos.addScaledVector(toRoad, -(22 - r.d)); pos.y = this.ground(pos.x, pos.z); obj.scale.set(-TS, TS, TS); const D = this.towerD; obj.rotation.y = Math.atan2(D.x, D.z) - Math.atan2(-.82, .57); } // baked fall line (-.82, 0, .57) mirrored, turned onto D
       else { const n = f.nL.clone().applyQuaternion(q); obj.rotation.y = Math.atan2(n.x, n.z); }
       obj.position.copy(pos); this.root.add(obj); obj.updateMatrixWorld(true);
       let act = null, wehen = null;
@@ -546,13 +551,15 @@ export class Siege {
     const g = f.glb; if (!g || g.t >= 0) return; f.on = true; g.t = 0; g.intact?.stop(); g.act?.reset().play();
     const tower = f.kind === 'tower', n = g.dir, t0 = this.t, at = (s, fn) => this.timed.push({ at: t0 + s, fn });
     if (!synced) at(g.impact, () => this._boom(g.hit, n, 1.1));
-    at(g.impact + .3, () => { this._dust(g.foot, tower ? 50 : 30, 0); this.dustSrc.push(g.foot.clone().setY(g.foot.y + 1)); this.dustUntil = Math.max(this.dustUntil, this.t + g.rest + 2); });
+    at(g.impact + .3, () => { this._dust(g.foot, tower ? 50 : 30, 0); this.dustSrc.push(g.foot.clone().setY(g.foot.y + 1));
+      if (tower) { for (const [h, sz, o] of [[6, 30, .3], [12, 28, .7], [18, 26, 1.1], [25, 24, 1.6]]) this._dust(g.foot.clone().setY(g.foot.y + h), sz, o); // stacked: a column, not a band
+        this.column = { p: g.foot.clone(), until: this.t + g.rest + 3 }; } this.dustUntil = Math.max(this.dustUntil, this.t + g.rest + 2); });
     at(g.crown, () => g.wehen?.stop()); // the flag lies on the ground from here
     at(g.crown - .15, () => { for (const [k, o] of (tower ? [[7, 0], [12, .15], [18, .3], [24, .45]] : [[4, 0], [8, .12], [12, .25]])) {
-      const p = g.foot.clone().addScaledVector(n, k); p.y = this.ground(p.x, p.z); this._dust(p, rnd(22, 25) * (tower ? 2.5 : 1.6), o); this.dustSrc.push(p); }
-      const p = g.foot.clone().addScaledVector(n, tower ? 11 : 6); p.y = this.ground(p.x, p.z) + 1; this.landed = 5; this._landed({ p: [p.x, p.y, p.z] }, 0, 9); // shock + dust ring
+      const p = g.foot.clone().addScaledVector(n, k * (tower ? TS : 1)); p.y = this.ground(p.x, p.z); this._dust(p, rnd(22, 25) * (tower ? 2.5 : 1.6), o); this.dustSrc.push(p); }
+      const p = g.foot.clone().addScaledVector(n, tower ? 11 * TS : 6); p.y = this.ground(p.x, p.z) + 1; this.landed = 5; this._landed({ p: [p.x, p.y, p.z] }, 0, 9); // shock + dust ring
       if (!tower) for (const p of this.props) if (p.wall) p.obj.visible = false; });
-    at(g.rest, () => { const p = g.foot.clone().addScaledVector(n, tower ? 11 : 4); p.y = this.ground(p.x, p.z); this.ruinFires ||= []; this.ruinFires.push(p.clone().setY(p.y + .6), g.foot.clone().setY(g.foot.y + 2)); this.ruinLight ||= p.clone().setY(p.y + 4); });
+    at(g.rest, () => { const p = g.foot.clone().addScaledVector(n, tower ? 11 * TS : 4); p.y = this.ground(p.x, p.z); this.ruinFires ||= []; this.ruinFires.push(p.clone().setY(p.y + .6), g.foot.clone().setY(g.foot.y + 2)); this.ruinLight ||= p.clone().setY(p.y + 4); });
   }
   /** a dust flipbook (or a few big puffs without one) */
   _dust(p, size, delay) {
@@ -701,7 +708,7 @@ export class Siege {
     const T = this.falls.find(f => f.kind === 'tower' && f.glb), g = T?.glb;
     if (g && g.t < 0 && !g.armed && !jump) { // baked tower: clip starts 12 m + 2.3 s x v before it, a fireball from across the road hits at .33 s
       const v = Math.max(3, this.w.speed || 6), relT = g.dT - d, Tf = 2.2;
-      if (relT <= 100 + v * (g.crown + Tf - g.impact) && relT > -20) { // crown lands ~100 m ahead; the wall breaks with the same impact
+      if (relT <= 50 + v * (g.crown + Tf - g.impact) && relT > -20) { // crown lands ~50 m ahead (peak at 60-80 m); the wall breaks with the same impact
         g.armed = true; const q = this.spot(g.dT + 25, -rnd(70, 85), new THREE.Vector3()); q.y = Math.max(0, this.f.height(q.x, q.z)) + 2;
         this._launch(q, g.hit, Tf); this.timed.push({ at: this.t + Tf - g.impact, fn: () => this._glbStart(T, true) }, { at: this.t + Tf, fn: () => this._collapse() });
       }
@@ -711,7 +718,7 @@ export class Siege {
       else this._collapse();
     }
   }
-  _trig() { return this.falls?.some(f => f.kind === 'tower' && f.glb) ? 40 : 100 + Math.max(3, this.w.speed || 6) * 1.6; } // baked tower: it sets off the collapse itself, this is only the fallback
+  _trig() { return this.falls?.some(f => f.kind === 'tower' && f.glb) ? 30 : 60 + Math.max(3, this.w.speed || 6) * 1.6; } // baked tower: it sets off the collapse itself, this is only the fallback
   _prewarm(d) { // headless screenshot (one frame): simulate the last seconds; &siege=<s> sets how many
     this.prewarmed = true; this.silent = true;
     const rel = this.d0 - d, pre = QS.has('siege') ? +QS.get('siege') : null;
@@ -728,7 +735,7 @@ export class Siege {
     for (const f of this.falls) { f.hide?.forEach(o => { o.visible = false; }); if (f.glb) { f.glb.t = -1; f.glb.armed = false; f.glb.act?.stop(); f.glb.intact?.play(); f.glb.wehen?.play(); f.glb.mixer?.update(0); f.glb.obj.updateMatrixWorld(true); syncPieces(f.glb.batches); } }
     for (const k in this.fx) this.fx[k].n = 0;
     for (const p of this.props) { this.root.attach(p.obj); p.obj.position.copy(p.p); p.obj.quaternion.copy(p.q); p.obj.visible = true; }
-    this.timed.length = 0; this.dustSrc.length = 0; this.dustUntil = 0; this.ruinFires = null; this.ruinLight = null;
+    this.timed.length = 0; this.dustSrc.length = 0; this.dustUntil = 0; this.column = null; this.ruinFires = null; this.ruinLight = null;
     this.cries = 0; for (const o of this.voices || []) o.k = null;
     for (const k of this.kn) { if (k.near) k.s = k.s0; k.p.copy(k.start); k.tgt.copy(k.tgt0); k.st = 'wait'; k.won = false; k.lean = 0; k.t = 0; if (k.obj) k.obj.visible = true; k.yaw = Math.atan2(k.tgt.x - k.p.x, k.tgt.z - k.p.z); }
     for (const b of this.ball) b.on = false;
@@ -749,6 +756,8 @@ export class Siege {
     for (const p of this.props) if (p.ram) p.ram.o.morphTargetInfluences[p.ram.i] = this.state === 'war' ? Math.pow(Math.max(0, Math.sin(this.t * 1.4)), 3) : 0;
     flameTime.value = this.t;
     for (const f of this.flk) f.o.morphTargetInfluences[f.i] = .5 + .5 * Math.sin(this.t * 13 + f.ph) * Math.sin(this.t * 7.7 + f.ph * 2);
+    if (this.column && this.t < this.column.until && Math.random() < dt * 14) { const c = this.column.p, g = rnd(.34, .44), h = rnd(0, 20); // the column keeps rising
+      this.smoke.spawn(c.x + rnd(-4, 4), c.y + h, c.z + rnd(-4, 4), rnd(-.6, .6), rnd(1.5, 3.5), rnd(-.6, .6), rnd(7, 10), rnd(6, 9), rnd(16, 24), .75, 0, g, g * .9, g * .78, .15, .5); }
     if (this.t < this.dustUntil && this.dustSrc.length) { this.dustT += dt; while (this.dustT > .06) { this.dustT -= .06; const s = this.dustSrc[Math.floor(Math.random() * this.dustSrc.length)], g = rnd(.3, .42); // the dust cloud swallows the pieces
       this.smoke.spawn(s.x + rnd(-6, 6), s.y + rnd(0, 3), s.z + rnd(-6, 6), rnd(-1.5, 1.5), rnd(.6, 2), rnd(-1.5, 1.5), rnd(6, 9), rnd(5, 8), rnd(17, 28), .75, 0, g, g * .9, g * .78, .15, .5); } }
     this._knights(dt, d);
