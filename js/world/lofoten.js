@@ -622,9 +622,9 @@ export class WorldScene {
           const hr = r(); // Lofoten look: red and ochre rorbuer, some stone houses; timber framing only in the festival town
           const he = s === festSeg && hr > 0.8 ? (hr < 0.92 ? byName('fachwerkhaus_a') : byName('fachwerkhaus_b'))
             : hr < 0.45 ? byName('rorbu_rot') : hr < 0.8 ? byName('rorbu_ocker') : byName('steinhaus');
-          if (he) place(he, d, ROAD_W + 7 + Math.max(...he.size) / 2 + r() * 4 + back, { rot: (r() - .5) * .3, gap: 4 }); // front 5-9 m behind the asphalt
+          if (he) place(he, d, ROAD_W + 7 + Math.max(...he.size) / 2 + r() * 4 + back, { rot: (r() - .5) * .3, gap: 4, dy: /rorbu/.test(he.file) ? -1.1 : 0 }); // front 5-9 m behind the asphalt; rorbuer on land: stilts sunk into the ground
           if (r() < 0.3) place(byName('waescheleine'), d + 9, ROAD_W + 10 + r() * 3, { face: 'along', gap: 2 });
-          if (r() < 0.25) place(r() < .5 ? byName('fass') : byName('schubkarre'), d + 5, ROAD_W + 3.5, { gap: 0.5, rot: r() * 3 });
+          if (r() < 0.25) place(r() < .5 ? byName('fass') : byName('schubkarre'), d + 5, ROAD_W + 6, { gap: 0.5, rot: r() * 3 }); // not right at the asphalt
         }
         // harbour on the sea side: rorbuer on stilts at the water, piers, boats, a fisherman
         let fishers = 0;
