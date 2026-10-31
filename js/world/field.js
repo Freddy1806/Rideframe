@@ -80,6 +80,7 @@ export class Field {
       const o = new Float32Array(m); for (let j = 0; j < m; j++) { const lo = Math.max(0, j - r), hi = Math.min(m, j + r + 1); o[j] = (P[hi] - P[lo]) / (hi - lo); }
       return o; };
     this.sea = sm(sea, 120); this.cliff = sm(cliff, 120); this.beach = sm(beach, 120);
+    if (track.dem?.tunnels?.length) { this.covered = new Uint8Array(m); for (const [a, b] of track.dem.tunnels) for (let j = Math.max(0, Math.floor(a / DS)); j <= Math.min(m - 1, b / DS); j++) this.covered[j] = 1; } // tunnels and galleries: no view out
     if (track.dem?.tunnels?.length) { this.tunnel = new Uint8Array(m); track.dem.tunnels.forEach(([a, b], k) => { if (track.dem.tunnelKinds?.[k] === 'avalanche_protector') return;
       const set = (lo, hi, arr) => { for (let j = Math.max(0, Math.floor(lo / DS)); j <= Math.min(m - 1, hi / DS); j++) arr[j] = 1; };
       set(a + 1, b - 1, this.tunnel); // mountain raised over the whole tube

@@ -29,7 +29,7 @@ export function placeWaterfalls(world, A, taken = []) {
   };
   f.pads = pads;
   const H = (x, z) => f.height(x, z);
-  const inT = d => !!f.tunnel?.[Math.max(0, Math.round(d / DS))]; // nothing to see from inside a tunnel
+  const inT = d => !!(f.covered || f.tunnel)?.[Math.max(0, Math.round(d / DS))]; // nothing to see from inside a tunnel or gallery
   const free = (x, z, rad) => taken.every(c => Math.hypot(c[0] - x, c[1] - z) > c[2] + rad);
   const landSide = d => -((segs.find(s => d >= s.from && d < s.to) || {}).seaSide || -1);
   const straight = (d, w) => { const a = frame(d - w), b = frame(d + w); return a.tx * b.tx + a.tz * b.tz; };
@@ -390,6 +390,7 @@ export function placeWaterfalls(world, A, taken = []) {
 // ---------------- spot search for the big ones ----------------
 // Faces beside the road and faces the road runs straight at; scored by drop, how long the rider sees it ahead, nearness.
 function findBig(f, L, frame, spot, H) {
+  const inT = d => !!(f.covered || f.tunnel)?.[Math.max(0, Math.round(d / DS))]; // tunnels and galleries hide the view
   const grad = (x, z, e) => { const h = H(x, z); return [(H(x + e, z) - h) / e, (H(x, z + e) - h) / e, h]; };
   const side = [], ahead = [];
   const face = (list, d, x, z, px, pz) => {
@@ -430,11 +431,11 @@ function findBig(f, L, frame, spot, H) {
     const dn = rr.i * DS, pa = pts[Math.floor(pts.length * 0.2)], e = pts[Math.floor(pts.length * 0.7)], fl = Math.hypot(e[0] - pa[0], e[2] - pa[2]) || 1, fx = (e[0] - pa[0]) / fl, fz = (e[2] - pa[2]) / fl;
     const faces = q => { const dx = q.x - mid[0], dz = q.z - mid[2]; return (dx * fx + dz * fz) / (Math.hypot(dx, dz) || 1) > 0.5; }; // not seen edge-on
     let vis = 0, n = 0, aheadM = 0, run = 0, aheadAt = 0;
-    for (let dd = -1000; dd <= 0; dd += 125) { n++; const q = frame(Math.max(0, dn + dd)); vis += !f.tunnel?.[Math.round(Math.max(0, dn + dd) / DS)] && faces(q) && LOS(q, mid, 16); } // seen while riding towards it
+    for (let dd = -1000; dd <= 0; dd += 125) { n++; const q = frame(Math.max(0, dn + dd)); vis += !inT(Math.max(0, dn + dd)) && faces(q) && LOS(q, mid, 16); } // seen while riding towards it
     // straight ahead: within +-26 deg of the riding direction, not too high in the view, line of sight free
     for (let d = Math.max(0, dn - 1800); d < dn; d += 60) {
       const q = frame(d), dx = mid[0] - q.x, dz = mid[2] - q.z, dl = Math.hypot(dx, dz);
-      const ok = !f.tunnel?.[Math.round(d / DS)] && dl < 1300 && (dx * q.tx + dz * q.tz) / dl > 0.9 && (mid[1] - q.e) / dl < 0.4 && faces(q) && LOS(q, mid, 14);
+      const ok = !inT(d) && dl < 1300 && (dx * q.tx + dz * q.tz) / dl > 0.9 && (mid[1] - q.e) / dl < 0.4 && faces(q) && LOS(q, mid, 14);
       run = ok ? run + 60 : 0; if (run > aheadM) { aheadM = run; aheadAt = d - run + 60; }
     }
     if (vis / n < 0.35 && aheadM < 180) continue;
