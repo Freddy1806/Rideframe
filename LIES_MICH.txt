@@ -1,0 +1,24 @@
+RIDEFRAME – Indoor-Radfahren durch die Lofoten, mit Smart-Trainer (z. B. Wahoo KICKR)
+
+STARTEN
+- Mac: Doppelklick auf "start.command" (beim ersten Mal: Rechtsklick > Öffnen > Öffnen).
+- Windows: Doppelklick auf "start.bat". Falls nichts passiert: Node.js installieren (https://nodejs.org, LTS) und nochmal.
+- Es öffnet sich Google Chrome mit http://localhost:8765 (Chrome oder Edge nehmen, Safari kann kein Bluetooth).
+
+TRAINER VERBINDEN
+- Oben rechts "KICKR verbinden" (Bluetooth an). Pulsgurt optional daneben.
+
+ZUSAMMEN FAHREN (online, jeder bei sich zu Hause)
+- Einer klickt "Zusammen fahren" > "Gruppe erstellen" und schickt den 5-stelligen Code.
+- Der andere klickt "Zusammen fahren", gibt den Code ein > "Beitreten".
+- Der Gastgeber wählt die Strecke (auf der Streckenseite "Zusammen fahren" drücken) und klickt "Alle starten".
+- Ihr seht euch als Radfahrer auf der Strecke und oben rechts den Abstand in Metern.
+- Ohne Live: In "Verlauf" bei einer Fahrt "Teilen" drücken, die .rideframe-Datei schicken.
+  Der andere zieht sie ins RIDEFRAME-Fenster und fährt gegen dich als Gegner.
+
+TRAINING
+- Auf der Streckenseite unter "Training" ein Programm wählen. "ERG" an = der Trainer hält die Watt selbst.
+- FTP in den Einstellungen eintragen.
+
+TASTEN BEIM FAHREN
+Leertaste Pause · F Vollbild · M Musik an/aus · N nächster Titel · V Kamera · H Lenker · [ ] Sichtfeld · ↑↓ Watt ohne Trainer
