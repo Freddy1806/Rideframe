@@ -1,0 +1,7 @@
+{
+  "_comment": "ElevenLabs takes: one recording per voice, one line per paragraph. tools/split-voices.py cuts them at the pauses and writes assets/audio/manifest.json (voices: text -> file, coach: key -> file).",
+  "villager_m": ["Godspeed, rider!", "Faster! The King awaits!", "Make way for the rider!", "Huzzah!", "Ride on, brave soul!", "Thy legs are made of iron!", "Hark! A rider from the south!", "May the saints guard thy wheels!", "Slow down, thou madman!", "The castle is under siege, beware!", "By my beard, what speed!", "Watch out for the wolves!"],
+  "villager_f": ["Mind the sheep, good sir!", "Fair winds to thee!", "The tavern is open tonight!", "Fresh fish! Fresh fish!", "Is that a horse without legs?", "Onward, onward!", "Glory to the swift!", "Hail, traveller!", "Bread! Warm bread for the weary!", "Push, push, the hill is nigh!", "Well ridden, friend!", "The feast is in the town square!"],
+  "knights": ["For the King!", "Storm the walls!", "Bring down the tower!", "Huzzah! The tower falls!", "Allez! Allez!", "Huzzah!#2", "Go, go, go!", "Glory!", "Faster! Faster!", "Stop that swine!", "Row, ye dogs! Beat the rider!", "Behold, the great Bartholomew!", "Race thee to the castle, cyclist!"],
+  "coach": ["coach:warm", "coach:go", "coach:rest", "coach:ten", "coach:three", "coach:last", "coach:half", "coach:done", "coach:low", "coach:good", "coach:cool", "coach:sprint", "coach:group", "coach:pb"]
+}

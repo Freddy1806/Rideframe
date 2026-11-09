@@ -9,6 +9,7 @@ import { stravaExport } from './tcx.js';
 import { gearsFrom, gearName, parseGear, estimateGear, virtualGrade } from './gears.js';
 import { UEBridge } from './uebridge.js';
 import { workoutAt, workoutSVG } from './workouts.js';
+import { Music, Coach } from './music.js';
 
 const MIN_RATE = 0.0625, MAX_RATE = 4;
 
@@ -130,6 +131,10 @@ export class RideSession {
     try { await document.documentElement.requestFullscreen?.(); } catch {}
     try { this.wake = await navigator.wakeLock?.request('screen'); } catch {}
     if (this.state.trainer.connected) this.state.trainer.setGrade(this._trainerGrade(), true);
+    const st = this.state.settings;
+    this.music = new Music(this.group ? 'race' : this.workout ? 'workout' : 'world', st.musicVol ?? 0.45);
+    this.coach = new Coach(st.coachVol ?? 0.9);
+    this.el.querySelector('#hMusic')?.addEventListener('click', () => this._toggleMusic());
     this.running = true; this.last = performance.now();
     this._updateHUD(true);
     if (!this.autopilot) await this._countdown();
@@ -147,6 +152,7 @@ export class RideSession {
           <div class="chip glass gearchip"><div class="label" id="hGearL">${this.virtual ? 'Virtueller Gang' : 'Gang'}</div><div class="v num" id="hGear">–</div><div class="gearbar" id="hGearBar">${this.virtual ? this.gears.map(() => '<i></i>').join('') : ''}</div></div>
           <div class="chip glass"><div class="label">Zeit</div><div class="v num" id="hTime">0:00</div></div>
           ${this.track.world ? '<button class="chip glass camchip" id="hCam" title="Kamera wechseln (V)"><div class="label">Kamera</div><div class="v">⟲</div></button><button class="chip glass camchip" id="hBar" title="Lenker ein/aus (H)"><div class="label">Lenker</div><div class="v">⊓</div></button><button class="chip glass camchip" id="hWide" title="Weitwinkel ([ und ])"><div class="label">Sicht</div><div class="v">↔</div></button>' : ''}
+          <button class="chip glass camchip" id="hMusic" title="Musik an/aus (M), nächster Titel (N)"><div class="label">Musik</div><div class="v">♫</div></button>
         </div>
       </div>
       ${this.workout ? `<div class="wpanel glass" id="hWork"><div class="label" id="hWName">${esc(this.workout.name)}${this.erg ? ' · ERG' : ''}</div>
@@ -218,7 +224,7 @@ export class RideSession {
       this.d = Math.min(this.track.length, this.d + this.v * dt);
       this.elapsed += dt;
       const e = eleAt(this.track, this.d); if (e > this.lastEle) this.gainAcc += e - this.lastEle; this.lastEle = e;
-      this._workout();
+      this._workout(dt);
       this.state.trainer.setGrade(this._trainerGrade());
       this._syncVideo();
       if (this.elapsed - this.lastSample >= 1) {
@@ -338,11 +344,37 @@ export class RideSession {
   }
 
   /** training program: target power for now; in ERG mode the trainer holds it */
-  _workout() {
+  _workout(dt = 0.016) {
     if (!this.workout) return;
     const w = this.wNow = workoutAt(this.workout, this.elapsed, this.ftp);
     if (this.erg) this.state.trainer.setPower(w.done ? null : w.target);
-        if (w.done && !this.wDone) { this.wDone = true; this._flash?.('Training geschafft!'); }
+        if (w.done && !this.wDone) { this.wDone = true; this._flash?.('Training geschafft!'); this.coach?.say('done', 0); }
+    this._coachTick(w, dt);
+  }
+
+  /** coach: announces blocks, counts down into hard ones, says when you are too soft */
+  _coachTick(w, dt) {
+    const c = this.coach; if (!c || w.done) return;
+    const hard = s => s && s.pct >= 88, steps = this.workout.steps;
+    if (w.i !== this._wi) {
+      const first = this._wi === undefined; this._wi = w.i; this._lowT = 0;
+      const lbl = w.step.label || '', m = lbl.match(/(\d+)\/(\d+)/);
+      if (first) c.say('warm', 0);
+      else if (/Sprint/i.test(lbl)) c.say('sprint', 0);
+      else if (hard(w.step)) c.say(m && m[1] === m[2] ? 'last' : 'go', 0);
+      else if (/Ausfahren/i.test(lbl)) c.say('cool', 0);
+      else if (hard(steps[w.i - 1])) c.say('rest', 0);
+      const total = steps.reduce((a, x) => a + x.dur, 0); this._half ||= total / 2;
+    }
+    if (hard(w.next) && !hard(w.step)) {
+      if (w.left <= 10.5 && w.left > 9.5) c.say('ten', 3);
+      else if (w.left <= 3.4 && w.left > 2.6) c.say('three', 2);
+    }
+    if (this._half && this.elapsed >= this._half && !this._halfSaid) { this._halfSaid = true; c.say('half', 0); }
+    if (hard(w.step) && this.state.trainer.connected) { // with real watts only
+      if (this.power < w.target * 0.9) { this._lowT = (this._lowT || 0) + dt; if (this._lowT > 8) { c.say('low', 25); this._lowT = -10; } }
+      else if (Math.abs(this.power - w.target) < w.target * 0.05) { this._goodT = (this._goodT || 0) + dt; if (this._goodT > 60) { c.say('good', 90); this._goodT = 0; } }
+    }
   }
 
   _workoutHUD(pShow) {
@@ -388,6 +420,8 @@ export class RideSession {
     else if (e.key === 'v' || e.key === 'c') this._cycleView();
     else if (e.key === '[' || e.key === ']') this._lens(e.key === ']' ? 1 : -1);
     else if (e.key === 'h') this._toggleBar();
+    else if (e.key === 'm') this._toggleMusic();
+    else if (e.key === 'n') { this.music?.skip(); setTimeout(() => this._flash('♫ ' + (this.music?.title() || '')), 300); }
   }
   _toggleBar() { // handlebar and forearms in the rider's view on/off
     if (!this.player.setCockpit) return;
@@ -407,6 +441,12 @@ export class RideSession {
     s.lensMm = steps[Math.max(0, Math.min(steps.length - 1, j))]; this.player.setLens(s.lensMm);
     this._flash(s.lensMm ? `Sichtfeld ${s.lensMm} mm` : 'Sichtfeld normal'); import('./app.js').then(m => m.saveSettings());
   }
+  _toggleMusic() {
+    const s = this.state.settings, m = this.music; if (!m) return;
+    if (!m.available) return this._flash('Keine Musik gefunden (assets/audio)');
+    s.musicVol = m.on ? 0 : (s.musicVolOn || 0.45); if (m.on) s.musicVolOn = m.vol;
+    m.setVolume(s.musicVol); this._flash(m.on ? '♫ ' + m.title() : 'Musik aus'); import('./app.js').then(x => x.saveSettings());
+  }
   _flash(text) {
     let f = this.q('#hFlash'); if (!f) { f = document.createElement('div'); f.id = 'hFlash'; f.className = 'flash glass'; this.el.append(f); }
     f.textContent = text; f.classList.add('on'); clearTimeout(this._flashT); this._flashT = setTimeout(() => f.classList.remove('on'), 1600);
@@ -414,7 +454,7 @@ export class RideSession {
 
   _pause() {
     if (this.finished) return;
-    this.paused = true; this.player.pause();
+    this.paused = true; this.player.pause(); this.music?.pause();
     const o = document.createElement('div'); o.className = 'paused'; o.id = 'pauseOverlay';
     o.innerHTML = `<div class="box"><div class="label">${fmtKm(this.d)} km · ${fmtTime(this.elapsed)}</div><h2 class="display">Pause</h2>
       <div class="row-actions"><button class="btn" id="pResume">Weiterfahren</button><button class="btn ghost" id="pSave">Beenden &amp; speichern</button><button class="btn ghost" id="pDiscard">Verwerfen</button></div></div>`;
@@ -423,7 +463,7 @@ export class RideSession {
     o.querySelector('#pSave').onclick = () => this._end(true);
     o.querySelector('#pDiscard').onclick = () => this._end(false);
   }
-  _resume() { this.paused = false; this.q('#pauseOverlay')?.remove(); this.last = performance.now(); }
+  _resume() { this.music?.resume(); this.paused = false; this.q('#pauseOverlay')?.remove(); this.last = performance.now(); }
 
   _rideRecord(complete) {
     const pw = this.samples.map(s => s[2]);
@@ -477,7 +517,7 @@ export class RideSession {
   }
 
   _close(saved) {
-    this.running = false; this.ue?.close(); this.state.trainer.setPower?.(null);
+    this.running = false; this.ue?.close(); this.state.trainer.setPower?.(null); this.music?.destroy();
     document.removeEventListener('keydown', this._key);
     this.player.destroy?.();
     this.wake?.release?.();

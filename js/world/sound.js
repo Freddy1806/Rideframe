@@ -167,6 +167,8 @@ export class Sound {
   speak(text, vol = 1, style = 'call', seed = 0) {
     if (!this.on || !this.voicesOn || this.paused || !text || !(vol > 0.05)) return;
     const file = this.m?.voices?.[text];
+    if (file) window.dispatchEvent(new Event('rf-voice')); // music ducks
+    if (!file && this.m?.voices && Object.keys(this.m.voices).length) return; // recorded voices present: no computer voice for the rest
     if (file) { if (this._ctx()) fetch('assets/audio/' + file).then(r => r.arrayBuffer()).then(a => this.ctx.decodeAudioData(a)).then(b => this._playBuf(b, vol, 0)).catch(() => {}); return; }
     if (/^(oink|woof|baa|moo)/i.test(text)) return; // animal noises read out by a narrator sound wrong
     const S = globalThis.speechSynthesis; if (!S) return;
