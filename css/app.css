@@ -301,3 +301,26 @@ input[type=number]::-webkit-inner-spin-button, input[type=number]::-webkit-outer
 .wpanel .wnext { color: var(--muted); font-size: 12px; margin: 6px 0 10px; }
 .wpanel .wsvg, .workout-pick .wsvg { width: 100%; height: 46px; display: block; border-radius: 3px; background: rgba(255,255,255,.04); }
 .workout-pick { display: grid; gap: 8px; margin-top: 10px; }
+
+/* rider editor (Mii style) */
+.modal .avbox { width: min(980px, 96vw); display: grid; grid-template-columns: minmax(240px, 380px) 1fr; gap: 24px; padding: 24px; max-height: 94vh; }
+.avleft { display: flex; flex-direction: column; gap: 10px; }
+.avcanvas { width: 100%; aspect-ratio: 3 / 4; border-radius: 6px; background: radial-gradient(circle at 50% 35%, #3a3f48, #15171b 75%); display: block; }
+.avname input { width: 100%; background: var(--ink); border: 1px solid var(--line-2); color: var(--paper); padding: 10px 12px; border-radius: 6px; font: inherit; }
+.avbtns { display: flex; gap: 8px; }
+.avright { display: flex; flex-direction: column; min-height: 0; }
+.avtabs { display: flex; flex-wrap: wrap; gap: 6px; margin: 10px 0 14px; }
+.avtab { padding: 8px 14px; border-radius: 99px; border: 1px solid var(--line-2); color: var(--muted); font-weight: 700; font-size: 13px; }
+.avtab.on { background: var(--paper); color: var(--ink); border-color: var(--paper); }
+.avopts { overflow-y: auto; min-height: 0; flex: 1; padding-right: 4px; }
+.avrow { margin-bottom: 16px; }
+.avk { font-size: 11px; letter-spacing: .12em; text-transform: uppercase; color: var(--muted); margin-bottom: 8px; }
+.avchips { display: flex; flex-wrap: wrap; gap: 6px; }
+.avchip { padding: 9px 13px; border-radius: 6px; background: var(--ink); border: 1px solid var(--line-2); color: var(--paper); font-size: 13px; }
+.avchip.on { border-color: var(--accent); box-shadow: inset 0 0 0 1px var(--accent); }
+.avsw { flex-wrap: wrap; gap: 8px; }
+.avsw .swatch { width: 28px; height: 28px; }
+.avslide { display: flex; align-items: center; gap: 10px; font-size: 12px; color: var(--muted); }
+.avslide input { flex: 1; }
+.avhint { font-size: 12px !important; }
+@media (max-width: 700px) { .modal .avbox { grid-template-columns: 1fr; overflow-y: auto; } .avcanvas { aspect-ratio: 4 / 3; } }

@@ -3,6 +3,7 @@
 import { db, uid } from './db.js';
 import { state, toast, routeById, saveSettings } from './app.js';
 import { Group } from './group.js';
+import { cleanLook } from './look.js';
 import { esc, fmtTime, fmtKm } from './util.js';
 
 // ---------- name ----------
@@ -20,7 +21,7 @@ export const sharedFor = routeId => (state.shared || []).filter(r => r.routeId =
 export function shareRide(rec) {
   const route = routeById(rec.routeId);
   const data = { type: 'rideframe-ride', v: 1, rider: riderName(), routeId: rec.routeId, routeName: route?.name || '', date: rec.date,
-    duration: rec.duration, distance: rec.distance, gain: rec.gain, avgPower: rec.avgPower, startD: rec.startD || 0, complete: !!rec.complete, samples: rec.samples };
+    duration: rec.duration, distance: rec.distance, gain: rec.gain, avgPower: rec.avgPower, startD: rec.startD || 0, complete: !!rec.complete, look: state.settings.look || null, samples: rec.samples };
   const blob = new Blob([JSON.stringify(data)], { type: 'application/json' });
   const a = document.createElement('a'); a.href = URL.createObjectURL(blob);
   a.download = `RIDEFRAME_${(route?.name || 'Fahrt').replace(/[^\wäöüÄÖÜß-]+/g, '_')}_${data.rider.replace(/[^\wäöüÄÖÜß-]+/g, '_')}_${fmtTime(rec.duration).replace(/:/g, '-')}.rideframe`;
@@ -40,7 +41,7 @@ export async function importShared(files) {
       if (!route) { toast(`Die Strecke „${j.routeName || j.routeId}“ gibt es bei dir nicht. Eigene Video-Strecken müssen beide importiert haben.`, 6000); continue; }
       const n = v => (Number.isFinite(+v) ? +v : 0);
       const rec = { id: uid(), rider: String(j.rider || 'Freund').slice(0, 20), routeId: route.id, date: n(j.date), duration: n(j.duration), distance: n(j.distance), gain: n(j.gain),
-        avgPower: n(j.avgPower), startD: n(j.startD), complete: !!j.complete, samples: j.samples.filter(s => Array.isArray(s)).map(s => s.slice(0, 6).map(n)) };
+        avgPower: n(j.avgPower), startD: n(j.startD), complete: !!j.complete, look: j.look && typeof j.look === 'object' ? cleanLook(j.look) : null, samples: j.samples.filter(s => Array.isArray(s)).map(s => s.slice(0, 6).map(n)) };
       state.shared = [...(state.shared || []).filter(x => !(x.rider === rec.rider && x.routeId === rec.routeId && x.date === rec.date)), rec];
       await db.kvSet('shared', state.shared);
       state.settings.ghost = 's:' + rec.id; saveSettings();
@@ -72,12 +73,14 @@ export function groupModal({ routeId = null, code = null, startRide }) {
           <button class="btn" id="gHost">Gruppe erstellen</button>
           <input type="text" id="gCode" placeholder="Code" maxlength="5" style="width:110px;text-transform:lowercase" value="${esc(code || '')}">
           <button class="btn ghost" id="gJoin">Beitreten</button>
+          <button class="btn ghost small" id="gLook2">Aussehen</button>
           <button class="btn ghost small" id="gClose" style="margin-left:auto">Schließen</button>
         </div><p id="gMsg"></p></div>`;
       m.querySelector('#gClose').onclick = close;
+      m.querySelector('#gLook2').onclick = () => import('./avatar-ui.js').then(x => x.avatarModal());
       const go = async opts => {
         m.querySelector('#gMsg').textContent = 'Verbinde …';
-        const g2 = new Group({ name, ...opts, onChange: () => render(), onError: msg => { const el = m.querySelector('#gMsg'); if (el) el.textContent = msg; else toast(msg, 5000); },
+        const g2 = new Group({ name, look: state.settings.look, ...opts, onChange: () => render(), onError: msg => { const el = m.querySelector('#gMsg'); if (el) el.textContent = msg; else toast(msg, 5000); },
           onStart: ({ routeId: rid, at }) => { const r = routeById(rid); if (!r) return toast('Diese Strecke hast du nicht.'); close(); setTimeout(() => startRide(rid, { group: g2 }), Math.max(0, at - Date.now())); toast('Gleich geht es los!', 3000); } });
         try { await g2.connect(); group = g2; if (g2.host && routeId) g2.setRoute(routeId); render(); }
         catch (e) { g2.close(); m.querySelector('#gMsg').textContent = e.message; }
@@ -98,8 +101,10 @@ export function groupModal({ routeId = null, code = null, startRide }) {
       <div class="group-list"><div><span>${esc(me.name)} (du)</span><span>${g.host ? 'Gastgeber' : ''}</span></div>${others.map(r => `<div><span>${esc(r.name)}</span><span>${r.riding ? 'fährt · ' + fmtKm(r.d) + ' km' : 'bereit'}</span></div>`).join('')}</div>
       <div class="actions">
         <button class="btn ghost small" id="gLeave">Gruppe verlassen</button>
+        <button class="btn ghost small" id="gLook">Aussehen ändern</button>
         ${g.host ? `<button class="btn" id="gStart" ${route ? '' : 'disabled'}>Alle starten ▸</button>` : `<button class="btn ghost" id="gSolo" ${route ? '' : 'disabled'}>Schon mal losfahren</button>`}
       </div></div>`;
+    m.querySelector('#gLook').onclick = () => import('./avatar-ui.js').then(x => x.avatarModal({ onDone: () => render() }));
     m.querySelector('#gLeave').onclick = () => { group?.close(); group = null; close(); toast('Gruppe verlassen'); };
     m.querySelector('#gCopy')?.addEventListener('click', () => navigator.clipboard?.writeText(g.code).then(() => toast('Code kopiert')));
     m.querySelector('#gLink')?.addEventListener('click', () => navigator.clipboard?.writeText(g.link).then(() => toast('Link kopiert. Klappt, wenn dein Freund RIDEFRAME auch unter dieser Adresse laufen hat.', 5000)));

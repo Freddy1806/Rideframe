@@ -107,7 +107,7 @@ function library() {
         <h1 class="display" style="margin-top:14px">Deine<br>Strecken</h1>
         <div class="meta">${routes.length} ${routes.length === 1 ? 'Strecke' : 'Strecken'} · ${fmtKm(routes.reduce((s, r) => s + r.track.length, 0))} km · ${fmtNum(routes.reduce((s, r) => s + r.track.gain, 0))} Höhenmeter</div>
       </div>
-      <div style="display:flex;gap:10px"><button class="btn ghost" id="groupBtnLib">Zusammen fahren</button><button class="btn" id="uploadBtn">＋ Strecke hochladen</button></div>
+      <div style="display:flex;gap:10px"><button class="btn ghost" id="lookBtnLib">Mein Fahrer</button><button class="btn ghost" id="groupBtnLib">Zusammen fahren</button><button class="btn" id="uploadBtn">＋ Strecke hochladen</button></div>
     </div>
     <div class="grid">
       ${routes.map(card).join('')}
@@ -120,6 +120,7 @@ function library() {
   </section>`;
   $('#uploadBtn').onclick = $('#addCard').onclick = () => $('#fileInput').click();
   $('#groupBtnLib').onclick = () => groupModal({ startRide });
+  $('#lookBtnLib').onclick = () => import('./avatar-ui.js').then(x => x.avatarModal());
   main.querySelectorAll('.card').forEach(c => c.addEventListener('click', () => go('detail', c.dataset.id)));
 }
 
@@ -359,6 +360,9 @@ function settings() {
         <label class="field"><div>Höhendaten verbessern<div class="hint">Beim Import Höhe aus Geländemodell holen (Open-Meteo). GoPro-Höhe ist ungenau.</div></div><input type="checkbox" class="toggle" id="improveEle" ${s.improveEle ? 'checked' : ''}></label>
         <div class="field"><div>Speicher<div class="hint" id="usage">…</div></div></div>
       </div>
+      <div class="panel"><h3>Dein Fahrer</h3>
+        <div class="field"><div>Aussehen<div class="hint">Typ, Größe, Statur, Gesicht, Frisur, Outfits (auch 80er und richtig lustige) und Schuhe. Sehen deine Freunde beim Zusammenfahren, du selbst in der Verfolger-Kamera (Taste V).</div></div><button class="btn ghost small" id="lookBtn">Fahrer gestalten</button></div>
+      </div>
       <div class="panel"><h3>Ansicht 3D-Welt</h3>
         <label class="field"><div>Sichtfeld (Brennweite)<div class="hint">Kleinere mm = weiter Blick. Normal entspricht ca. 17 mm. Während der Fahrt: Tasten [ und ] oder Knopf „Sicht“. 6–8 mm = extremer Weitwinkel.</div></div>${seg('lensMm', String(s.lensMm || 0), LENS_OPTS)}</label>
         <label class="field"><div>Unreal-Anzeige (Beta)<div class="hint">Schickt die Fahrt live an die Unreal-Version (Relay: node tools/ue-relay.mjs).</div></div><input type="checkbox" class="toggle" id="ueBridge" ${s.ueBridge ? 'checked' : ''}></label>
@@ -379,6 +383,7 @@ function settings() {
   const num = (id, key) => $('#' + id).addEventListener('change', e => { s[key] = +e.target.value; saveSettings(); });
   const stp = (id, key, fb) => wireStepper(main, id, v => { s[key] = v; saveSettings(); }, fb);
   stp('riderKg', 'riderKg', 75); stp('bikeKg', 'bikeKg', 8.5); stp('ftp', 'ftp', 250); stp('cadence', 'cadence', 90); stp('wheel', 'wheel', 2105);
+  $('#lookBtn').onclick = () => import('./avatar-ui.js').then(x => x.avatarModal());
   $('#cockpit').onchange = e => { s.cockpit = e.target.checked; saveSettings(); };
   $('#ueBridge').onchange = e => { s.ueBridge = e.target.checked; saveSettings(); };
   wireSeg(main, 'lensMm', v => { s.lensMm = +v; saveSettings(); });

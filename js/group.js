@@ -2,6 +2,8 @@
 // Peer to peer over WebRTC (PeerJS). The public PeerJS server only introduces the browsers to each other;
 // the ride data then goes directly between them. One rider opens a group and gets a 5-letter code, the others
 // join with it. The host relays every rider's position to all, about twice a second, and starts the ride for all.
+import { cleanLook } from './look.js';
+
 const PREFIX = 'rideframe-grp-';
 const ALPHA = 'abcdefghjkmnpqrstuvwxyz23456789';
 
@@ -23,7 +25,7 @@ export class Group {
   constructor(opts) {
     Object.assign(this, opts);
     this.host = !opts.code; this.code = opts.code || newCode();
-    this.me = { id: Math.random().toString(36).slice(2, 10), name: opts.name || 'Ich', d: 0, v: 0, w: 0, hr: 0, riding: false };
+    this.me = { id: Math.random().toString(36).slice(2, 10), name: opts.name || 'Ich', look: opts.look ? cleanLook(opts.look) : null, d: 0, v: 0, w: 0, hr: 0, riding: false };
     this.riders = new Map(); // id -> state of the others
     this.conns = []; this.open = false; this.routeId = null;
   }
@@ -86,7 +88,7 @@ export class Group {
   _clean(r) { // never trust what comes over the wire
     if (!r || typeof r.id !== 'string') return null;
     const n = v => (Number.isFinite(+v) ? +v : 0);
-    return { id: r.id.slice(0, 16), name: String(r.name || 'Fahrer').slice(0, 20), d: n(r.d), v: n(r.v), w: Math.round(n(r.w)), hr: Math.round(n(r.hr)), riding: !!r.riding, done: !!r.done };
+    return { id: r.id.slice(0, 16), name: String(r.name || 'Fahrer').slice(0, 20), d: n(r.d), v: n(r.v), w: Math.round(n(r.w)), hr: Math.round(n(r.hr)), riding: !!r.riding, done: !!r.done, look: r.look && typeof r.look === 'object' ? cleanLook(r.look) : null };
   }
 
   _relayAll() {
@@ -94,6 +96,9 @@ export class Group {
     const list = [this.me, ...this.riders.values()].map(({ seen, ...r }) => r);
     for (const c of this.conns) if (c.open) c.send({ t: 'all', list });
   }
+
+  /** new look from the editor: everyone sees it right away */
+  setLook(look) { this.me.look = cleanLook(look); this._sent = 0; this.update({}); this.onChange?.(this); }
 
   /** host: choose the route everybody rides */
   setRoute(routeId) { this.routeId = routeId; if (this.host) for (const c of this.conns) if (c.open) c.send({ t: 'route', routeId }); this.onChange?.(this); }
@@ -107,7 +112,8 @@ export class Group {
 
   /** own position, called from the ride loop (sent at most twice a second) */
   update(s) {
-    Object.assign(this.me, s);
+    const { look, ...rest } = s; Object.assign(this.me, rest);
+    if (look && look !== this._lookSrc) { this._lookSrc = look; this.me.look = cleanLook(look); }
     const now = performance.now(); if (now - (this._sent || 0) < 500) return; this._sent = now;
     if (this.host) this._relayAll();
     else for (const c of this.conns) if (c.open) c.send({ t: 'state', r: this.me });

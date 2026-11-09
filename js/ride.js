@@ -394,11 +394,13 @@ export class RideSession {
   /** group ride and ghost: riders in the 3D world, gaps in the group chip */
   _others(ghostD) {
     const list = [];
-    if (this.ghost && ghostD != null) list.push({ id: 'ghost', name: this.ghostName || (this.state.settings.ghost === 'last' ? 'Letzte Fahrt' : 'Bestzeit'), d: ghostD + (this.ghost.startD || 0), v: this.v, color: 0x9aa3ad });
+    const look = this.state.settings.look || null;
+    if ((this.state.settings.view3d || 0) === 1) list.push({ id: 'me', self: true, d: this.d, v: this.paused ? 0 : this.v, look });
+    if (this.ghost && ghostD != null) list.push({ id: 'ghost', ghost: true, look: this.ghost.look || look, name: this.ghostName || (this.state.settings.ghost === 'last' ? 'Letzte Fahrt' : 'Bestzeit'), d: ghostD + (this.ghost.startD || 0), v: this.v, color: 0x9aa3ad });
     if (this.group) {
-      this.group.update({ d: this.d, v: this.v, w: this.power, hr: this.hr, riding: !this.paused, done: this.finished });
+      this.group.update({ look, d: this.d, v: this.v, w: this.power, hr: this.hr, riding: !this.paused, done: this.finished });
       const os = this.group.others();
-      for (const r of os) list.push({ id: r.id, name: r.name, d: r.d, v: r.riding ? r.v : 0 });
+      for (const r of os) list.push({ id: r.id, name: r.name, d: r.d, v: r.riding ? r.v : 0, look: r.look });
       const gl = this.q?.('#hGroup .glist');
       if (gl) gl.innerHTML = os.length ? os.sort((a, b) => b.d - a.d).slice(0, 5).map(r => {
         const gap = r.d - this.d, txt = r.done ? 'im Ziel' : (gap >= 0 ? '+' : '−') + (Math.abs(gap) >= 1000 ? fmtKm(Math.abs(gap)) + ' km' : Math.round(Math.abs(gap)) + ' m');
