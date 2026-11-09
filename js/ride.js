@@ -382,7 +382,7 @@ export class RideSession {
     const pw = this.samples.map(s => s[2]);
     return {
       id: uid(), routeId: this.route.id, date: Date.now(), complete,
-      duration: Math.round(this.elapsed), distance: Math.round(this.d - this.startD), gain: Math.round(this.gainAcc),
+      duration: Math.round(this.elapsed), distance: Math.round(this.d - this.startD), gain: Math.round(this.gainAcc), startD: Math.round(this.startD),
       avgPower: pw.length ? Math.round(pw.reduce((a, b) => a + b, 0) / pw.length) : 0,
       maxPower: Math.max(0, ...pw), best5: bestAvg(pw, 300), best20: bestAvg(pw, 1200),
       samples: this.samples,
@@ -418,7 +418,7 @@ export class RideSession {
       <div class="row-actions"><button class="btn ghost" id="fStrava">Für Strava speichern</button><button class="btn" id="fDone">Fertig</button></div></div>`;
     this.el.append(o);
     o.querySelector('#fDone').onclick = () => this._close(true);
-    o.querySelector('#fStrava').onclick = () => stravaExport(rec, this.route.name);
+    o.querySelector('#fStrava').onclick = () => stravaExport(rec, this.route.name, d => eleAt(this.track, d));
   }
 
   async _end(save) {

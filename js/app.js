@@ -1,6 +1,6 @@
 import { db, uid } from './db.js';
 import { readGoProGPS } from './gpmf.js';
-import { buildTrack, improveElevation, parseGPX, STEP } from './track.js';
+import { buildTrack, improveElevation, parseGPX, STEP, eleAt } from './track.js';
 import { Trainer, HeartRate } from './trainer.js';
 import { makeDemoTrack, demoThumb } from './demo.js';
 import { makeCoastTrack, loadRealTrack } from './routes.js';
@@ -236,7 +236,7 @@ function history() {
       ${rides.map(x => { const pb = bestRide(x.routeId)?.id === x.id; return `<tr class="${pb ? 'pb' : ''}"><td>${new Date(x.date).toLocaleString('de-DE', { dateStyle: 'short', timeStyle: 'short' })}</td><td>${esc(routeById(x.routeId)?.name || 'Gelöschte Strecke')}</td><td>${fmtTime(x.duration)}</td><td>${fmtKm(x.distance)} km</td><td>${fmtNum(x.gain)} hm</td><td>${x.avgPower} W</td><td>${fmtNum(x.distance / x.duration * 3.6, 1)}</td><td>${pb ? 'BESTZEIT' : x.complete ? '' : '<span style="color:var(--muted)">abgebrochen</span>'}</td><td><button class="btn ghost small strava" data-id="${x.id}">Strava</button></td></tr>`; }).join('')}
     </table>` : '<div class="empty">Noch keine Fahrten. Wähle eine Strecke und fahr los.</div>'}
   </section>`;
-  main.querySelectorAll('.strava').forEach(b => b.onclick = () => { const x = rides.find(r => r.id === b.dataset.id); if (x?.samples?.length) stravaExport(x, routeById(x.routeId)?.name || 'Fahrt'); else toast('Diese Fahrt hat keine Messwerte.'); });
+  main.querySelectorAll('.strava').forEach(b => b.onclick = () => { const x = rides.find(r => r.id === b.dataset.id); if (x?.samples?.length) { const r = routeById(x.routeId), t = r?.track; stravaExport(x, r?.name || 'Fahrt', t?.ele ? d => eleAt(t, d) : null); } else toast('Diese Fahrt hat keine Messwerte.'); });
 }
 
 // ---- form controls: stepper (− value +) with optional "no answer", segmented switch ----
