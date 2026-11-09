@@ -8,6 +8,7 @@ import { fmtTime, fmtKm, fmtNum, esc, bestAvg } from './util.js';
 import { stravaExport } from './tcx.js';
 import { gearsFrom, gearName, parseGear, estimateGear, virtualGrade } from './gears.js';
 import { UEBridge } from './uebridge.js';
+import { workoutAt, workoutSVG } from './workouts.js';
 
 const MIN_RATE = 0.0625, MAX_RATE = 4;
 
@@ -69,8 +70,9 @@ export function simulateRide(track, power, settings) {
 }
 
 export class RideSession {
-  constructor({ route, ghost, state, onExit, autopilot = false, at = 0 }) {
-    Object.assign(this, { route, ghost, state, onExit, autopilot });
+  constructor({ route, ghost, state, onExit, autopilot = false, at = 0, group = null, ghostName = '', workout = null }) {
+    Object.assign(this, { route, ghost, state, onExit, autopilot, group, ghostName, workout });
+    this.erg = state.settings.erg !== false; this.ftp = state.settings.ftp || 200;
     this.track = route.track;
     this.params = defaultParams(state.settings);
     this.d = Math.min(at, this.track.length - 1); this.v = 0; this.elapsed = 0;
@@ -136,7 +138,7 @@ export class RideSession {
   }
 
   _hudHTML() {
-    const ghostChip = this.ghost ? `<div class="chip gap glass"><div class="label">vs. ${this.state.settings.ghost === 'last' ? 'letzte Fahrt' : 'Bestzeit'}</div><div class="v num" id="hGap">0:00</div></div>` : '';
+    const ghostChip = (this.group ? '<div class="chip glass groupchip" id="hGroup"><div class="label">Gruppe</div><div class="glist">wartet …</div></div>' : '') + (this.ghost ? `<div class="chip gap glass"><div class="label">vs. ${this.ghostName ? esc(this.ghostName) : this.state.settings.ghost === 'last' ? 'letzte Fahrt' : 'Bestzeit'}</div><div class="v num" id="hGap">0:00</div></div>` : '');
     return `<div class="hud">
       <div class="hud-top">
         <div class="hud-route glass"><div class="wordmark"><svg class="mark" viewBox="0 0 32 32"><rect width="32" height="32" rx="6" fill="var(--accent)"/><path d="M6 24 L14 12 L19 18 L23 10 L27 24 Z" fill="#0b0b0b"/></svg>RIDEFRAME</div><span class="sep"></span><span class="name">${esc(this.route.name)}</span></div>
@@ -147,6 +149,9 @@ export class RideSession {
           ${this.track.world ? '<button class="chip glass camchip" id="hCam" title="Kamera wechseln (V)"><div class="label">Kamera</div><div class="v">⟲</div></button><button class="chip glass camchip" id="hBar" title="Lenker ein/aus (H)"><div class="label">Lenker</div><div class="v">⊓</div></button><button class="chip glass camchip" id="hWide" title="Weitwinkel ([ und ])"><div class="label">Sicht</div><div class="v">↔</div></button>' : ''}
         </div>
       </div>
+      ${this.workout ? `<div class="wpanel glass" id="hWork"><div class="label" id="hWName">${esc(this.workout.name)}${this.erg ? ' · ERG' : ''}</div>
+        <div class="wstep" id="hWStep">–</div><div class="wtarget num"><span id="hWT">–</span><small>W</small><span class="wleft num" id="hWLeft"></span></div>
+        <div class="wnext" id="hWNext"></div><div id="hWChart">${workoutSVG(this.workout, 0)}</div></div>` : ''}
       <div class="grade-tag" id="hGradeTag"><div class="g num"><span class="arrow"></span><span id="hGrade">0,0</span><small>%</small></div><div class="next glass" id="hNext"></div></div>
       <div class="hud-bottom glass">
         <div class="metrics">
@@ -213,6 +218,7 @@ export class RideSession {
       this.d = Math.min(this.track.length, this.d + this.v * dt);
       this.elapsed += dt;
       const e = eleAt(this.track, this.d); if (e > this.lastEle) this.gainAcc += e - this.lastEle; this.lastEle = e;
+      this._workout();
       this.state.trainer.setGrade(this._trainerGrade());
       this._syncVideo();
       if (this.elapsed - this.lastSample >= 1) {
@@ -326,7 +332,48 @@ export class RideSession {
         el.className = 'v num ' + (gap <= 0 ? 'ahead' : 'behind');
       }
     }
+    this._workoutHUD(pShow);
+    this._others(ghostD);
     drawHudProfile(this.profile, this.track, this.d, ghostD);
+  }
+
+  /** training program: target power for now; in ERG mode the trainer holds it */
+  _workout() {
+    if (!this.workout) return;
+    const w = this.wNow = workoutAt(this.workout, this.elapsed, this.ftp);
+    if (this.erg) this.state.trainer.setPower(w.done ? null : w.target);
+        if (w.done && !this.wDone) { this.wDone = true; this._flash?.('Training geschafft!'); }
+  }
+
+  _workoutHUD(pShow) {
+    const w = this.wNow, q = this.q; if (!this.workout || !w || !q('#hWork')) return;
+    if (w.done) { q('#hWStep').textContent = 'Geschafft – frei weiterfahren'; q('#hWT').textContent = '✓'; q('#hWLeft').textContent = ''; q('#hWNext').textContent = ''; }
+    else {
+      q('#hWStep').textContent = w.step.label || 'Block';
+      q('#hWT').textContent = w.target;
+      q('#hWLeft').textContent = fmtTime(Math.ceil(w.left));
+      q('#hWNext').textContent = w.next ? `Danach: ${w.next.label || 'Block'} · ${w.nextTarget} W` : 'Letzter Block';
+      const pw = q('.metric.power'); pw.classList.remove('z-lo', 'z-ok', 'z-hi');
+      pw.classList.add(pShow < w.target * 0.95 ? 'z-lo' : pShow > w.target * 1.05 ? 'z-hi' : 'z-ok');
+    }
+    if (!this._wT || this.elapsed - this._wT > 2) { this._wT = this.elapsed; q('#hWChart').innerHTML = workoutSVG(this.workout, this.elapsed); }
+  }
+
+  /** group ride and ghost: riders in the 3D world, gaps in the group chip */
+  _others(ghostD) {
+    const list = [];
+    if (this.ghost && ghostD != null) list.push({ id: 'ghost', name: this.ghostName || (this.state.settings.ghost === 'last' ? 'Letzte Fahrt' : 'Bestzeit'), d: ghostD + (this.ghost.startD || 0), v: this.v, color: 0x9aa3ad });
+    if (this.group) {
+      this.group.update({ d: this.d, v: this.v, w: this.power, hr: this.hr, riding: !this.paused, done: this.finished });
+      const os = this.group.others();
+      for (const r of os) list.push({ id: r.id, name: r.name, d: r.d, v: r.riding ? r.v : 0 });
+      const gl = this.q?.('#hGroup .glist');
+      if (gl) gl.innerHTML = os.length ? os.sort((a, b) => b.d - a.d).slice(0, 5).map(r => {
+        const gap = r.d - this.d, txt = r.done ? 'im Ziel' : (gap >= 0 ? '+' : '−') + (Math.abs(gap) >= 1000 ? fmtKm(Math.abs(gap)) + ' km' : Math.round(Math.abs(gap)) + ' m');
+        return `<div class="grow ${gap >= 0 ? 'behind' : 'ahead'}"><span>${esc(r.name)}</span><b class="num">${txt}</b><i class="num">${r.w} W</i></div>`;
+      }).join('') : '<div class="grow"><span>Noch niemand da</span></div>';
+    }
+    if (list.length || this._hadRiders) { this.player?.setRiders?.(list); this._hadRiders = list.length > 0; }
   }
 
   _key(e) {
@@ -382,7 +429,7 @@ export class RideSession {
     const pw = this.samples.map(s => s[2]);
     return {
       id: uid(), routeId: this.route.id, date: Date.now(), complete,
-      duration: Math.round(this.elapsed), distance: Math.round(this.d - this.startD), gain: Math.round(this.gainAcc), startD: Math.round(this.startD),
+      duration: Math.round(this.elapsed), distance: Math.round(this.d - this.startD), gain: Math.round(this.gainAcc), startD: Math.round(this.startD), workout: this.workout?.name || undefined,
       avgPower: pw.length ? Math.round(pw.reduce((a, b) => a + b, 0) / pw.length) : 0,
       maxPower: Math.max(0, ...pw), best5: bestAvg(pw, 300), best20: bestAvg(pw, 1200),
       samples: this.samples,
@@ -430,7 +477,7 @@ export class RideSession {
   }
 
   _close(saved) {
-    this.running = false; this.ue?.close();
+    this.running = false; this.ue?.close(); this.state.trainer.setPower?.(null);
     document.removeEventListener('keydown', this._key);
     this.player.destroy?.();
     this.wake?.release?.();

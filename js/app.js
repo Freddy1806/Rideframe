@@ -10,6 +10,8 @@ import { RideSession, simulateRide } from './ride.js';
 import { fmtTime, fmtKm, fmtNum, esc, bestAvg } from './util.js';
 import { openControllerTest } from './controller.js';
 import { stravaExport } from './tcx.js';
+import { WORKOUTS, workoutById, workoutDuration, workoutSVG } from './workouts.js';
+import { loadShared, sharedFor, shareRide, importShared, groupModal } from './share.js';
 
 const $ = s => document.querySelector(s);
 const main = $('#main');
@@ -46,6 +48,7 @@ async function boot() {
   await Promise.all(Object.entries(REAL).map(async ([id, what], k) => { const real = await loadRealTrack(id); if (!real) return;
     BUILTIN[id] = () => ({ id, name: real.name || id, place: `${(real.length / 1000).toFixed(0)} km ${what} · ${real.gain} Hm`, source: 'demo', parts: [], track: real, createdAt: 2 + k, thumb: demoThumb(real, 1200) }); }));
   await reload();
+  await loadShared();
   if (params.has('seed')) await seedDemoRides();
   document.querySelectorAll('.tab').forEach(t => t.addEventListener('click', () => go(t.dataset.view)));
   $('#trainerPill').addEventListener('click', connectTrainer);
@@ -61,6 +64,7 @@ async function boot() {
   else if (v === 'ride') startRide(params.get('id') || 'demo', { autopilot: params.has('auto'), at: +params.get('at') || 0 });
   else go(v || 'library');
   if (!state.settings.profileDone && !params.has('noprofile') && v !== 'ride') profileModal();
+  else if (params.get('join')) groupModal({ code: params.get('join'), startRide });
   db.persist();
 }
 
@@ -103,7 +107,7 @@ function library() {
         <h1 class="display" style="margin-top:14px">Deine<br>Strecken</h1>
         <div class="meta">${routes.length} ${routes.length === 1 ? 'Strecke' : 'Strecken'} · ${fmtKm(routes.reduce((s, r) => s + r.track.length, 0))} km · ${fmtNum(routes.reduce((s, r) => s + r.track.gain, 0))} Höhenmeter</div>
       </div>
-      <button class="btn" id="uploadBtn">＋ Strecke hochladen</button>
+      <div style="display:flex;gap:10px"><button class="btn ghost" id="groupBtnLib">Zusammen fahren</button><button class="btn" id="uploadBtn">＋ Strecke hochladen</button></div>
     </div>
     <div class="grid">
       ${routes.map(card).join('')}
@@ -115,6 +119,7 @@ function library() {
     </div>
   </section>`;
   $('#uploadBtn').onclick = $('#addCard').onclick = () => $('#fileInput').click();
+  $('#groupBtnLib').onclick = () => groupModal({ startRide });
   main.querySelectorAll('.card').forEach(c => c.addEventListener('click', () => go('detail', c.dataset.id)));
 }
 
@@ -171,19 +176,29 @@ function detail(id) {
         </div>
         <div class="row-actions">
           <button class="btn" id="rideBtn">Losfahren ▸</button>
+          <button class="btn ghost" id="groupBtn">Zusammen fahren</button>
           ${t.world ? '<a class="btn ghost" href="preview.html?route=' + id + '">Vorschau ⏩</a>' : ''}
           <div class="field" style="border:0;padding:0;gap:10px">
             <span class="label">Gegner</span>
             <select id="ghostSel" style="width:auto">
               <option value="best">Bestzeit</option><option value="last">Letzte Fahrt</option><option value="none">Keiner</option>
+              ${sharedFor(id).map(x => `<option value="s:${x.id}">${esc(x.rider)} · ${fmtTime(x.duration)}</option>`).join('')}
             </select>
           </div>
+        </div>
+        <div class="panel workout-pick" style="margin-top:22px">
+          <div class="field" style="border:0;padding:0;gap:10px;flex-wrap:wrap">
+            <span class="label">Training</span>
+            <select id="workSel" style="width:auto"><option value="">Freie Fahrt (Steigung der Strecke)</option>${WORKOUTS.map(w => `<option value="${w.id}">${esc(w.name)} · ${Math.round(workoutDuration(w) / 60)} min</option>`).join('')}</select>
+            <label style="display:flex;gap:8px;align-items:center" title="Der Trainer hält die Zielwatt selbst, egal wie steil die Strecke ist"><input type="checkbox" class="toggle" id="ergChk" ${state.settings.erg !== false ? 'checked' : ''}> ERG (Trainer hält die Watt)</label>
+          </div>
+          <div id="workInfo"></div>
         </div>
         ${t.intervals ? intervalPlan(t) : ''}
         <h2 class="section" style="margin-top:44px">Deine Zeiten</h2>
         ${ranked.length ? `<table class="table">
-          <tr><th class="label">#</th><th class="label">Datum</th><th class="label">Zeit</th><th class="label">Ø Watt</th><th class="label">Ø km/h</th></tr>
-          ${ranked.slice(0, 8).map((x, i) => `<tr class="${i === 0 ? 'pb' : ''}"><td class="rank">${i + 1}</td><td>${new Date(x.date).toLocaleDateString('de-DE')}</td><td>${fmtTime(x.duration)}</td><td>${x.avgPower} W</td><td>${fmtNum(x.distance / x.duration * 3.6, 1)}</td></tr>`).join('')}
+          <tr><th class="label">#</th><th class="label">Datum</th><th class="label">Zeit</th><th class="label">Ø Watt</th><th class="label">Ø km/h</th><th class="label"></th></tr>
+          ${ranked.slice(0, 8).map((x, i) => `<tr class="${i === 0 ? 'pb' : ''}"><td class="rank">${i + 1}</td><td>${new Date(x.date).toLocaleDateString('de-DE')}</td><td>${fmtTime(x.duration)}</td><td>${x.avgPower} W</td><td>${fmtNum(x.distance / x.duration * 3.6, 1)}</td><td><button class="btn ghost small share" data-id="${x.id}" title="Als Datei an Freunde schicken, sie fahren gegen dich">Teilen</button></td></tr>`).join('')}
         </table>` : '<div class="empty">Noch keine komplette Fahrt. Die erste Zeit wird deine Bestzeit.</div>'}
         <div class="row-actions" style="margin-top:32px">
           ${r.source !== 'demo' ? `<button class="btn ghost small" id="renameBtn">Umbenennen</button>
@@ -194,7 +209,13 @@ function detail(id) {
     </div>
   </section>`;
   $('#back').onclick = () => go('library');
-  $('#ghostSel').value = state.settings.ghost;
+  $('#ghostSel').value = state.settings.ghost; if (!$('#ghostSel').value) $('#ghostSel').value = 'best';
+  $('#groupBtn').onclick = () => groupModal({ routeId: id, startRide });
+  const showWork = () => { const w = workoutById(state.settings.workout); $('#workInfo').innerHTML = w ? `<p style="margin:6px 0">${esc(w.what)} Ziel-Watt aus deiner FTP (${state.settings.ftp || 200} W).</p>${workoutSVG(w)}` : ''; $('#rideBtn').textContent = w ? 'Training starten ▸' : 'Losfahren ▸'; };
+  $('#workSel').value = workoutById(state.settings.workout) ? state.settings.workout : ''; showWork();
+  $('#workSel').onchange = e => { state.settings.workout = e.target.value; saveSettings(); showWork(); };
+  $('#ergChk').onchange = e => { state.settings.erg = e.target.checked; saveSettings(); };
+  main.querySelectorAll('.share').forEach(b => b.onclick = () => shareRide(rides.find(r => r.id === b.dataset.id)));
   $('#ghostSel').onchange = e => { state.settings.ghost = e.target.value; saveSettings(); };
   $('#rideBtn').onclick = () => startRide(id);
   const prof = $('#detailProfile');
@@ -233,9 +254,10 @@ function history() {
     <h2 class="section">Alle Fahrten</h2>
     ${rides.length ? `<table class="table">
       <tr><th class="label">Datum</th><th class="label">Strecke</th><th class="label">Zeit</th><th class="label">Distanz</th><th class="label">Höhenmeter</th><th class="label">Ø Watt</th><th class="label">Ø km/h</th><th class="label"></th><th class="label"></th></tr>
-      ${rides.map(x => { const pb = bestRide(x.routeId)?.id === x.id; return `<tr class="${pb ? 'pb' : ''}"><td>${new Date(x.date).toLocaleString('de-DE', { dateStyle: 'short', timeStyle: 'short' })}</td><td>${esc(routeById(x.routeId)?.name || 'Gelöschte Strecke')}</td><td>${fmtTime(x.duration)}</td><td>${fmtKm(x.distance)} km</td><td>${fmtNum(x.gain)} hm</td><td>${x.avgPower} W</td><td>${fmtNum(x.distance / x.duration * 3.6, 1)}</td><td>${pb ? 'BESTZEIT' : x.complete ? '' : '<span style="color:var(--muted)">abgebrochen</span>'}</td><td><button class="btn ghost small strava" data-id="${x.id}">Strava</button></td></tr>`; }).join('')}
+      ${rides.map(x => { const pb = bestRide(x.routeId)?.id === x.id; return `<tr class="${pb ? 'pb' : ''}"><td>${new Date(x.date).toLocaleString('de-DE', { dateStyle: 'short', timeStyle: 'short' })}</td><td>${esc(routeById(x.routeId)?.name || 'Gelöschte Strecke')}</td><td>${fmtTime(x.duration)}</td><td>${fmtKm(x.distance)} km</td><td>${fmtNum(x.gain)} hm</td><td>${x.avgPower} W</td><td>${fmtNum(x.distance / x.duration * 3.6, 1)}</td><td>${pb ? 'BESTZEIT' : x.complete ? '' : '<span style="color:var(--muted)">abgebrochen</span>'}</td><td style="white-space:nowrap"><button class="btn ghost small strava" data-id="${x.id}">Strava</button> <button class="btn ghost small share" data-id="${x.id}">Teilen</button></td></tr>`; }).join('')}
     </table>` : '<div class="empty">Noch keine Fahrten. Wähle eine Strecke und fahr los.</div>'}
   </section>`;
+  main.querySelectorAll('.share').forEach(b => b.onclick = () => shareRide(rides.find(r => r.id === b.dataset.id)));
   main.querySelectorAll('.strava').forEach(b => b.onclick = () => { const x = rides.find(r => r.id === b.dataset.id); if (x?.samples?.length) { const r = routeById(x.routeId), t = r?.track; stravaExport(x, r?.name || 'Fahrt', t?.ele ? d => eleAt(t, d) : null); } else toast('Diese Fahrt hat keine Messwerte.'); });
 }
 
@@ -419,6 +441,7 @@ function gpChapterKey(name) {
 }
 
 async function importFiles(files) {
+  files = await importShared(files); if (!files.length) return;
   const videos = files.filter(f => /\.(mp4|mov)$/i.test(f.name)).sort((a, b) => gpChapterKey(a.name).localeCompare(gpChapterKey(b.name)));
   const gpx = files.find(f => /\.gpx$/i.test(f.name));
   if (!videos.length) return toast('Bitte ein Video (MP4) auswählen.');
@@ -511,7 +534,10 @@ async function startRide(id, opts = {}) {
   let ghost = null;
   if (state.settings.ghost === 'best') ghost = bestRide(id);
   if (state.settings.ghost === 'last') ghost = rides.filter(r => r.complete)[0];
-  session = new RideSession({ route, ghost, state, ...opts, onExit: async saved => { session = null; await reload(); if (saved) go('detail', id); else go(state.view === 'detail' ? 'detail' : state.view, id); } });
+  let ghostName = '';
+  if (state.settings.ghost?.startsWith('s:')) { ghost = (state.shared || []).find(r => 's:' + r.id === state.settings.ghost && r.routeId === id) || bestRide(id); ghostName = ghost?.rider || ''; }
+  const workout = opts.group ? null : workoutById(state.settings.workout);
+  session = new RideSession({ route, ghost, ghostName, workout, state, ...opts, onExit: async saved => { session = null; await reload(); if (saved) go('detail', id); else go(state.view === 'detail' ? 'detail' : state.view, id); } });
   await session.start();
 }
 

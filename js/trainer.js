@@ -122,9 +122,21 @@ export class Trainer extends EventTarget {
     }
   }
 
+  /** ERG mode: the trainer holds this power whatever the cadence (training programs). null = back to road grade. */
+  setPower(watts) {
+    if (!this.cp || !this.connected) { this.erg = watts; return; }
+    if (watts == null) { if (this.erg != null) { this.erg = null; this.lastGrade = null; } return; }
+    watts = Math.max(0, Math.min(2000, Math.round(watts)));
+    const now = performance.now();
+    if (watts === this.erg && now - this.lastSend < 5000) return;
+    this.erg = watts; this.lastSend = now;
+    if (this.mode === 'ftms') this._write([0x05, watts & 255, (watts >> 8) & 255]);
+    else if (this.mode === 'wahoo') this._write([0x42, watts & 255, watts >> 8]);
+  }
+
   /** Send road grade in % (already scaled by difficulty). Rate-limited. */
   setGrade(grade, force = false) {
-    if (!this.cp || !this.connected) return;
+    if (!this.cp || !this.connected || this.erg != null) return;
     grade = Math.max(-20, Math.min(20, grade));
     const now = performance.now();
     if (!force && this.lastGrade !== null && Math.abs(grade - this.lastGrade) < 0.1 && now - this.lastSend < 5000) return;

@@ -278,3 +278,26 @@ input[type=number]::-webkit-inner-spin-button, input[type=number]::-webkit-outer
 .ride.world3d .metric.power .v { font-size: 56px; }
 .ride.world3d .metric .sub { margin-top: 4px; font-size: 11px; }
 .ride.world3d .hud-profile { margin-top: 8px; height: 38px; }
+
+/* group ride */
+.chip.groupchip { min-width: 170px; text-align: left; }
+.groupchip .glist { display: grid; gap: 3px; margin-top: 4px; font-size: 13px; }
+.groupchip .grow { display: grid; grid-template-columns: 1fr auto auto; gap: 8px; align-items: baseline; }
+.groupchip .grow span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 90px; }
+.groupchip .grow b { font-weight: 600; }
+.groupchip .grow.behind b { color: var(--paper); }
+.groupchip .grow.ahead b { color: var(--accent); }
+.groupchip .grow i { font-style: normal; color: var(--muted); font-size: 11px; }
+.group-code { font: 700 44px/1 var(--display, inherit); letter-spacing: .18em; text-transform: uppercase; margin: 14px 0 6px; }
+.group-list { display: grid; gap: 6px; margin: 14px 0; }
+.group-list div { display: flex; justify-content: space-between; padding: 8px 12px; border-radius: 10px; background: rgba(255,255,255,.06); }
+
+/* training program */
+.wpanel { position: absolute; left: 28px; top: 50%; transform: translateY(-50%); width: 260px; padding: 14px 16px; border-radius: 6px; }
+.wpanel .wstep { font-weight: 800; text-transform: uppercase; letter-spacing: .04em; font-size: 13px; margin-top: 6px; }
+.wpanel .wtarget { font-size: 54px; font-weight: 900; font-stretch: 112%; line-height: 1; margin-top: 4px; display: flex; align-items: baseline; gap: 6px; }
+.wpanel .wtarget small { font-size: 18px; }
+.wpanel .wleft { margin-left: auto; font-size: 22px; font-weight: 800; color: var(--accent); }
+.wpanel .wnext { color: var(--muted); font-size: 12px; margin: 6px 0 10px; }
+.wpanel .wsvg, .workout-pick .wsvg { width: 100%; height: 46px; display: block; border-radius: 3px; background: rgba(255,255,255,.04); }
+.workout-pick { display: grid; gap: 8px; margin-top: 10px; }

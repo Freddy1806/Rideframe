@@ -18,6 +18,7 @@ import { terrainMaterial, tex, texReady, TIME, useSatellite } from './terrainmat
 import { Water } from '../../vendor/jsm/objects/Water.js';
 import { mergeGeometries } from '../../vendor/jsm/utils/BufferGeometryUtils.js';
 import { loadAssets } from './assets.js';
+import { Riders } from './riders.js';
 import { Events } from './events.js';
 import { placeWaterfalls } from './waterfalls.js';
 import { Siege } from './siege.js';
@@ -955,6 +956,8 @@ export class WorldScene {
   /** 0 = rider's eyes, 1 = chase view from behind and above, 2 = looking back */
   setView(v) { this.view = v; this.lookPos = null; }
   setCockpit(on) { this.showCockpit = on; }
+  /** other riders (group ride, ghost): [{ id, name, d, v }] */
+  setRiders(list) { (this.riders ||= new Riders(this.scene, this.field)).set(list); }
 
   _camera(d, dt = 1 / 60) {
     // exact rider pose on the spline; only the view direction is damped (time based, frame-rate independent)
@@ -1089,6 +1092,7 @@ export class WorldScene {
   _life(time, dt, cam) {
     if (this.field.tunnel) this.tunnelK = lerp(this.tunnelK || 0, this.field.tunnel[Math.max(0, Math.min(this.field.n - 1, Math.round(this.d / DS)))] ? 1 : 0, Math.min(1, dt * 1.5)); // eyes adjust to the tunnel
     if (this.field.tunnel) this.scene.environmentIntensity = 0.95 * (1 - 0.45 * this.tunnelK);
+    this.riders?.update(Math.min(dt, 0.1), this.d || 0);
     if (!this.props) return;
     this.falls?.update(time, dt, cam);
     this.events?.update(time, dt, cam, this.d);
