@@ -263,7 +263,7 @@ export class WorldScene {
     const wn = tex('water', 'nrm', [128, 128, 255]);
     this.water = new Water(new THREE.PlaneGeometry(9000, 9000), {
       textureWidth: +(QS.get('refl') || 1024), textureHeight: +(QS.get('refl') || 1024), waterNormals: wn, sunDirection: sun.clone(), sunColor: 0xffb27a,
-      waterColor: 0x0c5f6a, distortionScale: 3.4, fog: true, alpha: 0.74, size: 3.2,
+      waterColor: 0x0f3a44, distortionScale: 3.4, fog: true, alpha: 0.74, size: 3.2,
     });
     // real water reflects ~4 % straight down (not 30 %): the sea is no longer a white mirror, the teal body and the
     // turquoise sand under the shallows show through; grazing angles still mirror the mountains
@@ -271,7 +271,7 @@ export class WorldScene {
       .replace('float rf0 = 0.3;', 'float rf0 = 0.04;')
       // sharper, brighter sun glitter: a glittering path on the sea towards the low sun
       .replace('sunLight( surfaceNormal, eyeDirection, 100.0, 2.0, 0.5, diffuseLight, specularLight );', 'sunLight( surfaceNormal, eyeDirection, 260.0, 5.0, 0.5, diffuseLight, specularLight );')
-      .replace('vec3 scatter = max( 0.0, dot( surfaceNormal, eyeDirection ) ) * waterColor;', 'vec3 scatter = ( 0.35 + 0.65 * max( 0.0, dot( surfaceNormal, eyeDirection ) ) ) * waterColor * 1.6;');
+      .replace('vec3 scatter = max( 0.0, dot( surfaceNormal, eyeDirection ) ) * waterColor;', 'vec3 scatter = ( 0.35 + 0.65 * max( 0.0, dot( surfaceNormal, eyeDirection ) ) ) * waterColor * 1.15;');
     this.water.material.transparent = true;
     this.water.rotation.x = -Math.PI / 2; this.water.position.y = 0; scene.add(this.water);
     if (QS.has('noreflect')) { const wr = this.water.onBeforeRender; let k = 0; this.water.onBeforeRender = (...x) => { if (k++ < 30) wr.apply(this.water, x); }; } // mirror frozen after the first frames
@@ -1016,6 +1016,8 @@ export class WorldScene {
     FOG_SUNCOL.x = 0.42 * g; FOG_SUNCOL.y = (0.2 - 0.06 * low) * g; FOG_SUNCOL.z = (0.06 - 0.03 * low) * g;
     const wu = this.water.material.uniforms;
     wu.sunDirection.value.copy(s); wu.sunColor.value.lerpColors(WS_HIGH, WS_LOW, low).multiplyScalar(1 - 0.5 * veil);
+    // deep North-Sea blue-green under a clear sky, dull slate grey-blue under cloud, veil and rain (Freddy: never a glowing cyan)
+    wu.waterColor.value.lerpColors(WC_CLEAR, WC_GREY, Math.min(1, cover * 0.7 + veil * 0.5 + (this.weather?.rain || 0)));
     this.clouds.material.uniforms.uSun.value.copy(s); this.clouds.material.uniforms.uCover.value = cover;
     this.clouds.material.uniforms.uLow.value = low;
     // image-based light from the sky, re-baked only when the sun has moved noticeably (~0.2°)
@@ -1188,6 +1190,7 @@ const W_HIGH = new THREE.Color(0xffdcc2), W_LOW = new THREE.Color(0xffc9a4);
 const H_CLEAR = new THREE.Color(0x8fb0e2), H_GREY = new THREE.Color(0xa6b2c6);
 const F_CLEAR = new THREE.Color(0xa9b9d0), F_GREY = new THREE.Color(0xb4b9c2);
 const WS_HIGH = new THREE.Color(0xffb27a), WS_LOW = new THREE.Color(0xff8a52);
+const WC_CLEAR = new THREE.Color(0x0f3a44), WC_GREY = new THREE.Color(0x26323a); // sea body colour: clear vs. overcast
 
 // sunset grade on top of three's Sky (Preetham): deep blue overhead, a pink belt of Venus opposite the sun,
 // orange-to-red glow along the horizon towards the sun, a large dark-red sun disc instead of the white-hot one,
