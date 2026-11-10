@@ -9,9 +9,11 @@ TRAINER VERBINDEN
 - Oben rechts "KICKR verbinden" (Bluetooth an). Pulsgurt optional daneben.
 
 ZUSAMMEN FAHREN (online, jeder bei sich zu Hause)
+- Beide tragen im Fenster "Zusammen fahren" ihren Namen ein. Unter "Mein Fahrer" könnt ihr euer Aussehen gestalten.
 - Einer klickt "Zusammen fahren" > "Gruppe erstellen" und schickt den 5-stelligen Code.
 - Der andere klickt "Zusammen fahren", gibt den Code ein > "Beitreten".
-- Der Gastgeber wählt die Strecke (auf der Streckenseite "Zusammen fahren" drücken) und klickt "Alle starten".
+- Der Gastgeber wählt im selben Fenster die Strecke aus der Liste und klickt "Alle starten".
+- Meldung "Router lassen keine Direktverbindung zu": nochmal versuchen, sonst einer von euch über einen Handy-Hotspot.
 - Ihr seht euch als Radfahrer auf der Strecke und oben rechts den Abstand in Metern.
 - Ohne Live: In "Verlauf" bei einer Fahrt "Teilen" drücken, die .rideframe-Datei schicken.
   Der andere zieht sie ins RIDEFRAME-Fenster und fährt gegen dich als Gegner.
