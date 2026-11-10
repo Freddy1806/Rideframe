@@ -68,7 +68,7 @@ export class Riders {
       o.lookAt(p.lx, p.y, p.lz);
       // ~90 rpm at 36 km/h, legs stop when freewheeling
       e.crank += Math.min(10, e.v * 0.95) * dt;
-      for (const w of o.userData.wheels) w.rotation.x -= e.v / 0.34 * dt;
+      for (const w of o.userData.wheels) w.rotation.x += e.v / 0.34 * dt; // +X is the rider's left: positive turn = rolling forward
       o.userData.pedal(e.crank);
     }
   }

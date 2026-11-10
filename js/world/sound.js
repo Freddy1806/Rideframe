@@ -2,14 +2,24 @@
 // browser's speech synthesis (British voices on the Mac). Recorded files from assets/audio/manifest.json
 // ("sfx": { name: [files] }, "voices": { text: file }) replace the synthesised version when present.
 //   one-shots: fireball, explosion, rumble, crash      loops (call every frame / tick): waterfall, battle, fire
+// Distance: every positional sound runs through a lowpass that closes as it gets quieter, so far away sounds
+// muffled and dull and up close bright and clear. Moving sources (a villager you ride past, a gull overhead)
+// are re-aimed every frame. Ambience loops (wind, surf, birds, rain, market) only play from recordings,
+// except wind, which has a synthesised fallback.
 
 const LOOPS = new Set(['waterfall', 'battle', 'fire']);
+const SYNTH = new Set(['fireball', 'explosion', 'rumble', 'crash']);
+const LEVEL = { waterfall: 0.55, fire: 0.6, battle: 0.7 };
+const ALIAS = { waterfall: 'wasserfall' }; // German names of the recorded files
 const rnd = (a, b) => a + Math.random() * (b - a);
+const clampPan = p => Math.max(-0.9, Math.min(0.9, p || 0));
+/** loudness 0..1 -> lowpass cutoff: 18 kHz close, ~1 kHz at the edge of hearing */
+export const muffle = v => 1000 * Math.pow(18, Math.max(0, Math.min(1, v)));
 
 export class Sound {
   constructor(manifest = {}) {
     this.m = manifest; this.loops = new Map(); this.last = {}; this.on = true; this.voicesOn = true;
-    this.buf = {}; this.files = {};
+    this.buf = {}; this.files = {}; this.moving = [];
   }
   setManifest(m) { this.m = m || {}; }
 
@@ -74,17 +84,18 @@ export class Sound {
   }
 
   // ---------------- plumbing ----------------
-  _out(vol, pan, at) {
-    const c = this.ctx, g = c.createGain(), p = c.createStereoPanner();
-    g.gain.value = vol; p.pan.value = Math.max(-1, Math.min(1, pan || 0)); g.connect(p).connect(this.master);
-    return g;
+  _out(vol, pan, near = vol) {
+    const c = this.ctx, g = c.createGain(), lp = this._filter('lowpass', muffle(near), 0.5), p = c.createStereoPanner();
+    g.gain.value = vol; p.pan.value = clampPan(pan); g.connect(lp).connect(p).connect(this.master);
+    g.lp = lp; g.p = p; return g;
   }
   _src(buf, loop = false, rate = 1) { const s = this.ctx.createBufferSource(); s.buffer = buf; s.loop = loop; s.playbackRate.value = rate; return s; }
   _filter(type, f, Q = 0.7) { const b = this.ctx.createBiquadFilter(); b.type = type; b.frequency.value = f; b.Q.value = Q; return b; }
   _env(g, t0, a, peak, dec) { g.gain.setValueAtTime(0.0001, t0); g.gain.exponentialRampToValueAtTime(peak, t0 + a); g.gain.exponentialRampToValueAtTime(0.0001, t0 + a + dec); }
 
+  _has(name) { return !!(this.m?.sfx?.[name]?.length || this.m?.sfx?.[ALIAS[name]]?.length); }
   async _file(name) { // recorded replacement, decoded once
-    const list = this.m?.sfx?.[name]; if (!list?.length) return null;
+    const list = this.m?.sfx?.[name]?.length ? this.m.sfx[name] : this.m?.sfx?.[ALIAS[name]]; if (!list?.length) return null;
     const f = list[Math.floor(Math.random() * list.length)];
     if (!(f in this.files)) { this.files[f] = null; try { this.files[f] = await this.ctx.decodeAudioData(await (await fetch('assets/audio/' + f)).arrayBuffer()); } catch { /* fall back to synthesis */ } }
     return this.files[f];
@@ -98,13 +109,22 @@ export class Sound {
     if (LOOPS.has(name)) return this._loop(name, vol, pan);
     const now = this.ctx.currentTime, gap = { explosion: 0.07, fireball: 0.12, rumble: 1.5, crash: 0.5 }[name] ?? 0.1;
     if (now - (this.last[name] || -9) < gap) return; this.last[name] = now;
-    if (this.m?.sfx?.[name]?.length) { this._file(name).then(b => b ? this._playBuf(b, vol, pan) : this._synth(name, vol, pan)); return; }
-    this._synth(name, vol, pan);
+    if (this._has(name)) { this._file(name).then(b => b ? this._playBuf(b, vol, pan) : SYNTH.has(name) && this._synth(name, vol, pan)); return; }
+    if (SYNTH.has(name)) this._synth(name, vol, pan);
   }
-  _playBuf(b, vol, pan) { const s = this._src(b); s.connect(this._out(vol, pan)); s.start(); }
+  /** a positional one-shot whose source may move: where() -> { vol, pan } is asked again every frame */
+  play3d(name, where, gain = 1) {
+    if (!this.on || this.paused || !this._has(name)) return;
+    const r = where(); if (!(r.vol * gain > 0.01) || !this._ctx()) return;
+    this._file(name).then(b => { if (b && !this.paused) this._playBuf(b, r.vol * gain, r.pan, where, gain); });
+  }
+  _playBuf(b, vol, pan, where, gain = 1) {
+    const s = this._src(b), out = this._out(vol, pan); s.connect(out); s.start();
+    if (where) this.moving.push({ out, where, gain, until: this.ctx.currentTime + b.duration + 0.3 });
+  }
 
   _synth(name, vol, pan) {
-    const c = this.ctx, t = c.currentTime + 0.01, out = this._out(1, pan);
+    const c = this.ctx, t = c.currentTime + 0.01, out = this._out(1, pan, vol);
     const far = 1 - Math.min(1, vol * 1.4); // quiet = far away = duller
     if (name === 'fireball') { // whoosh of a burning ball leaving the trebuchet
       const s = this._src(this.buf.white, true, rnd(0.9, 1.1)), bp = this._filter('bandpass', 400, 1.6), g = c.createGain();
@@ -138,25 +158,39 @@ export class Sound {
     s.connect(bp).connect(g2).connect(out); s.start(t, rnd(0, 1.5)); s.stop(t + 0.3);
   }
 
-  _loop(name, vol, pan) {
+  _loop(name, vol, pan, near = vol) {
     let L = this.loops.get(name);
     if (!L) {
-      if (!(vol > 0.003) || !this._ctx()) return;
-      const c = this.ctx; L = { g: c.createGain(), p: c.createStereoPanner(), srcs: [] }; L.g.gain.value = 0; L.g.connect(L.p).connect(this.master);
+      if (!(vol > 0.003) || !(LOOPS.has(name) || name === 'wind' || this._has(name)) || !this._ctx()) return;
+      const c = this.ctx; L = { g: c.createGain(), lp: this._filter('lowpass', muffle(near), 0.5), p: c.createStereoPanner(), srcs: [] };
+      L.g.gain.value = 0; L.g.connect(L.lp).connect(L.p).connect(this.master);
       const add = (buf, ...fx) => { const s = this._src(buf, true); let n = s; for (const f of fx) n = n.connect(f); n.connect(L.g); s.start(0, Math.random() * buf.duration); L.srcs.push(s); };
       if (name === 'waterfall') { add(this.buf.brown, this._filter('lowpass', 900)); const hg = c.createGain(); hg.gain.value = 0.18; add(this.buf.white, this._filter('bandpass', 2400, 0.6), hg); }
       else if (name === 'fire') { add(this.buf.crackle); const rg = c.createGain(); rg.gain.value = 0.5; add(this.buf.brown, this._filter('lowpass', 300), rg); }
+      else if (name === 'wind' && !this._has('wind')) { const wg = c.createGain(); wg.gain.value = 0.5; add(this.buf.brown, this._filter('lowpass', 480), wg); const hg = c.createGain(); hg.gain.value = 0.05; add(this.buf.white, this._filter('bandpass', 900, 0.4), hg); }
       else if (name === 'battle') { const dg = c.createGain(); dg.gain.value = 0.8; add(this.buf.drums, this._filter('lowpass', 900), dg); const cg = c.createGain(); cg.gain.value = 0.55; add(this.buf.crowd, cg); }
       this.loops.set(name, L);
-      if (this.m?.sfx?.[name]?.length) this._file(name).then(b => { if (!b || L.dead) return; for (const s of L.srcs) s.stop(); L.srcs = []; const s = this._src(b, true); s.connect(L.g); s.start(); L.srcs.push(s); });
+      if (this._has(name)) this._file(name).then(b => { if (!b || L.dead) return; for (const s of L.srcs) s.stop(); L.srcs = []; const s = this._src(b, true); s.connect(L.g); s.start(); L.srcs.push(s); });
     }
-    const now = this.ctx.currentTime, level = { waterfall: 0.55, fire: 0.6, battle: 0.7 }[name] * Math.min(1, vol);
-    L.g.gain.setTargetAtTime(level, now, 0.35); L.p.pan.setTargetAtTime(Math.max(-0.9, Math.min(0.9, pan || 0)), now, 0.3);
+    const now = this.ctx.currentTime, level = (LEVEL[name] ?? 1) * Math.min(1, vol);
+    L.g.gain.setTargetAtTime(level, now, 0.35); L.p.pan.setTargetAtTime(clampPan(pan), now, 0.3);
+    L.lp.frequency.setTargetAtTime(muffle(near), now, 0.3);
     L.seen = now;
   }
-  /** call once per frame: loops nobody asked for lately fade out and are freed */
+  /** background bed (wind, surf, birds, rain, market): not positional, level 0..1, set every frame */
+  ambient(name, level) {
+    if (!this.on || this.paused) return;
+    if (level > 0.003 || this.loops.has(name)) this._loop(name, level, 0, 1);
+  }
+  /** call once per frame: moving sources are re-aimed, loops nobody asked for lately fade out and are freed */
   tick() {
     if (!this.ctx) return; const now = this.ctx.currentTime;
+    this.moving = this.moving.filter(m => {
+      if (now > m.until) return false;
+      const r = m.where(); m.out.gain.setTargetAtTime(Math.max(0, r.vol) * m.gain, now, 0.08);
+      m.out.lp.frequency.setTargetAtTime(muffle(r.vol), now, 0.1); m.out.p.pan.setTargetAtTime(clampPan(r.pan), now, 0.1);
+      return true;
+    });
     for (const [k, L] of this.loops) {
       if (now - L.seen > 0.7) L.g.gain.setTargetAtTime(0, now, 0.4);
       if (now - L.seen > 4) { L.dead = true; for (const s of L.srcs) try { s.stop(); } catch { /* already stopped */ } L.g.disconnect(); this.loops.delete(k); }
@@ -164,12 +198,11 @@ export class Sound {
   }
 
   /** a spoken line; style: 'shout' (battle cry) or 'call' (villager) */
-  speak(text, vol = 1, style = 'call', seed = 0) {
+  speak(text, vol = 1, style = 'call', seed = 0, where = null) {
     if (!this.on || !this.voicesOn || this.paused || !text || !(vol > 0.05)) return;
     const file = this.m?.voices?.[text];
-    if (file) window.dispatchEvent(new Event('rf-voice')); // music ducks
     if (!file && this.m?.voices && Object.keys(this.m.voices).length) return; // recorded voices present: no computer voice for the rest
-    if (file) { if (this._ctx()) fetch('assets/audio/' + file).then(r => r.arrayBuffer()).then(a => this.ctx.decodeAudioData(a)).then(b => this._playBuf(b, vol, 0)).catch(() => {}); return; }
+    if (file) return this.voiceFile(file, where || (() => ({ vol, pan: 0 })));
     if (/^(oink|woof|baa|moo)/i.test(text)) return; // animal noises read out by a narrator sound wrong
     const S = globalThis.speechSynthesis; if (!S) return;
     if (S.speaking && style !== 'shout') return; // never queue villagers up behind each other
@@ -178,6 +211,15 @@ export class Sound {
     if (v) { u.voice = v; u.lang = v.lang; } else u.lang = 'en-GB';
     u.volume = Math.min(1, vol); u.rate = style === 'shout' ? 1.12 : 1.0; u.pitch = style === 'shout' ? 0.55 + 0.15 * (seed % 3) : 0.8 + 0.12 * (seed % 4);
     S.speak(u);
+  }
+  /** a recorded line from a speaker in the world: where() -> { vol, pan } follows them as you ride past */
+  voiceFile(file, where) {
+    if (!this.on || !this.voicesOn || this.paused || !file || !this._ctx()) return;
+    const r = where(); if (!(r.vol > 0.03)) return;
+    window.dispatchEvent(new Event('rf-voice')); // music ducks
+    const f = 'assets/audio/' + file;
+    (this.files[f] ? Promise.resolve(this.files[f]) : fetch(f).then(x => x.arrayBuffer()).then(a => this.ctx.decodeAudioData(a)).then(b => (this.files[f] = b)))
+      .then(b => { if (!this.paused) this._playBuf(b, r.vol, r.pan, where); }).catch(() => {});
   }
   _voice(seed) {
     const S = globalThis.speechSynthesis; if (!S) return null;
@@ -191,5 +233,5 @@ export class Sound {
 
   pause() { this.paused = true; globalThis.speechSynthesis?.cancel(); this.ctx?.suspend().catch(() => {}); }
   resume() { this.paused = false; this.ctx?.resume().catch(() => {}); }
-  destroy() { this.pause(); for (const L of this.loops.values()) L.dead = true; this.loops.clear(); this.ctx?.close().catch(() => {}); this.ctx = null; }
+  destroy() { this.pause(); this.moving = []; for (const L of this.loops.values()) L.dead = true; this.loops.clear(); this.ctx?.close().catch(() => {}); this.ctx = null; }
 }

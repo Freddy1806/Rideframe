@@ -83,7 +83,7 @@ export function makeRider(look, opts = {}) {
     g.add(kitBike); wheels.length = 0;
     for (const n of ['wheel_r', 'wheel_f']) { const w = kitBike.getObjectByName(n); if (w) wheels.push(w); }
     const crank = kitBike.getObjectByName('crank'), pr = kitBike.getObjectByName('pedal_r');
-    if (crank) kitBike.userData = { crank, pl: kitBike.getObjectByName('pedal_l'), pr, psi0: pr ? Math.atan2(pr.position.y, pr.position.z) : 0 };
+    if (crank) kitBike.userData = { crank, pl: kitBike.getObjectByName('pedal_l'), pr, psi0: pr ? Math.atan2(-pr.position.y, pr.position.z) : 0 };
   }
   // body
   const hip = V(0, 0.97, -0.17), sh = V(0, 1.36, 0.2), head = V(0, 1.58, 0.33);
@@ -169,7 +169,7 @@ export function makeRider(look, opts = {}) {
     pedal(a) { // crank angle in radians
       for (const l of legs) {
         const ang = a + (l.s > 0 ? Math.PI : 0), x = l.s * 0.11;
-        const P = V(x, BB.y + Math.sin(ang) * CR, BB.z + Math.cos(ang) * CR), Hp = V(x, hip.y, hip.z);
+        const P = V(x, BB.y - Math.sin(ang) * CR, BB.z + Math.cos(ang) * CR) /* a=0 front, then down: forward pedalling */, Hp = V(x, hip.y, hip.z);
         const d = Math.min(L1 + L2 - 0.001, P.distanceTo(Hp)), dir = P.clone().sub(Hp).normalize();
         const k = (L1 * L1 - L2 * L2 + d * d) / (2 * d), h = Math.sqrt(Math.max(0, L1 * L1 - k * k));
         const fwd = V(0, -dir.z, dir.y); if (fwd.z < 0) fwd.negate(); // knee points forward
@@ -178,7 +178,7 @@ export function makeRider(look, opts = {}) {
         l.shoe.position.copy(P).add(V(0, 0.035, 0.03)); place(l.crankArm, V(x * 0.6, BB.y, BB.z), P); l.pedal.position.copy(P);
       }
       const kc = kitBike?.userData; // detailed bike: turn its crank so the right pedal sits where the right foot is
-      if (kc?.crank) { const th = kc.psi0 - (a + Math.PI); kc.crank.rotation.x = th; if (kc.pl) kc.pl.rotation.x = -th; if (kc.pr) kc.pr.rotation.x = -th; }
+      if (kc?.crank) { const th = a - kc.psi0; kc.crank.rotation.x = th; if (kc.pl) kc.pl.rotation.x = -th; if (kc.pr) kc.pr.rotation.x = -th; }
       const cape = g.userData.cape; if (cape) cape.rotation.x = -1.15 + Math.sin(a * 1.7) * 0.08;
     } };
   g.userData.pedal(0);
@@ -200,7 +200,7 @@ export class AvatarPreview {
   _loop(now) {
     if (this.dead) return;
     const W = this.c.clientWidth, Hh = this.c.clientHeight; if (W && (this.c.width !== W * this.r.getPixelRatio() | 0)) { this.r.setSize(W, Hh, false); this.cam.aspect = W / Hh; this.cam.updateProjectionMatrix(); }
-    this.t += 1 / 60; if (this.obj) { this.obj.rotation.y = this.t * this.spin; this.obj.userData.pedal(this.t * 5); for (const w of this.obj.userData.wheels) w.rotation.x -= 0.12; }
+    this.t += 1 / 60; if (this.obj) { this.obj.rotation.y = this.t * this.spin; this.obj.userData.pedal(this.t * 5); for (const w of this.obj.userData.wheels) w.rotation.x += 0.12; }
     this.r.render(this.scene, this.cam); requestAnimationFrame(this._loop);
   }
   destroy() { this.dead = true; this.r.dispose(); }

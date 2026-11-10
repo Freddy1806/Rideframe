@@ -5,7 +5,7 @@
 import * as THREE from 'three';
 import { ROAD_W } from './field.js';
 import { Surprises } from './surprises.js';
-import { Sound } from './sound.js';
+import { Sound, muffle } from './sound.js';
 
 const LINES = [
   'Godspeed, rider!', 'Faster! The King awaits!', 'Make way for the rider!', 'Huzzah!', 'Ride on, brave soul!',
@@ -37,10 +37,19 @@ export class Events {
     const b = document.createElement('div'); b.className = 'rf-bubble'; b.textContent = text; b._o = o; b._until = this.time + dur; this.overlay.append(b);
     this._voice(o, text, style);
   }
-  /** the line is also spoken, quieter the further away the speaker is */
+  /** the line is also spoken from where the speaker stands: far = quiet and muffled, close = loud and clear */
   _voice(o, text, style) {
-    const c = this.w.camera.position, dist = Math.hypot(o.position.x - c.x, o.position.z - c.z);
-    this.sound.speak(text, Math.max(0, 1 - dist / (style === 'shout' ? 160 : 70)), style, (o.id ?? 0) + text.length);
+    const where = this._where(o, style === 'shout' ? 220 : 110);
+    this.sound.speak(text, where().vol, style, (o.id ?? 0) + text.length, where);
+  }
+  /** live position -> { vol, pan } for a source (an object or a fixed {x, z}) audible up to R metres */
+  _where(o, R, gain = 1) {
+    return () => {
+      const p = o.position || o, c = this.w.camera.position, f = this._fwd || this.w.camera.getWorldDirection(new THREE.Vector3());
+      const dx = p.x - c.x, dz = p.z - c.z, dist = Math.hypot(dx, dz), fl = Math.hypot(f.x, f.z) || 1;
+      const side = (dx * -f.z + dz * f.x) / fl; // + = to the right
+      return { vol: gain * Math.max(0, 1 - dist / R) ** 1.5, pan: side / Math.max(6, dist) * 0.9 };
+    };
   }
   /** world sound effects (siege, waterfalls): synthesised unless a recording is in the manifest */
   sfx(name, vol, pan) { if (!this.w.instant) this.sound.sfx(name, vol, pan); }
@@ -50,14 +59,6 @@ export class Events {
       const m = await (await fetch('assets/audio/manifest.json')).json();
       this.sounds = m; this.lines = (m.shouts || []).map(s => s.text); this.sound.setManifest(m);
     } catch { this.sounds = {}; }
-  }
-  _play(file, pan = 0, vol = 1) {
-    if (!file || this.w.instant) return;
-    try {
-      const ctx = this.ctx ||= new AudioContext();
-      const a = new Audio(file); const src = ctx.createMediaElementSource(a), p = ctx.createStereoPanner(), g = ctx.createGain();
-      p.pan.value = Math.max(-1, Math.min(1, pan)); g.gain.value = vol; src.connect(p).connect(g).connect(ctx.destination); a.play().catch(() => {});
-    } catch { /* no audio: the bubble is enough */ }
   }
 
   /** one oncoming horse-drawn cart per village stretch */
@@ -82,7 +83,9 @@ export class Events {
   update(time, dt, cam, d) {
     if (this.w.instant) return;
     this.time = time;
+    this._fwd = this.w.camera.getWorldDirection(this._fwd || new THREE.Vector3());
     this.sound.tick();
+    this._ambience(time, dt, cam, d);
     this.surprises.update(time, dt, cam, d);
     this._bands(cam);
     this._wolf(time, dt, cam);
@@ -119,8 +122,7 @@ export class Events {
     const pick = pool[Math.floor(Math.random() * pool.length)];
     const b = document.createElement('div'); b.className = 'rf-bubble'; b.textContent = pick.text; b._o = best; b._until = time + 3.2;
     this.overlay.append(b);
-    const side = new THREE.Vector3().subVectors(best.position, cam).cross(fwd).y; // which ear
-    if (pick.file) this._play('assets/audio/' + pick.file, -Math.sign(side) * 0.6, 0.9); else this._voice(best, pick.text, 'call');
+    if (pick.file) this.sound.voiceFile(pick.file, this._where(best, 110, 0.95)); else this._voice(best, pick.text, 'call');
   }
 
   // ---- a bird sweeping close past the camera ----
@@ -137,6 +139,8 @@ export class Events {
         obj.position.copy(start); obj.lookAt(end); obj.layers.enableAll?.();
         this.w.scene.add(obj);
         this.active.push({ obj, mixer, start, end, t: 0, dur: 6.5, kind: 'bird' });
+        const call = /adler/.test(e.file) ? 'adler' : Math.random() < 0.5 ? 'moewe' : 'moewe2', w = this._where(obj, 120, 0.8);
+        this.sound.play3d(call, w); setTimeout(() => this.sound.play3d(call, w, 0.7), 2600 + Math.random() * 1500);
       }
     }
     for (const e of this.active) if (e.kind === 'bird') {
@@ -160,6 +164,8 @@ export class Events {
     }
     for (const e of this.active) if (e.kind === 'cart') {
       e.d += e.v * Math.min(dt, 0.1); if (e.d < d - 80) { e.dead = true; continue; }
+      { const r = this._where(e.obj, 140)(); this.sound._loop('hufe', r.vol * 0.8, r.pan, r.vol); // hooves and creaking wheels
+        if (!e.neigh && r.vol > 0.35) { e.neigh = true; this.sound.play3d('pferd', this._where(e.obj, 140, 0.9)); } }
       const p = this.f.at(e.d), l = Math.hypot(p.tx, p.tz) || 1, off = -Math.min(2.5, ROAD_W - (e.w || 2) / 2 - 0.15); // keep inside the oncoming lane, clear of the rider
       const x = p.x - p.tz / l * off, z = p.z + p.tx / l * off;
       e.obj.position.set(x, this.f.height(x, z), z); e.obj.rotation.y = Math.atan2(-p.tx, -p.tz);
@@ -178,11 +184,12 @@ export class Events {
         try {
           const ctx = this.ctx ||= new AudioContext(); const a = new Audio('assets/audio/' + tracks[i % tracks.length].file); a.loop = true;
           const src = ctx.createMediaElementSource(a); b.pan = ctx.createStereoPanner(); b.gain = ctx.createGain(); b.gain.gain.value = 0;
-          src.connect(b.pan).connect(b.gain).connect(ctx.destination); a.play().catch(() => {}); b.audio = a;
+          b.lp = ctx.createBiquadFilter(); b.lp.type = 'lowpass'; b.lp.Q.value = 0.5;
+          src.connect(b.lp).connect(b.pan).connect(b.gain).connect(ctx.destination); a.play().catch(() => {}); b.audio = a;
         } catch { b.audio = {}; }
       }
       if (b.gain) {
-        b.gain.gain.value = vol * vol * 0.8;
+        b.gain.gain.value = vol * vol * 0.8; b.lp && (b.lp.frequency.value = muffle(vol * vol));
         const fwd = this.w.camera.getWorldDirection(new THREE.Vector3()), side = (b.x - cam.x) * -fwd.z + (b.z - cam.z) * fwd.x;
         b.pan.pan.value = Math.max(-0.8, Math.min(0.8, side / 40));
         if (vol === 0 && b.audio.pause) { b.audio.pause(); b.audio = null; b.gain = null; }
@@ -194,8 +201,10 @@ export class Events {
   _wolf(time, dt, cam) {
     const wolfE = this.A.list.find(x => x.file.includes('wolf'));
     for (const h of this.herds) {
-      if (h.done || !wolfE) continue;
+      if (h.done) continue;
       const { dist, inView } = this._ahead(h.x, h.z, cam, 0.5);
+      if (!h.baa && dist < 90) { h.baa = true; this.sound.play3d('schaf', this._where(h.members[0].position, 120, 0.7)); }
+      if (!wolfE) continue;
       if (dist > 170 || dist < 50 || !inView) continue;
       h.done = true;
       const { obj, mixer } = this.A.make(wolfE, 'Rennen'); obj.userData.walk = null;
@@ -203,6 +212,7 @@ export class Events {
       const start = new THREE.Vector3(h.x, 0, h.z).addScaledVector(side, 70), end = new THREE.Vector3(h.x, 0, h.z).addScaledVector(side, -90);
       obj.position.copy(start); this.w.scene.add(obj);
       this.active.push({ obj, mixer, kind: 'wolf', start, end, t: 0, dur: 9 });
+      h.members.slice(0, 3).forEach((sh, i) => setTimeout(() => this.sound.play3d('schaf', this._where(sh, 160, 0.9)), 400 + i * 450));
       for (const sh of h.members) { // each sheep bolts away from the wolf's line
         const dir = new THREE.Vector3(sh.position.x - start.x, 0, sh.position.z - start.z).normalize().addScaledVector(away, 0.4).normalize();
         sh.userData.flee = { dir, t: 0 };
@@ -237,10 +247,42 @@ export class Events {
           if (clip && mixer) { mixer.stopAllAction(); const a = mixer.clipAction(clip); a.setLoop(THREE.LoopOnce); a.clampWhenFinished = true; a.startAt(mixer.time + k * 0.7).play(); }
           this.w.scene.add(obj); this.active.push({ obj, mixer, kind: 'orca', t: 0, dur: (clip?.duration || 5) + 2.5 });
         }
+        const spot = { x, z };
+        for (let k = 0; k < 3; k++) setTimeout(() => this.sound.play3d('orca', this._where(spot, 260)), 900 + k * 700);
+        setTimeout(() => this.sound.play3d('wal', this._where(spot, 260, 0.8)), 1900);
         this.nextOrca = time + 150 + Math.random() * 120; break;
       }
     }
     for (const e of this.active) if (e.kind === 'orca') { e.t += dt; if (e.t > e.dur) e.dead = true; }
+  }
+
+  // ---- the bed under everything: wind with your speed, surf along the sea, birds over the meadows,
+  // the murmur of a market in the villages, rain when the weather turns; bells as you ride into a village ----
+  _ambience(time, dt, cam, d) {
+    const S = this.sound;
+    if (!this.amb || time - this.amb.t > 0.5) { // the slow facts, twice a second
+      const segs = this.track.segments || [], seg = segs.find(s => d >= s.from && d < s.to) || {};
+      const p = this.f.at(d), l = Math.hypot(p.tx, p.tz) || 1;
+      let sea = 0; for (const off of [-40, -90, 40, 90]) if (this.f.height(p.x - p.tz / l * off, p.z + p.tx / l * off) < -2) sea = Math.max(sea, Math.abs(off) < 50 ? 1 : 0.55);
+      const inVillage = !!seg.village;
+      if (inVillage && this.amb && !this.amb.village && time > (this.nextBell || 0)) { // just rode in: the church bell
+        this.nextBell = time + 240; const a = this.f.at(d + 220); S.play3d('glocke', this._where({ x: a.x, z: a.z }, 600, 0.55));
+      }
+      this.amb = { t: time, sea, village: inVillage, valley: seg.land === 'valley', tunnel: this.f.tunnelNear?.(d) ? 1 : 0 };
+    }
+    const A = this.amb, wx = this.w.weather || {}, rain = wx.rain ?? 0, open = 1 - 0.85 * A.tunnel;
+    const v = this.w.speed || 0;
+    S.ambient('wind', open * (0.12 + 0.6 * Math.min(1, v / 14) ** 1.5 + 0.15 * (wx.cover || 0)));
+    S.ambient('brandung', open * A.sea * 0.55);
+    S.ambient('voegel', open * (A.sea ? 0.12 : 0.32) * (1 - rain) * (1 - 0.5 * (wx.cover || 0)));
+    S.ambient('markt', open * (A.village ? 0.35 : 0));
+    S.ambient('regen', open * Math.min(1, rain * 2) * 0.6);
+    S.ambient('regen_stark', open * Math.max(0, rain - 0.5) * 2 * 0.7);
+    if (rain > 0.6 && time > (this.nextThunder ??= time + 20)) { this.nextThunder = time + 40 + Math.random() * 60; S.sfx('donner', 0.5 + Math.random() * 0.4, Math.random() * 1.4 - 0.7); }
+    if (A.valley && !A.village && time > (this.nextMoo ??= time + 30)) { // a cow or a goat somewhere on the pasture
+      this.nextMoo = time + 60 + Math.random() * 70; const side = Math.random() < 0.5 ? -1 : 1, a = this.f.at(d + 60), l = Math.hypot(a.tx, a.tz) || 1;
+      S.play3d(Math.random() < 0.6 ? 'kuh' : 'ziege', this._where({ x: a.x - a.tz / l * side * 45, z: a.z + a.tx / l * side * 45 }, 160));
+    }
   }
 
   _sweep() {
