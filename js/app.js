@@ -429,15 +429,20 @@ function updateTrainerPill() {
 function updateHrPill() { // heart rate strap: its own Bluetooth connection, runs alongside the KICKR
   const h = state.hr, on = !!h?.connected, pill = $('#hrPill');
   pill.classList.toggle('on', on);
-  pill.querySelector('.t').textContent = on ? (h.hr ? `♥ ${h.hr} · verbunden` : '♥ verbunden') : 'Puls verbinden';
+  const bat = h?.battery != null ? ` · Akku ${h.battery} %` : '';
+  pill.querySelector('.t').textContent = on ? (h.hr ? `♥ ${h.hr}${bat}` : `♥ verbunden, wartet auf Puls${bat}`) : h?.device && !h.closing ? 'Puls: Verbindung weg …' : 'Puls verbinden';
+  if (on && h.battery != null && h.battery <= 15 && !h._warned) { h._warned = true; toast(`Pulsgurt-Akku nur noch ${h.battery} %. Batterie bald wechseln (meist CR2032).`, 6000); }
 }
 async function connectHR(all) {
   if (all instanceof Event) all = false;
-  if (state.hr?.connected) { if (confirm('Pulsgurt trennen?')) { state.hr.device.gatt.disconnect(); updateHrPill(); } return; }
-  try { state.hr = new HeartRate(); state.hr.addEventListener('hr', updateHrPill); await state.hr.connect(!!all); updateHrPill(); toast('Pulsgurt verbunden');
-    state.hr.device.addEventListener('gattserverdisconnected', updateHrPill); if (document.querySelector('#hrBtn')) settings(); }
+  if (!navigator.bluetooth) return toast('Bluetooth geht nur in Chrome oder Edge (nicht Safari/Firefox).', 6000);
+  if (state.hr?.connected) { if (confirm('Pulsgurt trennen?')) { state.hr.disconnect(); updateHrPill(); } return; }
+  state.hr?.disconnect?.();
+  try { state.hr = new HeartRate(); state.hr.addEventListener('hr', updateHrPill); state.hr.addEventListener('change', updateHrPill); state.hr.addEventListener('reconnected', () => toast('Pulsgurt wieder verbunden'));
+    await state.hr.connect(!!all); updateHrPill(); toast('Pulsgurt verbunden' + (state.hr.battery != null ? ` · Akku ${state.hr.battery} %` : '')); if (document.querySelector('#hrBtn')) settings(); }
   catch (e) {
-    if (e.name !== 'NotFoundError') return toast('Pulsgurt: ' + e.message);
+    if (e.name === 'NotFoundError' && /adapter|Bluetooth/i.test(e.message) && !/User cancelled|chooser/i.test(e.message)) return toast('Bluetooth ist aus oder Chrome darf es nicht nutzen (Mac: Systemeinstellungen > Datenschutz > Bluetooth > Chrome erlauben).', 8000);
+    if (e.name !== 'NotFoundError') return toast('Pulsgurt: ' + e.message, 7000);
     // nothing picked: most often the strap is asleep (not worn) or still paired with a watch/phone/bike computer
     if (!all) toast('Kein Gurt gewählt? Gurt anlegen, Elektroden anfeuchten (er sendet nur getragen) und Bluetooth an Uhr/Handy/Radcomputer kurz aus. In den Einstellungen gibt es „Alle Geräte“.', 7000);
   }

@@ -155,17 +155,38 @@ export class Trainer extends EventTarget {
 export class HeartRate extends EventTarget {
   async connect(all = false) {
     // straps only advertise while worn (moist electrodes) and often hide the HR service in their advert: also match common names
-    const names = ['HRM', 'Polar', 'TICKR', 'Wahoo', 'Garmin', 'COOSPO', 'Coospo', 'Magene', 'Suunto', 'Decathlon', 'Kalenji', 'XOSS', 'iGPSPORT', 'H10', 'H9', 'Verity', 'Forerunner', 'fenix', 'Apple Watch'];
-    this.device = await navigator.bluetooth.requestDevice(all ? { acceptAllDevices: true, optionalServices: [HRS] }
-      : { filters: [{ services: [HRS] }, ...names.map(namePrefix => ({ namePrefix }))], optionalServices: [HRS] });
-    const s = await (await this.device.gatt.connect()).getPrimaryService(HRS);
+    const names = ['HRM', 'Polar', 'TICKR', 'Wahoo', 'Garmin', 'COOSPO', 'Coospo', 'Magene', 'Suunto', 'Decathlon', 'Kalenji', 'XOSS', 'iGPSPORT', 'H10', 'H9', 'Verity', 'Forerunner', 'fenix', 'Apple Watch', 'Whoop', 'WHOOP', 'Amazfit', 'Scosche', 'Rhythm', 'CooSpo', 'Heart'];
+    this.device = await navigator.bluetooth.requestDevice(all ? { acceptAllDevices: true, optionalServices: [HRS, 'battery_service'] }
+      : { filters: [{ services: [HRS] }, ...names.map(namePrefix => ({ namePrefix }))], optionalServices: [HRS, 'battery_service'] });
+    this.device.addEventListener('gattserverdisconnected', () => this._lost());
+    await this._open();
+  }
+  async _open() {
+    const srv = await this.device.gatt.connect();
+    let s;
+    try { s = await srv.getPrimaryService(HRS); }
+    catch { this.device.gatt.disconnect(); throw new Error(`„${this.device.name || 'Gerät'}“ sendet keinen Puls (kein Herzfrequenz-Dienst). Bei Uhren erst „Herzfrequenz übertragen/senden“ einschalten.`); }
     const c = await s.getCharacteristic(HRM);
     c.addEventListener('characteristicvaluechanged', e => {
       const dv = e.target.value; const f = dv.getUint8(0);
       this.hr = f & 1 ? dv.getUint16(1, true) : dv.getUint8(1);
+      this.lastSeen = performance.now();
       this.dispatchEvent(new CustomEvent('hr', { detail: this.hr }));
     });
     await c.startNotifications();
+    this.battery = null; // battery level, if the strap tells it: an empty battery is the most common reason a strap vanishes
+    try { const b = await (await srv.getPrimaryService('battery_service')).getCharacteristic('battery_level'); this.battery = (await b.readValue()).getUint8(0); } catch {}
+    this.dispatchEvent(new Event('change'));
   }
+  /** strap dropped (out of range, sweat, battery): try to get it back a few times */
+  async _lost() {
+    this.hr = 0; this.dispatchEvent(new Event('change'));
+    if (this.closing) return;
+    for (let i = 0; i < 6 && !this.closing; i++) {
+      await new Promise(r => setTimeout(r, 2000 + i * 2000));
+      try { await this._open(); this.dispatchEvent(new CustomEvent('reconnected')); return; } catch {}
+    }
+  }
+  disconnect() { this.closing = true; try { this.device?.gatt?.disconnect(); } catch {} }
   get connected() { return !!this.device?.gatt?.connected; }
 }
