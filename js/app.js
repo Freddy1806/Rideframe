@@ -78,7 +78,7 @@ function applyAccent() {
   document.documentElement.style.setProperty('--accent', ACCENTS[state.settings.accent] || ACCENTS.orange);
 }
 
-function allRoutes() { return [...state.routes, ...Object.keys(BUILTIN).map(getBuiltin)]; }
+export function allRoutes() { return [...state.routes, ...Object.keys(BUILTIN).map(getBuiltin)]; }
 export function routeById(id) { return BUILTIN[id] ? getBuiltin(id) : state.routes.find(r => r.id === id); }
 export function ridesFor(id) { return state.rides.filter(r => r.routeId === id); }
 export function bestRide(id) { return ridesFor(id).filter(r => r.complete).sort((a, b) => a.duration - b.duration)[0]; }

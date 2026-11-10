@@ -41,7 +41,7 @@ export class Group {
           this.open = true; this.peer.on('connection', c => this._wire(c)); this._relayT = setInterval(() => this._relayAll(), 1000); resolve(this);
         } else {
           const c = this.peer.connect(PREFIX + this.code, { reliable: true });
-          const to = setTimeout(() => fail({ type: 'peer-unavailable' }), 12000);
+          const to = setTimeout(() => fail({ type: 'ice-timeout' }), 15000);
           c.on('open', () => { clearTimeout(to); this.open = true; resolve(this); });
           this._wire(c);
         }
@@ -53,6 +53,7 @@ export class Group {
   _msg(e) {
     if (e?.type === 'unavailable-id') return 'Dieser Gruppen-Code ist gerade belegt. Bitte neu erstellen.';
     if (e?.type === 'peer-unavailable') return 'Keine Gruppe mit diesem Code gefunden. Ist der Gastgeber online?';
+    if (e?.type === 'ice-timeout') return 'Die Gruppe ist da, aber eure Router lassen keine direkte Verbindung zu. Probiert es nochmal, sonst über einen Handy-Hotspot.';
     if (e?.type === 'network' || e?.type === 'server-error' || e?.type === 'socket-error') return 'Keine Verbindung zum Vermittlungs-Server. Internet prüfen.';
     return 'Verbindung: ' + (e?.message || e?.type || e);
   }
