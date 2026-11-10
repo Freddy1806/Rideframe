@@ -12,6 +12,7 @@ export async function loadAssets() {
   if (typeof window === 'undefined') return new Assets([]);
   if (new URLSearchParams(location.search).has('fakeassets')) return new Assets(list.map(fake)); // layout test without the GLBs
   const loader = new GLTFLoader();
+  list = list.filter(e => e.category !== 'rider'); // bike/hands for the riders: loaded by avatar.js
   const ok = await Promise.all(list.map(async e => {
     try {
       const g = await loader.loadAsync(new URL(e.file, base).href);

@@ -2,6 +2,34 @@
 // (no asset files, so it works for every friend). The look is a small object that goes over the network
 // to the others in a group ride. Legs pedal with a little two-bone IK so the feet stay on the pedals.
 import * as THREE from 'three';
+import { GLTFLoader } from '../../vendor/jsm/loaders/GLTFLoader.js';
+
+// Optional detailed parts from the Mac (assets/world/rider/bike.glb, hands.glb). Missing files: the simple built-in bike and hands stay.
+const KIT = { bike: null, hands: null };
+let kitLoad = null;
+export function loadRiderKit() {
+  if (kitLoad) return kitLoad;
+  const base = new URL('../../assets/world/rider/', import.meta.url), loader = new GLTFLoader();
+  // only files the manifest lists (category "rider"), so a missing kit causes no 404s in the console
+  const listed = fetch(new URL('../manifest.json', base)).then(r => (r.ok ? r.json() : [])).catch(() => []).then(l => new Set((Array.isArray(l) ? l : []).filter(e => e?.category === 'rider').map(e => e.file)));
+  const one = async f => { if (!(await listed).has('rider/' + f)) return null; try { return (await loader.loadAsync(new URL(f, base).href)).scene; } catch { return null; } };
+  kitLoad = Promise.all([one('bike.glb'), one('hands.glb')]).then(([b, h]) => { KIT.bike = b; KIT.hands = h; return !!(b || h); });
+  return kitLoad;
+}
+function kitClone(scene, ghost, recolor) {
+  const c = scene.clone(true);
+  c.traverse(o => {
+    if (!o.isMesh) return;
+    o.castShadow = true;
+    o.material = (Array.isArray(o.material) ? o.material : [o.material]).map(m => {
+      const n = m.clone(); recolor?.(n);
+      if (ghost) { n.transparent = true; n.opacity = 0.45; n.depthWrite = false; }
+      return n;
+    });
+    if (o.material.length === 1) o.material = o.material[0];
+  });
+  return c;
+}
 
 import { SKINS, HAIRCOL, COLORS, OPTIONS, DEFAULT_LOOK, cleanLook, randomLook } from '../look.js';
 export { SKINS, HAIRCOL, COLORS, OPTIONS, DEFAULT_LOOK, cleanLook, randomLook };
@@ -39,6 +67,7 @@ export function makeRider(look, opts = {}) {
   const shoeM = mat(L.shoes === 'clogs' ? '#f2b630' : COLORS[L.shoeColor], { roughness: 0.5 }), sockM = mat('#f4f4ef');
   if (ghost) for (const m of [skin, hairM, dark, frameM, jersey, shortsM, shoeM, sockM]) { m.transparent = true; m.opacity = 0.45; m.depthWrite = false; }
   // bike
+  const nBike = g.children.length;
   const wheelGeo = new THREE.TorusGeometry(0.34, 0.022, 8, 32), wheels = [];
   for (const z of [-0.52, 0.52]) { const w = new THREE.Mesh(wheelGeo, dark); w.rotation.y = Math.PI / 2; w.position.set(0, 0.35, z); g.add(w); wheels.push(w);
     const hub = new THREE.Mesh(new THREE.CylinderGeometry(0.02, 0.02, 0.1, 6), dark); hub.rotation.z = Math.PI / 2; hub.position.copy(w.position); g.add(hub); }
@@ -47,6 +76,15 @@ export function makeRider(look, opts = {}) {
   tube([0, 0.35, -0.52], [0, 0.86, -0.16], 0.014); tube([0, 0.84, 0.40], [0, 0.35, 0.52], 0.018, dark);
   tube([0, 0.84, 0.40], [0, 0.98, 0.42], 0.016, dark); tube([-0.21, 0.98, 0.44], [0.21, 0.98, 0.44], 0.014, dark);
   const saddle = new THREE.Mesh(new THREE.BoxGeometry(0.12, 0.04, 0.26), dark); saddle.position.set(0, 0.92, -0.2); g.add(saddle); tube([0, 0.86, -0.16], [0, 0.92, -0.2], 0.014, dark);
+  let kitBike = null;
+  if (KIT.bike) { // detailed bike from the Mac replaces the tube bike
+    for (const o of g.children.slice(nBike)) g.remove(o);
+    kitBike = kitClone(KIT.bike, ghost, m => { if (/frame/i.test(m.name)) m.color.set(frameM.color); });
+    g.add(kitBike); wheels.length = 0;
+    for (const n of ['wheel_r', 'wheel_f']) { const w = kitBike.getObjectByName(n); if (w) wheels.push(w); }
+    const crank = kitBike.getObjectByName('crank'), pr = kitBike.getObjectByName('pedal_r');
+    if (crank) kitBike.userData = { crank, pl: kitBike.getObjectByName('pedal_l'), pr, psi0: pr ? Math.atan2(pr.position.y, pr.position.z) : 0 };
+  }
   // body
   const hip = V(0, 0.97, -0.17), sh = V(0, 1.36, 0.2), head = V(0, 1.58, 0.33);
   const tR = (f ? 0.135 : 0.15) + b * 0.045;
@@ -113,8 +151,9 @@ export function makeRider(look, opts = {}) {
     const up = limb(armR, jersey); place(up, S, E); g.add(up);
     if (b > 0.55) { const bi = ball(armR * 1.45, sleeve ? jersey : skin, S.clone().lerp(E, 0.55)); g.add(bi); }
     const lo = limb(armR * 0.85, sleeve ? jersey : skin); place(lo, E, hand); g.add(lo);
-    g.add(ball(armR * 1.05, f || !sleeve ? skin : jersey, E)); g.add(ball(0.04, mat(L.outfit === 'anzug' ? '#f4f4ef' : '#1b1d22'), hand));
+    g.add(ball(armR * 1.05, f || !sleeve ? skin : jersey, E)); if (!KIT.hands) g.add(ball(0.04, mat(L.outfit === 'anzug' ? '#f4f4ef' : '#1b1d22'), hand));
   }
+  if (KIT.hands) g.add(kitClone(KIT.hands, ghost, m => { if (/skin/i.test(m.name)) m.color.set(skin.color); else if (/glove/i.test(m.name) && L.outfit === 'anzug') m.color.set('#f4f4ef'); }));
   // legs: built once, posed every frame
   const legR = 0.06 + b * 0.03, shinBare = !['anzug', 'banane', 'dino', 'superheld'].includes(L.outfit);
   const legs = [-1, 1].map(s => {
@@ -122,7 +161,7 @@ export function makeRider(look, opts = {}) {
     const shoe = new THREE.Mesh(L.shoes === 'clogs' ? new THREE.BoxGeometry(0.1, 0.07, 0.24) : new THREE.CapsuleGeometry(0.045, 0.16, 4, 8), L.shoes === 'socken' ? sockM : shoeM);
     if (L.shoes !== 'clogs') shoe.rotation.x = Math.PI / 2;
     const crankArm = limb(0.012, dark), pedal = new THREE.Mesh(new THREE.BoxGeometry(0.09, 0.015, 0.06), dark);
-    for (const o of [thigh, knee, shin, sock, shoe, crankArm, pedal]) g.add(o);
+    for (const o of [thigh, knee, shin, sock, shoe, ...(kitBike?.userData.crank ? [] : [crankArm, pedal])]) g.add(o);
     return { s, thigh, knee, shin, sock, shoe, crankArm, pedal };
   });
   const L1 = 0.46, L2 = 0.47, BB = V(0, 0.3, 0), CR = 0.17;
@@ -138,6 +177,8 @@ export function makeRider(look, opts = {}) {
         place(l.thigh, Hp, K); l.knee.position.copy(K); place(l.shin, K, P.clone().lerp(K, 0.22)); place(l.sock, P.clone().lerp(K, 0.22), P.clone().add(V(0, 0.03, 0)));
         l.shoe.position.copy(P).add(V(0, 0.035, 0.03)); place(l.crankArm, V(x * 0.6, BB.y, BB.z), P); l.pedal.position.copy(P);
       }
+      const kc = kitBike?.userData; // detailed bike: turn its crank so the right pedal sits where the right foot is
+      if (kc?.crank) { const th = kc.psi0 - (a + Math.PI); kc.crank.rotation.x = th; if (kc.pl) kc.pl.rotation.x = -th; if (kc.pr) kc.pr.rotation.x = -th; }
       const cape = g.userData.cape; if (cape) cape.rotation.x = -1.15 + Math.sin(a * 1.7) * 0.08;
     } };
   g.userData.pedal(0);
@@ -152,6 +193,7 @@ export class AvatarPreview {
     this.scene = new THREE.Scene(); this.cam = new THREE.PerspectiveCamera(32, 1, 0.1, 50); this.cam.position.set(3.4, 1.6, 3.1); this.cam.lookAt(0, 0.82, 0);
     this.scene.add(new THREE.HemisphereLight(0xffffff, 0x445566, 1.6)); const sun = new THREE.DirectionalLight(0xffffff, 2.2); sun.position.set(3, 5, 4); this.scene.add(sun);
     const floor = new THREE.Mesh(new THREE.CircleGeometry(1.3, 48), new THREE.MeshStandardMaterial({ color: 0x2a2d33, roughness: 0.9 })); floor.rotation.x = -Math.PI / 2; this.scene.add(floor);
+    loadRiderKit().then(ok => { if (ok && this.obj && !this.dead) this.set(this.obj.userData.look); });
     this.t = 0; this.spin = 0.6; this._loop = this._loop.bind(this); requestAnimationFrame(this._loop);
   }
   set(look) { if (this.obj) this.scene.remove(this.obj); this.obj = makeRider(look); this.scene.add(this.obj); }

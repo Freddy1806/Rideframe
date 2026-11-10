@@ -2,7 +2,7 @@
 // and in the chase view yourself. Everyone is a Mii-style rider from avatar.js with their own look
 // (sent over the network in a group ride) and a name tag above. Lanes are spread so riders side by side don't overlap.
 import * as THREE from 'three';
-import { makeRider } from './avatar.js';
+import { makeRider, loadRiderKit } from './avatar.js';
 
 const COLORS = [0x2f7fd8, 0xe0452b, 0x2fb36b, 0xf2b630, 0x9b59d0, 0x18b5c4, 0xff7a1a, 0xe84393];
 
@@ -20,11 +20,14 @@ function tag(name, color) {
 }
 
 function dispose(o) {
-  o.traverse(x => { x.geometry?.dispose(); const m = x.material; if (m) { m.map?.dispose(); m.dispose(); } });
+  o.traverse(x => { x.geometry?.dispose(); for (const m of [x.material].flat()) if (m) { m.map?.dispose(); m.dispose(); } });
 }
 
 export class Riders {
-  constructor(scene, field) { this.scene = scene; this.field = field; this.list = new Map(); this.n = 0; }
+  constructor(scene, field) {
+    this.scene = scene; this.field = field; this.list = new Map(); this.n = 0;
+    loadRiderKit().then(ok => { if (ok) for (const e of this.list.values()) e.key = 'stale'; }); // detailed bike/hands arrived: rebuild on the next update
+  }
 
   /** riders: [{ id, name, d, v, look, ghost, self, color }] — d in metres along the route, v m/s (wheel and leg speed) */
   set(riders) {
