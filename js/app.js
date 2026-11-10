@@ -7,6 +7,7 @@ import { makeCoastTrack, loadRealTrack } from './routes.js';
 import { gearsFrom, CASSETTES, parseRings } from './gears.js';
 import { profileSVG, drawDetailProfile } from './profile.js';
 import { RideSession, simulateRide } from './ride.js';
+import { gameVersion } from './uebridge.js';
 import { fmtTime, fmtKm, fmtNum, esc, bestAvg } from './util.js';
 import { openControllerTest } from './controller.js';
 import { stravaExport } from './tcx.js';
@@ -383,8 +384,12 @@ function settings() {
         <div class="field"><div>Satellitenfarben<div class="hint">Sentinel-2 cloudless – https://s2maps.eu by EOX IT Services GmbH (Contains modified Copernicus Sentinel data 2016), CC BY 4.0.</div></div></div>
         <div class="field"><div>3D-Grafik<div class="hint">three.js (MIT). Boden-Texturen Poly Haven (CC0). Figuren und Gebäude teils Quaternius (CC0), teils eigene Blender- und KI-Modelle.</div></div></div>
       </div>
+      <div class="panel"><h3>Version</h3>
+        <div class="field"><div>RIDEFRAME <span class="num" id="gameVer">…</span><div class="hint">Browser und Unreal-Ansicht haben immer dieselbe Nummer. Passen sie nicht zusammen, meldet sich Unreal.</div></div></div>
+      </div>
     </div>
   </section>`;
+  gameVersion().then(v => { const e = $('#gameVer'); if (e) e.textContent = v; });
   const num = (id, key) => $('#' + id).addEventListener('change', e => { s[key] = +e.target.value; saveSettings(); });
   const stp = (id, key, fb) => wireStepper(main, id, v => { s[key] = v; saveSettings(); }, fb);
   stp('riderKg', 'riderKg', 75); stp('bikeKg', 'bikeKg', 8.5); stp('ftp', 'ftp', 250); stp('cadence', 'cadence', 90); stp('wheel', 'wheel', 2105);
