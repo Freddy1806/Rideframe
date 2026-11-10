@@ -10,6 +10,7 @@ import { RideSession, simulateRide } from './ride.js';
 import { fmtTime, fmtKm, fmtNum, esc, bestAvg } from './util.js';
 import { openControllerTest } from './controller.js';
 import { stravaExport } from './tcx.js';
+import { hudPrefs, hudControlsHTML, wireHudControls } from './hudprefs.js';
 import { WORKOUTS, workoutById, workoutDuration, workoutSVG } from './workouts.js';
 import { loadShared, sharedFor, shareRide, importShared, groupModal } from './share.js';
 
@@ -363,6 +364,10 @@ function settings() {
       <div class="panel"><h3>Dein Fahrer</h3>
         <div class="field"><div>Aussehen<div class="hint">Typ, Größe, Statur, Gesicht, Frisur, Outfits (auch 80er und richtig lustige) und Schuhe. Sehen deine Freunde beim Zusammenfahren, du selbst in der Verfolger-Kamera (Taste V).</div></div><button class="btn ghost small" id="lookBtn">Fahrer gestalten</button></div>
       </div>
+      <div class="panel"><h3>Anzeige während der Fahrt</h3>
+        <div class="hint" style="margin-bottom:6px">Wähle eine Vorlage oder stell selbst zusammen, was du siehst. Während der Fahrt: Taste I wechselt die Vorlage, der Knopf „Anzeige“ öffnet diese Auswahl.</div>
+        <div id="hudBox">${hudControlsHTML(hudPrefs(s))}</div>
+      </div>
       <div class="panel"><h3>Ansicht 3D-Welt</h3>
         <label class="field"><div>Sichtfeld (Brennweite)<div class="hint">Kleinere mm = weiter Blick. Normal entspricht ca. 17 mm. Während der Fahrt: Tasten [ und ] oder Knopf „Sicht“. 6–8 mm = extremer Weitwinkel.</div></div>${seg('lensMm', String(s.lensMm || 0), LENS_OPTS)}</label>
         <label class="field"><div>Unreal-Anzeige (Beta)<div class="hint">Schickt die Fahrt live an die Unreal-Version (Relay: node tools/ue-relay.mjs).</div></div><input type="checkbox" class="toggle" id="ueBridge" ${s.ueBridge ? 'checked' : ''}></label>
@@ -383,6 +388,7 @@ function settings() {
   const num = (id, key) => $('#' + id).addEventListener('change', e => { s[key] = +e.target.value; saveSettings(); });
   const stp = (id, key, fb) => wireStepper(main, id, v => { s[key] = v; saveSettings(); }, fb);
   stp('riderKg', 'riderKg', 75); stp('bikeKg', 'bikeKg', 8.5); stp('ftp', 'ftp', 250); stp('cadence', 'cadence', 90); stp('wheel', 'wheel', 2105);
+  wireHudControls($('#hudBox'), () => s, h => { s.hud = h; saveSettings(); $('#hudBox').innerHTML = hudControlsHTML(hudPrefs(s)); });
   $('#lookBtn').onclick = () => import('./avatar-ui.js').then(x => x.avatarModal());
   $('#cockpit').onchange = e => { s.cockpit = e.target.checked; saveSettings(); };
   $('#ueBridge').onchange = e => { s.ueBridge = e.target.checked; saveSettings(); };

@@ -324,3 +324,13 @@ input[type=number]::-webkit-inner-spin-button, input[type=number]::-webkit-outer
 .avslide input { flex: 1; }
 .avhint { font-size: 12px !important; }
 @media (max-width: 700px) { .modal .avbox { grid-template-columns: 1fr; overflow-y: auto; } .avcanvas { aspect-ratio: 4 / 3; } }
+
+/* HUD chooser (ride: button "Anzeige" / key I; settings page) */
+.hudpanel { position: absolute; top: 90px; right: 24px; z-index: 30; width: min(420px, 92vw); padding: 18px; border-radius: 8px; pointer-events: auto; max-height: 75vh; overflow-y: auto; }
+.hudpanel .hudclose { margin-top: 12px; }
+.hud-bottom.slim { right: auto; min-width: 0; }
+.hud-bottom.slim .metrics { gap: 28px; }
+.hud-bottom.slim .metric { min-width: 150px; }
+.hudpresets { display: flex; flex-wrap: wrap; gap: 6px; margin: 10px 0 12px; }
+.hudchecks { display: grid; grid-template-columns: 1fr 1fr; gap: 8px 14px; font-size: 13px; }
+.hudchecks label { display: flex; align-items: center; gap: 8px; cursor: pointer; }

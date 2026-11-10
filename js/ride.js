@@ -10,6 +10,7 @@ import { gearsFrom, gearName, parseGear, estimateGear, virtualGrade } from './ge
 import { UEBridge } from './uebridge.js';
 import { workoutAt, workoutSVG } from './workouts.js';
 import { Music, Coach } from './music.js';
+import { hudPrefs, applyHud, hudControlsHTML, wireHudControls, HUD_ORDER, HUD_PRESETS } from './hudprefs.js';
 
 const MIN_RATE = 0.0625, MAX_RATE = 4;
 
@@ -96,6 +97,8 @@ export class RideSession {
     const el = this.el = document.createElement('div'); el.className = 'ride';
     document.addEventListener('keydown', this._key); // early: watts set with ↑↓ while the world loads are kept
     el.innerHTML = this._hudHTML();
+    applyHud(el, hudPrefs(this.state.settings));
+    el.querySelector('#hHudBtn')?.addEventListener('click', () => this._hudPanel());
     document.body.append(el);
     if (this.route.parts?.length) {
       const video = document.createElement('video');
@@ -149,26 +152,28 @@ export class RideSession {
         <div class="hud-route glass"><div class="wordmark"><svg class="mark" viewBox="0 0 32 32"><rect width="32" height="32" rx="6" fill="var(--accent)"/><path d="M6 24 L14 12 L19 18 L23 10 L27 24 Z" fill="#0b0b0b"/></svg>RIDEFRAME</div><span class="sep"></span><span class="name">${esc(this.route.name)}</span></div>
         <div class="hud-right">
           ${ghostChip}
-          <div class="chip glass gearchip"><div class="label" id="hGearL">${this.virtual ? 'Virtueller Gang' : 'Gang'}</div><div class="v num" id="hGear">–</div><div class="gearbar" id="hGearBar">${this.virtual ? this.gears.map(() => '<i></i>').join('') : ''}</div></div>
-          <div class="chip glass"><div class="label">Zeit</div><div class="v num" id="hTime">0:00</div></div>
-          ${this.track.world ? '<button class="chip glass camchip" id="hCam" title="Kamera wechseln (V)"><div class="label">Kamera</div><div class="v">⟲</div></button><button class="chip glass camchip" id="hBar" title="Lenker ein/aus (H)"><div class="label">Lenker</div><div class="v">⊓</div></button><button class="chip glass camchip" id="hWide" title="Weitwinkel ([ und ])"><div class="label">Sicht</div><div class="v">↔</div></button>' : ''}
-          <button class="chip glass camchip" id="hMusic" title="Musik an/aus (M), nächster Titel (N)"><div class="label">Musik</div><div class="v">♫</div></button>
+          <div class="chip glass gearchip" data-hud="gear"><div class="label" id="hGearL">${this.virtual ? 'Virtueller Gang' : 'Gang'}</div><div class="v num" id="hGear">–</div><div class="gearbar" id="hGearBar">${this.virtual ? this.gears.map(() => '<i></i>').join('') : ''}</div></div>
+          <div class="chip glass" data-hud="time"><div class="label">Zeit</div><div class="v num" id="hTime">0:00</div></div>
+          ${this.track.world ? '<button class="chip glass camchip" data-hud="buttons" id="hCam" title="Kamera wechseln (V)"><div class="label">Kamera</div><div class="v">⟲</div></button><button class="chip glass camchip" data-hud="buttons" id="hBar" title="Lenker ein/aus (H)"><div class="label">Lenker</div><div class="v">⊓</div></button><button class="chip glass camchip" id="hWide" title="Weitwinkel ([ und ])"><div class="label">Sicht</div><div class="v">↔</div></button>' : ''}
+          <button class="chip glass camchip" data-hud="buttons" id="hMusic" title="Musik an/aus (M), nächster Titel (N)"><div class="label">Musik</div><div class="v">♫</div></button>
+          <button class="chip glass camchip" id="hHudBtn" title="Anzeige wählen (I)"><div class="label">Anzeige</div><div class="v">◧</div></button>
         </div>
       </div>
       ${this.workout ? `<div class="wpanel glass" id="hWork"><div class="label" id="hWName">${esc(this.workout.name)}${this.erg ? ' · ERG' : ''}</div>
         <div class="wstep" id="hWStep">–</div><div class="wtarget num"><span id="hWT">–</span><small>W</small><span class="wleft num" id="hWLeft"></span></div>
         <div class="wnext" id="hWNext"></div><div id="hWChart">${workoutSVG(this.workout, 0)}</div></div>` : ''}
-      <div class="grade-tag" id="hGradeTag"><div class="g num"><span class="arrow"></span><span id="hGrade">0,0</span><small>%</small></div><div class="next glass" id="hNext"></div></div>
+      <div class="grade-tag" data-hud="gradeTag" id="hGradeTag"><div class="g num"><span class="arrow"></span><span id="hGrade">0,0</span><small>%</small></div><div class="next glass" id="hNext"></div></div>
       <div class="hud-bottom glass">
         <div class="metrics">
-          <div class="metric power"><div class="label">Leistung</div><div class="v num"><span id="hPow">0</span><small>W</small></div><div class="sub" id="hPowSub">Ø 0 W</div></div>
-          <div class="metric"><div class="label">Tempo</div><div class="v num"><span id="hSpd">0,0</span><small>km/h</small></div><div class="sub" id="hSpdSub">–</div></div>
-          <div class="metric"><div class="label">Trittfrequenz</div><div class="v num"><span id="hCad">0</span><small>rpm</small></div><div class="sub" id="hHr">–</div></div>
-          <div class="metric"><div class="label">Distanz</div><div class="v num"><span id="hDist">0,0</span><small>km</small></div><div class="sub" id="hDistSub">von ${fmtKm(this.track.length)} km</div></div>
-          <div class="metric"><div class="label">Puls</div><div class="v num"><span id="hBpm">–</span><small>bpm</small></div><div class="sub" id="hGain">0 m · +0 hm</div></div>
-          <div class="metric"><div class="label">Steigung</div><div class="v num"><span id="hGrade2">0,0</span><small>%</small></div><div class="sub" id="hTrainer">${this.state.trainer.connected ? 'Trainer aktiv' : 'Ohne Trainer · ↑ ↓ Watt'}</div></div>
+          <div class="metric power" data-hud="power"><div class="label">Leistung</div><div class="v num"><span id="hPow">0</span><small>W</small></div><div class="sub" id="hPowSub">Ø 0 W</div></div>
+          <div class="metric" data-hud="wkg"><div class="label">W/kg</div><div class="v num"><span id="hWkg">0,0</span></div><div class="sub" id="hWkgSub">Gewicht ${fmtNum(this.state.settings.riderKg || 75, 0)} kg</div></div>
+          <div class="metric" data-hud="speed"><div class="label">Tempo</div><div class="v num"><span id="hSpd">0,0</span><small>km/h</small></div><div class="sub" id="hSpdSub">–</div></div>
+          <div class="metric" data-hud="cad"><div class="label">Trittfrequenz</div><div class="v num"><span id="hCad">0</span><small>rpm</small></div><div class="sub" id="hHr">–</div></div>
+          <div class="metric" data-hud="dist"><div class="label">Distanz</div><div class="v num"><span id="hDist">0,0</span><small>km</small></div><div class="sub" id="hDistSub">von ${fmtKm(this.track.length)} km</div></div>
+          <div class="metric" data-hud="hr"><div class="label">Puls</div><div class="v num"><span id="hBpm">–</span><small>bpm</small></div><div class="sub" id="hGain">0 m · +0 hm</div></div>
+          <div class="metric" data-hud="grade"><div class="label">Steigung</div><div class="v num"><span id="hGrade2">0,0</span><small>%</small></div><div class="sub" id="hTrainer">${this.state.trainer.connected ? 'Trainer aktiv' : 'Ohne Trainer · ↑ ↓ Watt'}</div></div>
         </div>
-        <div class="hud-profile"><canvas id="hudProfile"></canvas></div>
+        <div class="hud-profile" data-hud="profile"><canvas id="hudProfile"></canvas></div>
       </div>
     </div>`;
   }
@@ -283,7 +288,7 @@ export class RideSession {
     const g = gradeAt(this.track, this.d);
     const avgP = this.powerHist.length ? Math.round(this.powerHist.reduce((a, b) => a + b, 0) / this.powerHist.length) : 0;
     const p3 = this.powerHist.slice(-3); const pShow = p3.length ? Math.round((p3.reduce((a, b) => a + b, 0) + this.power) / (p3.length + 1)) : this.power;
-    q('#hPow').textContent = pShow;
+    q('#hPow').textContent = pShow; const wk = q('#hWkg'); if (wk) wk.textContent = fmtNum(pShow / (this.state.settings.riderKg || 75), 1);
     q('#hPowSub').textContent = `Ø ${avgP} W · ${fmtNum(pShow / this.state.settings.riderKg, 1)} W/kg`;
     q('#hSpd').textContent = fmtNum(this.v * 3.6, 1);
     q('#hSpdSub').textContent = this.track.world ? `noch ${fmtNum(Math.max(0, this.track.length - this.d) / 1000, 1)} km` : this.v < 0.3 ? 'Video steht' : `Video ×${fmtNum(this.rate || 1, 2)}`;
@@ -423,6 +428,7 @@ export class RideSession {
     else if (e.key === '[' || e.key === ']') this._lens(e.key === ']' ? 1 : -1);
     else if (e.key === 'h') this._toggleBar();
     else if (e.key === 'm') this._toggleMusic();
+    else if (e.key === 'i') this._cycleHud();
     else if (e.key === 'n') { this.music?.skip(); setTimeout(() => this._flash('♫ ' + (this.music?.title() || '')), 300); }
   }
   _toggleBar() { // handlebar and forearms in the rider's view on/off
@@ -442,6 +448,23 @@ export class RideSession {
     let j = i + dir; if (wrap && j < 0) j = steps.indexOf(0);
     s.lensMm = steps[Math.max(0, Math.min(steps.length - 1, j))]; this.player.setLens(s.lensMm);
     this._flash(s.lensMm ? `Sichtfeld ${s.lensMm} mm` : 'Sichtfeld normal'); import('./app.js').then(m => m.saveSettings());
+  }
+  _setHud(h) {
+    this.state.settings.hud = h; applyHud(this.el, hudPrefs(this.state.settings));
+    import('./app.js').then(m => m.saveSettings());
+    const box = this.el.querySelector('.hudpanel'); if (box) box.querySelector('.hudbody').innerHTML = hudControlsHTML(hudPrefs(this.state.settings));
+  }
+  _cycleHud() {
+    const cur = hudPrefs(this.state.settings).preset, i = HUD_ORDER.indexOf(cur), next = HUD_ORDER[(i + 1) % HUD_ORDER.length];
+    this._setHud({ ...(this.state.settings.hud || {}), preset: next }); this._flash('Anzeige: ' + HUD_PRESETS[next].name + ' (Taste I)');
+  }
+  _hudPanel() {
+    let box = this.el.querySelector('.hudpanel'); if (box) { box.remove(); return; }
+    box = document.createElement('div'); box.className = 'hudpanel glass';
+    box.innerHTML = `<div class="label">Was willst du sehen?</div><div class="hudbody">${hudControlsHTML(hudPrefs(this.state.settings))}</div><button class="btn ghost small hudclose">Fertig</button>`;
+    this.el.append(box);
+    box.querySelector('.hudclose').onclick = () => box.remove();
+    wireHudControls(box, () => this.state.settings, h => this._setHud(h));
   }
   _toggleMusic() {
     const s = this.state.settings, m = this.music; if (!m) return;
