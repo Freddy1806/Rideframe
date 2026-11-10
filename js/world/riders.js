@@ -47,6 +47,7 @@ export class Riders {
         if (!r.self) e.obj.add(tag(r.name || 'Fahrer', e.color));
         this.scene.add(e.obj); e.key = key;
       }
+      if (r.d !== e.d) e.at = performance.now() / 1000; // a fresh position from the network (friends send ~2 per second)
       e.d = r.d; e.v = r.v || 0; e.self = !!r.self;
     }
     for (const [id, e] of this.list) if (!seen.has(id)) { this.scene.remove(e.obj); dispose(e.obj); this.list.delete(id); }
@@ -57,8 +58,12 @@ export class Riders {
     for (const e of this.list.values()) {
       if (e.self) e.shown = ownD;
       else {
-        e.shown += (e.d - e.shown) * Math.min(1, dt * 4) + e.v * dt * 0.5; // smooth between 2 updates per second
-        if (Math.abs(e.shown - e.d) > 60) e.shown = e.d;
+        // dead reckoning: ride on at the last known speed and steer gently towards where the friend should be by now.
+        // The old pull towards the last packet made them surge and drop back twice a second.
+        const age = Math.min(1.5, performance.now() / 1000 - (e.at || 0)), err = e.d + e.v * age - e.shown;
+        const step = e.v * dt + err * Math.min(1, dt * 1.2);
+        e.shown += e.v > 0.5 ? Math.max(step, e.v * dt * 0.4) : step; // while riding never roll backwards, only a bit slower
+        if (Math.abs(err) > 60) e.shown = e.d + e.v * age;
       }
       const near = !e.self && Math.abs(e.shown - ownD) < 3; // alongside: one lane further out so nobody rides through the camera
       const p = this.field.pose(Math.max(0, e.shown), 1.2 + e.lane + (near ? 1.4 : 0), 0);
