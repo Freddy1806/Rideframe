@@ -19,8 +19,8 @@ function tag(name, color) {
   return s;
 }
 
-function dispose(o) {
-  o.traverse(x => { x.geometry?.dispose(); for (const m of [x.material].flat()) if (m) { m.map?.dispose(); m.dispose(); } });
+function dispose(o) { // shared kit geometry/materials (bike.glb, hands.glb) stay alive for the next rider
+  o.traverse(x => { if (!x.userData.kit) x.geometry?.dispose(); for (const m of [x.material].flat()) if (m && !m.userData.kit) { if (!m.map?.userData.kit) m.map?.dispose(); m.dispose(); } });
 }
 
 export class Riders {
@@ -62,8 +62,11 @@ export class Riders {
       }
       const near = !e.self && Math.abs(e.shown - ownD) < 3; // alongside: one lane further out so nobody rides through the camera
       const p = this.field.pose(Math.max(0, e.shown), 1.2 + e.lane + (near ? 1.4 : 0), 0);
-      const o = e.obj; o.visible = Math.abs(e.shown - ownD) < 900;
+      const o = e.obj; if (!o) continue;
+      const dist = Math.abs(e.shown - ownD);
+      o.visible = dist < 400; // beyond 400 m a rider is a few pixels
       if (!o.visible) continue;
+      const sh = dist < 25 || e.self; for (const m of o.userData.shadow || []) m.castShadow = sh;
       o.position.set(p.x, p.y, p.z);
       o.lookAt(p.lx, p.y, p.lz);
       // ~90 rpm at 36 km/h, legs stop when freewheeling

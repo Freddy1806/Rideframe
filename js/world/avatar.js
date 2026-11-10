@@ -12,17 +12,20 @@ export function loadRiderKit() {
   const base = new URL('../../assets/world/rider/', import.meta.url), loader = new GLTFLoader();
   // only files the manifest lists (category "rider"), so a missing kit causes no 404s in the console
   const listed = fetch(new URL('../manifest.json', base)).then(r => (r.ok ? r.json() : [])).catch(() => []).then(l => new Set((Array.isArray(l) ? l : []).filter(e => e?.category === 'rider').map(e => e.file)));
-  const one = async f => { if (!(await listed).has('rider/' + f)) return null; try { return (await loader.loadAsync(new URL(f, base).href)).scene; } catch { return null; } };
+  const one = async f => { if (!(await listed).has('rider/' + f)) return null; try { const sc = (await loader.loadAsync(new URL(f, base).href)).scene; sc.traverse(o => { if (o.isMesh) { o.userData.kit = true; for (const m of [o.material].flat()) { m.userData.kit = true; for (const k of ['map', 'normalMap', 'roughnessMap', 'metalnessMap', 'aoMap']) if (m[k]) m[k].userData.kit = true; } } }); return sc; } catch { return null; } };
   kitLoad = Promise.all([one('bike.glb'), one('hands.glb')]).then(([b, h]) => { KIT.bike = b; KIT.hands = h; return !!(b || h); });
   return kitLoad;
 }
+// Per rider only the tinted materials (frame, skin, glove) are cloned; spokes, chain, tape etc. share one material.
+// Only the frame casts a shadow (Riders switches it off beyond 25 m): spokes and chain in the shadow pass were the big cost with 5 riders.
 function kitClone(scene, ghost, recolor) {
-  const c = scene.clone(true);
+  const c = scene.clone(true); c.userData.shadow = [];
   c.traverse(o => {
     if (!o.isMesh) return;
-    o.castShadow = true;
+    o.castShadow = /^frame/i.test(o.name) || /^frame/i.test(o.parent?.name || ''); if (o.castShadow) c.userData.shadow.push(o);
     o.material = (Array.isArray(o.material) ? o.material : [o.material]).map(m => {
-      const n = m.clone(); recolor?.(n);
+      if (!ghost && !/frame|skin|glove/i.test(m.name)) return m;
+      const n = m.clone(); n.userData.kit = false; recolor?.(n);
       if (ghost) { n.transparent = true; n.opacity = 0.45; n.depthWrite = false; }
       return n;
     });
@@ -80,7 +83,7 @@ export function makeRider(look, opts = {}) {
   if (KIT.bike) { // detailed bike from the Mac replaces the tube bike
     for (const o of g.children.slice(nBike)) g.remove(o);
     kitBike = kitClone(KIT.bike, ghost, m => { if (/frame/i.test(m.name)) m.color.set(frameM.color); });
-    g.add(kitBike); wheels.length = 0;
+    g.add(kitBike); g.userData.shadow = kitBike.userData.shadow; wheels.length = 0;
     for (const n of ['wheel_r', 'wheel_f']) { const w = kitBike.getObjectByName(n); if (w) wheels.push(w); }
     const crank = kitBike.getObjectByName('crank'), pr = kitBike.getObjectByName('pedal_r');
     if (crank) kitBike.userData = { crank, pl: kitBike.getObjectByName('pedal_l'), pr, psi0: pr ? Math.atan2(-pr.position.y, pr.position.z) : 0 };
@@ -165,7 +168,7 @@ export function makeRider(look, opts = {}) {
     return { s, thigh, knee, shin, sock, shoe, crankArm, pedal };
   });
   const L1 = 0.46, L2 = 0.47, BB = V(0, 0.3, 0), CR = 0.17;
-  g.userData = { wheels, legs, look: L,
+  g.userData = { shadow: g.userData.shadow, wheels, legs, look: L,
     pedal(a) { // crank angle in radians
       for (const l of legs) {
         const ang = a + (l.s > 0 ? Math.PI : 0), x = l.s * 0.11;

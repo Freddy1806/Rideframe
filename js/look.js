@@ -16,7 +16,8 @@ export const DEFAULT_LOOK = { body: 'm', height: 1, build: 0.4, skin: 1, hair: '
 
 const pick = (opts, v, d) => (opts.some(o => o[0] === v) ? v : d);
 /** never trust a look from the network or an old save */
-export function cleanLook(l = {}) {
+export function cleanLook(l) {
+  if (!l || typeof l !== 'object') l = {}; // null = never opened the editor: default look (was a crash in the 3D rider)
   const n = (v, a, b, d) => (Number.isFinite(+v) ? Math.max(a, Math.min(b, +v)) : d), D = DEFAULT_LOOK, O = OPTIONS;
   return { body: pick(O.body, l.body, D.body), height: n(l.height, 0.88, 1.12, 1), build: n(l.build, 0, 1, 0.4), skin: n(l.skin, 0, SKINS.length - 1, 1) | 0,
     hair: pick(O.hair, l.hair, D.hair), hairColor: n(l.hairColor, 0, HAIRCOL.length - 1, 1) | 0, beard: pick(O.beard, l.beard, 'none'), glasses: pick(O.glasses, l.glasses, 'none'),
