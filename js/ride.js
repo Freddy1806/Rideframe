@@ -87,7 +87,7 @@ export class RideSession {
     this.running = false; this.paused = false; this.finished = false;
     this.climbs = this.track.intervals || findClimbs(this.track);
     const st = state.settings;
-    this.gears = gearsFrom(st); this.virtual = st.shiftMode === 'virtual'; this.realGear = parseGear(st.realGear);
+    this.gears = gearsFrom(st); this.virtual = st.shiftMode === 'virtual'; this.auto = this.virtual && !!st.autoShift; this.berg = !this.virtual && !!st.bergWatt; this.realGear = parseGear(st.realGear);
     this.wheel = (st.wheel || 2105) / 1000;
     this.gi = this.gears.reduce((b, g, i) => Math.abs(Math.log(g.ratio / this.realGear.ratio)) < Math.abs(Math.log(this.gears[b].ratio / this.realGear.ratio)) ? i : b, 0);
     this.gear = this.virtual ? this.gears[this.gi] : null;
@@ -160,7 +160,7 @@ export class RideSession {
         <div class="hud-route glass"><div class="wordmark"><svg class="mark" viewBox="0 0 32 32"><rect width="32" height="32" rx="6" fill="var(--accent)"/><path d="M6 24 L14 12 L19 18 L23 10 L27 24 Z" fill="#0b0b0b"/></svg>RIDEFRAME</div><span class="sep"></span><span class="name">${esc(this.route.name)}</span></div>
         <div class="hud-right">
           ${ghostChip}
-          <div class="chip glass gearchip" data-hud="gear" id="hGearChip" title="Klicken (oder G): echt am Rad ↔ virtuell schalten" style="cursor:pointer"><div class="label" id="hGearL">${this.virtual ? 'Virtueller Gang' : 'Gang'}</div><div class="v num" id="hGear">–</div><div class="gearbar" id="hGearBar">${this.virtual ? this.gears.map(() => '<i></i>').join('') : ''}</div></div>
+          <div class="chip glass gearchip" data-hud="gear" id="hGearChip" title="Klicken (oder G): echt am Rad → virtuell → Automatik → Berg-Watt" style="cursor:pointer"><div class="label" id="hGearL">${this.berg ? 'Berg-Watt' : this.auto ? 'Automatik' : this.virtual ? 'Virtueller Gang' : 'Gang'}</div><div class="v num" id="hGear">–</div><div class="gearbar" id="hGearBar">${this.virtual ? this.gears.map(() => '<i></i>').join('') : ''}</div></div>
           <div class="chip glass" data-hud="time"><div class="label">Zeit</div><div class="v num" id="hTime">0:00</div></div>
           ${this.track.world ? '<button class="chip glass camchip" data-hud="buttons" id="hCam" title="Kamera wechseln (V)"><div class="label">Kamera</div><div class="v">⟲</div></button><button class="chip glass camchip" data-hud="buttons" id="hBar" title="Lenker ein/aus (H)"><div class="label">Lenker</div><div class="v">⊓</div></button><button class="chip glass camchip" id="hWide" title="Weitwinkel ([ und ])"><div class="label">Sicht</div><div class="v">↔</div></button>' : ''}
           ${this.group ? `<button class="chip glass camchip voicechip" id="hVoice" title="Sprachchat an: ihr hört euch gegenseitig"><div class="label">Sprachchat</div><div class="v">${MIC_SVG}</div></button>` : ''}
@@ -206,19 +206,46 @@ export class RideSession {
     const ws = t.data?.speed > 0.5 ? t.data.speed : Math.max(1, this.v / k);
     return virtualGrade(g, k, ws, this.params.mass);
   }
-  /** switch between shifting on the real bike and virtual gears, mid-ride (click on the gear chip or G) */
+  /** cycle the shifting mid-ride (click on the gear chip or G): real bike -> virtual (Q/E) -> automatic -> Berg-Watt -> real */
   toggleShift() {
-    this.virtual = !this.virtual; this.state.settings.shiftMode = this.virtual ? 'virtual' : 'real';
+    const st = this.state.settings, t = this.state.trainer;
+    const mode = this.berg ? 'berg' : this.auto ? 'auto' : this.virtual ? 'virtual' : 'real';
+    const next = { real: 'virtual', virtual: 'auto', auto: 'berg', berg: 'real' }[mode];
+    if (mode === 'berg') t.setPower(null); // back to the grade
+    this.virtual = next === 'virtual' || next === 'auto'; this.auto = next === 'auto'; this.berg = next === 'berg';
+    st.shiftMode = this.virtual ? 'virtual' : 'real'; st.autoShift = this.auto; st.bergWatt = this.berg;
     this.gear = this.virtual ? this.gears[this.gi] : null;
-    const q = this.q; q('#hGearL').textContent = this.virtual ? 'Virtueller Gang' : 'Gang';
+    const q = this.q; q('#hGearL').textContent = this.berg ? 'Berg-Watt' : this.auto ? 'Automatik' : this.virtual ? 'Virtueller Gang' : 'Gang';
     q('#hGearBar').innerHTML = this.virtual ? this.gears.map(() => '<i></i>').join('') : '';
-    if (this.state.trainer.connected) this.state.trainer.setGrade(this._trainerGrade(), true);
-    this._flash(this.virtual ? 'Virtuell schalten · Q/E oder ‹ ›' : 'Schalten am echten Rad');
+    if (t.connected && !this.berg) t.setGrade(this._trainerGrade(), true);
+    this._flash({ real: 'Schalten am echten Rad', virtual: 'Virtuell schalten · Q/E', auto: `Automatik · schaltet auf ${st.cadence || 90} rpm`,
+      berg: 'Berg-Watt · Trainer hält die Watt der Steigung, Trittfrequenz frei' }[next]);
     import('./app.js').then(m => m.saveSettings());
   }
-  shift(dir) {
+  /** Berg-Watt: target power from the grade (relative to FTP); the trainer holds it in ERG, cadence is up to you */
+  _bergTarget() {
+    const now = performance.now(); if (this._bergW && now - (this._bergAt || 0) < 1000) return this._bergW; // once per second is plenty for BLE
+    this._bergAt = now; const g = this._roadGrade(), ftp = this.ftp || 200;
+    const k = g >= 0 ? 0.62 + 0.055 * g : 0.62 + 0.09 * g; // flat ~62 % FTP, 6 % ~95 %, downhill easing off
+    const w = Math.round(ftp * Math.max(0.3, Math.min(1.25, k)) / 5) * 5;
+    this._bergW = this._bergW ? this._bergW + Math.sign(w - this._bergW) * Math.min(Math.abs(w - this._bergW), 10) : w; // max 10 W per second, no jumps
+    return this._bergW;
+  }
+  /** automatic virtual shifting: keeps you near your favourite cadence; Q/E override it for 15 s */
+  _autoShift(dt) {
+    if (!this.auto || !this.virtual || this.paused || this.v < 1.5 || this.power <= 0) { this._asT = 0; return; }
+    if (performance.now() - (this._manualShiftAt || 0) < 15000) return;
+    const t = this.state.trainer, target = this.state.settings.cadence || 90;
+    const cad = t.connected && t.data?.cadence > 20 ? t.data.cadence : this.v / (this.gear.ratio * this.wheel) * 60;
+    const dir = cad < target - 9 ? -1 : cad > target + 9 ? 1 : 0;
+    if (!dir || dir !== this._asDir) { this._asDir = dir; this._asT = 0; return; }
+    this._asT = (this._asT || 0) + dt;
+    if (this._asT > 1.4) { this._asT = 0; this.shift(dir, true); }
+  }
+  shift(dir, auto = false) {
+    if (!auto) this._manualShiftAt = performance.now();
     if (!this.virtual) { // real shifting: the gear is changed on the bike itself
-      if (!this._shiftHint) { this._shiftHint = true; this.q && (this.q('#hGearL').textContent = 'Schalten am Rad · G = virtuell'); }
+      if (!this._shiftHint) { this._shiftHint = true; this.q && (this.q('#hGearL').textContent = 'Schalten am Rad · G = virtuell/Automatik'); }
       return;
     }
     const gi = Math.max(0, Math.min(this.gears.length - 1, this.gi + dir));
@@ -252,14 +279,15 @@ export class RideSession {
     const dt = Math.min(0.25, (now - this.last) / 1000); this.last = now;
     this._pollPad();
     if (!this.paused && !this.finished) {
-      this._readInputs();
+      this._readInputs(); this._autoShift(dt);
       const g = gradeAt(this.track, this.d);
       this.v = physStep(this.v, this.power, g, dt, this.params);
       this.d = Math.min(this.track.length, this.d + this.v * dt);
       this.elapsed += dt;
       const e = eleAt(this.track, this.d); if (e > this.lastEle) this.gainAcc += e - this.lastEle; this.lastEle = e;
       this._workout(dt);
-      this.state.trainer.setGrade(this._trainerGrade());
+      if (this.berg && !(this.workout && this.erg)) this.state.trainer.setPower(this._bergTarget());
+      else this.state.trainer.setGrade(this._trainerGrade());
       this._syncVideo();
       if (this.elapsed - this.lastSample >= 1) {
         this.lastSample = Math.floor(this.elapsed);
@@ -330,12 +358,12 @@ export class RideSession {
     const t = this.state.trainer;
     if (this.virtual) {
       q('#hGear').textContent = gearName(this.gear);
-      q('#hGearL').textContent = `Virtueller Gang ${this.gi + 1}/${this.gears.length}`;
+      q('#hGearL').textContent = `${this.auto ? 'Automatik' : 'Virtueller Gang'} ${this.gi + 1}/${this.gears.length}`;
       q('#hGearBar').querySelectorAll('i').forEach((el, i) => el.className = i <= this.gi ? 'on' : '');
       q('.gearchip').classList.toggle('flash', performance.now() - (this.shiftFlash || 0) < 350);
     } else {
-      const g = estimateGear(this.gears, t.data?.speed, this.cadence, this.wheel * 1000);
-      q('#hGear').textContent = g ? gearName(g) : '–';
+      if (this.berg) { q('#hGear').textContent = (this._bergW || this._bergTarget()) + ' W'; q('#hGearL').textContent = 'Berg-Watt · Ziel'; }
+      else { const g = estimateGear(this.gears, t.data?.speed, this.cadence, this.wheel * 1000); q('#hGear').textContent = g ? gearName(g) : '–'; }
     }
     q('#hDist').textContent = fmtNum(this.d / 1000, 2);
     q('#hBpm').textContent = this.hr || '–';
