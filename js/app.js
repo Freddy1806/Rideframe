@@ -5,7 +5,7 @@ import { readGoProGPS } from './gpmf.js';
 import { buildTrack, improveElevation, parseGPX, STEP, eleAt } from './track.js';
 import { Trainer, HeartRate } from './trainer.js';
 import { makeDemoTrack, demoThumb } from './demo.js';
-import { makeCoastTrack, loadRealTrack } from './routes.js';
+import { makeCoastTrack, loadRealTrack, makeBuiltinTrack, DESIGNED } from './routes.js';
 import { gearsFrom, CASSETTES, parseRings } from './gears.js';
 import { profileSVG, drawDetailProfile } from './profile.js';
 import { RideSession, simulateRide } from './ride.js';
@@ -38,6 +38,8 @@ const BUILTIN = {
   coast: () => { const track = makeCoastTrack(); return { id: 'coast', name: 'Felsenküste', place: 'Schwellen-Intervalle · 4 Anstiege 8–12 min · Mittelalter-Dörfer am Meer', source: 'demo', parts: [], track, createdAt: 1, thumb: demoThumb(track, 1200) }; },
   demo: () => { const track = makeDemoTrack(); return { id: 'demo', name: 'Passo Demo', place: 'Eingebaute Demo-Strecke · ohne Video', source: 'demo', parts: [], track, createdAt: 0, thumb: demoThumb(track) }; },
 };
+Object.entries(DESIGNED).forEach(([id, D], k) => { BUILTIN[id] = () => { const track = makeBuiltinTrack(id);
+  return { id, name: D.name, place: `${D.place} · ${(track.length / 1000).toFixed(0)} km · ${track.gain} Hm`, source: 'demo', parts: [], track, createdAt: 1.1 + k * 0.1, thumb: demoThumb(track, 1200) }; }; });
 function getBuiltin(id) { return builtins[id] ||= BUILTIN[id](); }
 function getDemoRoute() { return getBuiltin('demo'); }
 

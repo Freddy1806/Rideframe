@@ -267,6 +267,7 @@ export class Events {
       const segs = this.track.segments || [], seg = segs.find(s => d >= s.from && d < s.to) || {};
       const p = this.f.at(d), l = Math.hypot(p.tx, p.tz) || 1;
       let sea = 0; for (const off of [-40, -90, 40, 90]) if (this.f.height(p.x - p.tz / l * off, p.z + p.tx / l * off) < -2) sea = Math.max(sea, Math.abs(off) < 50 ? 1 : 0.55);
+      if (seg.land === 'river') sea *= 0.2; // a river murmurs, it does not break like the sea
       const inVillage = !!seg.village;
       if (inVillage && this.amb && !this.amb.village && time > (this.nextBell || 0)) { // just rode in: the church bell
         this.nextBell = time + 240; const a = this.f.at(d + 220); S.play3d('glocke', this._where({ x: a.x, z: a.z }, 600, 0.55));

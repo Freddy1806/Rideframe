@@ -790,7 +790,7 @@ export class WorldScene {
       // ---- meadows: sheep flocks, horses, reindeer higher up, stone walls, hay ----
       if (s.land !== 'cliff') {
         for (let d = s.from + 150; d < s.to - 50; d += 260 + r() * 260) {
-          const side = s.land === 'coast' ? 1 : (r() < 0.5 ? -1 : 1), base = 16 + r() * 30, n = 4 + Math.floor(r() * 5);
+          const side = s.land === 'coast' || s.land === 'river' ? 1 : (r() < 0.5 ? -1 : 1), base = 16 + r() * 30, n = 4 + Math.floor(r() * 5);
           const animal = s.land === 'serp' || (s.land === 'valley' && r() < 0.4) ? byName('rentier') : r() < 0.15 ? byName('pferd') : byName('schaf');
           for (let k = 0; k < n; k++) place(animal, d + (r() - .5) * 26, side * (base + r() * 14), { face: r() * 6.28, anim: r() < 0.7 ? 'Grasen' : 'Stehen', radK: 0.6, gap: 3 });
           if (s.land === 'valley' && r() < 0.6) for (let k = 0; k < 6; k++) place(byName('garbenhocke'), d + 40 + k * 3.5, side * -(10 + (k % 2) * 3), { gap: 2 });
@@ -798,11 +798,52 @@ export class WorldScene {
         }
         // dry-stone walls along the land side
         for (let d = s.from + 100; d < s.to - 100; d += 500 + r() * 400) {
-          const wall = s.land === 'valley' ? byName('flechtzaun') : byName('trockenmauer'), off = ROAD_W + 5 + r() * 2, side = s.land === 'coast' ? 1 : -1;
+          const wall = s.land === 'valley' ? byName('flechtzaun') : byName('trockenmauer'), off = ROAD_W + 5 + r() * 2, side = s.land === 'coast' || s.land === 'river' ? 1 : -1;
           if (wall) { // segments end to end, long side along the road whichever axis the model was built on
             const len = Math.max(wall.size[0], wall.size[2]) * 0.97, turn = wall.size[0] > wall.size[2] ? Math.PI / 2 : 0;
             for (let k = 0; k * len < 64; k++) place(wall, d + k * len, side * off, { face: 'along', rot: turn, gap: 1, radK: 0.3, overlap: true });
           }
+        }
+      }
+      // ---- river banks: anglers on the shore, rowing boats on the water (Freddy: Flussabschnitt mit Booten und Anglern) ----
+      if (s.land === 'river') for (let d = s.from + 120; d < s.to - 80; d += 220 + r() * 260) {
+        const w = waterline(d, -1, 4, 0.2); if (w === null) continue;
+        if (r() < 0.6) place(byName('angler'), d, -(w - 1.2), { face: 'away', anim: 'Angeln', radK: 0.4, gap: 0.8 });
+        if (r() < 0.55) place(byName('ruderboot') || byName('nordlandboot'), d + 20 + r() * 30, -(w + 12 + r() * 30), { water: true, y: 0.1, face: 'along', rot: (r() - .5) * 0.8, anim: 'Rudern' });
+        if (r() < 0.2) place(byName('brygge'), d - 15, -(w + 3), { water: true, y: 0.2 });
+      }
+      // ---- mountain pass: stone walls at the hairpins, the pass sign on top ----
+      if (s.land === 'serp') {
+        const cv = t.curve || [];
+        for (let i = Math.round(s.from / STEP) + 4; i < Math.round(s.to / STEP) - 4; i++) {
+          let sum = 0; for (let k = -3; k <= 3; k++) sum += cv[i + k] || 0;
+          if (Math.abs(sum) < 0.95) continue; // curve is clamped to ±0.15 per sample: only hairpins (π in ~70 m) get here
+          const out = sum > 0 ? -1 : 1, d = i * STEP; // outside of the bend
+          const e = s.style === 'asia' ? byName('steintreppe') : byName('steinmauer_kehre');
+          place(e, d, out * (ROAD_W + 9 + (e ? Math.max(...e.size) / 2 : 0)), { face: 'road', gap: 2 });
+          i += 12;
+        }
+      }
+      if (s.top === 'pass') { place(byName('passschild'), s.to + 25, ROAD_W + 3, { face: 'road', gap: 1, radK: 0.4 }); place(byName('passschild'), s.to + 40, -(ROAD_W + 3), { face: 'road', gap: 1, radK: 0.4 }); }
+      // ---- East Asian style (original): bamboo groves, lantern chains, monks training, pagodas on the tops ----
+      if (s.style === 'asia') {
+        const land = s.land === 'river' ? 1 : 0;
+        for (let d = s.from + 60; d < s.to - 40; d += 90 + r() * 140) {
+          const side = land || (r() < 0.5 ? -1 : 1);
+          place(byName('bambus_gruppe'), d, side * (ROAD_W + 6 + r() * 16), { face: r() * 6.28, gap: 2, radK: 0.6 });
+        }
+        if (s.temple) {
+          const a = s.from + L * s.temple[0], b = s.from + L * s.temple[1], mid = (a + b) / 2;
+          const lk = byName('laternen_kette');
+          if (lk) for (let d = a; d < b; d += 28) for (const side of [-1, 1]) if (!land || side > 0 || d % 56 < 28) place(lk, d, side * (ROAD_W + 2.2), { face: 'along', gap: 0.3, radK: 0.25, overlap: true });
+          place(byName('pagode'), mid, ROAD_W + 26, { face: 'road', gap: 6 });
+          const monk = byName('kampfmoench');
+          if (monk) for (let k = 0; k < 7; k++) place(monk, mid - 18 + (k % 4) * 3.2, ROAD_W + 8 + Math.floor(k / 4) * 3.2, { face: 'road', anim: ['Kaempfen', 'Trainieren', 'Stehen'][k % 3], gap: 1, radK: 0.4 });
+          place(byName('steintreppe'), mid + 30, ROAD_W + 14, { face: 'road', gap: 2 });
+        }
+        if (s.top === 'pagode') {
+          place(byName('pagode'), s.to + 55, ROAD_W + 22, { face: 'road', gap: 6 });
+          const monk = byName('kampfmoench'); if (monk) for (let k = 0; k < 3; k++) place(monk, s.to + 30 + k * 3, ROAD_W + 6, { face: 'road', anim: 'Kaempfen', gap: 1, radK: 0.4 });
         }
       }
       // ---- landmarks on the climb tops ----

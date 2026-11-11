@@ -3,12 +3,13 @@
 //  1. grade: road surface slope == grade the trainer gets
 //  2. terrain mesh (as triangulated by the GPU at each detail level) never pokes through the asphalt
 //  3. camera: always above the ground, on the road, view turns smoothly in curves
-import { makeCoastTrack } from '../js/routes.js';
+import { makeCoastTrack, makeBuiltinTrack } from '../js/routes.js';
 import { STEP, gradeAt } from '../js/track.js';
 import { Field, ROAD_W, DS, loadDEM } from '../js/world/field.js';
 
 const fast = process.argv.includes('--fast');
-const track = makeCoastTrack(), f = new Field(track, await loadDEM()), L = track.length;
+const rid = (process.argv.find(a => a.startsWith('--route=')) || '').slice(8); // --route=kurz|fluss|pass|kloster
+const track = (rid && makeBuiltinTrack(rid)) || makeCoastTrack(), f = new Field(track, await loadDEM()), L = track.length;
 const res = []; let fail = 0;
 const report = (name, ok, msg) => { res.push(`${ok ? 'OK  ' : 'FAIL'} ${name}: ${msg}`); if (!ok) fail++; };
 
