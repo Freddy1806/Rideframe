@@ -363,6 +363,10 @@ function settings() {
         <label class="field"><div>Höhendaten verbessern<div class="hint">Beim Import Höhe aus Geländemodell holen (Open-Meteo). GoPro-Höhe ist ungenau.</div></div><input type="checkbox" class="toggle" id="improveEle" ${s.improveEle ? 'checked' : ''}></label>
         <div class="field"><div>Speicher<div class="hint" id="usage">…</div></div></div>
       </div>
+      <div class="panel"><h3>Sprachchat beim Zusammenfahren</h3>
+        <label class="field"><div>Push-to-Talk<div class="hint">Aus = offenes Mikro, Taste T schaltet stumm. An = du wirst nur gehört, solange du T (oder den Knopf „Mikro“) gedrückt hältst.</div></div><input type="checkbox" class="toggle" id="voicePtt" ${s.voicePtt ? 'checked' : ''}></label>
+        <label class="field"><div>Lautstärke der anderen <b id="voiceVolV">${s.voiceVol ?? 100}%</b><div class="hint">Wie laut du deine Freunde hörst. Die Musik wird leiser, solange jemand spricht.</div></div><input type="range" id="voiceVol" min="0" max="100" step="5" value="${s.voiceVol ?? 100}"></label>
+      </div>
       <div class="panel"><h3>Dein Fahrer</h3>
         <div class="field"><div>Aussehen<div class="hint">Typ, Größe, Statur, Gesicht, Frisur, Outfits (auch 80er und richtig lustige) und Schuhe. Sehen deine Freunde beim Zusammenfahren, du selbst in der Verfolger-Kamera (Taste V).</div></div><button class="btn ghost small" id="lookBtn">Fahrer gestalten</button></div>
       </div>
@@ -411,6 +415,8 @@ function settings() {
   txt('chainrings'); txt('realGear');
   $('#difficulty').oninput = e => { s.difficulty = +e.target.value; $('#diffV').textContent = s.difficulty + '%'; saveSettings(); };
   $('#downhill').oninput = e => { s.downhill = +e.target.value; $('#downV').textContent = s.downhill + '%'; saveSettings(); };
+  $('#voicePtt').onchange = e => { s.voicePtt = e.target.checked; saveSettings(); import('./share.js').then(m => m.currentGroup()?.voice?.setPtt(s.voicePtt)); };
+  $('#voiceVol').oninput = e => { s.voiceVol = +e.target.value; $('#voiceVolV').textContent = s.voiceVol + '%'; saveSettings(); import('./share.js').then(m => m.currentGroup()?.voice?.setVolume(s.voiceVol / 100)); };
   $('#muteVideo').onchange = e => { s.muteVideo = e.target.checked; saveSettings(); };
   $('#improveEle').onchange = e => { s.improveEle = e.target.checked; saveSettings(); };
   main.querySelectorAll('.swatch').forEach(b => b.onclick = () => { s.accent = b.dataset.acc; applyAccent(); saveSettings(); settings(); });

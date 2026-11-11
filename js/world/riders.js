@@ -6,16 +6,27 @@ import { makeRider, loadRiderKit } from './avatar.js';
 
 const COLORS = [0x2f7fd8, 0xe0452b, 0x2fb36b, 0xf2b630, 0x9b59d0, 0x18b5c4, 0xff7a1a, 0xe84393];
 
-function tag(name, color) {
-  const c = document.createElement('canvas'); c.width = 256; c.height = 64;
-  const g = c.getContext('2d');
-  g.fillStyle = 'rgba(10,12,16,0.72)'; g.beginPath(); g.roundRect(4, 8, 248, 48, 24); g.fill();
-  g.fillStyle = '#' + color.toString(16).padStart(6, '0'); g.beginPath(); g.arc(32, 32, 10, 0, 7); g.fill();
+// name tag; speaking (voice chat): green glow around the tag and a speaker icon instead of the colour dot
+function drawTag(c, name, color, speaking) {
+  const g = c.getContext('2d'); g.clearRect(0, 0, c.width, c.height);
+  if (speaking) { g.save(); g.shadowColor = '#3dff8a'; g.shadowBlur = 18; g.strokeStyle = '#3dff8a'; g.lineWidth = 5; g.beginPath(); g.roundRect(14, 18, 228, 44, 22); g.stroke(); g.restore(); }
+  g.fillStyle = speaking ? 'rgba(8,40,22,0.85)' : 'rgba(10,12,16,0.72)'; g.beginPath(); g.roundRect(14, 18, 228, 44, 22); g.fill();
+  if (speaking) { // speaker with two sound waves
+    g.fillStyle = '#3dff8a'; g.beginPath(); g.moveTo(28, 34); g.lineTo(34, 34); g.lineTo(42, 27); g.lineTo(42, 53); g.lineTo(34, 46); g.lineTo(28, 46); g.closePath(); g.fill();
+    g.strokeStyle = '#3dff8a'; g.lineWidth = 3; g.lineCap = 'round';
+    for (const r of [6, 11]) { g.beginPath(); g.arc(44, 40, r, -0.9, 0.9); g.stroke(); }
+  } else { g.fillStyle = '#' + color.toString(16).padStart(6, '0'); g.beginPath(); g.arc(40, 40, 10, 0, 7); g.fill(); }
   g.fillStyle = '#fff'; g.font = '600 28px Inter, system-ui, sans-serif'; g.textBaseline = 'middle';
-  g.fillText(name.slice(0, 14), 52, 33);
+  g.fillText(name.slice(0, 13), 62, 41);
+}
+
+function tag(name, color) {
+  const c = document.createElement('canvas'); c.width = 256; c.height = 80;
+  drawTag(c, name, color, false);
   const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace;
   const s = new THREE.Sprite(new THREE.SpriteMaterial({ map: t, depthWrite: false, transparent: true }));
-  s.scale.set(1.6, 0.4, 1); s.position.y = 2.3; s.renderOrder = 10;
+  s.scale.set(1.6, 0.5, 1); s.position.y = 2.3; s.renderOrder = 10;
+  s.userData.speak = on => { if (s.userData.on === on) return; s.userData.on = on; drawTag(c, name, color, on); t.needsUpdate = true; };
   return s;
 }
 
@@ -34,7 +45,7 @@ export class Riders {
     loadRiderKit().then(ok => { if (ok) for (const e of this.list.values()) e.key = 'stale'; }); // detailed bike/hands arrived: rebuild on the next update
   }
 
-  /** riders: [{ id, name, d, v, look, ghost, self, color }] — d in metres along the route, v m/s (wheel and leg speed) */
+  /** riders: [{ id, name, d, v, look, ghost, self, color, speaking }] — d in metres along the route, v m/s (wheel and leg speed) */
   set(riders) {
     const seen = new Set();
     for (const r of riders) {
@@ -49,10 +60,11 @@ export class Riders {
       }
       if (!e.obj) {
         e.obj = makeRider(r.look, { ghost: r.ghost });
-        if (!r.self) e.obj.add(tag(r.name || 'Fahrer', e.color));
+        if (!r.self) e.obj.add(e.tag = tag(r.name || 'Fahrer', e.color));
         this.scene.add(e.obj); e.key = key;
       }
       if (r.d !== e.d) e.at = performance.now() / 1000; // a fresh position from the network (friends send ~2 per second)
+      e.tag?.userData.speak(!!r.speaking);
       e.d = r.d; e.v = r.v || 0; e.self = !!r.self; e.ghost = !!r.ghost;
     }
     for (const [id, e] of this.list) if (!seen.has(id)) { this.scene.remove(e.obj); dispose(e.obj); this.list.delete(id); }

@@ -3,6 +3,7 @@
 import { db, uid } from './db.js';
 import { state, toast, routeById, saveSettings, allRoutes } from './app.js';
 import { Group } from './group.js';
+import { Voice, voiceStatus, MIC_SVG, SPK_SVG } from './voice.js';
 import { cleanLook } from './look.js';
 import { esc, fmtTime, fmtKm } from './util.js';
 
@@ -58,12 +59,30 @@ export async function deleteShared(id) { state.shared = (state.shared || []).fil
 let group = null;
 export const currentGroup = () => (group?.open ? group : null);
 
+/** voice chat on/off for a group (button "Sprachchat an" in the group window and in the ride). Must run from a click. */
+export async function voiceToggle(g) {
+  if (!g) return null;
+  if (g.voice?.on) { g.voice.stop(); g.voice = null; window.dispatchEvent(new Event('rf-voicechange')); return null; }
+  const s = state.settings;
+  g.voice = new Voice(g, { ptt: !!s.voicePtt, volume: (s.voiceVol ?? 100) / 100, onMessage: msg => toast(msg, 8000), onChange: () => window.dispatchEvent(new Event('rf-voicechange')) });
+  await g.voice.start();
+  return g.voice;
+}
+
 /** lobby: open a group (host) or join one with a code. startRide(routeId, { group }) starts the ride. */
 export function groupModal({ routeId = null, code = null, startRide }) {
   let name = riderName(false);
   const m = document.createElement('div'); m.className = 'modal';
   document.body.append(m);
-  const close = () => { m.remove(); };
+  const updVoice = () => { // only the voice bits, so speaking flags don't rebuild the whole window
+    const g = group, v = g?.voice, b = m.querySelector('#gVoice'); if (!b) return;
+    b.innerHTML = MIC_SVG + (v?.on ? ' Sprachchat aus' : ' Sprachchat an'); b.classList.toggle('on', !!v?.on);
+    const mu = m.querySelector('#gMute'); mu.hidden = !v?.on || !v.hasMic || v.ptt; mu.textContent = v?.muted ? 'Mikro an' : 'Stumm (T)';
+    m.querySelector('#gVoiceSt').textContent = voiceStatus(v);
+    m.querySelectorAll('.group-list [data-pid]').forEach(r => { const pid = r.dataset.pid, sp = pid === g?.me.pid ? !!v?.speaking : !!v?.isSpeaking(pid); r.classList.toggle('speaking', sp); r.classList.toggle('invoice', pid === g?.me.pid ? !!v?.on : !!v?.connected(pid)); });
+  };
+  window.addEventListener('rf-voicechange', updVoice);
+  const close = () => { window.removeEventListener('rf-voicechange', updVoice); m.remove(); };
   const render = () => {
     const g = group, me = g?.me, others = g ? g.others() : [];
     if (!g) {
@@ -103,7 +122,8 @@ export function groupModal({ routeId = null, code = null, startRide }) {
       ${g.host ? `<select id="gRoute" style="width:100%;height:42px;margin-bottom:12px;background:var(--ink);border:1px solid var(--line-2);border-radius:6px;padding:0 10px">${g.routeId ? '' : '<option value="">Strecke wählen …</option>'}${allRoutes().map(r => `<option value="${esc(r.id)}" ${r.id === g.routeId ? 'selected' : ''}>${esc(r.name)} · ${fmtKm(r.track.length)} km</option>`).join('')}</select>`
         : `<p style="color:var(--paper);font-weight:700">${route ? esc(route.name) + ' · ' + fmtKm(route.track.length) + ' km' : g.routeId ? 'Strecke „' + esc(g.routeId) + '“ fehlt bei dir' : 'Gastgeber wählt …'}</p>`}
       <div class="label">Fahrer (${others.length + 1})</div>
-      <div class="group-list"><div><span>${esc(me.name)} (du)</span><span>${g.host ? 'Gastgeber' : ''}</span></div>${others.map(r => `<div><span>${esc(r.name)}</span><span>${r.riding ? 'fährt · ' + fmtKm(r.d) + ' km' : 'bereit'}</span></div>`).join('')}</div>
+      <div class="group-list"><div data-pid="${esc(me.pid || '')}"><span><i class="spk">${SPK_SVG}</i>${esc(me.name)} (du)</span><span>${g.host ? 'Gastgeber' : ''}</span></div>${others.map(r => `<div data-pid="${esc(r.pid || '')}"><span><i class="spk">${SPK_SVG}</i>${esc(r.name)}</span><span>${r.vo ? 'Sprachchat · ' : ''}${r.riding ? 'fährt · ' + fmtKm(r.d) + ' km' : 'bereit'}</span></div>`).join('')}</div>
+      <div class="voicebar"><button class="btn ghost small" id="gVoice" title="Ihr hört euch während der Fahrt. Der Browser fragt einmal nach dem Mikrofon."></button><button class="btn ghost small" id="gMute" hidden></button><span class="vstat" id="gVoiceSt"></span></div>
       <div class="actions">
         <button class="btn ghost small" id="gLeave">Gruppe verlassen</button>
         <button class="btn ghost small" id="gLook">Aussehen ändern</button>
@@ -111,6 +131,9 @@ export function groupModal({ routeId = null, code = null, startRide }) {
       </div></div>`;
     m.querySelector('#gRoute')?.addEventListener('change', e => { if (e.target.value) g.setRoute(e.target.value); });
     m.querySelector('#gLook').onclick = () => import('./avatar-ui.js').then(x => x.avatarModal({ onDone: () => render() }));
+    m.querySelector('#gVoice').onclick = () => voiceToggle(g).then(updVoice);
+    m.querySelector('#gMute').onclick = () => g.voice?.toggleMute();
+    updVoice();
     m.querySelector('#gLeave').onclick = () => { group?.close(); group = null; close(); toast('Gruppe verlassen'); };
     m.querySelector('#gCopy')?.addEventListener('click', () => navigator.clipboard?.writeText(g.code).then(() => toast('Code kopiert')));
     m.querySelector('#gLink')?.addEventListener('click', () => navigator.clipboard?.writeText(g.link).then(() => toast('Link kopiert. Klappt, wenn dein Freund RIDEFRAME auch unter dieser Adresse laufen hat.', 5000)));

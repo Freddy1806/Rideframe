@@ -11,6 +11,7 @@ import { UEBridge } from './uebridge.js';
 import { fovOf, FOV_MIN, FOV_MAX, FOV_DEFAULT } from './fov.js';
 import { workoutAt, workoutSVG } from './workouts.js';
 import { Music, Coach } from './music.js';
+import { MIC_SVG, SPK_SVG, voiceStatus } from './voice.js';
 import { hudPrefs, applyHud, hudControlsHTML, wireHudControls, HUD_ORDER, HUD_PRESETS } from './hudprefs.js';
 
 const MIN_RATE = 0.0625, MAX_RATE = 4;
@@ -139,6 +140,7 @@ export class RideSession {
     this.music = new Music(this.group ? 'race' : this.workout ? 'workout' : 'world', st.musicVol ?? 0.45);
     this.coach = new Coach(st.coachVol ?? 0.9);
     this.el.querySelector('#hMusic')?.addEventListener('click', () => this._toggleMusic());
+    if (this.group) this._wireVoice();
     this.running = true; this.last = performance.now();
     this._updateHUD(true);
     if (!this.autopilot) await this._countdown();
@@ -156,6 +158,7 @@ export class RideSession {
           <div class="chip glass gearchip" data-hud="gear"><div class="label" id="hGearL">${this.virtual ? 'Virtueller Gang' : 'Gang'}</div><div class="v num" id="hGear">–</div><div class="gearbar" id="hGearBar">${this.virtual ? this.gears.map(() => '<i></i>').join('') : ''}</div></div>
           <div class="chip glass" data-hud="time"><div class="label">Zeit</div><div class="v num" id="hTime">0:00</div></div>
           ${this.track.world ? '<button class="chip glass camchip" data-hud="buttons" id="hCam" title="Kamera wechseln (V)"><div class="label">Kamera</div><div class="v">⟲</div></button><button class="chip glass camchip" data-hud="buttons" id="hBar" title="Lenker ein/aus (H)"><div class="label">Lenker</div><div class="v">⊓</div></button><button class="chip glass camchip" id="hWide" title="Weitwinkel ([ und ])"><div class="label">Sicht</div><div class="v">↔</div></button>' : ''}
+          ${this.group ? `<button class="chip glass camchip voicechip" id="hVoice" title="Sprachchat an: ihr hört euch gegenseitig"><div class="label">Sprachchat</div><div class="v">${MIC_SVG}</div></button>` : ''}
           <button class="chip glass camchip" data-hud="buttons" id="hMusic" title="Musik an/aus (M), nächster Titel (N)"><div class="label">Musik</div><div class="v">♫</div></button>
           <button class="chip glass camchip" id="hHudBtn" title="Anzeige wählen (I)"><div class="label">Anzeige</div><div class="v">◧</div></button>
         </div>
@@ -415,16 +418,38 @@ export class RideSession {
     if (this.group) {
       this.group.update({ look, d: this.d, v: this.v, w: this.power, hr: this.hr, riding: !this.paused, done: this.finished });
       const os = this.group.others();
-      for (const r of os) list.push({ id: r.id, name: r.name, d: r.d, v: r.riding ? r.v : 0, look: r.look });
+      const vc = this.group.voice?.on ? this.group.voice : null;
+      for (const r of os) list.push({ id: r.id, name: r.name, d: r.d, v: r.riding ? r.v : 0, look: r.look, speaking: !!vc?.isSpeaking(r.pid) });
       const gl = this.q?.('#hGroup .glist');
       if (gl) gl.innerHTML = os.length ? os.sort((a, b) => b.d - a.d).slice(0, 5).map(r => {
         const gap = r.d - this.d, txt = r.done ? 'im Ziel' : (gap >= 0 ? '+' : '−') + (Math.abs(gap) >= 1000 ? fmtKm(Math.abs(gap)) + ' km' : Math.round(Math.abs(gap)) + ' m');
-        return `<div class="grow ${gap >= 0 ? 'behind' : 'ahead'}"><span>${esc(r.name)}</span><b class="num">${txt}</b><i class="num">${r.w} W</i></div>`;
+        return `<div class="grow ${gap >= 0 ? 'behind' : 'ahead'}${vc?.isSpeaking(r.pid) ? ' speaking' : ''}"><span>${vc?.isSpeaking(r.pid) ? `<i class="spk">${SPK_SVG}</i>` : ''}${esc(r.name)}</span><b class="num">${txt}</b><i class="num">${r.w} W</i></div>`;
       }).join('') : '<div class="grow"><span>Noch niemand da</span></div>';
     }
     if (list.length || this._hadRiders) { this.player?.setRiders?.(list); this._hadRiders = list.length > 0; }
     // the Unreal view draws the same friends and ghost (lanes: same order as js/world/riders.js LANES, by first appearance)
     this._ueRiders = list.filter(r => !r.self).map(r => ({ id: r.id, name: r.name || '', d: Math.round(r.d * 10) / 10, v: Math.round((r.v || 0) * 10) / 10, ghost: !!r.ghost }));
+  }
+
+  /** voice chat chip: off -> click turns it on (the browser asks once for the mic); on -> click mutes
+   *  (open mic) or hold to talk (push-to-talk), same as key T. Off again: pause menu or group window. */
+  _wireVoice() {
+    const vb = this.q('#hVoice');
+    const v = () => (this.group.voice?.on ? this.group.voice : null);
+    vb.addEventListener('click', async () => {
+      const x = v();
+      if (!x) { const n = await import('./share.js').then(m => m.voiceToggle(this.group)); if (n) this._flash(n.hasMic ? (n.ptt ? 'Sprachchat an · T halten zum Sprechen' : 'Sprachchat an · T = stumm') : 'Sprachchat an · nur zuhören'); }
+      else if (!x.ptt && x.hasMic) { x.toggleMute(); this._flash(x.muted ? 'Mikro stumm' : 'Mikro an'); }
+    });
+    const hold = on => e => { const x = v(); if (x?.ptt) { e.preventDefault(); x.talk(on); } };
+    vb.addEventListener('pointerdown', hold(true)); for (const ev of ['pointerup', 'pointerleave', 'pointercancel']) vb.addEventListener(ev, hold(false));
+    this._voiceUI = () => {
+      const x = v();
+      vb.classList.toggle('on', !!x); vb.classList.toggle('muted', !!x && !x.live && !x.ptt); vb.classList.toggle('speaking', !!x?.speaking);
+      vb.querySelector('.label').textContent = !x ? 'Sprachchat' : !x.hasMic ? 'Nur hören' : x.ptt ? (x.talking ? 'Du sprichst' : 'T halten') : x.muted ? 'Stumm (T)' : 'Mikro an';
+      vb.title = x ? voiceStatus(x) : 'Sprachchat an: ihr hört euch gegenseitig';
+    };
+    window.addEventListener('rf-voicechange', this._voiceUI); this._voiceUI();
   }
 
   _key(e) {
@@ -494,11 +519,12 @@ export class RideSession {
     this.paused = true; this.player.pause(); this.music?.pause();
     const o = document.createElement('div'); o.className = 'paused'; o.id = 'pauseOverlay';
     o.innerHTML = `<div class="box"><div class="label">${fmtKm(this.d)} km · ${fmtTime(this.elapsed)}</div><h2 class="display">Pause</h2>
-      <div class="row-actions"><button class="btn" id="pResume">Weiterfahren</button><button class="btn ghost" id="pSave">Beenden &amp; speichern</button><button class="btn ghost" id="pDiscard">Verwerfen</button></div></div>`;
+      <div class="row-actions"><button class="btn" id="pResume">Weiterfahren</button><button class="btn ghost" id="pSave">Beenden &amp; speichern</button><button class="btn ghost" id="pDiscard">Verwerfen</button>${this.group?.voice?.on ? '<button class="btn ghost" id="pVoice">Sprachchat aus</button>' : ''}</div></div>`;
     this.el.append(o);
     o.querySelector('#pResume').onclick = () => this._resume();
     o.querySelector('#pSave').onclick = () => this._end(true);
     o.querySelector('#pDiscard').onclick = () => this._end(false);
+    o.querySelector('#pVoice')?.addEventListener('click', e => { this.group.voice?.stop(); this.group.voice = null; e.target.remove(); this._flash('Sprachchat aus'); });
   }
   _resume() { this.music?.resume(); this.paused = false; this.q('#pauseOverlay')?.remove(); this.last = performance.now(); }
 
@@ -555,6 +581,8 @@ export class RideSession {
 
   _close(saved) {
     this.running = false; this.ue?.close(); this.state.trainer.setPower?.(null); this.music?.destroy();
+    if (this.group?.voice) { this.group.voice.stop(); this.group.voice = null; } // ride over: microphone off, indicator off
+    if (this._voiceUI) window.removeEventListener('rf-voicechange', this._voiceUI);
     document.removeEventListener('keydown', this._key);
     this.player.destroy?.();
     this.wake?.release?.();
