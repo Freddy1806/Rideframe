@@ -738,6 +738,28 @@ export class WorldScene {
     // trees by altitude: birch down by the water, pine on the slopes, crooked mountain birch at the tree line, juniper above.
     // Each species carries its altitude band (zone_m) from the Mac; groves, not an even sprinkle.
     const trees = A.by.tree || [];
+    // no two trees alike: own height/width ratio, a slight lean, and a per-tree foliage tint (greener, darker, sun-bleached,
+    // now and then an autumn-gold birch) as vertex colour, so static batching still merges them into one mesh per material
+    const tintMat = new Map(), leafy = m => /leaf|leaves|blatt|laub|nadel|krone|foliage|canopy|needle/i.test((m.name || '') + (m.material?.name || ''))
+      || (m.material?.color && m.material.color.g > m.material.color.r * 1.08 && m.material.color.g > m.material.color.b);
+    const vary = (o, lo, birchy) => {
+      const k = o.scale.x, tall = 0.82 + r() * 0.5, wide = 0.88 + r() * 0.3;
+      const gold = birchy && r() < 0.13, dark = 0.78 + r() * 0.34;
+      const tint = gold ? [1.25 + r() * 0.2, 1.0 + r() * 0.12, 0.35] : [dark * (0.92 + r() * 0.16), dark * (0.97 + r() * 0.1), dark * (0.85 + r() * 0.2)];
+      const lean = [(r() - 0.5) * 0.08, (r() - 0.5) * 0.08];
+      for (const t of [o, lo]) if (t) {
+        t.scale.set(k * wide, k * tall, k * wide * (0.92 + r() * 0.16)); t.rotation.x = lean[0]; t.rotation.z = lean[1];
+        t.traverse(m => {
+          if (!m.isMesh || Array.isArray(m.material) || !m.material) return;
+          const leaf = leafy(m), c = leaf ? tint : [0.9 + dark * 0.1, 0.9 + dark * 0.1, 0.9 + dark * 0.1];
+          const g = m.geometry.clone(), n = g.attributes.position.count, old = g.attributes.color, a = new Float32Array(n * 3);
+          for (let i = 0; i < n; i++) for (let j = 0; j < 3; j++) a[i * 3 + j] = (old ? old.getComponent(i, j) : 1) * c[j];
+          g.setAttribute('color', new THREE.Float32BufferAttribute(a, 3)); m.geometry = g;
+          let mt = tintMat.get(m.material.uuid); if (!mt) { mt = m.material.clone(); mt.vertexColors = true; tintMat.set(m.material.uuid, mt); }
+          m.material = mt;
+        });
+      }
+    };
     if (trees.length) {
       // land all round (14 m): no tree on a thin spit or skerry, where the coarse far terrain shows only sea
       const dry = (x, z) => [[14, 0], [-14, 0], [0, 14], [0, -14], [10, 10], [-10, -10]].every(([a, c]) => f.height(x + a, z + c) > 1.2);
@@ -753,7 +775,9 @@ export class WorldScene {
         const e = fit[Math.floor(r() * fit.length)], k = 0.8 + r() * 0.45;
         const o = place(e, d, off, { face: r() * 6.28, scale: k, radK: 0.35, gap: 4 }); if (!o) continue;
         n++; o.userData.near = !!e.farScene;
-        if (e.farScene) { const lo = e.farScene.clone(true); lo.position.copy(o.position); lo.rotation.copy(o.rotation); lo.scale.copy(o.scale); lo.userData.far = true; this.scene.add(lo); this.props.push(lo); }
+        const lo = e.farScene ? e.farScene.clone(true) : null;
+        if (lo) { lo.position.copy(o.position); lo.rotation.copy(o.rotation); lo.userData.far = true; this.scene.add(lo); this.props.push(lo); }
+        if (!QS.has('treeplain')) vary(o, lo, /birke/.test(e.file || e.name || '')); else if (lo) lo.scale.copy(o.scale);
       }
       // groves on sheltered ground: valley floors and hollows (ground lower than its surroundings), gentle slopes,
       // mostly birch; 5-12 trees per grove, never on the road (place) and not on steep bare rock (slope)
@@ -773,7 +797,9 @@ export class WorldScene {
           const fit = pool.filter(e => !e.zone_m || (hh >= e.zone_m[0] - 40 && hh <= e.zone_m[1] + 40)), e = (fit.length ? fit : pool)[Math.floor(r() * (fit.length || pool.length))];
           tried++; const o = place(e, dd, oo, { face: r() * 6.28, scale: 0.75 + r() * 0.5, radK: 0.35, gap: 5 }); if (!o) continue;
           n++; o.userData.near = !!e.farScene;
-          if (e.farScene) { const lo = e.farScene.clone(true); lo.position.copy(o.position); lo.rotation.copy(o.rotation); lo.scale.copy(o.scale); lo.userData.far = true; this.scene.add(lo); this.props.push(lo); }
+          const lo = e.farScene ? e.farScene.clone(true) : null;
+        if (lo) { lo.position.copy(o.position); lo.rotation.copy(o.rotation); lo.userData.far = true; this.scene.add(lo); this.props.push(lo); }
+        if (!QS.has('treeplain')) vary(o, lo, /birke/.test(e.file || e.name || '')); else if (lo) lo.scale.copy(o.scale);
         }
       }
       console.info('RIDEFRAME Bäume', n, 'Haine', groves, 'Hain-Bäume', n - n0, 'von', tried);
