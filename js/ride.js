@@ -392,7 +392,7 @@ export class RideSession {
     const cur = this.climbs.find(c => this.d >= c.from && this.d < c.to);
     const next = this.climbs.find(c => c.from > this.d);
     const nx = q('#hNext');
-    const ftp = this.state.settings.ftp, zLo = Math.round(ftp * .95), zHi = Math.round(ftp * 1.05);
+    const ftp = this.state.settings.ftp, cw = cur?.watt ?? 1, zLo = Math.round(ftp * cw * .95), zHi = Math.round(ftp * cw * 1.05); // climbs may be designed below threshold (Himmelsleiter: 80-85 %)
     const pw = q('.metric.power'); pw.classList.remove('z-lo', 'z-ok', 'z-hi');
     if (cur?.interval) {
       const n = this.climbs.indexOf(cur) + 1, left = cur.to - this.d;
@@ -656,12 +656,13 @@ export class RideSession {
 
   _voiceCmd({ cmd, n }) {
     const say = t => this._flash?.('🎙 ' + t);
+    if (!this.running) return; // still loading: the player does not exist yet
     if (cmd === 'pause') { if (!this.paused && !this.finished) { this._pause(); say('Pause'); } }
     else if (cmd === 'resume') { if (this.paused) { this._resume(); say('Weiter'); } }
     else if (!this.running || this.paused) return;
     else if (cmd === 'harder') { this.shift(1); say('Schwerer'); }
     else if (cmd === 'easier') { this.shift(-1); say('Leichter'); }
-    else if (cmd === 'photo') { this._takePhoto?.(); say('Foto'); }
+    else if (cmd === 'photo') { if (this.player?.snapshot) { this._takePhoto?.(); say('Foto'); } }
     else if (cmd === 'music') { this._toggleMusic(); }
     else if (cmd === 'next') { this.music?.skip(); setTimeout(() => this._flash('♫ ' + (this.music?.title() || '')), 300); }
     else if (cmd === 'view') this._cycleView();

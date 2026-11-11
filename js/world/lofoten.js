@@ -1305,7 +1305,7 @@ export class WorldScene {
     // image-based light from the sky, re-baked only when the sun has moved noticeably (~0.2°)
     const hb = (this.hellK || 0) > 0.5; if (hb !== !!this._envHell) { this._envHell = hb; this.envSun = null; } // hell in, hell out: re-bake the sky light
     if (hb !== !!this._herdHell) { this._herdHell = hb; // no grazing cows in hell (Mac mini QA): farm animals leave while the screen burns red, and come back after
-      for (const o of this.props) if (/kuh|schaf|pferd|rentier|ziege|schwein|huhn|gans/.test(o.userData.asset || '')) o.visible = !hb; }
+      for (const o of this.props) if (/kuh|schaf|pferd|rentier|ziege|schwein|huhn|gans/.test(o.userData.asset || '')) o.userData.hellHidden = hb; o.visible = !hb; }
     if (!this.envSun || this.envSun.distanceToSquared(s) > 1.2e-5) {
       (this.envSun ||= new THREE.Vector3()).copy(s);
       const rt = this.pmrem.fromScene(this.envScene, 0, 0.1, 9000);
@@ -1418,7 +1418,7 @@ export class WorldScene {
       for (const o of this.props) {
         const dist = Math.hypot(o.position.x - cam.x, o.position.z - cam.z);
         const near = dist - (o.userData.rad || 0) * 0.7; // tree LODs: near and far batch share cell and centre, so exactly one of them shows
-        o.visible = !o.userData.hidden && (o.userData.near ? dist < 330 : o.userData.far ? dist >= 330 && near < 1400
+        o.visible = !o.userData.hidden && !o.userData.hellHidden && (o.userData.near ? dist < 330 : o.userData.far ? dist >= 330 && near < 1400
           : near < (o.userData.circle ? 900 : o.userData.small ? 450 : o.userData.mid ? 900 : 1600)); // people, animals, barrels: only near
         // moving things (skeletons!) update their matrices only while they can actually move: visible and animated (< 180 m)
         if (o.matrixAutoUpdate !== false) o.matrixWorldAutoUpdate = o.visible && (dist < 180 || !!o.userData.circle || !!o.userData.walk || !!o.userData.whale);

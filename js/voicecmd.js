@@ -6,10 +6,10 @@ const WAKE = /\b(ride ?frame|rite ?frame|reid ?frame|raid ?frame|ride ?fra[mn]e?
 export const COMMANDS = [
   ['pause', /\b(pause|stopp?|anhalten|halt)\b/],
   ['resume', /\b(weiter|fortsetzen|los geht|weitermachen)\b/],
-  ['harder', /\b(schwerer|hoch ?schalten|härter|großer gang)\b/],
+  ['harder', /(?:^|\s)(schwerer|hoch ?schalten|härter|großer gang)(?=$|\s|[.,!?])/],
   ['easier', /\b(leichter|runter ?schalten|kleiner gang)\b/],
   ['photo', /\b(foto|bild|screenshot)\b/],
-  ['next', /\b(nächste[sr]? (lied|song|titel)|skip|überspringen)\b/],
+  ['next', /(?:^|\s)(nächste[sr]? (lied|song|titel)|skip|überspringen)(?=$|\s|[.,!?])/],
   ['music', /\b(musik)\b/],
   ['view', /\b(ansicht|kamera|perspektive)\b/],
   ['accept', /\b(annehmen|angenommen|challenge|ich bin dabei|na warte)\b/],

@@ -233,7 +233,7 @@ function detail(id) {
             <select id="chSel" style="width:auto">${[0, 2, 3, 4, 6, 8].map(n => `<option value="${n}">${n ? n + ' pro Fahrt' : 'aus'}</option>`).join('')}</select>
           </div>
         </div>
-        ${t.intervals ? intervalPlan(t) : ''}
+        ${t.intervals?.length ? intervalPlan(t) : ''}
         <h2 class="section" style="margin-top:44px">Deine Zeiten</h2>
         ${ranked.length ? `<table class="table">
           <tr><th class="label">#</th><th class="label">Datum</th><th class="label">Zeit</th><th class="label">Ø Watt</th><th class="label">Ø km/h</th><th class="label"></th></tr>
@@ -358,10 +358,11 @@ function profileModal() {
 }
 
 function intervalPlan(t) {
-  const s = state.settings, lo = Math.round(s.ftp * .95), hi = Math.round(s.ftp * 1.05);
-  const goal = s.ftp ? `Ziel: ${lo}–${hi} W (95–105 % deiner FTP von ${s.ftp} W).` : 'Trag in den Einstellungen deine FTP ein, dann zeigt die App dir Watt-Ziele.';
+  const s = state.settings, w = Math.min(...t.intervals.map(c => c.watt ?? 1)), lo = Math.round(s.ftp * w * .95), hi = Math.round(s.ftp * Math.max(...t.intervals.map(c => c.watt ?? 1)) * 1.05);
+  const thr = w >= 1, mins = t.intervals.map(c => c.minutes), span = Math.min(...mins) === Math.max(...mins) ? `${mins[0]}` : `${Math.min(...mins)}–${Math.max(...mins)}`;
+  const goal = s.ftp ? `Ziel: ${lo}–${hi} W (${thr ? '95–105 %' : `${Math.round(w * 95)}–${Math.round(Math.max(...t.intervals.map(c => c.watt ?? 1)) * 105)} %`} deiner FTP von ${s.ftp} W).` : 'Trag in den Einstellungen deine FTP ein, dann zeigt die App dir Watt-Ziele.';
   return `<h2 class="section" style="margin-top:44px">Intervall-Plan</h2>
-  <p class="hint" style="margin:6px 0 14px">Jeder Anstieg ist so gebaut, dass er bei Schwelle 8–12 Minuten dauert. ${goal} Dazwischen Abfahrt und flache Küste zum Erholen.</p>
+  <p class="hint" style="margin:6px 0 14px">Jeder Anstieg ist so gebaut, dass er ${thr ? 'bei Schwelle' : 'im Sweet Spot'} ${span} Minuten dauert. ${goal} Dazwischen ${thr ? 'Abfahrt und flache Straße' : 'kurze flache Stücke'} zum Erholen.</p>
   <table class="table"><tr><th class="label">#</th><th class="label">Anstieg</th><th class="label">ab km</th><th class="label">Länge</th><th class="label">Ø</th><th class="label">Dauer ca.</th></tr>
   ${t.intervals.map((c, i) => `<tr><td class="rank">${i + 1}</td><td>${esc(c.name)}</td><td>${fmtKm(c.from)}</td><td>${fmtKm(c.to - c.from)} km</td><td>${fmtNum(c.grade, 1)} %</td><td>${c.minutes} min</td></tr>`).join('')}
   </table>`;
