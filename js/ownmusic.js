@@ -5,7 +5,7 @@
 import { db } from './db.js';
 
 const MOODS = { world: ['welt', 'world', 'frei'], rain: ['regen', 'rain'], hard: ['intervall', 'intervalle', 'hard', 'motivation'],
-  workout: ['training', 'workout'], fly: ['flug', 'fly'], hell: ['hoelle', 'hölle', 'hell'], fest: ['fest', 'kirchenfest', 'dorf'], race: ['rennen', 'race', 'gruppe'] };
+  workout: ['training', 'workout'], fly: ['flug', 'fly'], hell: ['hoelle', 'hölle', 'hell'], fest: ['fest', 'stadtfest', 'dorf'], kirchenfest: ['kirchenfest', 'metal'], hochzeit: ['hochzeit'], beerdigung: ['beerdigung', 'trauer'], race: ['rennen', 'race', 'gruppe'] };
 const AUDIO = /\.(mp3|m4a|aac|ogg|oga|opus|wav|flac|webm)$/i;
 export const ownMusicSupported = () => typeof window !== 'undefined' && 'showDirectoryPicker' in window;
 

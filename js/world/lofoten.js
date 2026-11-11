@@ -646,7 +646,7 @@ export class WorldScene {
       if (n) taken.push([c.x, c.z, R]); return n;
     };
     const groupOf = kind => { const l = GROUPS.filter(g => g.kind === kind); return l.length ? l[Math.floor(r() * l.length)] : null; };
-    let bandDone = false;
+    let bandDone = false, villageNo = 0; this.villageThemes = [];
     const festSeg = segs.filter(s => s.village).sort((p, q) => (q.to - q.from) * (q.village[1] - q.village[0]) - (p.to - p.from) * (p.village[1] - p.village[0]))[0];
     const segAt = d => segs.find(s => d >= s.from && d < s.to) || segs[segs.length - 1];
 
@@ -674,6 +674,30 @@ export class WorldScene {
         mus.forEach((e, k) => place(e, mid - 8 + k * 2.3, ROAD_W + 9 + (k % 2) * 0.8, { radK: 0.45, anim: 'Spielen', gap: 3 }));
         place(byName('fahne_dorf'), mid - 30, ROAD_W + 3, { gap: 0.5 });
         place(byName('fahne_wimpel'), mid + 30, ROAD_W + 3, { gap: 0.5 });
+        // shops around the square (the MacBook's bakery, smithy, inn, butcher; signs swing), the smith hammering outside
+        ['baeckerei', 'schmiede', 'gasthaus', 'metzgerei'].map(byName).forEach((e, k) => { if (!e) return;
+          const dd = mid + (k % 2 ? 1 : -1) * (58 + Math.floor(k / 2) * 24), h = place(e, dd, ROAD_W + 6 + Math.max(...e.size) / 2, { face: 'road', anim: 'Schwingen', gap: 3 });
+          if (h && /schmiede/.test(e.file)) place(byName('schmied'), dd + 3, ROAD_W + 3.2, { face: 'road', anim: 'Haemmern', radK: 0.4, gap: 0.8 }); });
+        // the village's theme (Freddy: town fair, wedding, a dark church fest, a funeral, a plain market), its music changes there
+        const theme = s === festSeg ? 'stadtfest' : ['hochzeit', 'kirchenfest', 'beerdigung', 'markt'][villageNo++ % 4];
+        this.villageThemes.push({ a, b, theme });
+        if (theme === 'stadtfest') {
+          place(byName('karussell'), mid + 70, ROAD_W + 12, { face: 'road', anim: 'Drehen', gap: 3 });
+          for (let k = 0; k < 3; k++) place(byName('festzelt_bierbank'), mid - 60 - k * 9, ROAD_W + 6, { face: 'road', gap: 1.5 });
+        } else if (theme === 'hochzeit') {
+          const arch = byName('blumenbogen'); place(arch, mid - 34, ROAD_W + 6, { face: 'road', anim: 'Wehen', gap: 1 });
+          place(byName('hochzeit_paar'), mid - 34, ROAD_W + 3.6, { face: 'road', anim: 'Tanzen', radK: 0.4, gap: 0.6, overlap: true });
+          for (let k = 0; k < 6; k++) place(byName(k % 2 ? 'zuschauer_jubelnd' : 'magd'), mid - 42 + k * 3.2, ROAD_W + 2.2 + (k % 2) * 0.7, { face: 'road', anim: 'Jubeln', radK: 0.35, gap: 0.5 });
+          for (let k = 0; k < 2; k++) place(byName('festzelt_bierbank'), mid - 52 - k * 9, ROAD_W + 7, { face: 'road', gap: 1.5 });
+        } else if (theme === 'kirchenfest') { // dark: a gothic church with its graveyard, a stage with amps, fans headbanging
+          const ch = byName('kirche_gotisch'); if (ch) place(ch, mid - 70, ROAD_W + 8 + Math.max(...ch.size) / 2, { face: 'road', gap: 4 });
+          place(byName('buehne_verstaerker'), mid + 62, ROAD_W + 12, { face: 'road', gap: 3 });
+          for (let k = 0; k < 8; k++) place(byName(k % 2 ? 'metal_fan_2' : 'metal_fan'), mid + 56 + (k % 4) * 3.2, ROAD_W + 4 + Math.floor(k / 4) * 2, { face: 'away', anim: k % 3 ? 'Headbangen' : 'Jubeln', radK: 0.35, gap: 0.5 });
+        } else if (theme === 'beerdigung') { // a slow procession along the roadside: the coffin, then the mourners
+          const proc = [byName('sarg_traeger'), ...[0, 1, 2, 3, 4].map(k => byName(k % 2 ? 'trauernde_2' : 'trauernde'))];
+          proc.forEach((e, k) => { if (!e) return; const dd = mid - 30 - k * 2.6, off = ROAD_W + 2 + (k ? (k % 2) * 0.8 : 0.4);
+            const o = place(e, dd, off, { anim: 'Gehen', overlap: true, gap: 0.5, radK: 0.3 }); if (o) o.userData.walk = { d: dd, off, v: 0.55, a, b }; });
+        }
         // houses on the land side, facing the road
         for (let d = a; d < b; d += 18 + r() * 22) {
           if (Math.abs(d - mid) < 22 || r() < 0.2) continue;
@@ -1122,6 +1146,8 @@ export class WorldScene {
   /** turn the head and look back for a moment (side +1 over the left shoulder, -1 over the right) */
   lookBack(side = 1) { if (!this._lb && !this.view && !this._shot) this._lb = { t: 0, side }; }
   setCockpit(on) { this.showCockpit = on; }
+  /** the theme of the village at d (stadtfest, hochzeit, kirchenfest, beerdigung, markt) or null */
+  villageTheme(d) { return this.villageThemes?.find(v => d > v.a - 120 && d < v.b + 60)?.theme || null; }
   /** the wizard's gift: for dur seconds the camera lifts off and flies ahead over the island */
   fly(dur = 30) { if (!this.instant) this._fly = { t: 0, dur, fd: 0, sp: 0, h: null }; }
   /** the ride ends the flight (its clock rules, also when you stop pedalling and the world pauses) */

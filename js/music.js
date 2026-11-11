@@ -2,7 +2,8 @@
 // assets/audio/manifest.json  "music": { "world": [files], "workout": [files], "race": [files] },
 //                             "coach": { "go": file, "rest": file, ... }
 // Music plays as a playlist for the mood of the ride and ducks while someone speaks. Optional extra moods (same format):
-// "rain" (minor, for showers), "hard" (motivation music, only in the hard parts of a workout), "fly" and "hell" (the wizard).
+// "rain" (minor, for showers), "hard" (motivation music, only in the hard parts of a workout), "fly" and "hell" (the wizard),
+// "fest", "hochzeit", "kirchenfest", "beerdigung" (themed villages).
 // setMood() crossfades to another mood; a mood without files keeps what is playing.
 let manifest;
 export async function audioManifest() {
@@ -23,7 +24,7 @@ export class Music {
       if (this.dead) { for (const o of Object.values(own || {}).flat()) URL.revokeObjectURL(o.url); return; } // the ride ended while the folder was read
       const M = this.M = { ...(m.music || {}) };
       if (own) { this.own = own; for (const k of Object.keys(own)) if (k !== 'all' && own[k].length) M[k] = own[k].map(o => o.url); // the player's own songs win
-        if (own.all.length) for (const k of ['world', 'workout', 'race', 'rain', 'hard', 'fly', 'hell', 'fest']) if (!own[k]?.length) M[k] = own.all.map(o => o.url); } this.list = [...(M[mood] || []), ...(M[mood]?.length ? [] : M.world || [])].sort(() => Math.random() - 0.5); this.i = -1; if (this.on && !this.paused) this._next(); });
+        if (own.all.length) for (const k of ['world', 'workout', 'race', 'rain', 'hard', 'fly', 'hell', 'fest', 'hochzeit', 'kirchenfest', 'beerdigung']) if (!own[k]?.length) M[k] = own.all.map(o => o.url); } this.list = [...(M[mood] || []), ...(M[mood]?.length ? [] : M.world || [])].sort(() => Math.random() - 0.5); this.i = -1; if (this.on && !this.paused) this._next(); });
   }
   get available() { return !!this.list?.length; }
   _apply() { this.a.volume = Math.max(0, Math.min(1, this.vol * this.duckK * (this.bandK ?? 1) * (this.fadeK ?? 1))); }

@@ -399,7 +399,7 @@ function settings() {
         <div class="field"><div>Speicher<div class="hint" id="usage">…</div></div></div>
       </div>
       <div class="panel"><h3>Eigene Musik</h3>
-        <div class="field"><div>Musikordner auf diesem Rechner<div class="hint" id="ownMusicV">Deine eigenen Songs statt der Spielmusik. Unterordner bestimmen, wann sie laufen: welt, regen, intervall, training, flug, hoelle, fest. Die Songs bleiben auf deinem Rechner.</div></div><div style="display:flex;gap:8px"><button class="btn ghost small" id="ownMusicBtn">Ordner wählen</button><button class="btn ghost small" id="ownMusicOff" hidden>Entfernen</button></div></div>
+        <div class="field"><div>Musikordner auf diesem Rechner<div class="hint" id="ownMusicV">Deine eigenen Songs statt der Spielmusik. Unterordner bestimmen, wann sie laufen: welt, regen, intervall, training, flug, hoelle, fest, hochzeit, kirchenfest, beerdigung. Die Songs bleiben auf deinem Rechner.</div></div><div style="display:flex;gap:8px"><button class="btn ghost small" id="ownMusicBtn">Ordner wählen</button><button class="btn ghost small" id="ownMusicOff" hidden>Entfernen</button></div></div>
       </div>
       <div class="panel"><h3>Sprachchat beim Zusammenfahren</h3>
         <label class="field"><div>Push-to-Talk<div class="hint">Aus = offenes Mikro, Taste T schaltet stumm. An = du wirst nur gehört, solange du T (oder den Knopf „Mikro“) gedrückt hältst.</div></div><input type="checkbox" class="toggle" id="voicePtt" ${s.voicePtt ? 'checked' : ''}></label>
