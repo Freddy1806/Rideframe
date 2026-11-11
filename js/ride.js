@@ -8,6 +8,7 @@ import { fmtTime, fmtKm, fmtNum, esc, bestAvg } from './util.js';
 import { stravaExport } from './tcx.js';
 import { gearsFrom, gearName, parseGear, estimateGear, virtualGrade } from './gears.js';
 import { UEBridge } from './uebridge.js';
+import { MiniMap } from './minimap.js';
 import { fovOf, FOV_MIN, FOV_MAX, FOV_DEFAULT } from './fov.js';
 import { workoutAt, workoutSVG } from './workouts.js';
 import { Music, Coach } from './music.js';
@@ -128,6 +129,7 @@ export class RideSession {
       }
     }
     this.profile = el.querySelector('#hudProfile');
+    { const mc = el.querySelector('#hMap'); this.minimap = new MiniMap(mc, this.track, this.player?.field?.pose ? d => this.player.field.pose(d) : null); if (!this.minimap.ok) mc.parentElement.remove(); }
     this.q = s => el.querySelector(s);
     el.querySelector('#hCam')?.addEventListener('click', () => this._cycleView());
     el.querySelector('#hBar')?.addEventListener('click', () => this._toggleBar());
@@ -166,6 +168,7 @@ export class RideSession {
       ${this.workout ? `<div class="wpanel glass" id="hWork"><div class="label" id="hWName">${esc(this.workout.name)}${this.erg ? ' · ERG' : ''}</div>
         <div class="wstep" id="hWStep">–</div><div class="wtarget num"><span id="hWT">–</span><small>W</small><span class="wleft num" id="hWLeft"></span></div>
         <div class="wnext" id="hWNext"></div><div id="hWChart">${workoutSVG(this.workout, 0)}</div></div>` : ''}
+      <div class="minimap glass" data-hud="map"><canvas id="hMap"></canvas></div>
       <div class="grade-tag" data-hud="gradeTag" id="hGradeTag"><div class="g num"><span class="arrow"></span><span id="hGrade">0,0</span><small>%</small></div><div class="next glass" id="hNext"></div></div>
       <div class="hud-bottom glass">
         <div class="metrics">
@@ -359,6 +362,11 @@ export class RideSession {
     this._workoutHUD(pShow);
     this._others(ghostD);
     drawHudProfile(this.profile, this.track, this.d, ghostD);
+    if (this.minimap?.ok && (!this._mapT || performance.now() - this._mapT > 150)) { // ~7 per second is plenty for a map
+      this._mapT = performance.now();
+      const hex = n => typeof n === 'number' ? '#' + n.toString(16).padStart(6, '0') : null;
+      this.minimap.draw(this.d, (this._mapRiders || []).map(r => ({ d: r.d, color: hex(r.color ?? this.player?.riders?.list?.get(r.id)?.color) || (r.ghost ? '#9aa3ad' : '#2f7fd8') })));
+    }
   }
 
   /** training program: target power for now; in ERG mode the trainer holds it */
@@ -427,6 +435,7 @@ export class RideSession {
       }).join('') : '<div class="grow"><span>Noch niemand da</span></div>';
     }
     if (list.length || this._hadRiders) { this.player?.setRiders?.(list); this._hadRiders = list.length > 0; }
+    this._mapRiders = list.filter(r => !r.self);
     // the Unreal view draws the same friends and ghost (lanes: same order as js/world/riders.js SLOTS (lane + row 2.5 m back), by first appearance)
     this._ueRiders = list.filter(r => !r.self).map(r => ({ id: r.id, name: r.name || '', d: Math.round(r.d * 10) / 10, v: Math.round((r.v || 0) * 10) / 10, ghost: !!r.ghost }));
   }

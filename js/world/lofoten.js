@@ -1015,11 +1015,14 @@ export class WorldScene {
   _camera(d, dt = 1 / 60) {
     // exact rider pose on the spline; only the view direction is damped (time based, frame-rate independent)
     const p = this.field.pose(d), cam = new THREE.Vector3(p.x, p.y, p.z), look = new THREE.Vector3(p.lx, p.ly, p.lz);
-    if (!this.lookPos || this.instant || cam.distanceTo(this.camera.position) > 40) this.lookPos = look.clone();
-    else this.lookPos.lerp(look, 1 - Math.exp(-dt * 7 * Math.max(1, (this.playbackRate || 1) / 3))); // fast preview: the view keeps up
+    // speed along the road (also huge jumps while scrubbing the preview)
+    const dd = this._prevD !== undefined ? d - this._prevD : 0, v = dt > 0 ? Math.max(0, dd / dt) : 0; this._prevD = d;
+    // the damped view must keep up with fast scrubbing, otherwise the camera overtakes its own look point and stares backwards
+    const ahead = this.lookPos && (this.lookPos.x - cam.x) * (look.x - cam.x) + (this.lookPos.z - cam.z) * (look.z - cam.z) <= 0;
+    if (!this.lookPos || this.instant || ahead || Math.abs(dd) > 12 || cam.distanceTo(this.camera.position) > 40) this.lookPos = look.clone();
+    else this.lookPos.lerp(look, 1 - Math.exp(-dt * 7 * Math.max(1, (this.playbackRate || 1) / 3, Math.abs(dd) / dt / 15))); // fast preview: the view keeps up
     this.camera.position.copy(cam); this.camera.lookAt(this.lookPos);
     // speed: wind streaks and a light shake when it gets fast (downhill)
-    const v = this._prevD !== undefined && dt > 0 ? Math.max(0, (d - this._prevD) / dt) : 0; this._prevD = d;
     this.speed = (this.speed || 0) + (Math.min(v, 30) - (this.speed || 0)) * Math.min(1, dt * 2);
     const fast = Math.max(0, Math.min(1, (this.speed * 3.6 - 32) / 28)); this.fast = fast; // 0 at 32 km/h, 1 at 60 km/h
     if (this.view === 1) { // chase: 7 m behind, 3 m up, never inside the hillside
@@ -1156,7 +1159,7 @@ export class WorldScene {
     this.falls?.update(time, dt, cam);
     this.events?.update(time, dt, cam, this.d);
     this.siege?.update(time, dt, cam, this.d);
-    if (this.cockpit) { this.cockpit.visible = !this.view && this.showCockpit !== false && this.camera.fov >= 40; /* narrow lens: forearms would fill the frame */ if (this.cockpit.visible) this.cockpitMixer?.update(Math.min(dt, 0.1) * (0.4 + (this.speed || 0) / 8)); }
+    if (this.cockpit) { this.cockpit.visible = !this.view && this.showCockpit !== false && this.camera.fov >= 40; /* narrow lens: forearms would fill the frame */ if (this.cockpit.visible) this.cockpitMixer?.update(Math.min(dt, 0.1) * (0.4 + Math.min(this.speed || 0, 14) / 8)); /* legs capped at a real cadence: at preview speeds they strobe and seem to pedal backwards */ }
     // show only what is near (draw calls), animate only what is close
     if (!this._cullT || time - this._cullT > 0.5 || this.instant) {
       this._cullT = time;

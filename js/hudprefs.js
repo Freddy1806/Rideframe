@@ -2,13 +2,13 @@
 // Stored in settings.hud = { preset, show: { key: bool } }. Used by the ride (live, key I + "Anzeige" button) and the settings page.
 export const HUD_ITEMS = [
   ['power', 'Leistung'], ['wkg', 'W/kg'], ['speed', 'Tempo'], ['cad', 'Trittfrequenz'], ['hr', 'Puls'], ['dist', 'Distanz'],
-  ['grade', 'Steigung (Zahl)'], ['gradeTag', 'Steigung groß in der Mitte'], ['profile', 'Höhenprofil'],
+  ['grade', 'Steigung (Zahl)'], ['gradeTag', 'Steigung groß in der Mitte'], ['profile', 'Höhenprofil'], ['map', 'Streckenkarte'],
   ['time', 'Zeit'], ['gear', 'Gang'], ['route', 'Streckenname'], ['buttons', 'Knöpfe (Kamera, Lenker, Musik)'],
 ];
 const ALL = Object.fromEntries(HUD_ITEMS.map(([k]) => [k, true]));
 export const HUD_PRESETS = {
   voll: { name: 'Alles', show: { ...ALL, wkg: false } },
-  kompakt: { name: 'Kompakt', show: { power: true, speed: true, hr: true, dist: true, gradeTag: true, profile: true, time: true } },
+  kompakt: { name: 'Kompakt', show: { power: true, speed: true, hr: true, dist: true, gradeTag: true, profile: true, map: true, time: true } },
   training: { name: 'Training', show: { power: true, wkg: true, cad: true, hr: true, gradeTag: false, time: true, gear: true } },
   pur: { name: 'Pur', show: { power: true, gradeTag: true } },
   kino: { name: 'Nur Landschaft', show: {} },
