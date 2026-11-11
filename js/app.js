@@ -418,6 +418,7 @@ function settings() {
         <label class="field"><div>Sichtfeld <b id="fovV">${fovOf(s)}°</b><div class="hint">Wie bei Minecraft: nach rechts weiter, nach links näher dran. Normal 62°, 90–130° = sehr weit. Während der Fahrt: Tasten [ und ] oder Knopf „Sicht“.</div></div><input type="range" id="fov" min="${FOV_MIN}" max="${FOV_MAX}" step="1" value="${fovOf(s)}"></label>
         <label class="field"><div>In Unreal fahren (Beta)<div class="hint">Die Fahrt läuft weiter hier (Trainer, Gruppe, Training), das Bild zeigt die Unreal-App in der schönen Grafik. Sobald sie verbunden ist, zeichnet der Browser keine eigene 3D-Welt mehr.</div></div><input type="checkbox" class="toggle" id="ueBridge" ${s.ueBridge ? 'checked' : ''}></label>
         <label class="field"><div>Wetter in Unreal<div class="hint">Auto = das Wetter wechselt je nach Streckenabschnitt. Sonst bleibt es die ganze Fahrt so.</div></div>${seg('ueWeather', s.ueWeather || 'auto', UE_WEATHER_OPTS)}</label>
+        <label class="field"><div>Sprachbefehle<div class="hint">Sag „Rideframe“ und einen Befehl: Pause, weiter, schwerer, leichter, Foto, Musik, nächstes Lied, Ansicht, 250 Watt. Eine Herausforderung nimmst du auch ohne „Rideframe“ mit „annehmen“ an. Geht in Chrome und Edge, braucht einmal das Mikrofon.</div></div><input type="checkbox" class="toggle" id="voiceCmd" ${s.voiceCmd ? 'checked' : ''}></label>
         <label class="field"><div>Lenker im Bild<div class="hint">Rennlenker mit Griffen und Unterarmen in der Fahrersicht. Aus = nur freie Sicht. Während der Fahrt: Taste H oder Knopf „Lenker“.</div></div><input type="checkbox" class="toggle" id="cockpit" ${s.cockpit !== false ? 'checked' : ''}></label>
         <label class="field"><div>Kamera<div class="hint">Während der Fahrt umschalten mit Taste V oder dem Kamera-Knopf.</div></div>${seg('view3d', String(s.view3d || 0), VIEW_OPTS)}</label>
       </div>
@@ -453,6 +454,7 @@ function settings() {
     off.onclick = async () => { await om.forgetOwnMusic(); off.hidden = true; v.textContent = 'Kein eigener Ordner, es läuft die Spielmusik.'; };
   });
   $('#cockpit').onchange = e => { s.cockpit = e.target.checked; saveSettings(); };
+  $('#voiceCmd').onchange = e => { s.voiceCmd = e.target.checked; saveSettings(); };
   $('#ueBridge').onchange = e => { s.ueBridge = e.target.checked; saveSettings(); };
   $('#fov').oninput = e => { s.fov = +e.target.value; s.lensMm = 0; $('#fovV').textContent = s.fov + '°'; saveSettings(); };
   wireSeg(main, 'ueWeather', v => { s.ueWeather = v; saveSettings(); });

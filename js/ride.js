@@ -101,6 +101,9 @@ export class RideSession {
   async start() {
     const el = this.el = document.createElement('div'); el.className = 'ride';
     document.addEventListener('keydown', this._key); // early: watts set with ↑↓ while the world loads are kept
+    if (state.settings.voiceCmd) import('./voicecmd.js').then(m => { if (!this.running && this._closed) return; // "Rideframe Pause" & co.
+      this.voice = new m.VoiceCommands(c => this._voiceCmd(c), () => this.ch?.active?.state === 'offer' ? ['accept'] : []);
+      if (!this.voice.start()) this._flash?.('Sprachbefehle gehen nur in Chrome oder Edge'); });
     el.innerHTML = this._hudHTML();
     applyHud(el, hudPrefs(this.state.settings));
     el.querySelector('#hHudBtn')?.addEventListener('click', () => this._hudPanel());
@@ -651,6 +654,20 @@ export class RideSession {
     window.addEventListener('rf-voicechange', this._voiceUI); this._voiceUI();
   }
 
+  _voiceCmd({ cmd, n }) {
+    const say = t => this._flash?.('🎙 ' + t);
+    if (cmd === 'pause') { if (!this.paused && !this.finished) { this._pause(); say('Pause'); } }
+    else if (cmd === 'resume') { if (this.paused) { this._resume(); say('Weiter'); } }
+    else if (!this.running || this.paused) return;
+    else if (cmd === 'harder') { this.shift(1); say('Schwerer'); }
+    else if (cmd === 'easier') { this.shift(-1); say('Leichter'); }
+    else if (cmd === 'photo') { this._takePhoto?.(); say('Foto'); }
+    else if (cmd === 'music') { this._toggleMusic(); }
+    else if (cmd === 'next') { this.music?.skip(); setTimeout(() => this._flash('♫ ' + (this.music?.title() || '')), 300); }
+    else if (cmd === 'view') this._cycleView();
+    else if (cmd === 'accept') { this._chKey = true; say('Angenommen!'); }
+    else if (cmd === 'watts' && n >= 50 && n <= 1500) { this.manualPower = n; say(n + ' W'); }
+  }
   _key(e) {
     if (!this.running && !e.key.startsWith('Arrow')) return; // still loading / counting down: only the power keys
     if (e.key === 'ArrowUp') { this.manualPower = Math.min(1500, this.manualPower + (e.shiftKey ? 50 : 10)); e.preventDefault(); }
@@ -793,6 +810,7 @@ export class RideSession {
   }
 
   _close(saved) {
+    this._closed = true; this.voice?.stop();
     this.running = false; this.ue?.close(); this.state.trainer.setPower?.(null); this.music?.destroy();
     if (this.group?.voice) { this.group.voice.stop(); this.group.voice = null; } // ride over: microphone off, indicator off
     if (this._voiceUI) window.removeEventListener('rf-voicechange', this._voiceUI);
