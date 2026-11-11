@@ -5,13 +5,14 @@
 //     version = version.json of this game; the Unreal view has the same file and warns when they differ
 //   Unreal -> browser: {type:'ue_hello', version} when it connects, then {type:'ue_alive'} every ~2 s.
 //     While Unreal is alive the browser stops drawing its own 3D world (both at once halve Unreal's fps).
+//   {type:'weather', preset}   after each hello and on change; preset = auto|clear|fog|rain|storm|clearing|dramatic
 //   {type:'ride', d, v, grade, watt, hr, cad, paused, t}   every 100 ms
 export class UEBridge {
   constructor(route, track, url = 'ws://localhost:8790') {
     this.route = route; this.length = track.length; this.url = url; this.ascent = track.gain;
     const k = Math.max(1, Math.round(10 / (track.step || 1))); this.profile = { step: k * (track.step || 1), ele: (track.ele || []).filter((_, i) => i % k === 0) };
     let h = 2166136261; for (const v of this.profile.ele) { h ^= Math.round(v * 10); h = Math.imul(h, 16777619); } this.hash = (h >>> 0).toString(16); // FNV-1a over decimetres
-    this.version = '?'; this.last = 0; this.dead = false;
+    this.version = '?'; this.weather = 'auto'; this.last = 0; this.dead = false;
     // wait for the version so the hello never says '?' to Unreal
     gameVersion().then(v => { this.version = v; this._open(); });
   }
@@ -27,7 +28,8 @@ export class UEBridge {
     };
     this.ws.onclose = () => this._retry(); this.ws.onerror = () => {};
   }
-  _hello() { this._send({ type: 'hello', version: this.version, route: this.route, length: this.length, ascent: this.ascent, hash: this.hash, profile: this.profile }); }
+  _hello() { this._send({ type: 'hello', version: this.version, route: this.route, length: this.length, ascent: this.ascent, hash: this.hash, profile: this.profile }); this._send({ type: 'weather', preset: this.weather }); }
+  setWeather(preset = 'auto') { this.weather = preset; this._send({ type: 'weather', preset }); }
   /** true while the Unreal view is connected and talking (last sign of life < 5 s ago) */
   get unreal() { return this.connected && performance.now() - (this.ueSeen || -1e9) < 5000; }
   get mismatch() { return this.unreal && this.ueVersion && this.ueVersion !== '?' && this.version !== '?' && this.ueVersion !== this.version; }
