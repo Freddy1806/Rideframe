@@ -57,7 +57,7 @@ pc.onpointerup = () => drag = false;
 const segAt = x => track.segments.find(s => x >= s.from && x < s.to) || track.segments[track.segments.length - 1];
 const eleAt = x => track.ele[Math.min(track.ele.length - 1, Math.round(x / L * (track.ele.length - 1)))];
 
-let last = performance.now();
+let last = performance.now(), frames = 0;
 function tick(now) {
   const dt = Math.min(0.1, (now - last) / 1000); last = now;
   if (playing) { target = clamp(target + 9 * speed * dt); if (target >= L - 1) { playing = false; upd(); } }
@@ -67,6 +67,7 @@ function tick(now) {
   $('seg').textContent = s.name;
   $('num').textContent = `${(d / 1000).toFixed(1)} / ${(L / 1000).toFixed(1)} km · ${Math.round(eleAt(d))} m · ${g.toFixed(1)} %`;
   drawProf();
+  if (++frames === 3) { const l = $('pvload'); l.style.opacity = 0; setTimeout(() => l.remove(), 700); } // first frames are on screen: loading hint off
   requestAnimationFrame(tick);
 }
 world.paused = true;

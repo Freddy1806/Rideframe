@@ -19,8 +19,11 @@ html,body{margin:0;height:100%;background:#000;overflow:hidden;color:#f4f4ef;fon
 .pv-ctl button{background:rgba(244,244,239,.12);color:#f4f4ef;border:0;padding:8px 14px;font:700 13px Archivo,sans-serif;cursor:pointer}
 .pv-ctl button.on{background:#ff5a1f;color:#0b0b0b}
 .pv-ctl .hint{margin-left:auto;opacity:.6}
+#pvload{position:fixed;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:10px;background:#000;font-weight:900;font-size:22px;letter-spacing:.04em;text-transform:uppercase;transition:opacity .6s}
+#pvload small{font-weight:400;font-size:14px;opacity:.6;text-transform:none;letter-spacing:0}
 </style></head><body>
 <canvas id="gl"></canvas>
+<div id="pvload">Strecke wird aufgebaut …<small>Berge, Wasser und Dörfer entstehen, dauert beim ersten Mal ca. 10 Sekunden</small></div>
 <div class="pv-top"><a href="index.html">← Zurück</a><span class="tag">VORSCHAU</span><span id="rname" style="font-weight:900;font-size:18px"></span></div>
 <div class="pv-info"><div class="seg" id="seg"></div><div class="num" id="num"></div></div>
 <div class="pv-bar"><canvas id="prof"></canvas>
