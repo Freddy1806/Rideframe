@@ -158,7 +158,7 @@ const ALBEDO = `
   float gLush = 1. - smoothstep(.25, .55, mA * .7 + mC * .3);
   cG *= mix(vec3(1.), vec3(1.16, 1.04, .62), gDry * .8);
   cG *= mix(vec3(1.), vec3(.78, .9, .8), gLush * .6);
-  cG = mix(vec3(dot(cG, vec3(.299, .587, .114))), cG, .8) * (.88 + .2 * vnoise(P.xz * .55)) * mix(1., .8 + .4 * mC, smoothstep(60., 500., tDist));
+  cG = mix(vec3(dot(cG, vec3(.299, .587, .114))), cG, 1.2) * vec3(.94, 1.04, .8) * (.88 + .2 * vnoise(P.xz * .55)) * mix(1., .8 + .4 * mC, smoothstep(60., 500., tDist));
 
   // ---- sand ----
   vec3 cS = twoScale(tSand, P.xz, 2.6, 13.).rgb;
@@ -240,6 +240,7 @@ const ALBEDO = `
     vec3 sat = texture2D(tSat, suv).rgb * 1.5;
     float dl = dot(alb, vec3(.299, .587, .114));
     vec3 sd = sat * clamp(.55 + dl * 1.6, .6, 1.5);
+    float sl = dot(sd, vec3(.299, .587, .114)); sd = max(mix(vec3(sl), sd, 1.35) * mix(vec3(1.), vec3(.95, 1.05, .82), sp.x), 0.); // summer meadows: richer green than the hazy satellite pixel
     alb = mix(alb, sd, mix(.45, .85, smoothstep(60., 900., tDist)) * smoothstep(1., 4., vWP.y));
   }
   // wet dark band + rolling surf where land meets the sea (water plane at y = 0)

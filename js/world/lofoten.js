@@ -222,7 +222,7 @@ export class WorldScene {
     this.field = new Field(track, DEM);
     const renderer = this.renderer = new THREE.WebGLRenderer({ canvas, antialias: true, powerPreference: 'high-performance', preserveDrawingBuffer: !!track.__shot });
     renderer.setPixelRatio(Math.min(devicePixelRatio || 1, 1.25)); // Retina at 2x costs 4x the pixels; 1.25 is still sharp at riding distance
-    renderer.toneMapping = THREE.ACESFilmicToneMapping; renderer.toneMappingExposure = 0.92;
+    renderer.toneMapping = THREE.ACESFilmicToneMapping; renderer.toneMappingExposure = 1.0;
     renderer.shadowMap.enabled = true; renderer.shadowMap.type = THREE.PCFSoftShadowMap;
     const scene = this.scene = new THREE.Scene();
     this.camera = new THREE.PerspectiveCamera(62, 16 / 9, 0.1, 9000); this.camera.layers.enable(1);
@@ -240,8 +240,8 @@ export class WorldScene {
     sky.material.fragmentShader = skyGrade(sky.material.fragmentShader);
     this.sky2 = sky.clone(); this.envScene = new THREE.Scene(); this.envScene.add(this.sky2);
     this.pmrem = new THREE.PMREMGenerator(renderer);
-    scene.environmentIntensity = 0.95;
-    scene.fog = new THREE.FogExp2(0xa9b9d0, 0.00022);
+    scene.environmentIntensity = ENV_I;
+    scene.fog = new THREE.FogExp2(0xbfc6cd, 0.00042); // a bit more aerial perspective: far ridges step back in layers
     this.clouds = cloudLayer(sun); scene.add(this.clouds);
 
     const light = this.light = new THREE.DirectionalLight(0xffd8bc, 3.0);
@@ -253,7 +253,7 @@ export class WorldScene {
     scene.add(light, light.target);
     // strong cool sky fill from above, dim green-grey bounce from below: shadow sides read blue-green, never black;
     // sunlit faces warm (golden-hour contrast)
-    this.hemi = new THREE.HemisphereLight(0x8fb0e2, 0x66705a, 1.45); scene.add(this.hemi);
+    this.hemi = new THREE.HemisphereLight(0xb6c4d6, 0x5f6e3a, 1.2); scene.add(this.hemi);
 
     // materials
     const dt = detailTex(); dt.repeat.set(1, 1);
@@ -263,7 +263,7 @@ export class WorldScene {
     const wn = tex('water', 'nrm', [128, 128, 255]);
     this.water = new Water(new THREE.PlaneGeometry(9000, 9000), {
       textureWidth: +(QS.get('refl') || 1024), textureHeight: +(QS.get('refl') || 1024), waterNormals: wn, sunDirection: sun.clone(), sunColor: 0xffb27a,
-      waterColor: 0x0f3a44, distortionScale: 3.4, fog: true, alpha: 0.74, size: 3.2,
+      waterColor: 0x0b3448, distortionScale: 3.4, fog: true, alpha: 0.86, size: 3.2,
     });
     // real water reflects ~4 % straight down (not 30 %): the sea is no longer a white mirror, the teal body and the
     // turquoise sand under the shallows show through; grazing angles still mirror the mountains
@@ -271,7 +271,9 @@ export class WorldScene {
       .replace('float rf0 = 0.3;', 'float rf0 = 0.04;')
       // sharper, brighter sun glitter: a glittering path on the sea towards the low sun
       .replace('sunLight( surfaceNormal, eyeDirection, 100.0, 2.0, 0.5, diffuseLight, specularLight );', 'sunLight( surfaceNormal, eyeDirection, 260.0, 5.0, 0.5, diffuseLight, specularLight );')
-      .replace('vec3 scatter = max( 0.0, dot( surfaceNormal, eyeDirection ) ) * waterColor;', 'vec3 scatter = ( 0.35 + 0.65 * max( 0.0, dot( surfaceNormal, eyeDirection ) ) ) * waterColor * 1.15;');
+      .replace('vec3 scatter = max( 0.0, dot( surfaceNormal, eyeDirection ) ) * waterColor;', 'vec3 scatter = ( 0.35 + 0.65 * max( 0.0, dot( surfaceNormal, eyeDirection ) ) ) * waterColor * 1.15;')
+      // deeper sea: the mirrored sky is a touch darker and bluer (rough open water never mirrors the full horizon glare)
+      .replace('vec3 albedo = mix( ( sunColor * diffuseLight * 0.3 + scatter ) * getShadowMask(), ( vec3( 0.1 ) + reflectionSample * 0.9 + reflectionSample * specularLight ), reflectance);', 'vec3 albedo = mix( ( sunColor * diffuseLight * 0.3 + scatter ) * getShadowMask(), ( vec3( 0.03, 0.06, 0.08 ) + reflectionSample * vec3( 0.72, 0.8, 0.86 ) + reflectionSample * specularLight ), reflectance);');
     this.water.material.transparent = true;
     this.water.rotation.x = -Math.PI / 2; this.water.position.y = 0; scene.add(this.water);
     if (QS.has('noreflect')) { const wr = this.water.onBeforeRender; let k = 0; this.water.onBeforeRender = (...x) => { if (k++ < 30) wr.apply(this.water, x); }; } // mirror frozen after the first frames
@@ -1006,14 +1008,14 @@ export class WorldScene {
     su.sunPosition.value.copy(s); su.uCover.value = cover; su.uVeil.value = veil; su.uLow.value = low;
     // direct light: warm, a bit warmer as the sun sinks, dimmer behind the veil; never orange enough to rust the rock
     this.light.color.lerpColors(W_HIGH, W_LOW, low);
-    this.light.intensity = 3.1 * (1 - 0.38 * veil) * (1 - 0.12 * cover) * (1 - 0.12 * low) * (1 - 0.8 * (this.tunnelK || 0));
-    this.hemi.intensity = (1.45 + 0.12 * cover + 0.05 * veil) * (1 - 0.5 * (this.tunnelK || 0)); // shadow slopes ~40 % of the sunlit side, not black; dim inside rock tunnels
+    this.light.intensity = 3.7 * (1 - 0.38 * veil) * (1 - 0.12 * cover) * (1 - 0.12 * low) * (1 - 0.8 * (this.tunnelK || 0));
+    this.hemi.intensity = (1.2 + 0.12 * cover + 0.05 * veil) * (1 - 0.5 * (this.tunnelK || 0)); // shadow slopes ~40 % of the sunlit side, not black; dim inside rock tunnels
     this.hemi.color.lerpColors(H_CLEAR, H_GREY, cover * 0.7);
     // haze: cool lavender away from the sun, glowing red-orange towards it (weaker behind the veil)
     this.scene.fog.color.lerpColors(F_CLEAR, F_GREY, cover * 0.6);
     FOG_SUN.x = s.x; FOG_SUN.y = s.y; FOG_SUN.z = s.z;
     const g = (1 - 0.45 * veil) * (0.85 + 0.3 * low);
-    FOG_SUNCOL.x = 0.42 * g; FOG_SUNCOL.y = (0.2 - 0.06 * low) * g; FOG_SUNCOL.z = (0.06 - 0.03 * low) * g;
+    FOG_SUNCOL.x = 0.55 * g; FOG_SUNCOL.y = (0.3 - 0.07 * low) * g; FOG_SUNCOL.z = (0.1 - 0.04 * low) * g; // golden glow towards the sun
     const wu = this.water.material.uniforms;
     wu.sunDirection.value.copy(s); wu.sunColor.value.lerpColors(WS_HIGH, WS_LOW, low).multiplyScalar(1 - 0.5 * veil);
     // deep North-Sea blue-green under a clear sky, dull slate grey-blue under cloud, veil and rain (Freddy: never a glowing cyan)
@@ -1093,7 +1095,7 @@ export class WorldScene {
 
   _life(time, dt, cam) {
     if (this.field.tunnel) this.tunnelK = lerp(this.tunnelK || 0, this.field.tunnel[Math.max(0, Math.min(this.field.n - 1, Math.round(this.d / DS)))] ? 1 : 0, Math.min(1, dt * 1.5)); // eyes adjust to the tunnel
-    if (this.field.tunnel) this.scene.environmentIntensity = 0.95 * (1 - 0.45 * this.tunnelK);
+    if (this.field.tunnel) this.scene.environmentIntensity = ENV_I * (1 - 0.45 * this.tunnelK);
     this.riders?.update(Math.min(dt, 0.1), this.d || 0);
     if (!this.props) return;
     this.falls?.update(time, dt, cam);
@@ -1187,10 +1189,11 @@ function sunAt(u, out = new THREE.Vector3()) {
 }
 // light colours (linear) for a high (6.5°) and a low (2°) sun; sky fill clear / overcast; haze clear / overcast
 const W_HIGH = new THREE.Color(0xffdcc2), W_LOW = new THREE.Color(0xffc9a4);
-const H_CLEAR = new THREE.Color(0x8fb0e2), H_GREY = new THREE.Color(0xa6b2c6);
-const F_CLEAR = new THREE.Color(0xa9b9d0), F_GREY = new THREE.Color(0xb4b9c2);
+const H_CLEAR = new THREE.Color(0xb6c4d6), H_GREY = new THREE.Color(0xaab4c4);
+const ENV_I = 0.55; // sky image light: less blue cast on meadows than before (0.95)
+const F_CLEAR = new THREE.Color(0xbfc6cd), F_GREY = new THREE.Color(0xb4b9c2);
 const WS_HIGH = new THREE.Color(0xffb27a), WS_LOW = new THREE.Color(0xff8a52);
-const WC_CLEAR = new THREE.Color(0x0f3a44), WC_GREY = new THREE.Color(0x26323a); // sea body colour: clear vs. overcast
+const WC_CLEAR = new THREE.Color(0x0b3448), WC_GREY = new THREE.Color(0x26323a); // sea body colour: clear vs. overcast
 
 // sunset grade on top of three's Sky (Preetham): deep blue overhead, a pink belt of Venus opposite the sun,
 // orange-to-red glow along the horizon towards the sun, a large dark-red sun disc instead of the white-hot one,
