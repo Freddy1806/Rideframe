@@ -89,6 +89,8 @@ function installFog() {
 // splat = weights for (grass, rock, sand, snow); colour = gentle tint so meadows are not one flat green
 const _v = new THREE.Vector3();
 // measuring switches for the GPU budget: &noshadow &noreflect &refl=512 &grass=0.5 &whaletest
+// walking speed of each model's 'Gehen' clip in m/s (measured on the Mac mini from the foot bones); unknown models 0.86
+const STRIDE = { alte_frau: 0.42, maedchen: 0.67, junge: 0.69, kind: 0.68, ritter: 1.0, moench: 0.85 };
 const _lbQ = new THREE.Quaternion(), _lbY = new THREE.Vector3(0, 1, 0), _lbZ = new THREE.Vector3(0, 0, 1);
 const QS = typeof location !== 'undefined' ? new URLSearchParams(location.search) : new URLSearchParams(), GRASS_K = +(QS.get('grass') ?? 1);
 const TINT_A = new THREE.Color(1.0, 1.0, 0.95), TINT_B = new THREE.Color(1.12, 1.05, 0.78), TINT_C = new THREE.Color(0.82, 0.9, 0.86), _c = new THREE.Color();
@@ -678,7 +680,8 @@ export class WorldScene {
         if (walkers.length) for (let k = 0; k < 14; k++) {
           const side = k % 2 ? 1 : -1, dd = a + r() * (b - a), off = side * (ROAD_W + 1.4 + r() * 0.8);
           const o = place(walkers[k % walkers.length], dd, off, { anim: 'Gehen', overlap: true, gap: 0.6, radK: 0.3 });
-          if (o) o.userData.walk = { d: dd, off, v: (0.9 + r() * 0.5) * (r() < 0.5 ? 1 : -1), a, b };
+          if (o) { const f = o.userData.asset || '', st = Object.entries(STRIDE).find(([n]) => f.includes(n))?.[1] ?? 0.86; // walk exactly as fast as the clip's steps: no sliding feet
+            o.userData.walk = { d: dd, off, v: st * o.scale.y * (0.96 + r() * 0.1) * (r() < 0.5 ? 1 : -1), a, b }; }
         }
         // children and onlookers at the roadside who wave and call out as you pass
         // a mixed crowd, not always the farmer: hunter with bow, women with bread, fishers, traders, children; right at the asphalt
