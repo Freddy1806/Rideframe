@@ -512,7 +512,7 @@ function drapeStrip(P, w, lift, H, seed, mode = 0) {
     const wi = typeof w === 'function' ? w(i) : w * (0.55 + 0.6 * u) * (0.85 + 0.3 * Math.sin(i * 0.7 + seed));
     for (const k of ACROSS) { const x = P[i][0] - dz * k * wi / 2, z = P[i][2] + dx * k * wi / 2;
       pos.push(x, Math.max(H(x, z), P[i][1] - 1) + lift, z); uv.push(k * wi / 2, v);
-      fa.push(smooth(0.3, 1.1, sl), k, Math.min(1, i / 3, (n - 1 - i) / 4), seed); }
+      fa.push(smooth(0.3, 1.1, sl), k, Math.min(1, i / 6, (n - 1 - i) / 4), seed); } // the top fades in softly: no hard white edge at the lip
   }
   return strip(pos, uv, fa, n, mode);
 }
@@ -630,9 +630,10 @@ void main() {
     foam = clamp(steep * 1.25 - .25 + (n - .5) * 1.6, 0., 1.);
     foam = max(foam, big * clamp(.55 + .45 * steep + (n - .5) * .8, 0., 1.));
     foam = max(foam, smoothstep(.6, .78, n) * .55);
-    foam = mix(foam, max(foam, steep), smoothstep(250., 900., dist)); // far: a clean bright streak
+    float far = smoothstep(250., 900., dist), lanes = texture2D(tN, vec2(vUv.x / 1.6 + seed, seed * .3)).r; // far: bright lanes of falling water, not one flat white sheet
+    foam = mix(foam, max(foam, steep * (.55 + .6 * lanes)), far);
     edge = 1. - abs(vF.y);
-    a = smoothstep(0., .22 + (1. - n) * .45 * (1. - smoothstep(300., 900., dist)), edge) * vF.z;
+    a = smoothstep(0., .22 + (1. - n) * .45 * mix(1., .6, far), edge * mix(1., .55 + .7 * lanes, far)) * vF.z * mix(1., .82, far);
     a *= mix(.62, .97, max(foam, steep * .7));
   } else if (vM > 1.5) { // soft wet halo on the rock around a big fall: a little contrast for the white
     foam = 0.; a = exp(-vF.y * vF.y * 3.) * smoothstep(0., 1., vF.z) * .2;

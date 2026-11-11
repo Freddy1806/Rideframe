@@ -462,6 +462,7 @@ export class RideSession {
     this.ch = new Challenges({ length: this.track.length, startD: this.d, n, ftp: this.ftp, params: this.params, gradeAt: d => gradeAt(this.track, d),
       has: models => !sp || models.some(m => sp.A.find(m)) });
     if (!this.ch.list.length) { this.ch = null; return; }
+    if (new URLSearchParams(location.search).has('challenge')) this.ch.list[0].at = this.d + 600; // test: the first dare comes after 600 m
     const c = document.createElement('div'); c.className = 'chcard glass'; c.id = 'hCh'; c.hidden = true; this.el.querySelector('.hud').append(c);
   }
   _chTick(dt) {

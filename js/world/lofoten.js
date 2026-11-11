@@ -666,8 +666,8 @@ export class WorldScene {
         if (place(well, mid + 26, ROAD_W + 6, { face: 'road', anim: 'Fliessen' })) place(byName('magd_eimer'), mid + 22.5, ROAD_W + 3.4, { gap: 0.4, radK: 0.4, anim: 'Stehen', face: 'road' }); // at the well a maid with her bucket
         if (s === festSeg || r() < 0.4) place(byName(r() < 0.5 ? 'koenigsstandbild' : 'reiterstandbild') || byName('reiterstandbild'), mid + 46, ROAD_W + 7.5, { face: 'road' }); // the market square's statue: the king or the knight
         place(byName('faesser_kisten'), mid - 25, ROAD_W + 4, { face: 'road' });
-        place(byName('kutsche'), mid + 34, ROAD_W + 5.5, { face: 'along' });
-        place(byName('pferd'), mid + 40, ROAD_W + 5.5, { face: 'along', anim: 'Stehen' });
+        place(byName('kutsche'), mid + 34, ROAD_W + 7.5, { face: 'along' }); // a little back from the asphalt: it filled the picture
+        place(byName('pferd'), mid + 41, ROAD_W + 7.5, { face: 'along', anim: 'Stehen' });
         // musicians in a half circle behind the market
         const mus = A.by.figure_music || [];
         mus.forEach((e, k) => place(e, mid - 8 + k * 2.3, ROAD_W + 9 + (k % 2) * 0.8, { radK: 0.45, anim: 'Spielen', gap: 3 }));
@@ -1249,7 +1249,6 @@ export class WorldScene {
       this.hemi.color.lerp(H_HELL, hk * 0.8); this.hemi.intensity *= 1 - 0.25 * hk;
       FOG_SUNCOL.x = lerp(FOG_SUNCOL.x, 0.9, hk); FOG_SUNCOL.y = lerp(FOG_SUNCOL.y, 0.12, hk); FOG_SUNCOL.z = lerp(FOG_SUNCOL.z, 0.02, hk);
       wu.waterColor.value.lerp(WC_HELL, hk); wu.sunColor.value.lerp(L_HELL, hk).multiplyScalar(1 + 1.5 * hk); // a glowing lava sea, not just a reddish one
-      if (wu.alpha) wu.alpha.value = lerp(0.86, 1, hk);
       su.uCover.value = lerp(su.uCover.value, 1, hk * 0.9); su.uVeil.value = lerp(su.uVeil.value, 1, hk * 0.9);
       this.clouds.material.uniforms.uCover.value = lerp(cover, 1, hk); this.cumulus.material.uniforms.uCover.value = lerp(cover, 1, hk);
     }
@@ -1296,6 +1295,8 @@ export class WorldScene {
     this.hellK = (this.hellK || 0) + ((this._hellTo || 0) - (this.hellK || 0)) * Math.min(1, dt * 0.7);
     this._weather(this.d, time);
     const cam = this._camera(this.d, dt);
+    { const wu = this.water.material.uniforms, hk = smooth(15, 120, this.camera.position.y); // from high up (wizard flight) the sea is opaque and its sun glare calmer
+      if (wu.alpha) wu.alpha.value = Math.max(lerp(0.86, 1, this.hellK || 0), lerp(0.86, 1, hk)); if (hk > 0) wu.sunColor.value.multiplyScalar(1 - 0.6 * hk); }
     this._far(cam.x, cam.z); this.farCam.value.set(cam.x, cam.z);
     this._ensure(cam.x, cam.z);
     // shadows follow the rider
