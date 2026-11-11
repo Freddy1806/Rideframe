@@ -1228,7 +1228,8 @@ export class WorldScene {
       this.light.color.lerp(L_HELL, hk * 0.85); this.light.intensity *= 1 - 0.4 * hk;
       this.hemi.color.lerp(H_HELL, hk * 0.8); this.hemi.intensity *= 1 - 0.25 * hk;
       FOG_SUNCOL.x = lerp(FOG_SUNCOL.x, 0.9, hk); FOG_SUNCOL.y = lerp(FOG_SUNCOL.y, 0.12, hk); FOG_SUNCOL.z = lerp(FOG_SUNCOL.z, 0.02, hk);
-      wu.waterColor.value.lerp(WC_HELL, hk); wu.sunColor.value.lerp(L_HELL, hk);
+      wu.waterColor.value.lerp(WC_HELL, hk); wu.sunColor.value.lerp(L_HELL, hk).multiplyScalar(1 + 1.5 * hk); // a glowing lava sea, not just a reddish one
+      if (wu.alpha) wu.alpha.value = lerp(0.86, 1, hk);
       su.uCover.value = lerp(su.uCover.value, 1, hk * 0.9); su.uVeil.value = lerp(su.uVeil.value, 1, hk * 0.9);
       this.clouds.material.uniforms.uCover.value = lerp(cover, 1, hk); this.cumulus.material.uniforms.uCover.value = lerp(cover, 1, hk);
     }
@@ -1410,7 +1411,7 @@ export const FOV_NORMAL = 62;
 const ENV_I = 0.55; // sky image light: less blue cast on meadows than before (0.95)
 const F_CLEAR = new THREE.Color(0xbfc6cd), F_GREY = new THREE.Color(0xb4b9c2);
 const WS_HIGH = new THREE.Color(0xffb27a), WS_LOW = new THREE.Color(0xff8a52);
-const F_HELL = new THREE.Color(0x5a1c10), L_HELL = new THREE.Color(0xff6a2a), H_HELL = new THREE.Color(0x8a2a14), WC_HELL = new THREE.Color(0x9a2a04);
+const F_HELL = new THREE.Color(0x5a1c10), L_HELL = new THREE.Color(0xff6a2a), H_HELL = new THREE.Color(0x8a2a14), WC_HELL = new THREE.Color(0xe04a08);
 const WC_CLEAR = new THREE.Color(0x0b3448), WC_GREY = new THREE.Color(0x26323a); // sea body colour: clear vs. overcast
 
 // sunset grade on top of three's Sky (Preetham): deep blue overhead, a pink belt of Venus opposite the sun,

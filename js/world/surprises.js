@@ -32,7 +32,7 @@ export class Surprises {
       { id: 'crowd', need: ['junge', 'maedchen', 'alte_frau', 'bauer_sense', 'wache'], go: () => this._crowd() },
     ];
     this.fw = new Fireworks(world.scene);
-    this.fx = new Fireworks(world.scene, 900, 0.5); // close-up sparks (wizard, hell): small points, so nothing blobs over the screen
+    this.fx = new Fireworks(world.scene, 1400, 0.24); // close-up sparks (wizard, hell): small points, so nothing blobs over the screen
     // background life: smoke curling from some chimneys, so villages never look empty
     const b = new THREE.Box3(), r = (() => { let x = 7; return () => (x = (x * 16807) % 2147483647) / 2147483647; })();
     const chim = world.props.filter(o => /rorbu|steinhaus|fachwerk/.test(o.userData.asset || '') && r() < 0.45)
@@ -167,13 +167,13 @@ export class Surprises {
     const h = this.wiz, t = this.clock || 0; this.A.pulse?.(t);
     if (h && !h.gone && h.e?.obj) { // a slow purple shimmer around him while he waits
       const o = h.e.obj.position;
-      for (let k = 0; k < 3; k++) { const a = t * 2.4 + k * 2.1 + Math.random() * 0.6, r = 0.9 + Math.random() * 0.5;
+      for (let k = 0; k < 7; k++) { const a = t * 2.4 + k * 0.9 + Math.random() * 0.6, r = 0.9 + Math.random() * 0.6;
         this.fx._p(o.x + Math.cos(a) * r, o.y + 0.2 + Math.random() * 2.2, o.z + Math.sin(a) * r, Math.cos(a + 1.6) * 0.6, 0.5 + Math.random() * 0.8, Math.sin(a + 1.6) * 0.6, 0.7, 0.3, 1, 1.2 + Math.random()); }
       this.fx.pts.visible = true;
     }
     if (!this.hell) { if (this.hellProps?.length) { for (const o of this.hellProps) o.dead = true; this.hellProps = []; } return; }
     // hell: embers rising all around you, fire bursting from cracks beside the road, the Mac's lava pieces at the roadside
-    for (let k = 0; k < 4; k++) { const a = Math.random() * 6.28, r = 4 + Math.random() * 36, x = cam.x + Math.cos(a) * r, z = cam.z + Math.sin(a) * r, y = this.f.ground(x, z);
+    for (let k = 0; k < 4; k++) { const a = Math.random() * 6.28, r = 9 + Math.random() * 40, x = cam.x + Math.cos(a) * r, z = cam.z + Math.sin(a) * r, y = this.f.ground(x, z);
       const c = Math.random(); this.fx._p(x, y + Math.random() * 3, z, (Math.random() - .5) * 0.8, 1.5 + Math.random() * 2.5, (Math.random() - .5) * 0.8, 1, 0.3 + c * 0.4, c * 0.08, 2 + Math.random() * 2); }
     this.fx.pts.visible = true;
     if (t > (this.burstNext || 0)) { this.burstNext = t + 0.7 + Math.random() * 1.1; this.fireBurst(d + 30 + Math.random() * 90, (Math.random() < 0.5 ? -1 : 1) * (ROAD_W + 2 + Math.random() * 9)); }
