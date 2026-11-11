@@ -19,7 +19,9 @@ export class Music {
     window.addEventListener('rf-voice', this._duck);
     this.bandK = 1; this._band = e => { this.bandK = 1 - 0.9 * Math.min(1, e.detail * 1.6); this._apply(); }; window.addEventListener('rf-band', this._band);
     this.base = mood; this.fadeK = 1;
-    audioManifest().then(m => { const M = this.M = m.music || {}; this.list = [...(M[mood] || []), ...(M[mood]?.length ? [] : M.world || [])].sort(() => Math.random() - 0.5); this.i = -1; if (this.on && !this.paused) this._next(); });
+    Promise.all([audioManifest(), import('./ownmusic.js').then(x => x.ownMusicLists()).catch(() => null)]).then(([m, own]) => { const M = this.M = { ...(m.music || {}) };
+      if (own) { this.own = own; for (const k of Object.keys(own)) if (k !== 'all' && own[k].length) M[k] = own[k].map(o => o.url); // the player's own songs win
+        if (own.all.length) for (const k of ['world', 'workout', 'race', 'rain', 'hard', 'fly', 'hell', 'fest']) if (!own[k]?.length) M[k] = own.all.map(o => o.url); } this.list = [...(M[mood] || []), ...(M[mood]?.length ? [] : M.world || [])].sort(() => Math.random() - 0.5); this.i = -1; if (this.on && !this.paused) this._next(); });
   }
   get available() { return !!this.list?.length; }
   _apply() { this.a.volume = Math.max(0, Math.min(1, this.vol * this.duckK * (this.bandK ?? 1) * (this.fadeK ?? 1))); }
@@ -36,15 +38,16 @@ export class Music {
   _next() {
     if (!this.list?.length) return;
     this.i = (this.i + 1) % this.list.length;
-    this.a.src = 'assets/audio/' + this.list[this.i]; this._apply();
+    const f = this.list[this.i]; this.a.src = /^(blob:|https?:)/.test(f) ? f : 'assets/audio/' + f; this._apply();
     this.a.play().catch(() => {});
   }
-  title() { return this.list?.length ? this.list[this.i]?.split('/').pop().replace(/\.[^.]+$/, '').replace(/[_-]+/g, ' ') : ''; }
+  title() { const f = this.list?.[this.i]; if (f?.startsWith('blob:')) { const o = Object.values(this.own || {}).flat().find(x => x.url === f); return o ? o.name.replace(/\.[^.]+$/, '') : ''; }
+    return this.list?.length ? this.list[this.i]?.split('/').pop().replace(/\.[^.]+$/, '').replace(/[_-]+/g, ' ') : ''; }
   skip() { this._next(); }
   setVolume(v) { this.vol = v; this.on = v > 0; this._apply(); if (this.on && this.a.paused && !this.paused) (this.a.src ? this.a.play().catch(() => {}) : this._next()); if (!this.on) this.a.pause(); }
   pause() { this.paused = true; this.a.pause(); }
   resume() { this.paused = false; if (this.on) (this.a.src ? this.a.play().catch(() => {}) : this._next()); }
-  destroy() { clearInterval(this._fi); window.removeEventListener('rf-voice', this._duck); window.removeEventListener('rf-band', this._band); this.a.pause(); this.a.src = ''; }
+  destroy() { clearInterval(this._fi); for (const o of Object.values(this.own || {}).flat()) URL.revokeObjectURL(o.url); window.removeEventListener('rf-voice', this._duck); window.removeEventListener('rf-band', this._band); this.a.pause(); this.a.src = ''; }
 }
 
 /** short German coach lines for training programs (only recorded files, no computer voice) */

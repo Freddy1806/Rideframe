@@ -398,6 +398,9 @@ function settings() {
         <label class="field"><div>Höhendaten verbessern<div class="hint">Beim Import Höhe aus Geländemodell holen (Open-Meteo). GoPro-Höhe ist ungenau.</div></div><input type="checkbox" class="toggle" id="improveEle" ${s.improveEle ? 'checked' : ''}></label>
         <div class="field"><div>Speicher<div class="hint" id="usage">…</div></div></div>
       </div>
+      <div class="panel"><h3>Eigene Musik</h3>
+        <div class="field"><div>Musikordner auf diesem Rechner<div class="hint" id="ownMusicV">Deine eigenen Songs statt der Spielmusik. Unterordner bestimmen, wann sie laufen: welt, regen, intervall, training, flug, hoelle, fest. Die Songs bleiben auf deinem Rechner.</div></div><div style="display:flex;gap:8px"><button class="btn ghost small" id="ownMusicBtn">Ordner wählen</button><button class="btn ghost small" id="ownMusicOff" hidden>Entfernen</button></div></div>
+      </div>
       <div class="panel"><h3>Sprachchat beim Zusammenfahren</h3>
         <label class="field"><div>Push-to-Talk<div class="hint">Aus = offenes Mikro, Taste T schaltet stumm. An = du wirst nur gehört, solange du T (oder den Knopf „Mikro“) gedrückt hältst.</div></div><input type="checkbox" class="toggle" id="voicePtt" ${s.voicePtt ? 'checked' : ''}></label>
         <label class="field"><div>Lautstärke der anderen <b id="voiceVolV">${s.voiceVol ?? 100}%</b><div class="hint">Wie laut du deine Freunde hörst. Die Musik wird leiser, solange jemand spricht.</div></div><input type="range" id="voiceVol" min="0" max="100" step="5" value="${s.voiceVol ?? 100}"></label>
@@ -436,6 +439,17 @@ function settings() {
   stp('riderKg', 'riderKg', 75); stp('bikeKg', 'bikeKg', 8.5); stp('ftp', 'ftp', 250); stp('cadence', 'cadence', 90); stp('wheel', 'wheel', 2105);
   wireHudControls($('#hudBox'), () => s, h => { s.hud = h; saveSettings(); $('#hudBox').innerHTML = hudControlsHTML(hudPrefs(s)); });
   $('#lookBtn').onclick = () => import('./avatar-ui.js').then(x => x.avatarModal());
+  import('./ownmusic.js').then(async om => { // own music folder: pick, show what is in it, forget
+    const v = $('#ownMusicV'), btn = $('#ownMusicBtn'), off = $('#ownMusicOff'); if (!v) return;
+    const show = i => { off.hidden = !i; if (!i) return;
+      v.textContent = i.locked ? `Ordner „${i.name}“ · zum Freigeben auf „Ordner wählen“ klicken` : `Ordner „${i.name}“ · ${i.n} Songs${i.moods.length ? ' · eigene Musik für: ' + i.moods.join(', ') : ''}`; };
+    if (!om.ownMusicSupported()) { btn.disabled = true; v.textContent = 'Geht nur in Chrome oder Edge.'; return; }
+    show(await om.ownMusicInfo());
+    btn.onclick = async () => { // a known but locked folder: just unlock it; otherwise pick a (new) one
+      const before = await om.ownMusicInfo(); if (before?.locked) { const c = await om.ownMusicInfo(true); if (c && !c.locked) return show(c); }
+      const p = await om.pickOwnMusic(); if (p) show(p); };
+    off.onclick = async () => { await om.forgetOwnMusic(); off.hidden = true; v.textContent = 'Kein eigener Ordner, es läuft die Spielmusik.'; };
+  });
   $('#cockpit').onchange = e => { s.cockpit = e.target.checked; saveSettings(); };
   $('#ueBridge').onchange = e => { s.ueBridge = e.target.checked; saveSettings(); };
   $('#fov').oninput = e => { s.fov = +e.target.value; s.lensMm = 0; $('#fovV').textContent = s.fov + '°'; saveSettings(); };
