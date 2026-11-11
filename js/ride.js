@@ -5,7 +5,7 @@ import { defaultParams, step as physStep } from './physics.js';
 import { DemoScene } from './demo.js';
 import { drawHudProfile } from './profile.js';
 import { fmtTime, fmtKm, fmtNum, esc, bestAvg } from './util.js';
-import { stravaExport } from './tcx.js';
+import { stravaButton } from './stravaup.js';
 import { gearsFrom, gearName, parseGear, estimateGear, virtualGrade } from './gears.js';
 import { UEBridge } from './uebridge.js';
 import { MiniMap } from './minimap.js';
@@ -574,10 +574,10 @@ export class RideSession {
         <div><div class="label">Höhenmeter</div><div class="v">${fmtNum(rec.gain)}<small>hm</small></div></div>
         <div><div class="label">Arbeit</div><div class="v">${fmtNum(rec.avgPower * rec.duration / 1000)}<small>kJ</small></div></div>
       </div>
-      <div class="row-actions"><button class="btn ghost" id="fStrava">Für Strava speichern</button><button class="btn" id="fDone">Fertig</button></div></div>`;
+      <div class="row-actions"><button class="btn ghost" id="fStrava">Auf Strava hochladen</button><button class="btn" id="fDone">Fertig</button></div></div>`;
     this.el.append(o);
     o.querySelector('#fDone').onclick = () => this._close(true);
-    o.querySelector('#fStrava').onclick = () => stravaExport(rec, this.route.name, d => eleAt(this.track, d));
+    o.querySelector('#fStrava').onclick = e => stravaButton(e.currentTarget, rec, this.route.name, d => eleAt(this.track, d));
   }
 
   async _end(save) {

@@ -3,11 +3,13 @@ import { createServer } from 'node:http';
 import { readFile, stat } from 'node:fs/promises';
 import { extname, join, normalize } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { stravaApi } from './tools/strava-api.mjs';
 const root = fileURLToPath(new URL('.', import.meta.url));
 const port = +process.env.PORT || 8765;
 const types = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript', '.css': 'text/css', '.svg': 'image/svg+xml', '.jpg': 'image/jpeg', '.png': 'image/png', '.woff2': 'font/woff2', '.json': 'application/json', '.webmanifest': 'application/manifest+json' };
 createServer(async (req, res) => {
   let p = normalize(decodeURIComponent(new URL(req.url, 'http://x').pathname)).replace(/^(\.\.[/\\])+/, '');
+  if (p.startsWith('/api/') && await stravaApi(req, res, p)) return; // direct Strava upload (tools/strava-api.mjs)
   if (p.endsWith('/')) p += 'index.html';
   const file = join(root, p);
   try {

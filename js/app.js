@@ -11,7 +11,7 @@ import { gameVersion } from './uebridge.js';
 import { fovOf, FOV_MIN, FOV_MAX } from './fov.js';
 import { fmtTime, fmtKm, fmtNum, esc, bestAvg } from './util.js';
 import { openControllerTest } from './controller.js';
-import { stravaExport } from './tcx.js';
+import { stravaButton } from './stravaup.js';
 import { hudPrefs, hudControlsHTML, wireHudControls } from './hudprefs.js';
 import { WORKOUTS, workoutById, workoutDuration, workoutSVG } from './workouts.js';
 import { loadShared, sharedFor, shareRide, importShared, groupModal } from './share.js';
@@ -262,7 +262,7 @@ function history() {
     </table>` : '<div class="empty">Noch keine Fahrten. Wähle eine Strecke und fahr los.</div>'}
   </section>`;
   main.querySelectorAll('.share').forEach(b => b.onclick = () => shareRide(rides.find(r => r.id === b.dataset.id)));
-  main.querySelectorAll('.strava').forEach(b => b.onclick = () => { const x = rides.find(r => r.id === b.dataset.id); if (x?.samples?.length) { const r = routeById(x.routeId), t = r?.track; stravaExport(x, r?.name || 'Fahrt', t?.ele ? d => eleAt(t, d) : null); } else toast('Diese Fahrt hat keine Messwerte.'); });
+  main.querySelectorAll('.strava').forEach(b => b.onclick = () => { const x = rides.find(r => r.id === b.dataset.id); if (x?.samples?.length) { const r = routeById(x.routeId), t = r?.track; stravaButton(b, x, r?.name || 'Fahrt', t?.ele ? d => eleAt(t, d) : null); } else toast('Diese Fahrt hat keine Messwerte.'); });
 }
 
 // ---- form controls: stepper (− value +) with optional "no answer", segmented switch ----
