@@ -101,7 +101,7 @@ export class RideSession {
   async start() {
     const el = this.el = document.createElement('div'); el.className = 'ride';
     document.addEventListener('keydown', this._key); // early: watts set with ↑↓ while the world loads are kept
-    if (state.settings.voiceCmd) import('./voicecmd.js').then(m => { if (!this.running && this._closed) return; // "Rideframe Pause" & co.
+    if (this.state.settings.voiceCmd) import('./voicecmd.js').then(m => { if (!this.running && this._closed) return; // "Rideframe Pause" & co.
       this.voice = new m.VoiceCommands(c => this._voiceCmd(c), () => this.ch?.active?.state === 'offer' ? ['accept'] : []);
       if (!this.voice.start()) this._flash?.('Sprachbefehle gehen nur in Chrome oder Edge'); });
     el.innerHTML = this._hudHTML();
