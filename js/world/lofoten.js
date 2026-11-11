@@ -697,6 +697,37 @@ export class WorldScene {
           if (r() < 0.5) place(byName('hjell'), d + 60, ROAD_W + 10 + r() * 6, { face: 'along' });
         }
       }
+      // ---- long open stretches (real routes: kilometres between hamlets): a lone farm every ~1 km, fishers at the shore,
+      // now and then a whale offshore and a sea eagle, so the coast road never runs empty ----
+      if (!s.village && s.to - s.from > 1200) {
+        for (let d = s.from + 450; d < s.to - 300; d += 800 + r() * 600) {
+          const kind = r();
+          if (kind < 0.55) { // farm on the land side: house, fence, washing line, hay, someone at work
+            const hs = [byName('steinhaus'), byName('rorbu_ocker'), byName('rorbu_rot')].filter(Boolean), he = hs[Math.floor(r() * hs.length)];
+            if (!he) continue;
+            const back = ROAD_W + 14 + r() * 18, h = place(he, d, back + Math.max(...he.size) / 2, { rot: (r() - .5) * .4, gap: 4 });
+            if (!h) continue;
+            place(byName('waescheleine'), d + 12, back + 2, { face: 'along', gap: 2, radK: 0.4 });
+            if (r() < 0.7) place(byName('heuhaufen'), d - 16, back + 6, { gap: 2 });
+            if (r() < 0.5) place(byName('schubkarre'), d + 5, back - 1, { face: r() * 6.28, gap: 1.5, radK: 0.4 });
+            const fl = byName('flechtzaun'); if (fl) { const len = Math.max(fl.size[0], fl.size[2]) * 0.97, turn = fl.size[0] > fl.size[2] ? Math.PI / 2 : 0;
+              for (let k = 0; k * len < 30; k++) place(fl, d - 15 + k * len, ROAD_W + 6, { face: 'along', rot: turn, gap: 1, radK: 0.3, overlap: true }); }
+            const idle = A.by.figure_idle || []; if (idle.length && r() < 0.8) place(idle[Math.floor(r() * idle.length)], d + 8, back - 3, { face: 'road', gap: 1, radK: 0.5, anim: 'Stehen' });
+            for (let k = 0, an = r() < 0.5 ? byName('pferd') : byName('schaf'); k < 3; k++) place(an, d - 30 + r() * 20, back + 12 + r() * 14, { face: r() * 6.28, anim: 'Grasen', radK: 0.6, gap: 3 });
+          } else if (s.land === 'coast') { // at the shore: a moored boat, a fisher mending nets, a stack of barrels
+            const w = waterline(d, -1, 8); if (w === null) continue;
+            place(byName('fischerboot') || byName('nordlandboot'), d, -(w + 7), { water: true, y: -0.3, face: 'along' });
+            place(byName('fischer_netz'), d + 6, -(w - 1.5), { radK: 0.4, anim: 'Flicken', gap: 1 });
+            place(byName('faesser_kisten'), d - 6, -(w - 2.5), { gap: 1, radK: 0.5 });
+          } else place(byName('hjell'), d, ROAD_W + 10 + r() * 8, { face: 'along' });
+        }
+        if (s.land === 'coast') for (let d = s.from + 1500; d < s.to - 500; d += 3500 + r() * 2500) { // whale offshore (shown when it surfaces)
+          const off = 150 + r() * 110, q = spot(d, -off); if (f.height(q.x, q.z) >= -6) continue;
+          const w = place(byName('buckelwal'), d, -off, { water: true, y: 0, face: 'along', overlap: true });
+          if (w) { w.traverse(c => { c.frustumCulled = false; }); w.userData.whale = true; w.userData.hidden = true; w.visible = false; this.whales.push({ obj: w, mixer: this.mixers[this.mixers.length - 1], next: 0 }); }
+        }
+        const e = s.to - s.from > 4000 && byName('seeadler'); if (e) { const { obj, mixer } = A.make(e, 'Gleiten', r); const q = spot((s.from + s.to) / 2, -50); obj.userData.circle = { x: q.x, z: q.z, y: 0, R: 40 + r() * 40, w: 0.18 + r() * .1, ph: r() * 6 }; this.scene.add(obj); this.birds.push(obj); this.props.push(obj); if (mixer) { mixer.obj = obj; this.mixers.push(mixer); } }
+      }
       // ---- meadows: sheep flocks, horses, reindeer higher up, stone walls, hay ----
       if (s.land !== 'cliff') {
         for (let d = s.from + 150; d < s.to - 50; d += 260 + r() * 260) {
