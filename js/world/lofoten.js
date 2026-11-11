@@ -1332,7 +1332,7 @@ function cumulusLayer(sun) {
   g.setAttribute('position', new THREE.Float32BufferAttribute([-0.5, 0, 0, 0.5, 0, 0, 0.5, 1, 0, -0.5, 1, 0], 3));
   const a = new Float32Array(N * 4), b = new Float32Array(N * 4);
   for (let i = 0; i < N; i++) {
-    a.set([(rr() - 0.5) * 16000, 1300 + rr() * 900, (rr() - 0.5) * 16000, 2400 + rr() * 3000], i * 4); // x, base height, z, width
+    a.set([(rr() - 0.5) * 16000, 1900 + rr() * 1100, (rr() - 0.5) * 16000, 2400 + rr() * 3000], i * 4); // x, base height (high enough to sit behind the peaks, not on the meadows), z, width
     b.set([Math.floor(rr() * 4), rr(), rr() < 0.5 ? 1 : -1, 0.55 + rr() * 0.3], i * 4); // shape, threshold, mirror, height ratio
   }
   g.setAttribute('iA', new THREE.InstancedBufferAttribute(a, 4)); g.setAttribute('iB', new THREE.InstancedBufferAttribute(b, 4));
@@ -1360,16 +1360,16 @@ void main() {
     fragmentShader: `uniform sampler2D tC; uniform vec3 uSun; uniform float uLow, uVeil, uCover; varying vec2 vUv; varying float vFade, vShape, vToSun, vFar; varying vec3 vR, vU, vV;
 void main() {
   vec4 t = texture2D(tC, vUv);
-  float a = t.a * vFade; if (a < .01) discard;
+  float a = smoothstep(.05, .75, t.a) * vFade; if (a < .01) discard; // soft, frayed rims instead of a cut-out cotton-wool edge
   vec2 n2 = t.rg * 2. - 1.; vec3 n = normalize(vR * n2.x + vU * n2.y + vV * sqrt(max(0., 1. - dot(n2, n2))));
   float l = smoothstep(-.35, .9, dot(n, uSun));
   float hgt = 1. - fract(vUv.y * 4.); // 0 = base, 1 = top of the card
-  vec3 shade = mix(vec3(.5, .44, .54), vec3(.5, .48, .55), uCover) * (.62 + .38 * smoothstep(.0, .7, hgt)) * (.85 + .25 * n.y * .5 + .1);
-  vec3 lit = mix(vec3(1.25, .82, .55), vec3(1.35, .64, .38), uLow) * (1. - .45 * uVeil); // midnight-sun gold, never paper white
+  vec3 shade = mix(vec3(.36, .33, .42), vec3(.4, .4, .46), uCover) * (.62 + .38 * smoothstep(.0, .7, hgt)) * (.85 + .25 * n.y * .5 + .1);
+  vec3 lit = mix(vec3(1.02, .76, .56), vec3(1.12, .62, .4), uLow) * (1. - .45 * uVeil); // midnight-sun gold, never paper white
   vec3 col = mix(shade, lit, l * (.55 + .45 * hgt));
   col += vec3(1.3, .62, .3) * pow(vToSun, 6.) * (1. - t.b) * 1.2; // silver lining against the sun
   col = mix(col, vec3(1., .74, .62), vFar * .45); // far heaps sink into the warm horizon haze
-  gl_FragColor = vec4(col, a * .93);
+  gl_FragColor = vec4(col, a * .82); // a little sky shows through: they sit in the haze, not on it
   #include <tonemapping_fragment>
   #include <colorspace_fragment>
 }` });
