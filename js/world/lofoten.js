@@ -703,7 +703,7 @@ export class WorldScene {
         }
         // children and onlookers at the roadside who wave and call out as you pass
         // a mixed crowd, not always the farmer: hunter with bow, women with bread, fishers, traders, children; right at the asphalt
-        const watchers = ['junge', 'maedchen', 'kind', 'alte_frau', 'moench', 'bogenschuetze', 'jaeger', 'baeckerin', 'frau_brot', 'magd', 'fischerin', 'haendler'].map(byName).filter(Boolean)
+        const watchers = ['zuschauer_jubelnd', 'junge', 'maedchen', 'kind', 'alte_frau', 'moench', 'bogenschuetze', 'jaeger', 'baeckerin', 'frau_brot', 'magd', 'fischerin', 'haendler'].map(byName).filter(Boolean)
           .sort(() => r() - 0.5);
         if (r() < 0.25 && byName('bauer_sense')) watchers.push(byName('bauer_sense'));
         for (let k = 0; watchers.length && k < 8; k++) place(watchers[k % watchers.length], a + (k + 0.5) * (b - a) / 8, (k % 2 ? 1 : -1) * (ROAD_W + 1.5 + r() * 0.6), { face: 'road', anim: r() < 0.6 ? 'Winken' : 'Stehen', gap: 0.5, radK: 0.35 });

@@ -171,21 +171,31 @@ export class Surprises {
         this.fx._p(o.x + Math.cos(a) * r, o.y + 0.2 + Math.random() * 2.2, o.z + Math.sin(a) * r, Math.cos(a + 1.6) * 0.6, 0.5 + Math.random() * 0.8, Math.sin(a + 1.6) * 0.6, 0.7, 0.3, 1, 1.2 + Math.random()); }
       this.fx.pts.visible = true;
     }
-    if (!this.hell) { if (this.hellProps?.length) { for (const o of this.hellProps) o.dead = true; this.hellProps = []; } return; }
+    if (!this.hell) { this.hellT = 0; if (this.hellProps?.length) { for (const o of this.hellProps) o.dead = true; this.hellProps = []; } return; }
     // hell: embers rising all around you, fire bursting from cracks beside the road, the Mac's lava pieces at the roadside
     for (let k = 0; k < 4; k++) { const a = Math.random() * 6.28, r = 9 + Math.random() * 40, x = cam.x + Math.cos(a) * r, z = cam.z + Math.sin(a) * r, y = this.f.ground(x, z);
       const c = Math.random(); this.fx._p(x, y + Math.random() * 3, z, (Math.random() - .5) * 0.8, 1.5 + Math.random() * 2.5, (Math.random() - .5) * 0.8, 1, 0.3 + c * 0.4, c * 0.08, 2 + Math.random() * 2); }
     this.fx.pts.visible = true;
+    this.hellT = (this.hellT || 0) + dt;
+    if (this.hellT > 25 && t > (this.dragonNext || 0) && this.A.find('drache')) { this.dragonNext = t + 70; this._dragon(); } // a dragon sweeps over the road, breathing fire
     if (t > (this.burstNext || 0)) { this.burstNext = t + 0.7 + Math.random() * 1.1; this.fireBurst(d + 30 + Math.random() * 90, (Math.random() < 0.5 ? -1 : 1) * (ROAD_W + 2 + Math.random() * 9)); }
-    const kinds = (this._hellKinds ||= ['lava_fels', 'lava_fels_b', 'lava_fels_c', 'feuersaeule', 'lava_riss', 'hoellen_tor', 'totenschaedel', 'lava_see', 'obsidian_zacken'].filter(n => this.A.find(n)));
+    const kinds = (this._hellKinds ||= ['lava_fels', 'lava_fels_b', 'lava_fels_c', 'feuersaeule', 'lava_riss', 'hoellen_tor', 'totenschaedel', 'lava_see', 'obsidian_zacken', 'feuerdaemon', 'feuerdaemon'].filter(n => this.A.find(n)));
     if (kinds.length && d > (this.hellNextD || 0)) {
       this.hellNextD = d + 35 + Math.random() * 45;
       const kind = kinds[Math.floor(Math.random() * kinds.length)], wide = /lava_see|hoellen_tor/.test(kind) ? 4.5 : 0; // wide pieces keep clear of the asphalt
-      const s = this._spawn(kind, ['Brennen', 'Idle'], 0.8 + Math.random() * 0.6);
-      if (s) { const side = Math.random() < 0.5 ? -1 : 1, p = this._pt(d + 140, side * (ROAD_W + 2.5 + wide + Math.random() * 10));
-        s.obj.position.set(p.x, p.y, p.z); s.obj.rotation.y = Math.random() * 6.28; const e = { ...s, d: d + 140, step: () => {} }; this.active.push(e); (this.hellProps ||= []).push(e); }
+      const imp = kind === 'feuerdaemon', s = this._spawn(kind, imp ? ['Jubeln', 'Winken'] : ['Brennen', 'Idle'], imp ? 1 : 0.8 + Math.random() * 0.6);
+      if (s) { const side = Math.random() < 0.5 ? -1 : 1, p = this._pt(d + 140, side * (ROAD_W + (imp ? 1.8 : 2.5 + wide) + Math.random() * (imp ? 2 : 10))), q = this._pt(d + 140, 0);
+        s.obj.position.set(p.x, p.y, p.z); s.obj.rotation.y = imp ? Math.atan2(q.x - p.x, q.z - p.z) : Math.random() * 6.28; /* demons face you and jeer */ const e = { ...s, d: d + 140, step: () => {} }; this.active.push(e); (this.hellProps ||= []).push(e); }
     }
     if (this.hellProps) this.hellProps = this.hellProps.filter(e => e.d > d - 60 || (e.dead = true, false));
+  }
+  _dragon() { // comes head-on from far ahead, low over the road, fire in the middle of the pass, then climbs away behind you
+    const d0 = this.w.d + 320, side = Math.random() < 0.5 ? -1 : 1; let fired = false;
+    const e = this._run('drache', [['Fliegen', 1], ['Gleiten', 1]], (t, v) => { if (t > 11) return null;
+      const dd = d0 - (34 + v) * t, rel = dd - this.w.d;
+      if (!fired && rel < 90) { fired = true; this._play(e, ['Feuer']); setTimeout(() => e.mixer && this._play(e, ['Fliegen', 'Gleiten']), 2000); }
+      return { d: dd, off: side * (6 + Math.max(0, -rel) * 0.3), fly: 14 + Math.max(0, 60 - Math.abs(rel)) * 0.05 + Math.max(0, -rel) * 0.4, back: true }; });
+    if (e) this.w.shakeImpulse = Math.max(this.w.shakeImpulse || 0, 0.4);
   }
   _play(e, names) { if (!e.mixer) return; const c = names.map(n => this.A.clip(e.e, n)).find(Boolean); if (!c) return; e.mixer.stopAllAction(); e.mixer.timeScale = 1; e.mixer.clipAction(c).play(); }
 
