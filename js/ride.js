@@ -132,6 +132,7 @@ export class RideSession {
     { const mc = el.querySelector('#hMap'); this.minimap = new MiniMap(mc, this.track, this.player?.field?.pose ? d => this.player.field.pose(d) : null); if (!this.minimap.ok) mc.parentElement.remove(); }
     this.q = s => el.querySelector(s);
     this._wireWorkoutStop();
+    el.querySelector('#hGearChip')?.addEventListener('click', () => this.toggleShift());
     el.querySelector('#hPause')?.addEventListener('click', () => this.paused ? this._resume() : this._pause());
     el.querySelector('#hCam')?.addEventListener('click', () => this._cycleView());
     el.querySelector('#hBar')?.addEventListener('click', () => this._toggleBar());
@@ -159,7 +160,7 @@ export class RideSession {
         <div class="hud-route glass"><div class="wordmark"><svg class="mark" viewBox="0 0 32 32"><rect width="32" height="32" rx="6" fill="var(--accent)"/><path d="M6 24 L14 12 L19 18 L23 10 L27 24 Z" fill="#0b0b0b"/></svg>RIDEFRAME</div><span class="sep"></span><span class="name">${esc(this.route.name)}</span></div>
         <div class="hud-right">
           ${ghostChip}
-          <div class="chip glass gearchip" data-hud="gear"><div class="label" id="hGearL">${this.virtual ? 'Virtueller Gang' : 'Gang'}</div><div class="v num" id="hGear">–</div><div class="gearbar" id="hGearBar">${this.virtual ? this.gears.map(() => '<i></i>').join('') : ''}</div></div>
+          <div class="chip glass gearchip" data-hud="gear" id="hGearChip" title="Klicken (oder G): echt am Rad ↔ virtuell schalten" style="cursor:pointer"><div class="label" id="hGearL">${this.virtual ? 'Virtueller Gang' : 'Gang'}</div><div class="v num" id="hGear">–</div><div class="gearbar" id="hGearBar">${this.virtual ? this.gears.map(() => '<i></i>').join('') : ''}</div></div>
           <div class="chip glass" data-hud="time"><div class="label">Zeit</div><div class="v num" id="hTime">0:00</div></div>
           ${this.track.world ? '<button class="chip glass camchip" data-hud="buttons" id="hCam" title="Kamera wechseln (V)"><div class="label">Kamera</div><div class="v">⟲</div></button><button class="chip glass camchip" data-hud="buttons" id="hBar" title="Lenker ein/aus (H)"><div class="label">Lenker</div><div class="v">⊓</div></button><button class="chip glass camchip" id="hWide" title="Weitwinkel ([ und ])"><div class="label">Sicht</div><div class="v">↔</div></button>' : ''}
           ${this.group ? `<button class="chip glass camchip voicechip" id="hVoice" title="Sprachchat an: ihr hört euch gegenseitig"><div class="label">Sprachchat</div><div class="v">${MIC_SVG}</div></button>` : ''}
@@ -205,9 +206,19 @@ export class RideSession {
     const ws = t.data?.speed > 0.5 ? t.data.speed : Math.max(1, this.v / k);
     return virtualGrade(g, k, ws, this.params.mass);
   }
+  /** switch between shifting on the real bike and virtual gears, mid-ride (click on the gear chip or G) */
+  toggleShift() {
+    this.virtual = !this.virtual; this.state.settings.shiftMode = this.virtual ? 'virtual' : 'real';
+    this.gear = this.virtual ? this.gears[this.gi] : null;
+    const q = this.q; q('#hGearL').textContent = this.virtual ? 'Virtueller Gang' : 'Gang';
+    q('#hGearBar').innerHTML = this.virtual ? this.gears.map(() => '<i></i>').join('') : '';
+    if (this.state.trainer.connected) this.state.trainer.setGrade(this._trainerGrade(), true);
+    this._flash(this.virtual ? 'Virtuell schalten · Q/E oder ‹ ›' : 'Schalten am echten Rad');
+    import('./app.js').then(m => m.saveSettings());
+  }
   shift(dir) {
     if (!this.virtual) { // real shifting: the gear is changed on the bike itself
-      if (!this._shiftHint) { this._shiftHint = true; this.q && (this.q('#hGearL').textContent = 'Schalten am Rad · virtuell: Einstellungen'); }
+      if (!this._shiftHint) { this._shiftHint = true; this.q && (this.q('#hGearL').textContent = 'Schalten am Rad · G = virtuell'); }
       return;
     }
     const gi = Math.max(0, Math.min(this.gears.length - 1, this.gi + dir));
@@ -506,6 +517,7 @@ export class RideSession {
     if (!this.running && !e.key.startsWith('Arrow')) return; // still loading / counting down: only the power keys
     if (e.key === 'ArrowUp') { this.manualPower = Math.min(1500, this.manualPower + (e.shiftKey ? 50 : 10)); e.preventDefault(); }
     else if (e.key === 'ArrowDown') { this.manualPower = Math.max(0, this.manualPower - (e.shiftKey ? 50 : 10)); e.preventDefault(); }
+    else if (e.key === 'g' || e.key === 'G') this.toggleShift();
     else if (e.key === 'q' || e.key === ',' || e.key === '-') this.shift(-1);
     else if (e.key === 'e' || e.key === '.' || e.key === '+') this.shift(1);
     else if (e.key === ' ') { e.preventDefault(); this.paused ? this._resume() : this._pause(); }
