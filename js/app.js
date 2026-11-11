@@ -1,3 +1,4 @@
+import { account, accountsAvailable, syncAccount, settingsChanged, accountModal } from './account.js';
 import { db, uid } from './db.js';
 import { readGoProGPS } from './gpmf.js';
 import { buildTrack, improveElevation, parseGPX, STEP, eleAt } from './track.js';
@@ -43,6 +44,8 @@ function getDemoRoute() { return getBuiltin('demo'); }
 async function boot() {
   const saved = await db.kvGet('settings').catch(() => null);
   if (saved) Object.assign(state.settings, saved);
+  const hasAcc = await accountsAvailable();
+  if (hasAcc && account()) await syncAccount(state).catch(e => console.warn('Konto-Abgleich:', e.message));
   const params = new URLSearchParams(location.search);
   if (params.get('accent')) state.settings.accent = params.get('accent');
   applyAccent();
@@ -66,8 +69,14 @@ async function boot() {
   if (v === 'detail') go('detail', params.get('id') || 'demo');
   else if (v === 'ride') startRide(params.get('id') || 'demo', { autopilot: params.has('auto'), at: +params.get('at') || 0 });
   else go(v || 'library');
-  if (!state.settings.profileDone && !params.has('noprofile') && v !== 'ride') profileModal();
-  else if (params.get('join')) groupModal({ code: params.get('join'), startRide });
+  if (hasAcc) { $('#accPill').hidden = false; $('#accPill').addEventListener('click', () => accountModal(state, accountChanged)); updateAccPill(); }
+  (async () => {
+    if (hasAcc && !account() && !state.settings.accountAsked && !params.has('noprofile') && v !== 'ride') {
+      state.settings.accountAsked = true; saveSettings(); await accountModal(state, accountChanged, { first: true });
+    }
+    if (!state.settings.profileDone && !params.has('noprofile') && v !== 'ride') profileModal();
+    else if (params.get('join')) groupModal({ code: params.get('join'), startRide });
+  })();
   db.persist();
 }
 
@@ -76,7 +85,9 @@ async function reload() {
   state.rides = (await db.all('rides')).sort((a, b) => b.date - a.date);
 }
 
-export async function saveSettings() { await db.kvSet('settings', state.settings); }
+export async function saveSettings() { await db.kvSet('settings', state.settings); settingsChanged(state.settings); }
+function updateAccPill() { const a = account(), p = $('#accPill'); p.classList.toggle('on', !!a); p.querySelector('.t').textContent = a ? a.name : 'Anmelden'; }
+async function accountChanged() { updateAccPill(); applyAccent(); await reload(); go(state.view); }
 function applyAccent() {
   document.documentElement.style.setProperty('--accent', ACCENTS[state.settings.accent] || ACCENTS.orange);
 }

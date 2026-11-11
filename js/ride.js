@@ -553,7 +553,7 @@ export class RideSession {
     const full = this.startD < 50; // only a ride from the start line is a time on this route
     const rec = this._rideRecord(full);
     const prev = (await db.ridesFor(this.route.id)).filter(r => r.complete).sort((a, b) => a.duration - b.duration);
-    await db.put('rides', rec);
+    await db.put('rides', rec); import('./account.js').then(a => a.pushRide(rec));
     this._summary(rec, full ? prev : null, full ? '' : 'Ab km ' + fmtKm(this.startD) + ' gestartet, zählt nicht als Bestzeit');
   }
 
@@ -583,7 +583,7 @@ export class RideSession {
   async _end(save) {
     if (!save) return this._close(false);
     if (this.elapsed <= 30) { import('./app.js').then(m => m.toast('Unter 30 Sekunden, nicht gespeichert', 3500)); return this._close(false); }
-    const rec = this._rideRecord(false); await db.put('rides', rec);
+    const rec = this._rideRecord(false); await db.put('rides', rec); import('./account.js').then(a => a.pushRide(rec));
     this.finished = true; this.q('#pauseOverlay')?.remove();
     this._summary(rec, null, 'Vorzeitig beendet, gespeichert');
   }
