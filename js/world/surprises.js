@@ -111,6 +111,7 @@ export class Surprises {
   challenger(c, spotD) {
     const name = c.models.find(n => this.A.find(n)); if (!name) return null;
     const side = this._landSide(spotD) || 1, fly = c.kind === 'fly';
+    const bike = { kind_fahrrad: 3.1 / 1.0, oma_fahrrad: 4.3 / 1.25 }[name] || 0; // m/s at clip speed 1
     const h = { d: spotD, race: false, done: false, side };
     let gone = 0;
     const e = this._run(name, fly ? [['Gleiten', 1], ['Fliegen', 1]] : [['Winken', 1], ['Jubeln', 1], ['Stehen', 1], ['Schritt', 1]], (t, v, dt) => {
@@ -118,6 +119,7 @@ export class Surprises {
         return { d: h.d, off: side * (2.5 + gone * 6), fly: 3.2 + gone * gone * 2.5 }; }
       if (h.done) return null;
       if (fly) return { d: h.d + (h.race ? 14 : 0), off: side * (h.race ? 1.6 : ROAD_W + 4), fly: h.race ? 2.6 + Math.sin((this.clock || 0) * 2) * 0.4 : 6 + Math.sin((this.clock || 0) * 1.3) * 0.8 }; // racing birds fly a little ahead and low, so they are always in view (the card shows the real gap)
+      if (bike && h.race && e?.mixer) e.mixer.timeScale = Math.max(0.2, v / bike); // pedal in step with the road (MacBook: metres per loop / loop time)
       return { d: h.d, off: side * (ROAD_W + (h.race ? 1.2 : 2.2)), doff: h.race ? 0 : -side * 3 };
     }, { idle: ['Jubeln', 'Winken', 'Stehen'] });
     if (!e) return null;

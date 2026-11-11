@@ -772,7 +772,7 @@ export class WorldScene {
             const idle = A.by.figure_idle || []; if (idle.length && r() < 0.8) place(idle[Math.floor(r() * idle.length)], d + 8, back - 3, { face: 'road', gap: 1, radK: 0.5, anim: 'Stehen' });
             const herd = groupOf('herd'); // a whole flock or paddock from the templates, else three animals
             if (!herd || !placeGroup(herd, d - 22, back + 14 + (herd.radius_m || 6)))
-              for (let k = 0, an = r() < 0.5 ? byName('pferd') : byName('schaf'); k < 3; k++) place(an, d - 30 + r() * 20, back + 12 + r() * 14, { face: r() * 6.28, anim: 'Grasen', radK: 0.6, gap: 3 });
+              for (let k = 0, an = r() < 0.4 ? byName('pferd') : r() < 0.3 && byName('pony') || byName('schaf'); k < 3; k++) place(an, d - 30 + r() * 20, back + 12 + r() * 14, { face: r() * 6.28, anim: 'Grasen', radK: 0.6, gap: 3 });
           } else if (s.land === 'coast') { // at the shore: a moored boat, a fisher mending nets, a stack of barrels
             const w = waterline(d, -1, 8); if (w === null) continue;
             place(byName('fischerboot') || byName('nordlandboot'), d, -(w + 7), { water: true, y: 0.12, face: 'along' });
@@ -842,6 +842,7 @@ export class WorldScene {
           const monk = byName('kampfmoench');
           if (monk) for (let k = 0; k < 7; k++) place(monk, mid - 18 + (k % 4) * 3.2, ROAD_W + 8 + Math.floor(k / 4) * 3.2, { face: 'road', anim: ['Kaempfen', 'Trainieren', 'Stehen'][k % 3], gap: 1, radK: 0.4 });
           place(byName('steintreppe'), mid + 30, ROAD_W + 14, { face: 'road', gap: 2 });
+          place(byName('teehaus'), mid - 45, ROAD_W + 12 + 3, { face: 'road', gap: 3 }); // tea house on stilts with stone lanterns
         }
         if (s.top === 'pagode') {
           place(byName('pagode'), s.to + 55, ROAD_W + 22, { face: 'road', gap: 6 });
