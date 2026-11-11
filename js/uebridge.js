@@ -6,6 +6,7 @@
 //   Unreal -> browser: {type:'ue_hello', version} when it connects, then {type:'ue_alive'} every ~2 s.
 //     While Unreal is alive the browser stops drawing its own 3D world (both at once halve Unreal's fps).
 //   {type:'weather', preset}   after each hello and on change; preset = auto|clear|fog|rain|storm|clearing|dramatic
+//   ride also carries fov (vertical degrees) and riders:[{id, name, d, v, ghost}] = friends and ghost to draw alongside
 //   {type:'ride', d, v, grade, watt, hr, cad, paused, t}   every 100 ms
 export class UEBridge {
   constructor(route, track, url = 'ws://localhost:8790') {

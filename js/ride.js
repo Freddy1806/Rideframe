@@ -250,7 +250,7 @@ export class RideSession {
     }
     if (now - (this.lastHud || 0) > 100) { this.lastHud = now; this._updateHUD(); }
     if (this.ue) this._ueLive();
-    this.ue?.update(now, { d: Math.round(this.d * 100) / 100, v: Math.round(this.v * 100) / 100, grade: Math.round(gradeAt(this.track, this.d) * 10) / 10, fov: fovOf(this.state.settings), watt: Math.round(this.power), hr: this.hr, cad: Math.round(this.cadence), paused: this.paused || this.finished, t: Math.round(this.elapsed * 10) / 10 });
+    this.ue?.update(now, { d: Math.round(this.d * 100) / 100, v: Math.round(this.v * 100) / 100, grade: Math.round(gradeAt(this.track, this.d) * 10) / 10, fov: fovOf(this.state.settings), riders: this._ueRiders || [], watt: Math.round(this.power), hr: this.hr, cad: Math.round(this.cadence), paused: this.paused || this.finished, t: Math.round(this.elapsed * 10) / 10 });
     requestAnimationFrame(this._tick);
   }
 
@@ -423,6 +423,8 @@ export class RideSession {
       }).join('') : '<div class="grow"><span>Noch niemand da</span></div>';
     }
     if (list.length || this._hadRiders) { this.player?.setRiders?.(list); this._hadRiders = list.length > 0; }
+    // the Unreal view draws the same friends and ghost (lanes: same order as js/world/riders.js LANES, by first appearance)
+    this._ueRiders = list.filter(r => !r.self).map(r => ({ id: r.id, name: r.name || '', d: Math.round(r.d * 10) / 10, v: Math.round((r.v || 0) * 10) / 10, ghost: !!r.ghost }));
   }
 
   _key(e) {
