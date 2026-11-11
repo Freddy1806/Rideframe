@@ -89,7 +89,7 @@ function installFog() {
 // splat = weights for (grass, rock, sand, snow); colour = gentle tint so meadows are not one flat green
 const _v = new THREE.Vector3();
 // measuring switches for the GPU budget: &noshadow &noreflect &refl=512 &grass=0.5 &whaletest
-const _lbQ = new THREE.Quaternion(), _lbY = new THREE.Vector3(0, 1, 0);
+const _lbQ = new THREE.Quaternion(), _lbY = new THREE.Vector3(0, 1, 0), _lbZ = new THREE.Vector3(0, 0, 1);
 const QS = typeof location !== 'undefined' ? new URLSearchParams(location.search) : new URLSearchParams(), GRASS_K = +(QS.get('grass') ?? 1);
 const TINT_A = new THREE.Color(1.0, 1.0, 0.95), TINT_B = new THREE.Color(1.12, 1.05, 0.78), TINT_C = new THREE.Color(0.82, 0.9, 0.86), _c = new THREE.Color();
 const WET = new THREE.Color(0.55, 0.52, 0.5), SHALLOW = new THREE.Color(0.75, 1.0, 0.95), DEEP = new THREE.Color(0.15, 0.3, 0.33);
@@ -1121,6 +1121,13 @@ export class WorldScene {
       const x = cam.x + bx / bl * 7, z = cam.z + bz / bl * 7, y = Math.max(cam.y + 2.4, this.field.height(x, z) + 1.8);
       this.camera.position.set(x, y, z); this.camera.lookAt(this.lookPos.x, this.lookPos.y + 0.6, this.lookPos.z);
     } else if (this.view === 2) this.camera.lookAt(2 * cam.x - this.lookPos.x, this.lookPos.y, 2 * cam.z - this.lookPos.z);
+    if (!this.instant && this.view !== 2 && !QS.has('nolean')) { // lean into curves like a bike: half the real lean from speed and radius, at most ~7°
+      const qa = this.field.at(d + 2), qb = this.field.at(d + 14);
+      let dh = Math.atan2(qb.tx, qb.tz) - Math.atan2(qa.tx, qa.tz); dh = Math.atan2(Math.sin(dh), Math.cos(dh)); // > 0: left bend
+      const lean = Math.max(-0.12, Math.min(0.12, Math.atan(this.speed * this.speed * dh / 12 / 9.81) * 0.5));
+      this._lean = (this._lean || 0) + (lean - (this._lean || 0)) * Math.min(1, dt * 2.5);
+      if (Math.abs(this._lean) > 1e-4) this.camera.quaternion.multiply(_lbQ.setFromAxisAngle(_lbZ, this._lean));
+    }
     if (fast > 0 && !this.instant) { const t = performance.now() / 1000, a = fast * 0.0015;
       this.camera.rotation.z += Math.sin(t * 23) * a + Math.sin(t * 37) * a * 0.6; this.camera.rotation.x += Math.sin(t * 29) * a * 0.7; }
     if (this.shakeImpulse > 0.01 && !this.instant) { const t = performance.now() / 1000, a = this.shakeImpulse * 0.014; // explosions (siege.js)

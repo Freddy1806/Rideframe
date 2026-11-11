@@ -254,7 +254,7 @@ export class Field {
     for (let k = 6; k <= 22; k += 2) { const q = this.at(d + k), wk = 1 / k; const ql = Math.hypot(q.tx, q.tz) || 1;
       const over = Math.max(0, d + k - end); // past the finish: keep looking straight ahead, never into the ground
       lx += (q.x + q.tx / ql * over - q.tz / ql * lane) * wk; ly += q.e * wk; lz += (q.z + q.tz / ql * over + q.tx / ql * lane) * wk; w += wk; }
-    // the view tilts with only 40 % of the road's pitch, so a climb visibly rises in the picture (fully pitched it looks flat)
-    return { x: p.x + rx * lane, y: p.e + eye, z: p.z + rz * lane, lx: lx / w, ly: p.e + (ly / w - p.e) * 0.4 + eye - 0.3, lz: lz / w };
+    // the head stays almost level (22 % of the road's pitch), so even 4 % visibly rises or falls in the picture (Freddy: 40 % still looked flat)
+    return { x: p.x + rx * lane, y: p.e + eye, z: p.z + rz * lane, lx: lx / w, ly: p.e + (ly / w - p.e) * 0.22 + eye - 0.3, lz: lz / w };
   }
 }
