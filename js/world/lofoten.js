@@ -616,7 +616,7 @@ export class WorldScene {
       const side = Math.sign(off) || 1;
       let ang = o.face === 'away' ? Math.atan2(side * -q.tz, side * q.tx) : o.face === 'along' ? Math.atan2(q.tx, q.tz)
         : typeof o.face === 'number' ? o.face : Math.atan2(-side * -q.tz, -side * q.tx);
-      ang += o.rot || 0;
+      ang += o.rotT != null ? -side * o.rotT : (o.rot || 0); // rotT: a turn in a group template's frame (x along, +z towards the road), mirrored by side
       let y;
       if (o.water) y = o.y ?? 0;
       else { // lowest ground under the footprint, so nothing floats
@@ -635,13 +635,14 @@ export class WorldScene {
     /** a group template at d, centre offset off (local x along the road, local +z towards the road); members whose variant
      *  is not loaded this ride fall back to their base model. Returns how many members stood. */
     const placeGroup = (g, d, off) => {
-      if (!g) return 0; let n = 0; const side = Math.sign(off) || 1;
+      if (!g) return 0; let n = 0; const side = Math.sign(off) || 1, R = g.radius_m || 6;
+      const c = spot(d, segAt(d).seaSide === 1 ? -off : off); if (!free(c.x, c.z, R)) return 0; // the whole group needs free ground (no house, stall, fence)
       for (const m of g.members || []) {
         const stem = m.file.split('/').pop().replace(/\.glb$/, '');
         const e = A.list.find(x => x.file.endsWith(m.file)) || A.find(stem.replace(/_v\d+$/, '')); if (!e) continue;
-        if (place(e, d + m.x, off - side * m.z, { rot: side > 0 ? m.rot : -m.rot, anim: m.anim, overlap: true, radK: 0.3, gap: 1 } /* front (+Z) towards the road plus the template's turn, mirrored on the other side */)) n++;
+        if (place(e, d + m.x, off - side * m.z, { rotT: m.rot, anim: m.anim, overlap: true, radK: Math.max(...e.size) > 2 ? 0.85 : 0.3, gap: 1 })) n++;
       }
-      return n;
+      if (n) taken.push([c.x, c.z, R]); return n;
     };
     const groupOf = kind => { const l = GROUPS.filter(g => g.kind === kind); return l.length ? l[Math.floor(r() * l.length)] : null; };
     let bandDone = false;

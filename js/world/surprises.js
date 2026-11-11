@@ -200,7 +200,7 @@ export class Surprises {
       if (!met && Math.abs(gap) < 4) { met = t; this._say(e.obj, 'Make way, cyclist!', 2.4); }
       if (met && !duel && gap > 5 && t - met > 2) { duel = t; this._say(e.obj, 'Thou darest pass a knight?! Have at thee!', 3); } // you pulled away: now it is a race
       if (duel && !said && t - duel > 22) { said = 1; this._say(e.obj, gap > 0 ? 'By my sword... well ridden!' : 'Too slow for the King!', 3); }
-      if (t > 75 || gap > 160 || -gap > 160 || (said && t - duel > 28)) return null;
+      if ((t > 75 && !(duel && !said)) || gap > 160 || -gap > 160 || (said && t - duel > 28)) return null;
       const sp = duel && t - duel < 22 ? V * 1.2 + 1.2 : said ? V * 1.4 : V; // in the duel he spurs his horse, but at a fixed pace: hold more and you win
       dd += sp * dt;
       return { d: me, off: side * (ROAD_W + 3.5 + (said ? Math.min(12, (t - duel - 22) * 3) : 0)), doff: said ? side * 2 : 0 };

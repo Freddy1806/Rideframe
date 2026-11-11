@@ -33,7 +33,8 @@ async function allowed(h, ask) {
   try { if ((await h.queryPermission({ mode: 'read' })) === 'granted') return true; return ask && (await h.requestPermission({ mode: 'read' })) === 'granted'; }
   catch { return false; }
 }
-async function scan(h) {
+async function scan(h) { try { return await scanDir(h); } catch { return { all: [] }; } } // folder moved or deleted: nothing in it
+async function scanDir(h) {
   const l = { all: [] };
   for await (const [name, e] of h.entries()) {
     if (e.kind === 'file' && AUDIO.test(name)) l.all.push(await e.getFile());
