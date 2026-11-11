@@ -618,13 +618,17 @@ export class RideSession {
       <div class="row-actions"><button class="btn ghost" id="fShare">Bild zum Teilen</button><button class="btn ghost" id="fStrava">Auf Strava hochladen</button><button class="btn" id="fDone">Fertig</button></div></div>`;
     this.el.append(o);
     o.querySelector('#fDone').onclick = () => this._close(true);
+    const shareOpts = async () => ({ rec, route: this.route, track: this.track, photo: await this.bestPhoto(), pose: this.player?.field?.pose ? d => this.player.field.pose(d) : null, pb: !!(prev && (!prev.length || rec.duration < prev[0].duration)) });
     o.querySelector('#fShare').onclick = async e => {
       const b = e.currentTarget, t = b.textContent; b.disabled = true; b.textContent = 'Bild wird gemacht …';
-      try { const { shareModal } = await import('./shareimg.js'); await shareModal({ rec, route: this.route, track: this.track, photo: await this.bestPhoto(), pose: this.player?.field?.pose ? d => this.player.field.pose(d) : null, pb: !!(prev && (!prev.length || rec.duration < prev[0].duration)) }); }
+      try { const { shareModal } = await import('./shareimg.js'); await shareModal(await shareOpts()); }
       catch (err) { import('./app.js').then(m => m.toast('Bild ging nicht: ' + (err.message || err), 5000)); }
       b.disabled = false; b.textContent = t;
     };
-    o.querySelector('#fStrava').onclick = e => stravaButton(e.currentTarget, rec, this.route.name, d => eleAt(this.track, d));
+    o.querySelector('#fStrava').onclick = e => stravaButton(e.currentTarget, rec, this.route.name, d => eleAt(this.track, d), async () => {
+      const [{ makeShareImage }, { account }] = await Promise.all([import('./shareimg.js'), import('./account.js')]);
+      return makeShareImage({ ...(await shareOpts()), who: account()?.name || '' });
+    });
   }
 
   async _end(save) {

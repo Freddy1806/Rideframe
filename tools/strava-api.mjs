@@ -45,6 +45,12 @@ export async function stravaApi(req, res, path) {
   const cfg = await readJSON(CFG, {}), configured = !!(cfg.client_id && cfg.client_secret);
   const key = req.headers['x-strava-key'] || '', op = path.slice(12);
   try {
+    const im = op.match(/^image\/([a-f0-9]{24})\.jpg$/); // share images, public (linked from the Strava description)
+    if (im && req.method === 'GET') {
+      try { const b = await readFile(join(DATA, 'shares', im[1] + '.jpg')); res.writeHead(200, { 'Content-Type': 'image/jpeg', 'Cache-Control': 'public, max-age=31536000' }); res.end(b); }
+      catch { send(res, 404, { error: 'nicht gefunden' }); }
+      return true;
+    }
     if (op === 'status') {
       const t = key && (await readJSON(TOK, {}))[key];
       return send(res, 200, { configured, connected: !!t, athlete: t?.athlete || null }), true;
@@ -75,6 +81,13 @@ export async function stravaApi(req, res, path) {
     if (op === 'disconnect' && req.method === 'POST') { const all = await readJSON(TOK, {}); delete all[key]; await saveTokens(all); return send(res, 200, { ok: true }), true; }
     const tok = key && await access(key, cfg);
     if (!tok) return send(res, 401, { error: 'Nicht mit Strava verbunden.' }), true;
+    if (op === 'image' && req.method === 'POST') { // the share image, so the Strava description can link to it
+      const b = await body(req, 8e6), m = String(b.jpg || '').match(/^data:image\/jpeg;base64,(.+)$/);
+      if (!m) return send(res, 400, { error: 'kein Bild' }), true;
+      const id = randomBytes(12).toString('hex'); await mkdir(join(DATA, 'shares'), { recursive: true });
+      await writeFile(join(DATA, 'shares', id + '.jpg'), Buffer.from(m[1], 'base64'));
+      return send(res, 200, { url: baseUrl(req, cfg) + '/api/strava/image/' + id + '.jpg' }), true;
+    }
     if (op === 'upload' && req.method === 'POST') {
       const b = await body(req), fd = new FormData();
       fd.append('file', new Blob([b.tcx], { type: 'application/xml' }), 'rideframe.tcx');
