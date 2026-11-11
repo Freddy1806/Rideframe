@@ -74,7 +74,7 @@ export class Riders {
   }
 
   /** called each frame; ownD = own position, so riders right next to you stay beside you and never in the camera */
-  update(dt, ownD) {
+  update(dt, ownD, hideSelf = false) { // hideSelf: first-person view, where your own rider only exists for the share photo
     for (const e of this.list.values()) {
       if (e.self) e.shown = ownD;
       else {
@@ -94,7 +94,7 @@ export class Riders {
       const p = this.field.pose(Math.max(0, at), e.lat, 0);
       const o = e.obj; if (!o) continue;
       const dist = ag;
-      o.visible = dist < 400; // beyond 400 m a rider is a few pixels
+      o.visible = dist < 400 && !(e.self && hideSelf); // beyond 400 m a rider is a few pixels; never your own head in front of your own camera
       if (!o.visible) continue;
       const sh = dist < 25 || e.self; for (const m of o.userData.shadow || []) m.castShadow = sh;
       o.position.set(p.x, p.y, p.z);

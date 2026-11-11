@@ -20,7 +20,7 @@ export class Surprises {
       { id: 'knight', need: ['reiter_ritter', 'pferd'], go: () => this._knight() },
       { id: 'kids', need: ['junge', 'maedchen'], village: true, go: () => this._kids() },
       { id: 'sheep', need: ['schaf'], go: () => this._crossing(this.A.find('schaf_weiss') ? 'schaf_weiss' : 'schaf', 7, 'Baaa!') },
-      { id: 'pig', need: ['schwein'], go: () => this._pig() },
+      { id: 'pig', need: ['schwein'], w: 0.35, go: () => this._pig() }, // farmer and pig: a rare treat, not every few km
       { id: 'ship', need: ['langschiff'], sea: true, go: () => this._ship() },
       { id: 'juggler', need: ['gaukler'], go: () => this._juggler() },
       { id: 'goats', need: ['ziege'], go: () => this._crossing('ziege', 5, 'Meeeh!') },
@@ -47,7 +47,7 @@ export class Surprises {
     if (time > this.next && this.f.tunnelNear?.(d, 20, 220)) this.next = time + 3; // nothing starts right before or inside a tunnel
     if (time > this.next) {
       const free = this.list.filter(s => (!s.need.length || s.need.some(n => this.A.find(n))) && (!s.sea || this._seaSide(d + 120)) && (!s.village || this._inVillage(d + 60)))
-        .sort((a, b) => (this.used.get(a.id) || 0) - (this.used.get(b.id) || 0) || Math.random() - .5);
+        .sort((a, b) => (this.used.get(a.id) || 0) / (a.w || 1) - (this.used.get(b.id) || 0) / (b.w || 1) || Math.random() - .5);
       const s = free[0];
       if (s && s.go() !== false) { this.used.set(s.id, time); this.next = time + 11 + Math.random() * 8; }
       else this.next = time + 4; // nothing fits here: look again soon
@@ -181,7 +181,7 @@ export class Surprises {
     setTimeout(() => this._say(e.obj, 'Woof! Woof!', 1.8), 6000);
   }
   _crowd() { // villagers line both sides of the road and cheer you through, like a mountain stage
-    const d0 = this.w.d + 110, who = ['junge', 'maedchen', 'alte_frau', 'bauer_sense', 'wache', 'ritter', 'fischerin', 'haendler'].filter(n => this.A.find(n));
+    const d0 = this.w.d + 110, who = ['junge', 'maedchen', 'alte_frau', 'wache', 'ritter', 'fischerin', 'haendler', 'bogenschuetze', 'jaeger', 'baeckerin', 'frau_brot', 'moench'].filter(n => this.A.find(n));
     if (!who.length) return false;
     const calls = ['Allez! Allez!', 'Huzzah!', 'Go, go, go!', 'For the King!', 'Glory!'];
     for (let k = 0; k < 10; k++) {

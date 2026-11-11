@@ -603,6 +603,11 @@ export class WorldScene {
       const rd = f.road(q.x, q.z);
       if (!rd || rd.d - rad < ROAD_W + (o.gap ?? 1.2)) return null; // never on the road
       if (!o.overlap && !free(q.x, q.z, rad)) return null;
+      if (o.water && /boot/.test(e.file)) { // boats: deep water under the whole hull (never into a rock or a shore) and never under a bridge
+        const R = Math.max(e.size[0], e.size[2]) / 2 + 1.5;
+        for (let k = 0; k < 8; k++) if (f.height(q.x + Math.cos(k * 0.785) * R, q.z + Math.sin(k * 0.785) * R) > -0.8) return null;
+        if (f.height(q.x, q.z) > -0.8 || (t.dem?.bridges || []).some(([a, b]) => d > a - 60 && d < b + 60)) return null;
+      }
       const side = Math.sign(off) || 1;
       let ang = o.face === 'away' ? Math.atan2(side * -q.tz, side * q.tx) : o.face === 'along' ? Math.atan2(q.tx, q.tz)
         : typeof o.face === 'number' ? o.face : Math.atan2(-side * -q.tz, -side * q.tx);
@@ -665,7 +670,7 @@ export class WorldScene {
           place(r() < 0.6 ? byName('rorbu_rot') : byName('rorbu_ocker'), d, -(w + 2), { face: 'road', dy: -0.3 });
           if (place(byName('brygge'), d + 9, -(w + 3), { face: 'road', water: true, y: 0.2 }) && fishers++ < 2 && r() < 0.6)
             place(byName('fischer_netz'), d + 9, -(w + 1.2), { radK: 0.4, anim: 'Flicken', overlap: true, water: true, y: 1.6 });
-          if (r() < 0.7) place(r() < 0.6 ? byName('nordlandboot') : byName('fischerboot'), d + 4, -(w + 14 + r() * 10), { water: true, y: -0.3, face: 'along', rot: r() * 0.6 });
+          if (r() < 0.7) place(r() < 0.6 ? byName('nordlandboot') : byName('fischerboot'), d + 4, -(w + 14 + r() * 10), { water: true, y: 0.12, face: 'along', rot: r() * 0.6 });
         }
         // villagers walking along the roadside (only models with a walk cycle 'Gehen'; others would glide)
         const walkers = (A.by.figure_walk || []).concat(A.by.figure_idle || []).filter(e => e.clips.some(c => c.name === 'Gehen'));
@@ -675,8 +680,11 @@ export class WorldScene {
           if (o) o.userData.walk = { d: dd, off, v: (0.9 + r() * 0.5) * (r() < 0.5 ? 1 : -1), a, b };
         }
         // children and onlookers at the roadside who wave and call out as you pass
-        const watchers = ['junge', 'maedchen', 'kind', 'alte_frau', 'moench', 'bauer_sense'].map(byName).filter(Boolean);
-        for (let k = 0; watchers.length && k < 6; k++) place(watchers[k % watchers.length], a + (k + 0.5) * (b - a) / 6, (k % 2 ? 1 : -1) * (ROAD_W + 2.2 + r()), { face: 'road', anim: r() < 0.6 ? 'Winken' : 'Stehen', gap: 0.8, radK: 0.4 });
+        // a mixed crowd, not always the farmer: hunter with bow, women with bread, fishers, traders, children; right at the asphalt
+        const watchers = ['junge', 'maedchen', 'kind', 'alte_frau', 'moench', 'bogenschuetze', 'jaeger', 'baeckerin', 'frau_brot', 'magd', 'fischerin', 'haendler'].map(byName).filter(Boolean)
+          .sort(() => r() - 0.5);
+        if (r() < 0.25 && byName('bauer_sense')) watchers.push(byName('bauer_sense'));
+        for (let k = 0; watchers.length && k < 8; k++) place(watchers[k % watchers.length], a + (k + 0.5) * (b - a) / 8, (k % 2 ? 1 : -1) * (ROAD_W + 1.5 + r() * 0.6), { face: 'road', anim: r() < 0.6 ? 'Winken' : 'Stehen', gap: 0.5, radK: 0.35 });
         // the biggest village holds a street festival: garlands over the road, tents, jugglers, a second band, crowd
         if (s === festSeg) {
           const gar = byName('girlande'), tents = ['zelt', 'buehne', 'maibaum', 'tisch', 'fackel'].map(byName).filter(Boolean);
@@ -693,7 +701,7 @@ export class WorldScene {
       if (s.land === 'coast' && !s.village) {
         for (let d = s.from + 200; d < s.to - 100; d += 380 + r() * 300) {
           const w = waterline(d, -1, 8);
-          if (w !== null) { place(byName('rorbu_rot'), d, -(w + 2), { dy: -0.3 }); place(byName('brygge'), d + 9, -(w + 3), { water: true, y: 0.2 }); place(byName('nordlandboot'), d + 2, -(w + 16), { water: true, y: -0.3, face: 'along' }); }
+          if (w !== null) { place(byName('rorbu_rot'), d, -(w + 2), { dy: -0.3 }); place(byName('brygge'), d + 9, -(w + 3), { water: true, y: 0.2 }); place(byName('nordlandboot'), d + 2, -(w + 16), { water: true, y: 0.12, face: 'along' }); }
           if (r() < 0.5) place(byName('hjell'), d + 60, ROAD_W + 10 + r() * 6, { face: 'along' });
         }
       }
@@ -716,7 +724,7 @@ export class WorldScene {
             for (let k = 0, an = r() < 0.5 ? byName('pferd') : byName('schaf'); k < 3; k++) place(an, d - 30 + r() * 20, back + 12 + r() * 14, { face: r() * 6.28, anim: 'Grasen', radK: 0.6, gap: 3 });
           } else if (s.land === 'coast') { // at the shore: a moored boat, a fisher mending nets, a stack of barrels
             const w = waterline(d, -1, 8); if (w === null) continue;
-            place(byName('fischerboot') || byName('nordlandboot'), d, -(w + 7), { water: true, y: -0.3, face: 'along' });
+            place(byName('fischerboot') || byName('nordlandboot'), d, -(w + 7), { water: true, y: 0.12, face: 'along' });
             place(byName('fischer_netz'), d + 6, -(w - 1.5), { radK: 0.4, anim: 'Flicken', gap: 1 });
             place(byName('faesser_kisten'), d - 6, -(w - 2.5), { gap: 1, radK: 0.5 });
           } else place(byName('hjell'), d, ROAD_W + 10 + r() * 8, { face: 'along' });
@@ -1247,7 +1255,7 @@ export class WorldScene {
   _life(time, dt, cam) {
     if (this.field.tunnel) this.tunnelK = lerp(this.tunnelK || 0, this.field.tunnel[Math.max(0, Math.min(this.field.n - 1, Math.round(this.d / DS)))] ? 1 : 0, Math.min(1, dt * 1.5)); // eyes adjust to the tunnel
     if (this.field.tunnel) this.scene.environmentIntensity = ENV_I * (1 - 0.45 * this.tunnelK);
-    this.riders?.update(Math.min(dt, 0.1), this.d || 0);
+    this.riders?.update(Math.min(dt, 0.1), this.d || 0, !this.view && !this._shot);
     if (!this.props) return;
     this.falls?.update(time, dt, cam);
     this.events?.update(time, dt, cam, this.d);
