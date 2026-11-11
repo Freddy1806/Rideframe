@@ -297,7 +297,8 @@ export class RideSession {
       const g = gradeAt(this.track, this.d);
       // drafting (group ride, Freddy: Windschatten zu zweit): right behind a friend you need up to a third less power
       const dk = this._draftTo || 0; this._draftK = (this._draftK || 0) + (dk - (this._draftK || 0)) * Math.min(1, dt * 1.5);
-      const pk = this._postureK(); this._dragK = pk * (1 - this._draftK); // posture by webcam (aero / standing) and the slipstream
+      this._togK = (this._togK || 0) + ((this._togetherTo || 0) - (this._togK || 0)) * Math.min(1, dt * 0.5);
+      const pk = this._postureK(); this._dragK = pk * (1 - this._draftK) * (1 - this._togK); // posture by webcam (aero / standing) and the slipstream
       this.v = physStep(this.v, this.power, g, dt, Math.abs(this._dragK - 1) > 0.005 ? { ...this.params, cda: this.params.cda * this._dragK } : this.params);
       this.d = Math.min(this.track.length, this.d + this.v * dt);
       this.elapsed += dt;
@@ -624,6 +625,10 @@ export class RideSession {
         for (const r of os) { const gap = r.d - this.d; if (!r.riding || r.done || gap < 0.3 || gap > 8) continue;
           const kk = 0.33 * Math.min(1, 1 - (gap - 1.5) / 6.5) * Math.min(1, Math.max(0, (this.v - 2) / 4)); if (kk > k) { k = kk; who = r.name; } }
         this._draftTo = k;
+        // stay together (Freddy: "zu zweit sich immer sehen", setting on by default): whoever drops back gets an
+        // invisible tailwind that grows with the gap, so friends of different strength stay within sight
+        const lead = os.filter(r => r.riding && !r.done).reduce((m, r) => Math.max(m, r.d - this.d), 0);
+        this._togetherTo = this.state.settings.together === false ? 0 : Math.min(0.6, Math.max(0, (lead - 30) / 300));
         if (k > 0.15 && !this._drafting && (this.elapsed - (this._draftMsgT ?? -99)) > 90) { this._draftMsgT = this.elapsed; this._flash?.(`Windschatten von ${who || 'deinem Mitfahrer'} · bis 30 % weniger Kraft`); }
         this._drafting = k > 0.1; this.q?.('#hGroup')?.classList.toggle('drafting', this._drafting); }
       const gl = this.q?.('#hGroup .glist');
