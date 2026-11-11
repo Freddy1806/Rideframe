@@ -211,9 +211,10 @@ export class Field {
       : Math.max(0, (this.demH(x - 7000, z + 3000) - 330) * 1.6);
     let seaFar = seaH + isl * smooth(400, 1100, out);
     if (r.river > 0.01) { // a river instead of the open sea: a low bank, ~60-90 m of water, then the far bank rises into hills again
-      const sh = 6 + this.n2(x / 90, z / 90) * 3, bank = sh + 70 + this.n2(x / 400, z / 400) * 18;
+      const sh = 6 + this.n2(x / 90, z / 90) * 3, bank = sh + 110 + this.n2(x / 400, z / 400) * 25;
       const water = lerp(base + detail * 0.3 * smooth(0, 6, out) - Math.max(0, out) * 0.05, -4.5, smooth(sh, sh + 10, out));
-      const riv = lerp(water, land, smooth(bank, bank + 45, out));
+      const meadow = 1.5 + Math.max(0, out - bank) * 0.1 + detail; // the far bank: a low meadow first, the mountains only further back
+      const riv = lerp(lerp(water, meadow, smooth(bank, bank + 25, out)), Math.max(meadow, land), smooth(bank + 120, bank + 700, out));
       seaFar = lerp(seaFar, riv, r.river);
     }
     const sideSea = smooth(-1, -6, r.side) * Math.max(r.sea, (1 - r.river) * smooth(900, 2200, out + this.n2(x / 1100, z / 1100) * 700 + this.n3(x / 300, z / 300) * 150));

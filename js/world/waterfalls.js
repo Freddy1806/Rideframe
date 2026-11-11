@@ -205,7 +205,7 @@ export function placeWaterfalls(world, A, taken = []) {
       const fo = sd * (ROAD_W + 0.45), fx = q.x - q.tz * fo, fz = q.z + q.tx * fo, H0 = 2.2, R0 = 0.95;
       const sh = new THREE.Shape(); sh.moveTo(-len / 2, -H0); sh.lineTo(len / 2, -H0); sh.lineTo(len / 2, 0); sh.lineTo(-len / 2, 0); sh.lineTo(-len / 2, -H0);
       const hole = new THREE.Path(); hole.moveTo(R0, -H0); hole.absarc(0, -H0 + 0.35, R0, 0, Math.PI, false); hole.lineTo(-R0, -H0); hole.lineTo(R0, -H0); sh.holes.push(hole);
-      const fg = new THREE.ExtrudeGeometry(sh, { depth: 0.5, bevelEnabled: false }); fg.translate(0, 0, -0.25); fg.rotateY(ang + Math.PI / 2); fg.translate(fx, q.e, fz); list.push(fg.toNonIndexed());
+      const fg = new THREE.ExtrudeGeometry(sh, { depth: 0.5, bevelEnabled: false }); fg.translate(0, 0, -0.25); fg.rotateY(ang + Math.PI / 2); fg.translate(fx, q.e, fz); list.push(fg.index ? fg.toNonIndexed() : fg);
       const back = new THREE.PlaneGeometry(R0 * 2, R0 + 0.35); back.translate(0, -H0 + (R0 + 0.35) / 2, 0); back.rotateY(ang + Math.PI / 2); back.translate(q.x - q.tz * sd * (ROAD_W - 0.4), q.e, q.z + q.tx * sd * (ROAD_W - 0.4)); dark.push(back);
     }
     const m = new THREE.Mesh(mergeGeometries(list.map(g => g.index ? g.toNonIndexed() : g)), stoneM); m.castShadow = true; m.receiveShadow = true; add(m); F.objs.push(m);
@@ -564,7 +564,7 @@ function wheelGeo(R) { // overshot wheel, axis = local x
   }
   L.push(new THREE.CylinderGeometry(0.26, 0.26, 1.3, 10).rotateZ(Math.PI / 2), new THREE.CylinderGeometry(0.1, 0.1, 2.2, 6).rotateZ(Math.PI / 2).translate(0.9, 0, 0));
   for (let k = 0; k < 20; k++) { const a = k / 20 * Math.PI * 2; L.push(new THREE.BoxGeometry(0.98, 0.07, 0.5).translate(0, R - 0.25, 0.08).rotateX(a)); }
-  return mergeGeometries(L.map(g => g.toNonIndexed()));
+  return mergeGeometries(L.map(g => g.index ? g.toNonIndexed() : g));
 }
 function spinWheel(W, time) {
   W.qx.setFromAxisAngle(W.ax, W.sign * time * 0.576); W.q.copy(W.base).multiply(W.qx);

@@ -493,7 +493,7 @@ export class WorldScene {
           const x = f.x[j] + tx * al - tz * off * side, z = f.z[j] + tz * al + tx * off * side;
           if (inT(x, z) && spl[vi(x, z) * 4] < 0.5 + r() * 0.3) continue;
           const rd = f.road(x, z); if (!rd || rd.d < ROAD_W + 0.5) continue;
-          const h = f.height(x, z); if (h < 2.2) continue;
+          const h = f.height(x, z); if (h < 2.2 || h > 500 + f.n2(x / 60, z / 60) * 60) continue; // no green tufts in the snow (Himmelsleiter)
           const patch = f.n2(x / 23, z / 23) * 0.5 + 0.5; // meadows are patchy: dense clumps, thin spots
           if (rd.d > ROAD_W + 2 && r() > 0.2 + 1.1 * patch) continue;
           const verge = rd.d < ROAD_W + 1.8; // mown strip next to the asphalt
@@ -871,7 +871,7 @@ export class WorldScene {
     for (const b of this.birds) { const c = b.userData.circle; c.y = Math.max(0, f.height(c.x, c.z)) + 25 + Math.random() * 30; }
     // trees by altitude: birch down by the water, pine on the slopes, crooked mountain birch at the tree line, juniper above.
     // Each species carries its altitude band (zone_m) from the Mac; groves, not an even sprinkle.
-    const trees = A.by.tree || [];
+    const trees = (A.by.tree || []).filter(e => !/bambus/.test(e.file)); // bamboo only in the East Asian sections (placed there)
     // no two trees alike: own height/width ratio, a slight lean, and a per-tree foliage tint (greener, darker, sun-bleached,
     // now and then an autumn-gold birch) as vertex colour, so static batching still merges them into one mesh per material
     const tintMat = new Map(), leafy = m => /leaf|leaves|blatt|laub|nadel|krone|foliage|canopy|needle/i.test((m.name || '') + (m.material?.name || ''))
@@ -1718,7 +1718,7 @@ function shrubGeometry() {
     for (let i = 0; i < 4; i++) { c.setRGB(0.07 + 0.17 * t, 0.12 + 0.2 * t, 0.03 + 0.06 * t); cols.push(c.r, c.g, c.b); }
     g.setAttribute('color', new THREE.Float32BufferAttribute(cols, 3));
     const N = g.attributes.normal; for (let i = 0; i < 4; i++) N.setXYZ(i, n.x, n.y, n.z);
-    parts.push(g.toNonIndexed());
+    parts.push(g.index ? g.toNonIndexed() : g);
   }
   return mergeGeometries(parts);
 }
