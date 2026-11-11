@@ -13,6 +13,12 @@ export async function loadAssets() {
   if (new URLSearchParams(location.search).has('fakeassets')) return new Assets(list.map(fake)); // layout test without the GLBs
   const loader = new GLTFLoader();
   list = list.filter(e => e.category !== 'rider'); // bike/hands for the riders: loaded by avatar.js
+  // variants from the Mac mini (thicker, thinner, other colours: "variant_of": base name) would triple the download:
+  // each ride loads only a few of them at random (?variants=N per base, default 1), so every ride looks a little different
+  const nv = +(new URLSearchParams(location.search).get('variants') ?? 1), groups = {};
+  for (const e of list) if (e.variant_of) (groups[e.variant_of] ||= []).push(e);
+  const keep = new Set(Object.values(groups).flatMap(g => g.sort(() => Math.random() - 0.5).slice(0, nv)));
+  list = list.filter(e => !e.variant_of || keep.has(e));
   const ok = await Promise.all(list.map(async e => {
     try {
       const g = await loader.loadAsync(new URL(e.file, base).href);
@@ -42,7 +48,10 @@ export class Assets {
   }
   get count() { return this.list.length; }
   has(cat) { return !!this.by[cat]?.length; }
-  find(part) { return this.list.find(e => e.file.split('/').pop().replace(/\.glb$/, '') === part) || this.list.find(e => e.file.includes(part)); } // exact name first: 'ritter' is not 'reiter_ritter'
+  find(part) { // exact name first ('ritter' is not 'reiter_ritter'); a base name may hand out one of its loaded variants
+    const base = this.list.find(e => e.file.split('/').pop().replace(/\.glb$/, '') === part && !e.variant_of);
+    if (base) { const v = this.list.filter(e => e.variant_of === part); return v.length && Math.random() < v.length / (v.length + 1) ? v[Math.floor(Math.random() * v.length)] : base; }
+    return this.list.find(e => e.file.split('/').pop().replace(/\.glb$/, '') === part) || this.list.find(e => e.file.includes(part) && !e.variant_of) || this.list.find(e => e.file.includes(part)); }
   pick(cat, r) { const l = this.by[cat]; return l?.length ? l[Math.floor(r() * l.length) % l.length] : null; }
   /** A placed copy. Returns { obj, mixer|null }; animations start at a random phase. */
   make(e, anim, r = Math.random) {
