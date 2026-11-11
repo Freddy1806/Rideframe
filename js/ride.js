@@ -131,6 +131,7 @@ export class RideSession {
     this.profile = el.querySelector('#hudProfile');
     { const mc = el.querySelector('#hMap'); this.minimap = new MiniMap(mc, this.track, this.player?.field?.pose ? d => this.player.field.pose(d) : null); if (!this.minimap.ok) mc.parentElement.remove(); }
     this.q = s => el.querySelector(s);
+    this._wireWorkoutStop();
     el.querySelector('#hCam')?.addEventListener('click', () => this._cycleView());
     el.querySelector('#hBar')?.addEventListener('click', () => this._toggleBar());
     el.querySelector('#hWide')?.addEventListener('click', () => this._lens(-1, true));
@@ -165,7 +166,7 @@ export class RideSession {
           <button class="chip glass camchip" id="hHudBtn" title="Anzeige wählen (I)"><div class="label">Anzeige</div><div class="v">◧</div></button>
         </div>
       </div>
-      ${this.workout ? `<div class="wpanel glass" id="hWork"><div class="label" id="hWName">${esc(this.workout.name)}${this.erg ? ' · ERG' : ''}</div>
+      ${this.workout ? `<div class="wpanel glass" id="hWork"><div class="whead"><div class="label" id="hWName">${esc(this.workout.name)}${this.erg ? ' · ERG' : ''}</div><button class="wstop" id="hWStop" title="Workout früher beenden">Beenden</button></div><div class="wask" id="hWAsk" hidden><div class="label">Workout beenden?</div><button class="btn small" id="hWFree">Frei weiterfahren</button><button class="btn ghost small" id="hWSave">Fahrt speichern &amp; beenden</button><button class="btn ghost small" id="hWNo">Zurück</button></div>
         <div class="wstep" id="hWStep">–</div><div class="wtarget num"><span id="hWT">–</span><small>W</small><span class="wleft num" id="hWLeft"></span></div>
         <div class="wnext" id="hWNext"></div><div id="hWChart">${workoutSVG(this.workout, 0)}</div></div>` : ''}
       <div class="minimap glass" data-hud="map"><canvas id="hMap"></canvas></div>
@@ -360,6 +361,7 @@ export class RideSession {
       }
     }
     this._workoutHUD(pShow);
+    this._photoTick();
     this._others(ghostD);
     drawHudProfile(this.profile, this.track, this.d, ghostD);
     if (this.minimap?.ok && (!this._mapT || performance.now() - this._mapT > 150)) { // ~7 per second is plenty for a map
@@ -403,6 +405,20 @@ export class RideSession {
     }
   }
 
+  /** "Beenden" in the workout panel: stop the workout and ride on freely, or end and save the ride */
+  _wireWorkoutStop() {
+    const q = this.q, ask = q('#hWAsk'); if (!ask) return;
+    q('#hWStop').onclick = () => { ask.hidden = false; };
+    q('#hWNo').onclick = () => { ask.hidden = true; };
+    q('#hWSave').onclick = () => this._end(true);
+    q('#hWFree').onclick = () => {
+      this._wName = this.workout.name + ' (früher beendet)'; this.workout = null; this.wNow = null;
+      if (this.erg) this.state.trainer.setPower(null);
+      q('#hWork')?.remove(); q('.metric.power')?.classList.remove('z-lo', 'z-ok', 'z-hi');
+      this._flash('Workout beendet · frei weiterfahren');
+    };
+  }
+
   _workoutHUD(pShow) {
     const w = this.wNow, q = this.q; if (!this.workout || !w || !q('#hWork')) return;
     if (w.done) { q('#hWStep').textContent = 'Geschafft – frei weiterfahren'; q('#hWT').textContent = '✓'; q('#hWLeft').textContent = ''; q('#hWNext').textContent = ''; }
@@ -417,11 +433,34 @@ export class RideSession {
     if (!this._wT || this.elapsed - this._wT > 2) { this._wT = this.elapsed; q('#hWChart').innerHTML = workoutSVG(this.workout, this.elapsed); }
   }
 
+  /** share photos of you on the bike: after 800 m, then every 4 km; the highest spot (best view) is used later */
+  _photoTick() {
+    if (!this.player?.snapshot || this.paused || this.finished) return;
+    const rd = this.d - this.startD; this._nextShot ??= 800;
+    if (!this._shotArm && rd >= this._nextShot) { this._nextShot += 4000; this._shotArm = performance.now(); }
+    if (this._shotArm && !this._shooting && performance.now() - this._shotArm > 1200) this._takePhoto();
+  }
+  /** arms your rider, waits for it to be drawn, takes the picture; resolves when stored */
+  async _takePhoto() {
+    this._shooting = true; this._shotArm ||= performance.now(); if (this.finished) this._others(null);
+    while (performance.now() - this._shotArm < 1200) await new Promise(r => setTimeout(r, 100));
+    try {
+      const d = this.d, cv = await Promise.race([this.player.snapshot(), new Promise((_, no) => setTimeout(() => no(new Error('timeout')), 3000))]);
+      (this.photos ||= []).push({ d, y: this.player.field?.pose(d).y || 0, url: cv.toDataURL('image/jpeg', 0.88) });
+      if (this.photos.length > 6) this.photos.splice(this.photos.reduce((m, p, i, a) => p.y < a[m].y ? i : m, 0), 1);
+    } catch {} finally { this._shotArm = 0; this._shooting = false; this.player._shot = null; }
+  }
+  /** best photo for the share image (highest spot); takes one now when the ride had none */
+  async bestPhoto() {
+    if (!this.photos?.length && this.player?.snapshot) await this._takePhoto();
+    return this.photos?.length ? this.photos.reduce((a, b) => b.y >= a.y ? b : a).url : null;
+  }
+
   /** group ride and ghost: riders in the 3D world, gaps in the group chip */
   _others(ghostD) {
     const list = [];
     const look = this.state.settings.look || null;
-    if ((this.state.settings.view3d || 0) === 1) list.push({ id: 'me', self: true, d: this.d, v: this.paused ? 0 : this.v, look });
+    if ((this.state.settings.view3d || 0) === 1 || this._shotArm) list.push({ id: 'me', self: true, d: this.d, v: this.paused ? 0 : this.v, look });
     if (this.ghost && ghostD != null) list.push({ id: 'ghost', ghost: true, look: this.ghost.look || look, name: this.ghostName || (this.state.settings.ghost === 'last' ? 'Letzte Fahrt' : 'Bestzeit'), d: ghostD + (this.ghost.startD || 0), v: this.v, color: 0x9aa3ad });
     if (this.group) {
       this.group.update({ look, d: this.d, v: this.v, w: this.power, hr: this.hr, riding: !this.paused, done: this.finished });
@@ -541,7 +580,7 @@ export class RideSession {
     const pw = this.samples.map(s => s[2]);
     return {
       id: uid(), routeId: this.route.id, date: Date.now(), complete,
-      duration: Math.round(this.elapsed), distance: Math.round(this.d - this.startD), gain: Math.round(this.gainAcc), startD: Math.round(this.startD), workout: this.workout?.name || undefined,
+      duration: Math.round(this.elapsed), distance: Math.round(this.d - this.startD), gain: Math.round(this.gainAcc), startD: Math.round(this.startD), workout: this.workout?.name || this._wName || undefined,
       avgPower: pw.length ? Math.round(pw.reduce((a, b) => a + b, 0) / pw.length) : 0,
       maxPower: Math.max(0, ...pw), best5: bestAvg(pw, 300), best20: bestAvg(pw, 1200),
       samples: this.samples,
@@ -574,9 +613,15 @@ export class RideSession {
         <div><div class="label">Höhenmeter</div><div class="v">${fmtNum(rec.gain)}<small>hm</small></div></div>
         <div><div class="label">Arbeit</div><div class="v">${fmtNum(rec.avgPower * rec.duration / 1000)}<small>kJ</small></div></div>
       </div>
-      <div class="row-actions"><button class="btn ghost" id="fStrava">Auf Strava hochladen</button><button class="btn" id="fDone">Fertig</button></div></div>`;
+      <div class="row-actions"><button class="btn ghost" id="fShare">Bild zum Teilen</button><button class="btn ghost" id="fStrava">Auf Strava hochladen</button><button class="btn" id="fDone">Fertig</button></div></div>`;
     this.el.append(o);
     o.querySelector('#fDone').onclick = () => this._close(true);
+    o.querySelector('#fShare').onclick = async e => {
+      const b = e.currentTarget, t = b.textContent; b.disabled = true; b.textContent = 'Bild wird gemacht …';
+      try { const { shareModal } = await import('./shareimg.js'); await shareModal({ rec, route: this.route, track: this.track, photo: await this.bestPhoto(), pose: this.player?.field?.pose ? d => this.player.field.pose(d) : null, pb: !!(prev && (!prev.length || rec.duration < prev[0].duration)) }); }
+      catch (err) { import('./app.js').then(m => m.toast('Bild ging nicht: ' + (err.message || err), 5000)); }
+      b.disabled = false; b.textContent = t;
+    };
     o.querySelector('#fStrava').onclick = e => stravaButton(e.currentTarget, rec, this.route.name, d => eleAt(this.track, d));
   }
 

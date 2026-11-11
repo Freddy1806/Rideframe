@@ -1008,6 +1008,8 @@ export class WorldScene {
   }
   /** 0 = rider's eyes, 1 = chase view from behind and above, 2 = looking back */
   setView(v) { this.view = v; this.lookPos = null; }
+  /** one picture of you on the bike for the share image (next frame); resolves with a 1080×810 canvas */
+  snapshot() { return new Promise(res => { this._shot = res; }); }
   setCockpit(on) { this.showCockpit = on; }
   /** other riders (group ride, ghost): [{ id, name, d, v }] */
   setRiders(list) { (this.riders ||= new Riders(this.scene, this.field)).set(list); }
@@ -1035,6 +1037,11 @@ export class WorldScene {
     if (this.shakeImpulse > 0.01 && !this.instant) { const t = performance.now() / 1000, a = this.shakeImpulse * 0.014; // explosions (siege.js)
       this.camera.rotation.x += Math.sin(t * 41) * a + Math.sin(t * 17) * a * 0.5; this.camera.rotation.y += Math.sin(t * 33) * a * 0.6; this.camera.rotation.z += Math.sin(t * 27) * a * 0.7;
       this.shakeImpulse *= Math.exp(-dt * 2.8); }
+    if (this._shot) { // share photo: you from the front-left, a few metres ahead, the landscape behind you
+      const t = this.field.pose(d, 1.2, 1.0), c = this.field.pose(d + 7.5, -0.4, 1.8), y = Math.max(c.y, this.field.height(c.x, c.z) + 1.2);
+      this.camera.position.set(c.x, y, c.z); this.camera.rotation.set(0, 0, 0); this.camera.lookAt(t.x, t.y + 0.15, t.z);
+      this.camera.fov = 52; this.camera.updateProjectionMatrix();
+    }
     if (this.debugTop) { this.camera.position.set(cam.x, cam.y + this.debugTop, cam.z + 0.01); this.camera.lookAt(cam.x, cam.y, cam.z); } // test view from above
     return cam;
   }
@@ -1132,7 +1139,7 @@ export class WorldScene {
     this.light.target.position.set(cam.x - this.sunDir.x * 40, cam.y, cam.z - this.sunDir.z * 40);
     this.sky.position.copy(this.camera.position);
     this.roadBlur.value = Math.max(0, Math.min(1, ((this.speed || 0) * 3.6 - 12) / 50));
-    this.streaks.position.copy(this.camera.position); this.streaks.quaternion.copy(this.camera.quaternion); this.streaks.userData.tick(dt, this.speed || 0, this.view === 2 ? 0 : this.fast || 0);
+    this.streaks.position.copy(this.camera.position); this.streaks.quaternion.copy(this.camera.quaternion); this.streaks.userData.tick(dt, this.speed || 0, this.view === 2 || this._shot ? 0 : this.fast || 0);
     this.water.position.x = Math.round(cam.x / 100) * 100; this.water.position.z = Math.round(cam.z / 100) * 100;
     this.water.material.uniforms.time.value = time * 0.6; this.grassTime.value = time; TIME.value = time;
     { const sd = this.sky.material.uniforms.sunPosition.value, g = this.sunGlow, veil = this.weather?.veil || 0;
@@ -1148,6 +1155,12 @@ export class WorldScene {
     // scene graph once per frame: otherwise the water mirror pass walks every matrix a second time
     this.scene.matrixWorldAutoUpdate = true; this.scene.updateMatrixWorld(); this.scene.matrixWorldAutoUpdate = false;
     if (this.composer && this.useAO) this.composer.render(); else r.render(this.scene, this.camera);
+    if (this._shot) { // grab right after drawing (same task, so the buffer is still there without preserveDrawingBuffer)
+      const done = this._shot; this._shot = null; const k = this.c.width, h = this.c.height, cw = Math.min(k, h * 4 / 3), ch = cw * 3 / 4;
+      const out = document.createElement('canvas'); out.width = 1080; out.height = 810;
+      out.getContext('2d').drawImage(this.c, (k - cw) / 2, (h - ch) / 2, cw, ch, 0, 0, 1080, 810);
+      this._applyLens(); this.camera.updateProjectionMatrix(); done(out);
+    }
     this._calls = r.info.render.calls; this._tris = r.info.render.triangles;
   }
 
@@ -1159,7 +1172,7 @@ export class WorldScene {
     this.falls?.update(time, dt, cam);
     this.events?.update(time, dt, cam, this.d);
     this.siege?.update(time, dt, cam, this.d);
-    if (this.cockpit) { this.cockpit.visible = !this.view && this.showCockpit !== false && this.camera.fov >= 40; /* narrow lens: forearms would fill the frame */ if (this.cockpit.visible) this.cockpitMixer?.update(Math.min(dt, 0.1) * (0.4 + Math.min(this.speed || 0, 14) / 8)); /* legs capped at a real cadence: at preview speeds they strobe and seem to pedal backwards */ }
+    if (this.cockpit) { this.cockpit.visible = !this.view && !this._shot && this.showCockpit !== false && this.camera.fov >= 40; /* narrow lens: forearms would fill the frame */ if (this.cockpit.visible) this.cockpitMixer?.update(Math.min(dt, 0.1) * (0.4 + Math.min(this.speed || 0, 14) / 8)); /* legs capped at a real cadence: at preview speeds they strobe and seem to pedal backwards */ }
     // show only what is near (draw calls), animate only what is close
     if (!this._cullT || time - this._cullT > 0.5 || this.instant) {
       this._cullT = time;

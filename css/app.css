@@ -358,3 +358,14 @@ input[type=number]::-webkit-inner-spin-button, input[type=number]::-webkit-outer
 .ride.ue-live { background: #0b0b0b; }
 .ride.ue-live::before { content: 'Bild läuft in Unreal'; position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); color: rgba(255,255,255,.35); font-size: 15px; letter-spacing: .08em; text-transform: uppercase; pointer-events: none; }
 .pill[hidden] { display: none; }
+.wpanel .whead { display: flex; align-items: center; gap: 8px; }
+.wpanel .wstop { margin-left: auto; font-size: 10px; font-weight: 800; text-transform: uppercase; letter-spacing: .08em; padding: 4px 8px; border: 1px solid var(--line-2); border-radius: 999px; color: var(--muted); background: none; cursor: pointer; }
+.wpanel .wstop:hover { color: var(--fg, #f4f4ef); border-color: var(--accent); }
+.wpanel .wask { display: grid; gap: 6px; margin: 10px 0; }
+.wpanel .wask[hidden] { display: none; }
+.vertag { margin-left: 10px; font-size: 10px; font-weight: 700; letter-spacing: .06em; color: var(--muted); background: none; border: 0; padding: 2px 4px; cursor: pointer; align-self: center; }
+.vertag.new { color: #0b0b0b; background: var(--accent); border-radius: 999px; padding: 3px 9px; }
+.sharebox .box { width: min(520px, 94vw); padding: 18px; max-height: 96vh; overflow: auto; }
+.sharebox img { width: 100%; display: block; border-radius: 6px; }
+.sharebox .actions { margin-top: 14px; }
+.sharebox .hint { font-size: 12px; margin-top: 10px; }

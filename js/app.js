@@ -78,6 +78,23 @@ async function boot() {
     else if (params.get('join')) groupModal({ code: params.get('join'), startRide });
   })();
   db.persist();
+  showVersion();
+}
+
+/** version next to the logo; checks every 10 min whether the host has a newer one (then: click to reload) */
+async function showVersion() {
+  const tag = $('#verTag'); if (!tag) return;
+  const read = () => fetch('version.json', { cache: 'no-store' }).then(r => r.json()).then(j => j.version).catch(() => null);
+  const mine = await read(); if (!mine) return;
+  tag.textContent = 'v' + mine; tag.title = 'RIDEFRAME Version ' + mine;
+  tag.onclick = () => toast('RIDEFRAME Version ' + mine, 3000);
+  setInterval(async () => {
+    const now = await read();
+    if (now && now !== mine && !document.querySelector('.ride')) {
+      tag.textContent = 'Update ' + now + ' · neu laden'; tag.classList.add('new'); tag.title = 'Neue Version auf dem Server, klicken zum Laden';
+      tag.onclick = () => location.reload();
+    }
+  }, 10 * 60e3);
 }
 
 async function reload() {
