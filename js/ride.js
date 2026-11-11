@@ -205,8 +205,9 @@ export class RideSession {
     return g >= 0 ? g * s.difficulty / 100 : g * s.downhill / 100;
   }
   _trainerGrade() {
-    const g = this._roadGrade();
+    let g = this._roadGrade();
     if (this.wiz?.state === 'hell') return this._wizGrade(g); // the wizard's hell: the road feels steeper
+    const dk = this._draftK || 0; if (dk > 0.01) g -= 0.5 * this.params.rho * this.params.cda * dk * this.v * this.v / (this.params.mass * 9.81) * 100; // the trainer eases off in the slipstream too
     if (!this.virtual) return g;
     const t = this.state.trainer, k = this.gears[this.gi].ratio / this.realGear.ratio;
     const ws = t.data?.speed > 0.5 ? t.data.speed : Math.max(1, this.v / k);
@@ -287,7 +288,9 @@ export class RideSession {
     if (!this.paused && !this.finished) {
       this._readInputs(); this._autoShift(dt);
       const g = gradeAt(this.track, this.d);
-      this.v = physStep(this.v, this.power, g, dt, this.params);
+      // drafting (group ride, Freddy: Windschatten zu zweit): right behind a friend you need up to a third less power
+      const dk = this._draftTo || 0; this._draftK = (this._draftK || 0) + (dk - (this._draftK || 0)) * Math.min(1, dt * 1.5);
+      this.v = physStep(this.v, this.power, g, dt, this._draftK > 0.01 ? { ...this.params, cda: this.params.cda * (1 - this._draftK) } : this.params);
       this.d = Math.min(this.track.length, this.d + this.v * dt);
       this.elapsed += dt;
       const e = eleAt(this.track, this.d); if (e > this.lastEle) this.gainAcc += e - this.lastEle; this.lastEle = e;
@@ -609,6 +612,12 @@ export class RideSession {
       const os = this.group.others();
       const vc = this.group.voice?.on ? this.group.voice : null;
       for (const r of os) list.push({ id: r.id, name: r.name, d: r.d, v: r.riding ? r.v : 0, look: r.look, speaking: !!vc?.isSpeaking(r.pid) });
+      { let k = 0, who = null; // the slipstream: 33 % less drag up to 1.5 m behind a riding friend, gone at 8 m (only on the flat and fast, below ~4 m/s it hardly matters)
+        for (const r of os) { const gap = r.d - this.d; if (!r.riding || r.done || gap < 0.3 || gap > 8) continue;
+          const kk = 0.33 * Math.min(1, 1 - (gap - 1.5) / 6.5) * Math.min(1, Math.max(0, (this.v - 2) / 4)); if (kk > k) { k = kk; who = r.name; } }
+        this._draftTo = k;
+        if (k > 0.15 && !this._drafting && (this.elapsed - (this._draftMsgT ?? -99)) > 90) { this._draftMsgT = this.elapsed; this._flash?.(`Windschatten von ${who || 'deinem Mitfahrer'} · bis 30 % weniger Kraft`); }
+        this._drafting = k > 0.1; this.q?.('#hGroup')?.classList.toggle('drafting', this._drafting); }
       const gl = this.q?.('#hGroup .glist');
       if (gl) gl.innerHTML = os.length ? os.sort((a, b) => b.d - a.d).slice(0, 5).map(r => {
         const gap = r.d - this.d, txt = r.done ? 'im Ziel' : (gap >= 0 ? '+' : '−') + (Math.abs(gap) >= 1000 ? fmtKm(Math.abs(gap)) + ' km' : Math.round(Math.abs(gap)) + ' m');
