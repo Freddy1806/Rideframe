@@ -28,7 +28,6 @@ export class Surprises {
       { id: 'eagle', need: ['seeadler'], go: () => this._flyby('seeadler', 1, 'Screeech!') },
       { id: 'gulls', need: ['moewe'], go: () => this._flyby('moewe', 6) },
       { id: 'spray', need: [], sea: true, go: () => this._spray() },
-      { id: 'rainbow', need: [], go: () => this._rainbow() },
       { id: 'band', need: [], go: () => this._band() },
       { id: 'crowd', need: ['junge', 'maedchen', 'alte_frau', 'bauer_sense', 'wache'], go: () => this._crowd() },
     ];
@@ -60,6 +59,10 @@ export class Surprises {
     // fireworks: over the festival town and for the last few hundred metres
     if (this.festD > 0 && !this.festFired && d > this.festD - 260 && d < this.festD) { this.festFired = true; this._salvo(this.festD + 40, 7); }
     if (this.track.length - d < 450 && time > (this.fwNext || 0)) { this.fwNext = time + 0.7 + Math.random() * 0.8; this._salvo(Math.min(this.track.length - 5, d + 160), 1); }
+    // a rainbow only right after a shower (never out of a clear sky): when the rain has just stopped
+    const rain = this.w.weather?.rain || 0;
+    if (rain > 0.3) this.wet = true;
+    else if (this.wet && rain < 0.04 && !this.hell) { this.wet = false; if (!(this.bow && this.bow.busy())) setTimeout(() => (this.bow ||= new Rainbow(this.w.scene)).start(), 4000); }
     this._wizLife(dt, cam, d);
     this.fw.update(dt); this.fx.update(dt); this.smoke.update(dt, cam); this.bow?.update(dt, cam, this.f.at(Math.min(this.track.length - 1, d + 30)));
   }

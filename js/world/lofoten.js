@@ -1179,7 +1179,9 @@ export class WorldScene {
     const L = this.track.length || 40000, u = Math.max(0, Math.min(1, d / L));
     const rain = this.rainPlan.reduce((m, s) => Math.max(m, smooth(s.a - 700, s.a, d) * smooth(s.b + 500, s.b, d)), 0); // showers: at least one per ride, never the same
     const cover0 = Math.max(0.1, Math.min(0.8, 0.32 + 0.2 * Math.sin(d / 5200 + 1.3) + 0.1 * Math.sin(d / 1700 + 4) + 0.06 * Math.sin(time * 0.003)));
-    const cover = lerp(cover0, 0.95, rain), veil = Math.max(smooth(0.3, 0.95, 0.5 + 0.5 * Math.sin(d / 6100 + 2.6)) * (0.4 + 0.6 * cover0), rain * 0.95);
+    // the shower announces itself: from ~3 km before, the sky ahead closes up and darkens, so you see it coming
+    const pre = this.rainPlan.reduce((m, s) => Math.max(m, smooth(s.a - 3000, s.a - 700, d) * smooth(s.b + 500, s.b, d)), 0);
+    const cover = lerp(cover0, 0.95, Math.max(rain, pre * 0.85)), veil = Math.max(smooth(0.3, 0.95, 0.5 + 0.5 * Math.sin(d / 6100 + 2.6)) * (0.4 + 0.6 * cover0), rain * 0.95, pre * 0.55);
     const s = sunAt(u, this.sunDir), low = 1 - Math.max(0, Math.min(1, (s.y - 0.035) / (0.113 - 0.035)));
     const su = this.sky.material.uniforms;
     su.sunPosition.value.copy(s); su.uCover.value = cover; su.uVeil.value = veil; su.uLow.value = low;
@@ -1219,7 +1221,7 @@ export class WorldScene {
       su.uCover.value = lerp(su.uCover.value, 1, hk * 0.9); su.uVeil.value = lerp(su.uVeil.value, 1, hk * 0.9);
       this.clouds.material.uniforms.uCover.value = lerp(cover, 1, hk); this.cumulus.material.uniforms.uCover.value = lerp(cover, 1, hk);
     }
-    this.weather = { cover, veil, rain, hell: hk, sunEl: THREE.MathUtils.radToDeg(Math.asin(s.y)) };
+    this.weather = { cover, veil, rain, pre, hell: hk, sunEl: THREE.MathUtils.radToDeg(Math.asin(s.y)) };
   }
 
   _setQuality(q) {
