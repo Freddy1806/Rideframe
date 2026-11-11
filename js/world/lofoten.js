@@ -29,6 +29,8 @@ import { GTAOPass } from '../../vendor/jsm/postprocessing/GTAOPass.js';
 import { OutputPass } from '../../vendor/jsm/postprocessing/OutputPass.js';
 import { clumpGeometry, grassMaterial, grassColor } from './grass.js';
 const ASSETS = await loadAssets();
+// group templates from the Mac mini (herds, a band with its audience): [{ name, kind, radius_m, members: [{ file, x, z, rot, anim, phase }] }]
+const GROUPS = typeof fetch === 'undefined' ? [] : await fetch(new URL('../../assets/world/gruppen.json', import.meta.url)).then(r => r.ok ? r.json() : []).catch(() => []);
 
 const TILE = 192;             // terrain tile size (m)
 const VIEW = 2000;            // tiles kept within this radius
@@ -630,6 +632,19 @@ export class WorldScene {
       return obj;
     };
     const pick = (cat) => A.pick(cat, r), byName = part => A.find(part);
+    /** a group template at d, centre offset off (local x along the road, local +z towards the road); members whose variant
+     *  is not loaded this ride fall back to their base model. Returns how many members stood. */
+    const placeGroup = (g, d, off) => {
+      if (!g) return 0; let n = 0; const side = Math.sign(off) || 1;
+      for (const m of g.members || []) {
+        const stem = m.file.split('/').pop().replace(/\.glb$/, '');
+        const e = A.list.find(x => x.file.endsWith(m.file)) || A.find(stem.replace(/_v\d+$/, '')); if (!e) continue;
+        if (place(e, d + m.x, off - side * m.z, { rot: side > 0 ? m.rot : -m.rot, anim: m.anim, overlap: true, radK: 0.3, gap: 1 } /* front (+Z) towards the road plus the template's turn, mirrored on the other side */)) n++;
+      }
+      return n;
+    };
+    const groupOf = kind => { const l = GROUPS.filter(g => g.kind === kind); return l.length ? l[Math.floor(r() * l.length)] : null; };
+    let bandDone = false;
     const festSeg = segs.filter(s => s.village).sort((p, q) => (q.to - q.from) * (q.village[1] - q.village[0]) - (p.to - p.from) * (p.village[1] - p.village[0]))[0];
     const segAt = d => segs.find(s => d >= s.from && d < s.to) || segs[segs.length - 1];
 
@@ -727,7 +742,9 @@ export class WorldScene {
             const fl = byName('flechtzaun'); if (fl) { const len = Math.max(fl.size[0], fl.size[2]) * 0.97, turn = fl.size[0] > fl.size[2] ? Math.PI / 2 : 0;
               for (let k = 0; k * len < 30; k++) place(fl, d - 15 + k * len, ROAD_W + 6, { face: 'along', rot: turn, gap: 1, radK: 0.3, overlap: true }); }
             const idle = A.by.figure_idle || []; if (idle.length && r() < 0.8) place(idle[Math.floor(r() * idle.length)], d + 8, back - 3, { face: 'road', gap: 1, radK: 0.5, anim: 'Stehen' });
-            for (let k = 0, an = r() < 0.5 ? byName('pferd') : byName('schaf'); k < 3; k++) place(an, d - 30 + r() * 20, back + 12 + r() * 14, { face: r() * 6.28, anim: 'Grasen', radK: 0.6, gap: 3 });
+            const herd = groupOf('herd'); // a whole flock or paddock from the templates, else three animals
+            if (!herd || !placeGroup(herd, d - 22, back + 14 + (herd.radius_m || 6)))
+              for (let k = 0, an = r() < 0.5 ? byName('pferd') : byName('schaf'); k < 3; k++) place(an, d - 30 + r() * 20, back + 12 + r() * 14, { face: r() * 6.28, anim: 'Grasen', radK: 0.6, gap: 3 });
           } else if (s.land === 'coast') { // at the shore: a moored boat, a fisher mending nets, a stack of barrels
             const w = waterline(d, -1, 8); if (w === null) continue;
             place(byName('fischerboot') || byName('nordlandboot'), d, -(w + 7), { water: true, y: 0.12, face: 'along' });
@@ -735,6 +752,8 @@ export class WorldScene {
             place(byName('faesser_kisten'), d - 6, -(w - 2.5), { gap: 1, radK: 0.5 });
           } else place(byName('hjell'), d, ROAD_W + 10 + r() * 8, { face: 'along' });
         }
+        if (!bandDone && s.to - s.from > 2500) { const band = groupOf('band'); // once per ride a band plays at the roadside, its audience in front
+          if (band && placeGroup(band, (s.from + s.to) / 2, ROAD_W + 2 + (band.radius_m || 6))) bandDone = true; }
         if (s.land === 'coast') for (let d = s.from + 1500; d < s.to - 500; d += 3500 + r() * 2500) { // whale offshore (shown when it surfaces)
           const off = 150 + r() * 110, q = spot(d, -off); if (f.height(q.x, q.z) >= -6) continue;
           const w = place(byName('buckelwal'), d, -off, { water: true, y: 0, face: 'along', overlap: true });
