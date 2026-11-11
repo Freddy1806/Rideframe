@@ -35,7 +35,10 @@ function dispose(o) { // shared kit geometry/materials (bike.glb, hands.glb) sta
 }
 
 // lateral lanes for other riders next to your line (1.2 m right of centre, asphalt ±3.3 m): 1.1 m apart = shoulder to shoulder
-const LANES = [-1.1, 1.1, -2.2, 2.0, -3.3];
+// rows of two: one friend next to you (your line is 1.2 m right of the centre, the slot 0.1 m), everyone else
+// in rows 2.5 m behind; nobody ever rides on the edge line (asphalt ends at 3.3 m, line at 2.8-2.92 m)
+const SLOTS = [[-1.1, 0], [0, 1], [-1.1, 1], [0, 2], [-1.1, 2], [0, 3], [-1.1, 3]];
+const ROW_GAP = 2.5;
 const SIDE_LOCK = 1.5, SIDE_FREE = 4; // within 1.5 m: exactly alongside; from 4 m: true gap
 const smooth = (a, b, x) => { const t = Math.min(1, Math.max(0, (x - a) / (b - a))); return t * t * (3 - 2 * t); };
 
@@ -54,7 +57,7 @@ export class Riders {
       const key = JSON.stringify([r.look || null, !!r.ghost, r.name || '']);
       if (e && e.key !== key) { this.scene.remove(e.obj); dispose(e.obj); e.obj = null; }
       if (!e) {
-        e = { d: r.d, shown: r.d, v: 0, crank: Math.random() * 6, color: r.color ?? COLORS[this.n % COLORS.length], lane: r.self ? 0 : LANES[this.n % LANES.length] };
+        e = { d: r.d, shown: r.d, v: 0, crank: Math.random() * 6, color: r.color ?? COLORS[this.n % COLORS.length], lane: r.self ? 0 : SLOTS[this.n % SLOTS.length][0], row: r.self ? 0 : SLOTS[this.n % SLOTS.length][1] };
         if (!r.self) this.n++;
         this.list.set(r.id, e);
       }
@@ -85,7 +88,7 @@ export class Riders {
       // side by side: a friend within a bike length or two is drawn exactly level with you (wheel by wheel, no
       // jitter from network lag); further back or ahead the real gap shows again, blended in so nothing jumps
       const gap = e.shown - ownD, ag = Math.abs(gap);
-      const at = e.self || e.ghost ? e.shown : ownD + gap * smooth(SIDE_LOCK, SIDE_FREE, ag);
+      const k = smooth(SIDE_LOCK, SIDE_FREE, ag), at = e.self || e.ghost ? e.shown : ownD + gap * k - e.row * ROW_GAP * (1 - k);
       // own lane, eased: no rider ever shares your line, so nobody rides through the camera
       const lat = 1.2 + e.lane; e.lat = e.lat == null ? lat : e.lat + (lat - e.lat) * Math.min(1, dt * 2);
       const p = this.field.pose(Math.max(0, at), e.lat, 0);

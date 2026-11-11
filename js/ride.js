@@ -427,7 +427,7 @@ export class RideSession {
       }).join('') : '<div class="grow"><span>Noch niemand da</span></div>';
     }
     if (list.length || this._hadRiders) { this.player?.setRiders?.(list); this._hadRiders = list.length > 0; }
-    // the Unreal view draws the same friends and ghost (lanes: same order as js/world/riders.js LANES, by first appearance)
+    // the Unreal view draws the same friends and ghost (lanes: same order as js/world/riders.js SLOTS (lane + row 2.5 m back), by first appearance)
     this._ueRiders = list.filter(r => !r.self).map(r => ({ id: r.id, name: r.name || '', d: Math.round(r.d * 10) / 10, v: Math.round((r.v || 0) * 10) / 10, ghost: !!r.ghost }));
   }
 
@@ -481,8 +481,8 @@ export class RideSession {
   }
   _lens(dir, wrap = false) { // [ wider, ] narrower (5° steps); the HUD button steps wider and wraps back to normal
     if (!this.player.setFov) return;
-    const s = this.state.settings; let f = fovOf(s) + (wrap ? 15 : -dir * 5);
-    if (wrap && f > FOV_MAX) f = FOV_DEFAULT;
+    const s = this.state.settings, cur = fovOf(s), STEPS = [45, FOV_DEFAULT, 80, 95, FOV_MAX];
+    const f = wrap ? (STEPS.find(x => x > cur + 1) ?? STEPS[0]) : cur - dir * 5; // button: 45 → 62 → 80 → 95 → 110 → 45
     s.fov = Math.max(FOV_MIN, Math.min(FOV_MAX, f)); s.lensMm = 0; this.player.setFov(s.fov);
     this._flash(`Sichtfeld ${s.fov}°`); import('./app.js').then(m => m.saveSettings());
   }
