@@ -79,6 +79,7 @@ export function placeWaterfalls(world, A, taken = []) {
   const sodMap = grassGround(); sodMap.repeat.set(0.35, 0.35);
   const sod = new THREE.MeshStandardMaterial({ color: 0xa8c87a, roughness: 1, map: sodMap });
   const stoneM = new THREE.MeshStandardMaterial({ color: 0x9a948a, roughness: 0.95, map: stone() });
+  const culvert = new THREE.MeshBasicMaterial({ color: 0x0c0d0e, side: THREE.DoubleSide }); // the dark inside under the bridge
 
   const add = (o, mirror) => { if (!mirror) o.traverse(c => c.layers.set(1)); scene.add(o); freeze(o); return o; };
   const fall = (kind, d, side, x, z, range, info) => { const F = { kind, d, side, x, z, range, objs: [], loud: kind === 'big' ? 1 : kind === 'mill' ? 0.8 : 0.5, ...info }; falls.push(F); return F; };
@@ -172,6 +173,48 @@ export function placeWaterfalls(world, A, taken = []) {
   return { list: falls, update };
 
   // ---------------- builders (closures over the world) ----------------
+  /** Brook from (ex, ez) to the road, a little stone bridge where it passes under (parapets on both sides, an arched
+   *  culvert face on each bank) and the brook running on downhill on the far side until it reaches the sea or flattens out. */
+  function brookBridge(F, side, ex, ez, w0 = 1.5) {
+    const at = f.road(ex, ez); if (!at || at.d > 34) return false;
+    const db = at.i * DS, q = frame(db), edge = sd => { const o = sd * (ROAD_W + 0.6); return [q.x - q.tz * o, q.z + q.tx * o]; };
+    const [rx, rz] = edge(side), n = Math.max(2, Math.ceil(Math.hypot(ex - rx, ez - rz) / 1.5)), near = [];
+    for (let k = 0; k <= n; k++) { const u = k / n, bend = Math.sin(u * Math.PI) * 1.2, x = lerp(ex, rx, u) - q.tx * bend, z = lerp(ez, rz, u) - q.tz * bend;
+      near.push({ x, z, y: H(x, z) + 0.12, w: lerp(w0, w0 + 0.4, u), st: 0.14, fade: 1 }); }
+    const parts = [ribbon(near, 1.3 + F.d % 7)];
+    // far side: start under the bridge, then follow the slope down
+    const rows = []; let [x, z] = edge(-side), y0 = Math.min(q.e - 0.2, H(x, z) + 0.1), dx = -side * -q.tz, dz = -side * q.tx;
+    rows.push({ x, z, y: y0, w: w0 + 0.5, st: 0.12, fade: 1 });
+    for (let k = 0; k < 40; k++) {
+      const h0 = H(x, z), gx = (H(x + 3, z) - h0) / 3, gz = (H(x, z + 3) - h0) / 3, sl = Math.hypot(gx, gz);
+      if (k > 2 && sl > 0.02) { dx = lerp(dx, -gx / sl, 0.45); dz = lerp(dz, -gz / sl, 0.45); const l = Math.hypot(dx, dz) || 1; dx /= l; dz /= l; }
+      x += dx * 2.5; z += dz * 2.5; const h = H(x, z), rd = f.road(x, z);
+      if (rd && rd.d < ROAD_W + 2.5 && k > 3) break;
+      const last = h < 0.2 || k === 39; rows.push({ x, z, y: Math.max(0.05, Math.min(rows[rows.length - 1].y + 0.05, h + 0.1)), w: w0 + 0.5 + Math.min(1.2, k * 0.04), st: 0.1 + Math.min(0.5, sl * 0.8), fade: last ? 0 : 1 });
+      if (last) break;
+    }
+    if (rows.length > 2) parts.push(ribbon(rows, 2.5 + F.d % 5));
+    const wm = new THREE.Mesh(mergeGeometries(parts), wMat); wm.renderOrder = 2; add(wm); F.objs.push(wm);
+    // bridge: parapets with a cap on both sides, an arched stone face on each bank with a dark opening
+    const list = [], dark = [], ang = Math.atan2(q.tx, q.tz), len = 7;
+    for (const sd of [-1, 1]) {
+      const o = sd * (ROAD_W + 0.35), px = q.x - q.tz * o, pz = q.z + q.tx * o;
+      const bx = new THREE.BoxGeometry(0.45, 0.75, len); bx.rotateY(ang); bx.translate(px, q.e + 0.32, pz); list.push(bx);
+      const cap = new THREE.BoxGeometry(0.62, 0.12, len + 0.3); cap.rotateY(ang); cap.translate(px, q.e + 0.74, pz); list.push(cap);
+      for (const e of [-1, 1]) { const post = new THREE.BoxGeometry(0.6, 0.95, 0.6); post.rotateY(ang); post.translate(px + q.tx * e * len / 2, q.e + 0.42, pz + q.tz * e * len / 2); list.push(post); }
+      const fo = sd * (ROAD_W + 0.45), fx = q.x - q.tz * fo, fz = q.z + q.tx * fo, H0 = 2.2, R0 = 0.95;
+      const sh = new THREE.Shape(); sh.moveTo(-len / 2, -H0); sh.lineTo(len / 2, -H0); sh.lineTo(len / 2, 0); sh.lineTo(-len / 2, 0); sh.lineTo(-len / 2, -H0);
+      const hole = new THREE.Path(); hole.moveTo(R0, -H0); hole.absarc(0, -H0 + 0.35, R0, 0, Math.PI, false); hole.lineTo(-R0, -H0); hole.lineTo(R0, -H0); sh.holes.push(hole);
+      const fg = new THREE.ExtrudeGeometry(sh, { depth: 0.5, bevelEnabled: false }); fg.translate(0, 0, -0.25); fg.rotateY(ang + Math.PI / 2); fg.translate(fx, q.e, fz); list.push(fg.toNonIndexed());
+      const back = new THREE.PlaneGeometry(R0 * 2, R0 + 0.35); back.translate(0, -H0 + (R0 + 0.35) / 2, 0); back.rotateY(ang + Math.PI / 2); back.translate(q.x - q.tz * sd * (ROAD_W - 0.4), q.e, q.z + q.tx * sd * (ROAD_W - 0.4)); dark.push(back);
+    }
+    const m = new THREE.Mesh(mergeGeometries(list.map(g => g.index ? g.toNonIndexed() : g)), stoneM); m.castShadow = true; m.receiveShadow = true; add(m); F.objs.push(m);
+    const dm = new THREE.Mesh(mergeGeometries(dark), culvert); add(dm); F.objs.push(dm);
+    for (let k = 0; k < 3; k++) { const [x2, z2] = edge(-side); mist.push([x2 + (r() - .5) * 2, q.e - 1 + r(), z2 + (r() - .5) * 2, 1.2 + r(), 0.2, r(), 300]); }
+    F.bridge = Math.round(db);
+    return true;
+  }
+
   /** Rock step behind a pool, water sheet over its lip, foam pool, outflow along the road; mill: flume, wheel, house. */
   function buildStep(F, s, o) {
     const p = frame(s.d), nx = s.nx ?? -p.tz * s.s, nz = s.nz ?? p.tx * s.s, tx = nz * s.s, tz = -nx * s.s; // n away from the viewer, t across
@@ -183,6 +226,7 @@ export function placeWaterfalls(world, A, taken = []) {
     const half = o.mill ? aw + 2.2 : o.cliff ? 9 + r() * 4 : Math.max(o.wf / 2 + 2.5, 4 + r() * 3); // flat part of the step
     const bk = o.cliff ? 2.2 : 1; // block scale
     const outA = o.mill ? -1 : 1; // outflow along the road, away from the mill house
+    const brookE = W(outA * R * 0.7, -R * 0.75), brookOk = (q => !!q && q.d <= 34)(f.road(...brookE)); // outflow as a brook under a little bridge
     // rock step + pool rim as one terrain-material height field (rows: in front, the face, on top)
     const rows = [];
     for (const b of [-R - 3, -R - 2, -R - 1.2, -R - 0.5, -R + 0.3, -R * 0.5, 0, R * 0.5, R - 0.3, R + 0.3, bL - 0.5]) rows.push([b, 0]);
@@ -197,7 +241,7 @@ export function placeWaterfalls(world, A, taken = []) {
       const env = smooth(half + 4 + f.n2(a / 3, s.d) * 1.5, half - 0.5, Math.abs(a)), back = smooth(bL + 11, bL + 5, b);
       const top = Math.max(g, lipY - 0.5 + (b - bL) * 0.06 + (fr > 0 && fr < 1 ? 0 : f.n3(a / 2.3, b / 2.3) * 0.25 * smooth(0.5, 2, b - bL)));
       let y = lerp(g, top, fr * env * back), bump = y - g;
-      const dr = Math.hypot(a, b), ang = Math.atan2(b, a * outA), gap = smooth(0.35, 0.9, Math.abs(ang + 0.15)); // rim open where the outflow leaves
+      const dr = Math.hypot(a, b), ang = Math.atan2(b, a * outA), gap = smooth(0.35, 0.9, Math.abs(ang + (brookOk ? 0.82 : 0.15))); // rim open where the outflow leaves
       const rim = smooth(R + 1.7, R + 0.2, dr) * smooth(R - 0.7, R, dr) * gap * (fr ? 0 : 1);
       if (rim > 0) { const ry = poolY + 0.28 + f.n3(a * 1.3, b * 1.3) * 0.18; if (ry > y) { bump += (ry - y) * rim; y = lerp(y, ry, rim); } }
       if (dr < R - 0.4 && !fr) { y = Math.min(y, poolY - 0.5 - 0.6 * (1 - dr / R)); bump = 1; }
@@ -247,7 +291,10 @@ export function placeWaterfalls(world, A, taken = []) {
     sheet(0, o.wf, bL - 0.05, lipY + 0.12, poolY + 0.02, r() * 10);
     const impB = bL - v0 * T;
     parts.push(pool(W, 0, 0, R, 0, impB, poolY, [tx, tz], [nx, nz]));
-    { const rowsW = []; for (let k = 0; k <= 9; k++) { const a = outA * (R - 0.3 + k * 1.6), [x, z] = W(a, -0.4 - k * 0.15); rowsW.push({ x, z, y: H(x, z) + 0.12, w: lerp(1.3, 0.5, k / 9), st: 0.08, fade: k === 9 ? 0 : 1 }); }
+    if (brookOk && brookBridge(F, s.s, brookE[0], brookE[1], 1.3)) { // pool rim -> brook start
+      const rowsW = []; for (let k = 0; k <= 3; k++) { const u = k / 3, [x, z] = W(outA * R * lerp(0.4, 0.7, u), -R * lerp(0.4, 0.75, u)); rowsW.push({ x, z, y: k ? Math.max(H(x, z) + 0.12, poolY - 0.02 - u * 0.3) : poolY - 0.02, w: 1.3, st: 0.2, fade: 1 }); }
+      parts.push(ribbon(rowsW, r() * 10));
+    } else { const rowsW = []; for (let k = 0; k <= 9; k++) { const a = outA * (R - 0.3 + k * 1.6), [x, z] = W(a, -0.4 - k * 0.15); rowsW.push({ x, z, y: H(x, z) + 0.12, w: lerp(1.3, 0.5, k / 9), st: 0.08, fade: k === 9 ? 0 : 1 }); }
       rowsW[0].y = poolY - 0.02; parts.push(ribbon(rowsW, r() * 10)); }
     for (let k = 0; k < 8; k++) { const [x, z] = W((r() - .5) * o.wf * 1.6, impB + (r() - .5) * 1.6); mist.push([x, poolY + 0.4 + r() * 1.2, z, 2 + r() * 2.5, 0.32, r(), F.range]); }
     if (o.cliff) for (let k = 0; k < 12; k++) { const [x, z] = W((r() - .5) * 10, impB + (r() - .5) * 6); mist.push([x, poolY + 1 + r() * 6, z, 8 + r() * 10, 0.4 + r() * 0.2, r(), F.range]); }
@@ -369,19 +416,7 @@ export function placeWaterfalls(world, A, taken = []) {
     taken.push([F.x, F.z, Math.max(e.size[0], e.size[2]) * 0.55]);
     // the stream leaves the front edge at x ~ +15 (mill) / +5.7 (small): brook to the road, stone bridge parapets there
     const sx = kind === 'mill' ? 15 : 5.7, ex = obj.localToWorld(new THREE.Vector3(fz ? fex + sx * fz : fex, 0, fz ? fez : fez - sx * fx)), at = f.road(ex.x, ex.z);
-    if (at && at.d < 30) {
-      const db = at.i * DS, list = [], q = frame(db);
-      { const rowsW = [], rx = q.x - q.tz * s.s * (ROAD_W + 0.6), rz = q.z + q.tx * s.s * (ROAD_W + 0.6), n = Math.max(2, Math.ceil(Math.hypot(ex.x - rx, ex.z - rz) / 1.5));
-        for (let k = 0; k <= n; k++) { const x = lerp(ex.x, rx, k / n), z = lerp(ex.z, rz, k / n); rowsW.push({ x, z, y: H(x, z) + 0.12, w: 1.5, st: 0.12, fade: 1 }); }
-        const wm = new THREE.Mesh(ribbon(rowsW, 1.3), wMat); wm.renderOrder = 2; add(wm); F.objs.push(wm); }
-      for (const sd of [-1, 1]) { const off = sd * (ROAD_W + 0.35), x = q.x - q.tz * off, z = q.z + q.tx * off;
-        const bx = new THREE.BoxGeometry(0.45, 0.7, 5.5); bx.rotateY(Math.atan2(q.tx, q.tz)); bx.translate(x, q.e + 0.3, z); list.push(bx);
-        const cap = new THREE.BoxGeometry(0.6, 0.12, 5.7); cap.rotateY(Math.atan2(q.tx, q.tz)); cap.translate(x, q.e + 0.7, z); list.push(cap); }
-      const m = new THREE.Mesh(mergeGeometries(list), stoneM); m.castShadow = true; m.receiveShadow = true; add(m); F.objs.push(m);
-      // stream on the far side, running away from the road
-      const rowsW = []; for (let k = 0; k <= 10; k++) { const off = -s.s * (ROAD_W + 0.8 + k * 1.8), x = q.x - q.tz * off, z = q.z + q.tx * off; rowsW.push({ x, z, y: Math.min(q.e - 0.15, H(x, z)) + 0.1, w: lerp(1.6, 0.8, k / 10), st: 0.1, fade: k === 10 ? 0 : 1 }); }
-      const wm = new THREE.Mesh(ribbon(rowsW, 2.5), wMat); wm.renderOrder = 2; add(wm); F.objs.push(wm);
-    }
+    if (at && at.d < 30) brookBridge(F, s.s, ex.x, ex.z, 1.5);
     F.shot = s.d - 60;
     return F;
   }
