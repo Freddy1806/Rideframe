@@ -190,17 +190,22 @@ export class Surprises {
   _play(e, names) { if (!e.mixer) return; const c = names.map(n => this.A.clip(e.e, n)).find(Boolean); if (!c) return; e.mixer.stopAllAction(); e.mixer.timeScale = 1; e.mixer.clipAction(c).play(); }
 
   // ---- the surprises ----
-  _knight() { // a knight gallops up beside you, races you, then pulls away and turns off
+  _knight() { // a knight comes up from behind at HIS OWN pace (never matching yours); pass him and he takes up the race
     const side = this._landSide(this.w.d + 30); if (!side) return false;
-    const name = this.A.find('reiter_ritter') ? 'reiter_ritter' : 'pferd', d0 = this.w.d - 30; // comes up from behind you
-    let dd = 0;
+    const name = this.A.find('reiter_ritter') ? 'reiter_ritter' : 'pferd', d0 = this.w.d - 30;
+    const V = Math.max(6, (this.w.speed || 8) * 1.12 + 0.8); // a steady trot a bit above your speed now; it does not follow you
+    let dd = 0, met = 0, duel = 0, said = 0;
     const e = this._run(name, [['Rennen', 1], ['Trab', 1.7], ['Schritt', 2.6]], (t, v, dt) => {
-      if (t > 30 || d0 + dd > this.w.d + 160) return null;
-      dd += (t < 16 ? v + 2.2 : v + 3 + (t - 16) * 1.6) * dt;
-      return { d: d0 + dd, off: side * (ROAD_W + 3.5 + Math.max(0, t - 19) * 4), doff: t > 19 ? side * 2 : 0 };
+      const me = d0 + dd, gap = this.w.d - me; // > 0: you are ahead of him
+      if (!met && Math.abs(gap) < 4) { met = t; this._say(e.obj, 'Make way, cyclist!', 2.4); }
+      if (met && !duel && gap > 5 && t - met > 2) { duel = t; this._say(e.obj, 'Thou darest pass a knight?! Have at thee!', 3); } // you pulled away: now it is a race
+      if (duel && !said && t - duel > 22) { said = 1; this._say(e.obj, gap > 0 ? 'By my sword... well ridden!' : 'Too slow for the King!', 3); }
+      if (t > 75 || gap > 160 || -gap > 160 || (said && t - duel > 28)) return null;
+      const sp = duel && t - duel < 22 ? V * 1.2 + 1.2 : said ? V * 1.4 : V; // in the duel he spurs his horse, but at a fixed pace: hold more and you win
+      dd += sp * dt;
+      return { d: me, off: side * (ROAD_W + 3.5 + (said ? Math.min(12, (t - duel - 22) * 3) : 0)), doff: said ? side * 2 : 0 };
     });
     if (!e) return false;
-    setTimeout(() => this._say(e.obj, 'Race thee to the castle, cyclist!', 3), 9000);
   }
   _kids() { // children run beside you for a few seconds, cheering
     const side = this._landSide(this.w.d + 20); if (!side) return false;
