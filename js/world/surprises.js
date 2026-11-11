@@ -177,14 +177,14 @@ export class Surprises {
       const c = Math.random(); this.fx._p(x, y + Math.random() * 3, z, (Math.random() - .5) * 0.8, 1.5 + Math.random() * 2.5, (Math.random() - .5) * 0.8, 1, 0.3 + c * 0.4, c * 0.08, 2 + Math.random() * 2); }
     this.fx.pts.visible = true;
     this.hellT = (this.hellT || 0) + dt;
-    if (this.hellT > 25 && t > (this.dragonNext || 0) && this.A.find('drache')) { this.dragonNext = t + 70; this._dragon(); } // a dragon sweeps over the road, breathing fire
+    if (this.hellT > 12 && t > (this.dragonNext || 0) && this.A.find('drache')) { this.dragonNext = t + 50; this._dragon(); } // a dragon sweeps over the road, breathing fire
     if (t > (this.burstNext || 0)) { this.burstNext = t + 0.7 + Math.random() * 1.1; this.fireBurst(d + 30 + Math.random() * 90, (Math.random() < 0.5 ? -1 : 1) * (ROAD_W + 2 + Math.random() * 9)); }
     const kinds = (this._hellKinds ||= ['lava_fels', 'lava_fels_b', 'lava_fels_c', 'feuersaeule', 'lava_riss', 'hoellen_tor', 'totenschaedel', 'lava_see', 'obsidian_zacken', 'feuerdaemon', 'feuerdaemon'].filter(n => this.A.find(n)));
     if (kinds.length && d > (this.hellNextD || 0)) {
       this.hellNextD = d + 35 + Math.random() * 45;
       const kind = kinds[Math.floor(Math.random() * kinds.length)], wide = /lava_see|hoellen_tor/.test(kind) ? 4.5 : 0; // wide pieces keep clear of the asphalt
       const imp = kind === 'feuerdaemon', s = this._spawn(kind, imp ? ['Jubeln', 'Winken'] : ['Brennen', 'Idle'], imp ? 1 : 0.8 + Math.random() * 0.6);
-      if (s) { const side = Math.random() < 0.5 ? -1 : 1, p = this._pt(d + 140, side * (ROAD_W + (imp ? 1.8 : 2.5 + wide) + Math.random() * (imp ? 2 : 10))), q = this._pt(d + 140, 0);
+      if (s) { const side = Math.random() < 0.5 ? -1 : 1, p = this._pt(d + 140, side * (ROAD_W + (imp ? 1.8 : 4.5 + wide) + Math.random() * (imp ? 2 : 10))), q = this._pt(d + 140, 0);
         s.obj.position.set(p.x, p.y, p.z); s.obj.rotation.y = imp ? Math.atan2(q.x - p.x, q.z - p.z) : Math.random() * 6.28; /* demons face you and jeer */ const e = { ...s, d: d + 140, step: () => {} }; this.active.push(e); (this.hellProps ||= []).push(e); }
     }
     if (this.hellProps) this.hellProps = this.hellProps.filter(e => e.d > d - 60 || (e.dead = true, false));

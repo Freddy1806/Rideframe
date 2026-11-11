@@ -404,8 +404,7 @@ input[type=number]::-webkit-inner-spin-button, input[type=number]::-webkit-outer
 .wizfx.rise { animation: wizRise 2.2s ease-out; background: linear-gradient(to top, rgba(255,255,255,0), rgba(200,230,255,.75)); }
 .wizfx.land { animation: wizLand 1.1s ease-out; background: #fff; }
 .wizfx.quake { animation: wizQuake 1.6s ease-out; background: radial-gradient(circle at 50% 80%, rgba(255,140,40,.85), rgba(160,20,0,.6) 45%, rgba(0,0,0,.4)); }
-.wizfx.hell { opacity: 1; background: radial-gradient(ellipse at 50% 45%, rgba(0,0,0,0) 38%, rgba(110,8,0,.55) 82%, rgba(40,0,0,.8)); animation: wizHell 2.6s ease-in-out infinite; }
-.wizfx.hell::after { content: ''; position: absolute; inset: 0; background: rgba(255,70,10,.16); mix-blend-mode: multiply; }
+.wizfx.hell { opacity: 1; background: radial-gradient(ellipse 75% 140% at 50% 50%, rgba(0,0,0,0) 55%, rgba(110,8,0,.45) 88%, rgba(40,0,0,.7)); animation: wizHell 2.6s ease-in-out infinite; } /* glow at the sides only: the HUD at top and bottom stays clear */
 @keyframes wizCast { 0% { opacity: 0; } 12% { opacity: 1; } 100% { opacity: 0; } }
 @keyframes wizRise { 0% { opacity: .9; } 100% { opacity: 0; } }
 @keyframes wizLand { 0% { opacity: 1; } 100% { opacity: 0; } }
