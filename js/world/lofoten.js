@@ -14,7 +14,7 @@ export async function prepareWorld(track) {
   console.info('RIDEFRAME Gelände', key, DEM ? `${DEM.n}² ${(DEM.size / 1000).toFixed(1)} km${DEM.real ? ' echt' : ''}` : 'fehlt');
 }
 import { asphalt, grassTuft, planks, stone } from './tex.js';
-import { terrainMaterial, tex, texReady, TIME, useSatellite } from './terrainmat.js';
+import { terrainMaterial, tex, texReady, TIME, HELL, useSatellite } from './terrainmat.js';
 import { Water } from '../../vendor/jsm/objects/Water.js';
 import { mergeGeometries } from '../../vendor/jsm/utils/BufferGeometryUtils.js';
 import { loadAssets } from './assets.js';
@@ -245,7 +245,9 @@ export class WorldScene {
     su.turbidity.value = 4; su.rayleigh.value = 2.6; su.mieCoefficient.value = 0.006; su.mieDirectionalG.value = 0.86;
     su.sunPosition.value.copy(sun);
     su.uTime = { value: 0 }; su.uCover = { value: 0.4 }; su.uVeil = { value: 0 }; su.uLow = { value: 0 };
-    sky.material.fragmentShader = skyGrade(sky.material.fragmentShader);
+    su.uHell = HELL; // hell: a smoke-red sky
+    sky.material.fragmentShader = skyGrade(sky.material.fragmentShader).replace('void main() {', 'uniform float uHell;\nvoid main() {')
+      .replace('gl_FragColor = vec4( retColor, 1.0 );', 'gl_FragColor = vec4( mix( retColor, vec3( .32, .07, .03 ) * ( .55 + .45 * dot( retColor, vec3( .3, .5, .2 ) ) ) + retColor * vec3( .25, .06, .02 ), uHell ), 1.0 );');
     this.sky2 = sky.clone(); this.envScene = new THREE.Scene(); this.envScene.add(this.sky2);
     this.pmrem = new THREE.PMREMGenerator(renderer);
     scene.environmentIntensity = ENV_I;
@@ -960,8 +962,8 @@ export class WorldScene {
       const sg = segAt(d); if (sg.village || sg.temple) continue;
       const side = sg.land === 'coast' || sg.land === 'river' || sg.land === 'cliff' ? 1 : (r() < 0.5 ? -1 : 1), p = f.at(d), q = spot(d, side * 22);
       if (f.height(q.x, q.z) - p.e < 5) continue;
-      const e = cliffs[Math.floor(r() * cliffs.length)], k = 0.55 + r() * 0.2, R = Math.max(...e.size) / 2 * k;
-      const o = place(e, d, side * (ROAD_W + 3.5 + R), { face: 'road', dy: -3, radK: k, gap: 2.5, scale: k });
+      const e = cliffs[Math.floor(r() * cliffs.length)], k = 0.42 + r() * 0.18, R = Math.max(...e.size) / 2 * k;
+      const o = place(e, d, side * (ROAD_W + 3.5 + R), { face: 'road', rot: (r() - 0.5) * 0.9, dy: -3, radK: k, gap: 2.5, scale: [k, k * (0.8 + r() * 0.5), k] }); // smaller and turned: a broken rock face, not a smooth wall
       if (o && !QS.has('cliffglb')) o.traverse(m => { if (!m.isMesh) return; const g = m.geometry, n = g.attributes.position.count;
         if (!g.attributes.splat) { g.setAttribute('splat', new THREE.Float32BufferAttribute(new Float32Array(n * 4).map((_, i) => i % 4 === 1 ? 1 : 0), 4)); g.setAttribute('color', new THREE.Float32BufferAttribute(new Float32Array(n * 3).fill(0.85), 3)); }
         m.material = this.rockMat; });
@@ -1291,7 +1293,7 @@ export class WorldScene {
   // Everything is a smooth function of the distance (plus a slow drift in time), so it never jumps.
   _weather(d, time) {
     const L = this.track.length || 40000, u = Math.max(0, Math.min(1, d / L));
-    const rain = this.rainPlan.reduce((m, s) => Math.max(m, smooth(s.a - 700, s.a, d) * smooth(s.b + 500, s.b, d)), 0); // showers: at least one per ride, never the same
+    const rain = this.rainPlan.reduce((m, s) => Math.max(m, smooth(s.a - 700, s.a, d) * smooth(s.b + 500, s.b, d)), 0) * (1 - (this.hellK || 0)) * (1 - (this._fly ? 1 : 0)); // showers: at least one per ride, never the same
     const cover0 = Math.max(0.1, Math.min(0.8, 0.32 + 0.2 * Math.sin(d / 5200 + 1.3) + 0.1 * Math.sin(d / 1700 + 4) + 0.06 * Math.sin(time * 0.003)));
     // the shower announces itself: from ~3 km before, the sky ahead closes up and darkens, so you see it coming
     const pre = this.rainPlan.reduce((m, s) => Math.max(m, smooth(s.a - 3000, s.a - 700, d) * smooth(s.b + 500, s.b, d)), 0);
@@ -1319,7 +1321,7 @@ export class WorldScene {
     // image-based light from the sky, re-baked only when the sun has moved noticeably (~0.2°)
     const hb = (this.hellK || 0) > 0.5; if (hb !== !!this._envHell) { this._envHell = hb; this.envSun = null; } // hell in, hell out: re-bake the sky light
     if (hb !== !!this._herdHell) { this._herdHell = hb; // no grazing cows in hell (Mac mini QA): farm animals leave while the screen burns red, and come back after
-      for (const o of this.props) if (/kuh|schaf|pferd|rentier|ziege|schwein|huhn|gans/.test(o.userData.asset || '')) o.userData.hellHidden = hb; o.visible = !hb; }
+      for (const o of this.props) if (/kuh|schaf|pferd|rentier|ziege|schwein|huhn|gans|pony/.test(o.userData.asset || '')) { o.userData.hellHidden = hb; o.visible = !hb; } }
     if (!this.envSun || this.envSun.distanceToSquared(s) > 1.2e-5) {
       (this.envSun ||= new THREE.Vector3()).copy(s);
       const rt = this.pmrem.fromScene(this.envScene, 0, 0.1, 9000);
@@ -1328,7 +1330,8 @@ export class WorldScene {
     this.scene.fog.density = 0.00042 * (1 + 2.2 * rain);
     this.rain.visible = rain > 0.02 && !(this.tunnelK > 0.5); this.rain.material.uniforms.uRain.value = rain;
     this.light.intensity *= 1 - 0.35 * rain; this.hemi.color.lerp(H_GREY, rain * 0.5);
-    const hk = this.hellK || 0;
+    const hk = this.hellK || 0; HELL.value = hk;
+    { const gv = hk < 0.5; if (this.clumpMat.visible !== gv) { this.clumpMat.visible = gv; this.tuftMats.forEach(m => { m.visible = gv; }); } } // no green grass in hell
     if (hk > 0.002) { // the wizard's hell: red-brown haze closing in, ember light, lava instead of sea, clouds like smoke
       this.scene.fog.color.lerp(F_HELL, hk); this.scene.fog.density *= 1 + 2.4 * hk;
       this.light.color.lerp(L_HELL, hk * 0.85); this.light.intensity *= 1 - 0.4 * hk;

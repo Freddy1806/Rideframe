@@ -13,6 +13,8 @@ const loader = new THREE.TextureLoader();
 const cache = {}, pending = [];
 /** Shared clock for animated terrain details (surf at the shoreline). */
 export const TIME = { value: 0 };
+/** The wizard's hell, 0..1: scorched ash ground with glowing lava cracks (set by the world each frame). */
+export const HELL = { value: 0 };
 /** Resolves when every texture requested so far has loaded (or failed). */
 export const texReady = () => Promise.all(pending);
 const url = key => new URL(`../../assets/tex/${key}.jpg`, import.meta.url).href;
@@ -67,7 +69,7 @@ function stoneUniforms() {
 // GLSL: helpers (go after #include <common>)
 const HELPERS = `
 varying vec4 vSplat; varying vec3 vWP; varying vec3 vWN;
-uniform sampler2D tGrass, tGrassN, tSand; uniform vec2 uCam; uniform float uTime; uniform float uHole; uniform sampler2D tSat; uniform float uSatOn; uniform vec4 uSatRot;
+uniform sampler2D tGrass, tGrassN, tSand; uniform vec2 uCam; uniform float uTime; uniform float uHell; uniform float uHole; uniform sampler2D tSat; uniform float uSatOn; uniform vec4 uSatRot;
 uniform sampler2D tR0, tR0N, tR1, tR1N, tR2, tR2N, tR3, tR3N; uniform vec4 uRockHas;
 vec3 nrmXZ(sampler2D t, vec2 uv) { vec3 n = texture2D(t, uv).xyz * 2. - 1.; return vec3(n.x, n.z, n.y); }
 float hash12(vec2 p) { vec3 p3 = fract(vec3(p.xyx) * .1031); p3 += dot(p3, p3.yzx + 33.33); return fract((p3.x + p3.y) * p3.z); }
@@ -258,7 +260,11 @@ const ALBEDO = `
   alb *= mix(1., .62, (1. - smoothstep(.2, 1.4, wl)) * smoothstep(-.6, .1, wl));
   float foam = (1. - smoothstep(.0, .35, abs(wl - .05))) * smoothstep(.35, .7, vnoise(vWP.xz * .9 + uTime * .3) * .6 + vnoise(vWP.xz * .23 - uTime * .1) * .6);
   alb = mix(alb, vec3(.92, .95, .96), foam * .85 * (1. - sp.y * .6));
-  diffuseColor.rgb *= alb * 1.25;`;
+  diffuseColor.rgb *= alb * 1.25;
+  if (uHell > .002) { // hell: the meadows burn to ash and dark scorched rock
+    float hn = vnoise(vWP.xz / 6.) * .6 + vnoise(vWP.xz / 1.7) * .4;
+    diffuseColor.rgb = mix(diffuseColor.rgb, mix(vec3(.07, .05, .045), vec3(.2, .1, .07), hn), uHell * .88 * smoothstep(-.5, .5, vWP.y));
+  }`;
 
 /** Material for terrain tiles and the far backdrop. opts.far = discard inside the detailed area. */
 export function terrainMaterial(opts = {}) {
@@ -267,7 +273,7 @@ export function terrainMaterial(opts = {}) {
     tGrass: { value: tex('grass', 'col', [92, 120, 60]) }, tGrassN: { value: tex('grass', 'nrm', [128, 128, 255]) },
     tSand: { value: tex('sand', 'col', [200, 185, 150]) },
     ...stoneUniforms(), uRockHas: HAS,
-    uCam: opts.cam || { value: new THREE.Vector2() }, uTime: TIME, uHole: opts.hole || { value: 1780 }, tSat: { value: satTex() }, uSatOn: SAT.on, uSatRot: { value: satRot },
+    uCam: opts.cam || { value: new THREE.Vector2() }, uTime: TIME, uHell: HELL, uHole: opts.hole || { value: 1780 }, tSat: { value: satTex() }, uSatOn: SAT.on, uSatRot: { value: satRot },
   };
   m.userData.U = U;
   m.customProgramCacheKey = () => 'terrain2-' + (opts.far ? 'far' : 'near');
@@ -283,6 +289,9 @@ ${opts.far ? '  if (distance(vWP.xz, uCam) < uHole) discard;' : ''}`)
       .replace('#include <map_fragment>', ALBEDO)
       // vertex colour = meadow tint, applied above only to grass and sand (grey stone must stay grey)
       .replace('#include <color_fragment>', '')
+      .replace('#include <emissivemap_fragment>', `#include <emissivemap_fragment>
+  if (uHell > .002) { float c = 1. - abs(vnoise(vWP.xz / 13.) * 2. - 1.), c2 = 1. - abs(vnoise(vWP.xz / 4.3 + 7.) * 2. - 1.);
+    totalEmissiveRadiance += vec3(1., .16, .02) * (smoothstep(.972, .995, c) + .6 * smoothstep(.982, .998, c2)) * uHell * 2.6 * smoothstep(-.5, .5, vWP.y); }`)
       .replace('#include <roughnessmap_fragment>', `float roughnessFactor = roughness * (sp.x * 1. + sp.y * mix(.88, .5, rWet) + sp.z * .95 + sp.w * .6);`)
       .replace('#include <normal_fragment_maps>', `#include <normal_fragment_maps>
   {

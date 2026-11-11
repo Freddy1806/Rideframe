@@ -420,6 +420,7 @@ function settings() {
         <label class="field"><div>In Unreal fahren (Beta)<div class="hint">Die Fahrt läuft weiter hier (Trainer, Gruppe, Training), das Bild zeigt die Unreal-App in der schönen Grafik. Sobald sie verbunden ist, zeichnet der Browser keine eigene 3D-Welt mehr.</div></div><input type="checkbox" class="toggle" id="ueBridge" ${s.ueBridge ? 'checked' : ''}></label>
         <label class="field"><div>Wetter in Unreal<div class="hint">Auto = das Wetter wechselt je nach Streckenabschnitt. Sonst bleibt es die ganze Fahrt so.</div></div>${seg('ueWeather', s.ueWeather || 'auto', UE_WEATHER_OPTS)}</label>
         <label class="field"><div>Sprachbefehle<div class="hint">Sag „Rideframe“ und einen Befehl: Pause, weiter, schwerer, leichter, Foto, Musik, nächstes Lied, Ansicht, 250 Watt. Eine Herausforderung nimmst du auch ohne „Rideframe“ mit „annehmen“ an. Geht in Chrome und Edge, braucht einmal das Mikrofon.</div></div><input type="checkbox" class="toggle" id="voiceCmd" ${s.voiceCmd ? 'checked' : ''}></label>
+        <label class="field"><div>Haltung per Kamera<div class="hint" id="poseV">Die Kamera vor dem Rad erkennt, ob du aufrecht, in Aero-Haltung oder im Wiegetritt fährst: Aero spart Luftwiderstand, Wiegetritt kostet etwas. Das Bild bleibt auf deinem Rechner. Für beste Erkennung einmal kalibrieren.</div></div><div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap"><button class="btn ghost small" id="poseUp" type="button">Aufrecht kalibrieren</button><button class="btn ghost small" id="poseAero" type="button">Aero kalibrieren</button><input type="checkbox" class="toggle" id="poseCam" ${s.poseCam ? 'checked' : ''}></div></label>
         <label class="field"><div>Lenker im Bild<div class="hint">Rennlenker mit Griffen und Unterarmen in der Fahrersicht. Aus = nur freie Sicht. Während der Fahrt: Taste H oder Knopf „Lenker“.</div></div><input type="checkbox" class="toggle" id="cockpit" ${s.cockpit !== false ? 'checked' : ''}></label>
         <label class="field"><div>Kamera<div class="hint">Während der Fahrt umschalten mit Taste V oder dem Kamera-Knopf.</div></div>${seg('view3d', String(s.view3d || 0), VIEW_OPTS)}</label>
       </div>
@@ -456,6 +457,15 @@ function settings() {
   });
   $('#cockpit').onchange = e => { s.cockpit = e.target.checked; saveSettings(); };
   $('#voiceCmd').onchange = e => { s.voiceCmd = e.target.checked; saveSettings(); };
+  { const pv = $('#poseV'), cal = async which => { // 3-2-1, then 2.5 s of that posture in front of the camera
+      const m = await import('./posecam.js'); const pc = new m.PoseCam(s.poseCalib || null);
+      try { pv.textContent = 'Kamera startet …'; await pc.start();
+        for (const k of [3, 2, 1]) { pv.textContent = `${which === 'up' ? 'Aufrecht' : 'Aero'} hinsetzen … ${k}`; await new Promise(r => setTimeout(r, 1000)); }
+        pv.textContent = 'Halten …'; s.poseCalib = await pc.calibrate(which); saveSettings();
+        pv.textContent = s.poseCalib.up != null && s.poseCalib.aero != null ? 'Kalibriert: aufrecht und Aero gespeichert.' : `${which === 'up' ? 'Aufrecht' : 'Aero'} gespeichert, jetzt noch ${which === 'up' ? 'Aero' : 'aufrecht'}.`;
+      } catch (e) { pv.textContent = 'Kamera ging nicht: ' + (e?.message || e); } finally { pc.stop(); } };
+    $('#poseUp').onclick = e => { e.preventDefault(); cal('up'); }; $('#poseAero').onclick = e => { e.preventDefault(); cal('aero'); };
+    $('#poseCam').onchange = e => { s.poseCam = e.target.checked; saveSettings(); }; }
   $('#ueBridge').onchange = e => { s.ueBridge = e.target.checked; saveSettings(); };
   $('#fov').oninput = e => { s.fov = +e.target.value; s.lensMm = 0; $('#fovV').textContent = s.fov + '°'; saveSettings(); };
   wireSeg(main, 'ueWeather', v => { s.ueWeather = v; saveSettings(); });

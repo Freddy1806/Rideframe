@@ -120,7 +120,7 @@ export class Surprises {
       if (h.done) return null;
       if (fly) return { d: h.d + (h.race ? 14 : 0), off: side * (h.race ? 1.6 : ROAD_W + 4), fly: h.race ? 2.6 + Math.sin((this.clock || 0) * 2) * 0.4 : 6 + Math.sin((this.clock || 0) * 1.3) * 0.8 }; // racing birds fly a little ahead and low, so they are always in view (the card shows the real gap)
       if (bike && h.race && e?.mixer) e.mixer.timeScale = Math.max(0.2, v / bike); // pedal in step with the road (MacBook: metres per loop / loop time)
-      return { d: h.d, off: side * (ROAD_W + (h.race ? 1.2 : 2.2)), doff: h.race ? 0 : -side * 3 };
+      return { d: h.d, off: side * (bike && h.race ? 1.9 : ROAD_W + (h.race ? 1.2 : 2.2)), doff: h.race ? 0 : -side * 3 }; // on a bike the rival races in the other lane, in view just ahead of you
     }, { idle: ['Jubeln', 'Winken', 'Stehen'] });
     if (!e) return null;
     h.e = e; h.obj = e.obj;

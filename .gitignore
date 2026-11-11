@@ -8,3 +8,7 @@ node_modules/
 .DS_Store
 .claude/
 assets/audio/
+
+# MediaPipe wasm + pose model: large, put on the host by hand (else loaded from the CDN)
+vendor/mediapipe/wasm/
+vendor/mediapipe/*.task

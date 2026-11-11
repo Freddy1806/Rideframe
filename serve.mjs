@@ -7,7 +7,7 @@ import { stravaApi } from './tools/strava-api.mjs';
 import { accountsApi } from './tools/accounts-api.mjs';
 const root = fileURLToPath(new URL('.', import.meta.url));
 const port = +process.env.PORT || 8765;
-const types = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript', '.css': 'text/css', '.svg': 'image/svg+xml', '.jpg': 'image/jpeg', '.png': 'image/png', '.woff2': 'font/woff2', '.json': 'application/json', '.webmanifest': 'application/manifest+json' };
+const types = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript', '.css': 'text/css', '.svg': 'image/svg+xml', '.jpg': 'image/jpeg', '.png': 'image/png', '.woff2': 'font/woff2', '.json': 'application/json', '.webmanifest': 'application/manifest+json', '.mjs': 'text/javascript', '.wasm': 'application/wasm' };
 createServer(async (req, res) => {
   let p = normalize(decodeURIComponent(new URL(req.url, 'http://x').pathname)).replace(/^(\.\.[/\\])+/, '');
   if (p.startsWith('/api/') && (await accountsApi(req, res, p) || await stravaApi(req, res, p))) return; // direct Strava upload (tools/strava-api.mjs)

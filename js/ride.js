@@ -101,6 +101,10 @@ export class RideSession {
   async start() {
     const el = this.el = document.createElement('div'); el.className = 'ride';
     document.addEventListener('keydown', this._key); // early: watts set with ↑↓ while the world loads are kept
+    if (this.state.settings.poseCam) import('./posecam.js').then(async m => { if (this._closed) return; // posture by webcam
+      this._poseMod = m; this.pose = new m.PoseCam(this.state.settings.poseCalib || null);
+      try { await this.pose.start(); if (this._closed) this.pose.stop(); else this._flash?.('Kamera: Haltung wird erkannt'); }
+      catch { this._flash?.('Haltungs-Kamera nicht verfügbar'); this.pose = null; } });
     if (this.state.settings.voiceCmd) import('./voicecmd.js').then(m => { if (!this.running && this._closed) return; // "Rideframe Pause" & co.
       this.voice = new m.VoiceCommands(c => this._voiceCmd(c), () => this.ch?.active?.state === 'offer' ? ['accept'] : []);
       if (!this.voice.start()) this._flash?.('Sprachbefehle gehen nur in Chrome oder Edge'); });
@@ -210,7 +214,7 @@ export class RideSession {
   _trainerGrade() {
     let g = this._roadGrade();
     if (this.wiz?.state === 'hell') return this._wizGrade(g); // the wizard's hell: the road feels steeper
-    const dk = this._draftK || 0; if (dk > 0.01) g -= 0.5 * this.params.rho * this.params.cda * dk * this.v * this.v / (this.params.mass * 9.81) * 100; // the trainer eases off in the slipstream too
+    const dk = 1 - (this._dragK ?? 1); if (Math.abs(dk) > 0.005) g -= 0.5 * this.params.rho * this.params.cda * dk * this.v * this.v / (this.params.mass * 9.81) * 100; // the trainer eases off in the slipstream / aero tuck (and gets harder standing)
     if (!this.virtual) return g;
     const t = this.state.trainer, k = this.gears[this.gi].ratio / this.realGear.ratio;
     const ws = t.data?.speed > 0.5 ? t.data.speed : Math.max(1, this.v / k);
@@ -293,7 +297,8 @@ export class RideSession {
       const g = gradeAt(this.track, this.d);
       // drafting (group ride, Freddy: Windschatten zu zweit): right behind a friend you need up to a third less power
       const dk = this._draftTo || 0; this._draftK = (this._draftK || 0) + (dk - (this._draftK || 0)) * Math.min(1, dt * 1.5);
-      this.v = physStep(this.v, this.power, g, dt, this._draftK > 0.01 ? { ...this.params, cda: this.params.cda * (1 - this._draftK) } : this.params);
+      const pk = this._postureK(); this._dragK = pk * (1 - this._draftK); // posture by webcam (aero / standing) and the slipstream
+      this.v = physStep(this.v, this.power, g, dt, Math.abs(this._dragK - 1) > 0.005 ? { ...this.params, cda: this.params.cda * this._dragK } : this.params);
       this.d = Math.min(this.track.length, this.d + this.v * dt);
       this.elapsed += dt;
       const e = eleAt(this.track, this.d); if (e > this.lastEle) this.gainAcc += e - this.lastEle; this.lastEle = e;
@@ -654,6 +659,15 @@ export class RideSession {
     window.addEventListener('rf-voicechange', this._voiceUI); this._voiceUI();
   }
 
+  _postureK() { // aero tuck: less drag; standing: more. Shown once per change.
+    if (!this.pose) return 1;
+    const p = this.pose.tick(), m = this._poseMod;
+    if (p !== this._posture) { this._posture = p; this._postureSince = this.elapsed; }
+    else if (p !== this._postureShown && this.elapsed - this._postureSince > 1.2) { this._postureShown = p; // held for a moment: no flicker
+      if (p === 'aero') this._flash?.('Aero-Haltung · 16 % weniger Luftwiderstand'); else if (p === 'standing') this._flash?.('Wiegetritt'); }
+    this._pk = (this._pk ?? 1) + ((m?.POSTURE_K[this._postureShown || 'unknown'] ?? 1) - (this._pk ?? 1)) * 0.05;
+    return this._pk;
+  }
   _voiceCmd({ cmd, n }) {
     const say = t => this._flash?.('🎙 ' + t);
     if (!this.running) return; // still loading: the player does not exist yet
@@ -811,7 +825,7 @@ export class RideSession {
   }
 
   _close(saved) {
-    this._closed = true; this.voice?.stop();
+    this._closed = true; this.voice?.stop(); this.pose?.stop();
     this.running = false; this.ue?.close(); this.state.trainer.setPower?.(null); this.music?.destroy();
     if (this.group?.voice) { this.group.voice.stop(); this.group.voice = null; } // ride over: microphone off, indicator off
     if (this._voiceUI) window.removeEventListener('rf-voicechange', this._voiceUI);

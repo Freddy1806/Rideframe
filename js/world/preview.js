@@ -15,6 +15,7 @@ world.paused = true;
 
 const Q = new URLSearchParams(location.search), AT = +(Q.get('at') || 150);
 if (Q.has('top')) world.debugTop = +Q.get('top') || 120;
+if (Q.has('hell')) { world.hell(true); world.hellK = 1; } // test view: the wizard's hell (tint only; its props live in the ride)
 if (Q.has('shot')) document.querySelectorAll('.pv-top,.pv-info,.pv-bar').forEach(e => e.style.display = 'none');
 world.currentTime = timeAt(track, AT);
 let d = AT, target = AT, playing = false, speed = 30; // speed = multiple of riding speed (~9 m/s)
