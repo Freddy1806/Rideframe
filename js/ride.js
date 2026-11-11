@@ -11,6 +11,7 @@ import { UEBridge } from './uebridge.js';
 import { MiniMap } from './minimap.js';
 import { fovOf, FOV_MIN, FOV_MAX, FOV_DEFAULT } from './fov.js';
 import { workoutAt, workoutSVG } from './workouts.js';
+import { Challenges } from './challenges.js';
 import { Music, Coach } from './music.js';
 import { MIC_SVG, SPK_SVG, voiceStatus } from './voice.js';
 import { hudPrefs, applyHud, hudControlsHTML, wireHudControls, HUD_ORDER, HUD_PRESETS } from './hudprefs.js';
@@ -146,6 +147,7 @@ export class RideSession {
     this.coach = new Coach(st.coachVol ?? 0.9);
     this.el.querySelector('#hMusic')?.addEventListener('click', () => this._toggleMusic());
     if (this.group) this._wireVoice();
+    this._initChallenges();
     this.running = true; this.last = performance.now();
     this._updateHUD(true);
     if (!this.autopilot) await this._countdown();
@@ -286,6 +288,7 @@ export class RideSession {
       this.elapsed += dt;
       const e = eleAt(this.track, this.d); if (e > this.lastEle) this.gainAcc += e - this.lastEle; this.lastEle = e;
       this._workout(dt);
+      this._chTick(dt);
       if (this.berg && !(this.workout && this.erg)) this.state.trainer.setPower(this._bergTarget());
       else this.state.trainer.setGrade(this._trainerGrade());
       this._syncVideo();
@@ -446,6 +449,45 @@ export class RideSession {
     }
   }
 
+  // ---------- challenges (free rides only: never in a workout, never in a group ride) ----------
+  _initChallenges() {
+    const n = this.state.settings.challenges ?? 4, sp = this.player?.events?.surprises;
+    if (this.workout || this.group || this.autopilot || !n) return;
+    this.ch = new Challenges({ length: this.track.length, startD: this.d, n, ftp: this.ftp, params: this.params, gradeAt: d => gradeAt(this.track, d),
+      has: models => !sp || models.some(m => sp.A.find(m)) });
+    if (!this.ch.list.length) { this.ch = null; return; }
+    const c = document.createElement('div'); c.className = 'chcard glass'; c.id = 'hCh'; c.hidden = true; this.el.querySelector('.hud').append(c);
+  }
+  _chTick(dt) {
+    const ch = this.ch; if (!ch || this.workout) return;
+    const sp = this.player?.events?.surprises, evs = ch.tick(dt, this.d, this.power, this._chKey, this.v); this._chKey = false;
+    for (const { type, ch: x } of evs) {
+      if (type === 'offer') { x.h = sp?.challenger(x.c, x.spot); x.h?.say(x.c.ask, 3.2); if (sp) sp.hold = true; this.coach?.say('challenge', 0); }
+      else if (type === 'accept') { this._flash(`Angenommen! ${x.W} W · ${x.D >= 1000 ? fmtNum(x.D / 1000, x.D % 1000 ? 1 : 0) + ' km' : x.D + ' m'}`); }
+      else if (type === 'go') { if (x.h) { x.h.d = x.opp; x.h.go(); } x.flags = sp?.finishFlags(x.finish); this._flash('LOS!'); }
+      else if (type === 'expire') { this._flash(`${x.c.name} zieht weiter`); this._chEnd(x, sp, 600); }
+      else if (type === 'win' || type === 'lose') {
+        this._flash(type === 'win' ? `Gewonnen gegen ${x.c.name}!` : `${x.c.name} war schneller`);
+        x.h?.say(type === 'win' ? x.c.win : x.c.lose, 3); this._chEnd(x, sp, 4000);
+      }
+    }
+    if (this._chFlags) this._chFlags = this._chFlags.filter(o => this.d > o.at + 30 ? (o.f.remove(), false) : true);
+    const x = ch.active;
+    if (x?.h && x.state === 'race') {
+      x.h.d = x.opp;
+      if (x.opp < this.d - 6 && x.opp > this.d - 45 && performance.now() > (this._lbNext || 0)) { this._lbNext = performance.now() + 14000; this.player?.lookBack?.(x.h.side > 0 ? 1 : -1); }
+    }
+    const el = this.q('#hCh'), card = ch.card(this.d); if (!el) return;
+    el.hidden = !card; if (!card) return;
+    el.classList.toggle('lead', !!card.lead); el.classList.toggle('trail', card.lead === false);
+    el.innerHTML = `<div class="label">${esc(card.title)}</div><div class="chbig num">${esc(card.big)}</div><div class="chsub">${esc(card.sub)}</div>${card.bar != null ? `<div class="chbar"><i style="width:${Math.round(card.bar * 100)}%"></i>${card.hold ? `<b style="width:${Math.round(card.hold * 100)}%"></b>` : ''}</div>` : ''}`;
+  }
+  _chEnd(x, sp, ms) { // the challenger stays until out of sight, the flags until you have passed them
+    if (sp) sp.hold = false;
+    setTimeout(() => { if (x.h) x.h.done = true; }, ms);
+    if (x.flags) (this._chFlags ||= []).push({ f: x.flags, at: x.finish });
+  }
+
   /** "Beenden" in the workout panel: stop the workout and ride on freely, or end and save the ride */
   _wireWorkoutStop() {
     const q = this.q, ask = q('#hWAsk'); if (!ask) return;
@@ -553,6 +595,7 @@ export class RideSession {
     else if (e.key === 'f') document.documentElement.requestFullscreen?.();
     else if (e.key === 'v' || e.key === 'c') this._cycleView();
     else if (e.key === '[' || e.key === ']') this._lens(e.key === ']' ? 1 : -1);
+    else if (e.key === 'k' || e.key === 'K') this._chKey = true; // accept a challenge
     else if (e.key === 'h') this._toggleBar();
     else if (e.key === 'm') this._toggleMusic();
     else if (e.key === 'i') this._cycleHud();
@@ -625,7 +668,7 @@ export class RideSession {
       duration: Math.round(this.elapsed), distance: Math.round(this.d - this.startD), gain: Math.round(this.gainAcc), startD: Math.round(this.startD), workout: this.workout?.name || this._wName || undefined,
       avgPower: pw.length ? Math.round(pw.reduce((a, b) => a + b, 0) / pw.length) : 0,
       maxPower: Math.max(0, ...pw), best5: bestAvg(pw, 300), best20: bestAvg(pw, 1200),
-      samples: this.samples,
+      samples: this.samples, challenges: this.ch?.stats.offered ? { ...this.ch.stats } : undefined,
     };
   }
 
@@ -655,6 +698,7 @@ export class RideSession {
         <div><div class="label">Höhenmeter</div><div class="v">${fmtNum(rec.gain)}<small>hm</small></div></div>
         <div><div class="label">Arbeit</div><div class="v">${fmtNum(rec.avgPower * rec.duration / 1000)}<small>kJ</small></div></div>
       </div>
+      ${rec.challenges ? `<div class="chsum">⚔ ${rec.challenges.offered} Challenges · ${rec.challenges.accepted} angenommen · ${rec.challenges.won} gewonnen</div>` : ''}
       <div class="row-actions"><button class="btn ghost" id="fShare">Bild zum Teilen</button><button class="btn ghost" id="fStrava">Auf Strava hochladen</button><button class="btn" id="fDone">Fertig</button></div></div>`;
     this.el.append(o);
     o.querySelector('#fDone').onclick = () => this._close(true);

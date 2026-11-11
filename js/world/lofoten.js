@@ -89,6 +89,7 @@ function installFog() {
 // splat = weights for (grass, rock, sand, snow); colour = gentle tint so meadows are not one flat green
 const _v = new THREE.Vector3();
 // measuring switches for the GPU budget: &noshadow &noreflect &refl=512 &grass=0.5 &whaletest
+const _lbQ = new THREE.Quaternion(), _lbY = new THREE.Vector3(0, 1, 0);
 const QS = typeof location !== 'undefined' ? new URLSearchParams(location.search) : new URLSearchParams(), GRASS_K = +(QS.get('grass') ?? 1);
 const TINT_A = new THREE.Color(1.0, 1.0, 0.95), TINT_B = new THREE.Color(1.12, 1.05, 0.78), TINT_C = new THREE.Color(0.82, 0.9, 0.86), _c = new THREE.Color();
 const WET = new THREE.Color(0.55, 0.52, 0.5), SHALLOW = new THREE.Color(0.75, 1.0, 0.95), DEEP = new THREE.Color(0.15, 0.3, 0.33);
@@ -1092,6 +1093,8 @@ export class WorldScene {
   }
   /** one picture of you on the bike for the share image (next frame); resolves with a 1080×810 canvas */
   snapshot() { return new Promise(res => { this._shot = res; }); }
+  /** turn the head and look back for a moment (side +1 over the left shoulder, -1 over the right) */
+  lookBack(side = 1) { if (!this._lb && !this.view && !this._shot) this._lb = { t: 0, side }; }
   setCockpit(on) { this.showCockpit = on; }
   /** other riders (group ride, ghost): [{ id, name, d, v }] */
   setRiders(list) { (this.riders ||= new Riders(this.scene, this.field)).set(list); }
@@ -1119,6 +1122,10 @@ export class WorldScene {
     if (this.shakeImpulse > 0.01 && !this.instant) { const t = performance.now() / 1000, a = this.shakeImpulse * 0.014; // explosions (siege.js)
       this.camera.rotation.x += Math.sin(t * 41) * a + Math.sin(t * 17) * a * 0.5; this.camera.rotation.y += Math.sin(t * 33) * a * 0.6; this.camera.rotation.z += Math.sin(t * 27) * a * 0.7;
       this.shakeImpulse *= Math.exp(-dt * 2.8); }
+    if (this._lb) { // a quick look over the shoulder at the challenger behind you (challenges)
+      this._lb.t += dt; const u = this._lb.t / 1.7;
+      if (u >= 1) this._lb = null; else { _lbQ.setFromAxisAngle(_lbY, Math.sin(u * Math.PI) ** 0.7 * 2.5 * this._lb.side); this.camera.quaternion.premultiply(_lbQ); }
+    }
     if (this._shot) { // share photo: you from the front-left, a few metres ahead, the landscape behind you
       const t = this.field.pose(d, 1.2, 1.0), c = this.field.pose(d + 7.5, -0.4, 1.8), y = Math.max(c.y, this.field.height(c.x, c.z) + 1.2);
       this.camera.position.set(c.x, y, c.z); this.camera.rotation.set(0, 0, 0); this.camera.lookAt(t.x, t.y + 0.15, t.z);
@@ -1260,7 +1267,7 @@ export class WorldScene {
     this.falls?.update(time, dt, cam);
     this.events?.update(time, dt, cam, this.d);
     this.siege?.update(time, dt, cam, this.d);
-    if (this.cockpit) { this.cockpit.visible = !this.view && !this._shot && this.showCockpit !== false && this.camera.fov >= 40; /* narrow lens: forearms would fill the frame */ if (this.cockpit.visible) this.cockpitMixer?.update(Math.min(dt, 0.1) * (0.4 + Math.min(this.speed || 0, 14) / 8)); /* legs capped at a real cadence: at preview speeds they strobe and seem to pedal backwards */ }
+    if (this.cockpit) { this.cockpit.visible = !this.view && !this._shot && !this._lb && this.showCockpit !== false && this.camera.fov >= 40; /* narrow lens: forearms would fill the frame */ if (this.cockpit.visible) this.cockpitMixer?.update(Math.min(dt, 0.1) * (0.4 + Math.min(this.speed || 0, 14) / 8)); /* legs capped at a real cadence: at preview speeds they strobe and seem to pedal backwards */ }
     // show only what is near (draw calls), animate only what is close
     if (!this._cullT || time - this._cullT > 0.5 || this.instant) {
       this._cullT = time;

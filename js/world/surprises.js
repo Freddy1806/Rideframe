@@ -45,6 +45,7 @@ export class Surprises {
     const time = this.clock = (this.clock || 0) + Math.min(dt, 0.1); // own clock: the preview's world time jumps when scrubbing
     const v = Math.max(2, this.w.speed || 6);
     if (time > this.next && this.f.tunnelNear?.(d, 20, 220)) this.next = time + 3; // nothing starts right before or inside a tunnel
+    if (time > this.next && this.hold) this.next = time + 3; // a challenge is on: no other surprise steals the show
     if (time > this.next) {
       const free = this.list.filter(s => (!s.need.length || s.need.some(n => this.A.find(n))) && (!s.sea || this._seaSide(d + 120)) && (!s.village || this._inVillage(d + 60)))
         .sort((a, b) => (this.used.get(a.id) || 0) / (a.w || 1) - (this.used.get(b.id) || 0) / (b.w || 1) || Math.random() - .5);
@@ -97,6 +98,32 @@ export class Surprises {
     } };
     this.active.push(e); return e;
   }
+
+  // ---- challenges (js/challenges.js decides; this only shows them) ----
+  /** a challenger waiting at the roadside at spotD; h.d / h.race are driven by the ride. Returns the handle or null. */
+  challenger(c, spotD) {
+    const name = c.models.find(n => this.A.find(n)); if (!name) return null;
+    const side = this._landSide(spotD) || 1, fly = c.kind === 'fly';
+    const h = { d: spotD, race: false, done: false, side };
+    const e = this._run(name, fly ? [['Gleiten', 1], ['Fliegen', 1]] : [['Winken', 1], ['Jubeln', 1], ['Stehen', 1], ['Schritt', 1]], () => {
+      if (h.done) return null;
+      if (fly) return { d: h.d, off: side * (h.race ? 2.5 : ROAD_W + 4), fly: h.race ? 3.2 : 6 + Math.sin((this.clock || 0) * 1.3) * 0.8 };
+      return { d: h.d, off: side * (ROAD_W + (h.race ? 1.2 : 2.2)), doff: h.race ? 0 : -side * 3 };
+    }, { idle: ['Jubeln', 'Winken', 'Stehen'] });
+    if (!e) return null;
+    h.e = e; h.obj = e.obj;
+    h.go = () => { h.race = true; this._play(e, fly ? ['Fliegen', 'Gleiten'] : ['Rennen', 'Trab', 'Gehen']); };
+    h.say = (text, t = 2.6) => this._say(e.obj, text, t);
+    return h;
+  }
+  /** flags left and right of the road at the finish of a challenge */
+  finishFlags(d) {
+    const name = ['fahne_wimpel', 'fahne_dorf'].find(n => this.A.find(n)); if (!name) return null;
+    const objs = [-1, 1].map(sd => { const s = this._spawn(name, 'Wehen'); if (!s) return null; const p = this._pt(d, sd * (ROAD_W + 0.9));
+      s.obj.position.set(p.x, p.y, p.z); s.obj.rotation.y = p.head + Math.PI / 2; if (s.mixer) this.active.push({ ...s, step: () => {} }); return s.obj; }).filter(Boolean);
+    return { remove: () => objs.forEach(o => { this.w.scene.remove(o); const a = this.active.find(x => x.obj === o); if (a) a.dead = true; }) };
+  }
+  _play(e, names) { if (!e.mixer) return; const c = names.map(n => this.A.clip(e.e, n)).find(Boolean); if (!c) return; e.mixer.stopAllAction(); e.mixer.timeScale = 1; e.mixer.clipAction(c).play(); }
 
   // ---- the surprises ----
   _knight() { // a knight gallops up beside you, races you, then pulls away and turns off

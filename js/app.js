@@ -226,6 +226,10 @@ function detail(id) {
             <label style="display:flex;gap:8px;align-items:center" title="Der Trainer hält die Zielwatt selbst, egal wie steil die Strecke ist"><input type="checkbox" class="toggle" id="ergChk" ${state.settings.erg !== false ? 'checked' : ''}> ERG (Trainer hält die Watt)</label>
           </div>
           <div id="workInfo"></div>
+          <div class="field" id="chRow" style="border:0;padding:10px 0 0;gap:10px;flex-wrap:wrap" title="Unterwegs fordern dich Ritter, Oma, Möwe, Seeadler oder ein Kind zu kurzen Rennen heraus. Annehmen: einfach antreten (oder K). Nie im Training.">
+            <span class="label">Challenges</span>
+            <select id="chSel" style="width:auto">${[0, 2, 3, 4, 6, 8].map(n => `<option value="${n}">${n ? n + ' pro Fahrt' : 'aus'}</option>`).join('')}</select>
+          </div>
         </div>
         ${t.intervals ? intervalPlan(t) : ''}
         <h2 class="section" style="margin-top:44px">Deine Zeiten</h2>
@@ -244,10 +248,12 @@ function detail(id) {
   $('#back').onclick = () => go('library');
   $('#ghostSel').value = state.settings.ghost; if (!$('#ghostSel').value) $('#ghostSel').value = 'best';
   $('#groupBtn').onclick = () => groupModal({ routeId: id, startRide });
-  const showWork = () => { const w = workoutById(state.settings.workout); $('#workInfo').innerHTML = w ? `<p style="margin:6px 0">${esc(w.what)} Ziel-Watt aus deiner FTP (${state.settings.ftp || 200} W).</p>${workoutSVG(w)}` : ''; $('#rideBtn').textContent = w ? 'Training starten ▸' : 'Losfahren ▸'; };
+  const showWork = () => { const w = workoutById(state.settings.workout); $('#workInfo').innerHTML = w ? `<p style="margin:6px 0">${esc(w.what)} Ziel-Watt aus deiner FTP (${state.settings.ftp || 200} W).</p>${workoutSVG(w)}` : ''; $('#rideBtn').textContent = w ? 'Training starten ▸' : 'Losfahren ▸'; $('#chRow').hidden = !!w; };
   $('#workSel').value = workoutById(state.settings.workout) ? state.settings.workout : ''; showWork();
   $('#workSel').onchange = e => { state.settings.workout = e.target.value; saveSettings(); showWork(); };
   $('#ergChk').onchange = e => { state.settings.erg = e.target.checked; saveSettings(); };
+  $('#chSel').value = String(state.settings.challenges ?? 4);
+  $('#chSel').onchange = e => { state.settings.challenges = +e.target.value; saveSettings(); };
   main.querySelectorAll('.share').forEach(b => b.onclick = () => shareRide(rides.find(r => r.id === b.dataset.id)));
   $('#ghostSel').onchange = e => { state.settings.ghost = e.target.value; saveSettings(); };
   $('#rideBtn').onclick = () => startRide(id);

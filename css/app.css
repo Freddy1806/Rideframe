@@ -381,3 +381,12 @@ input[type=number]::-webkit-inner-spin-button, input[type=number]::-webkit-outer
 .tab { white-space: nowrap; }
 @media (max-width: 1500px) { .topbar { gap: 20px; padding: 0 24px; } .tab { padding: 0 10px; letter-spacing: .05em; } .tab.active::after { left: 10px; right: 10px; } .topbar .pill { padding: 0 12px; gap: 8px; } }
 @media (max-width: 1250px) { .vertag { display: none; } .tab { font-size: 12px; } }
+/* challenges */
+.chcard { position: absolute; left: 50%; top: 92px; transform: translateX(-50%); min-width: 260px; padding: 12px 18px 14px; border-radius: 8px; text-align: center; z-index: 12; }
+.chcard .chbig { font-size: 46px; font-weight: 900; font-stretch: 112%; line-height: 1.05; margin-top: 2px; }
+.chcard.lead .chbig { color: #5fd38a; } .chcard.trail .chbig { color: #ff7a59; }
+.chcard .chsub { font-size: 14px; opacity: .85; margin-top: 2px; }
+.chcard .chbar { position: relative; height: 5px; border-radius: 3px; background: rgba(255,255,255,.15); margin-top: 10px; overflow: hidden; }
+.chcard .chbar i { position: absolute; inset: 0 auto 0 0; background: rgba(255,255,255,.55); }
+.chcard .chbar b { position: absolute; inset: 0 auto 0 0; background: var(--accent); }
+.finish .chsum { margin-top: 14px; font-weight: 700; }
