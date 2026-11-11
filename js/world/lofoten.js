@@ -279,6 +279,7 @@ export class WorldScene {
     // real water reflects ~4 % straight down (not 30 %): the sea is no longer a white mirror, the teal body and the
     // turquoise sand under the shallows show through; grazing angles still mirror the mountains
     this.water.material.fragmentShader = this.water.material.fragmentShader
+      .replace('vec3 reflectionSample = vec3( texture2D( mirrorSampler, mirrorCoord.xy / mirrorCoord.w + distortion ) );', 'vec2 rUv = mirrorCoord.xy / mirrorCoord.w + distortion; vec3 reflectionSample = texture2D( mirrorSampler, clamp( rUv, 0.002, 0.998 ) ).rgb; float rOut = max( max( -rUv.x, rUv.x - 1.0 ), max( -rUv.y, rUv.y - 1.0 ) ); reflectionSample = mix( reflectionSample, vec3( 0.32, 0.38, 0.44 ), smoothstep( -0.04, 0.02, rOut ) );') // outside the mirror image: a neutral sky tone, no stretched edge
       .replace('float rf0 = 0.3;', 'float rf0 = 0.04;')
       // sharper, brighter sun glitter: a glittering path on the sea towards the low sun
       .replace('sunLight( surfaceNormal, eyeDirection, 100.0, 2.0, 0.5, diffuseLight, specularLight );', 'sunLight( surfaceNormal, eyeDirection, 260.0, 5.0, 0.5, diffuseLight, specularLight );')

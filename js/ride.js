@@ -477,6 +477,7 @@ export class RideSession {
       else if (type === 'win' || type === 'lose') {
         this._flash(type === 'win' ? `Gewonnen gegen ${x.c.name}!` : `${x.c.name} war schneller`);
         x.h?.say(type === 'win' ? x.c.win : x.c.lose, 3); this._chEnd(x, sp, 4000);
+        this._chRes = { until: performance.now() + 6000, card: { title: `gegen ${x.c.name} · ${x.W} W`, big: type === 'win' ? 'Gewonnen!' : 'Verloren', sub: `Ø ${Math.round(x.avg || 0)} W · ${Math.round(Math.abs(this.d - x.opp))} m ${type === 'win' ? 'vor' : 'hinter'} ${x.c.name}`, lead: type === 'win' } }; // the result stays up a moment
       }
     }
     if (this._chFlags) this._chFlags = this._chFlags.filter(o => this.d > o.at + 30 ? (o.f.remove(), false) : true);
@@ -485,7 +486,7 @@ export class RideSession {
       x.h.d = x.opp;
       if (x.opp < this.d - 6 && x.opp > this.d - 45 && performance.now() > (this._lbNext || 0)) { this._lbNext = performance.now() + 14000; this.player?.lookBack?.(x.h.side > 0 ? -1 : 1); }
     }
-    const el = this.q('#hCh'); if (el) this._card(el, ch.card(this.d), '_chHtml');
+    const el = this.q('#hCh'); if (el) this._card(el, ch.card(this.d) || (this._chRes && performance.now() < this._chRes.until ? this._chRes.card : null), '_chHtml');
   }
 
   // ---------- the wizard (rare, free rides only): a 60 s trial; pass = 30 s flight, fail = 5 min hell ----------

@@ -634,6 +634,7 @@ void main() {
     foam = mix(foam, max(foam, steep * (.55 + .6 * lanes)), far);
     edge = 1. - abs(vF.y);
     a = smoothstep(0., .22 + (1. - n) * .45 * mix(1., .6, far), edge * mix(1., .55 + .7 * lanes, far)) * vF.z * mix(1., .82, far);
+    a *= mix(1., .3 + .85 * lanes, far * big); foam *= mix(1., .7 + .35 * lanes, far * big); // the big falls too: lanes and gaps from afar, never one white sheet
     a *= mix(.62, .97, max(foam, steep * .7));
   } else if (vM > 1.5) { // soft wet halo on the rock around a big fall: a little contrast for the white
     foam = 0.; a = exp(-vF.y * vF.y * 3.) * smoothstep(0., 1., vF.z) * .2;

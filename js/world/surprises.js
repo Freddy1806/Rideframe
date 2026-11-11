@@ -6,7 +6,9 @@ import * as THREE from 'three';
 import { ROAD_W } from './field.js';
 
 const _v = new THREE.Vector3(), _f = new THREE.Vector3();
-const layer1 = o => o.traverse(c => c.layers.set(1)); // not in the water reflection: small and fast
+const layer1 = o => o.traverse(c => c.layers.set(1));
+/** shift a model's children so its footprint is centred across x (arches whose origin sits at one pillar) */
+const centre = o => { o.updateMatrixWorld(true); const b = new THREE.Box3().setFromObject(o), cx = (b.min.x + b.max.x) / 2 - o.position.x; if (Math.abs(cx) > 0.3) for (const c of o.children) c.position.x -= cx; }; // not in the water reflection: small and fast
 
 export class Surprises {
   constructor(world, assets, events) {
@@ -115,7 +117,7 @@ export class Surprises {
       if (h.done && fly) { gone += dt; if (gone > 6) return null; h.d += (v + 8) * dt; // a bird never hangs in the air: it climbs away ahead
         return { d: h.d, off: side * (2.5 + gone * 6), fly: 3.2 + gone * gone * 2.5 }; }
       if (h.done) return null;
-      if (fly) return { d: h.d, off: side * (h.race ? 2.5 : ROAD_W + 4), fly: h.race ? 3.2 : 6 + Math.sin((this.clock || 0) * 1.3) * 0.8 };
+      if (fly) return { d: h.d + (h.race ? 14 : 0), off: side * (h.race ? 1.6 : ROAD_W + 4), fly: h.race ? 2.6 + Math.sin((this.clock || 0) * 2) * 0.4 : 6 + Math.sin((this.clock || 0) * 1.3) * 0.8 }; // racing birds fly a little ahead and low, so they are always in view (the card shows the real gap)
       return { d: h.d, off: side * (ROAD_W + (h.race ? 1.2 : 2.2)), doff: h.race ? 0 : -side * 3 };
     }, { idle: ['Jubeln', 'Winken', 'Stehen'] });
     if (!e) return null;
@@ -126,13 +128,13 @@ export class Surprises {
   }
   /** the START arch across the road where a ride begins (stays until out of sight) */
   startArch(d) {
-    if (!this.A.find('start_torbogen')) return; const s = this._spawn('start_torbogen', 'Wehen'), p = this._pt(d, 0); if (!s) return;
+    if (!this.A.find('start_torbogen')) return; const s = this._spawn('start_torbogen', 'Wehen'), p = this._pt(d, 0); if (!s) return; centre(s.obj);
     s.obj.position.set(p.x, p.e, p.z); s.obj.rotation.y = p.head; const e = { ...s, step: (dt, v, cam) => { if (this.w.d > d + 150) e.dead = true; } }; this.active.push(e);
   }
   /** flags left and right of the road at the finish of a challenge */
   finishFlags(d) {
     if (this.A.find('ziel_torbogen')) { // a medieval finish arch across the road (9 m wide), its banners wave
-      const s = this._spawn('ziel_torbogen', 'Wehen'), p = this._pt(d, 0); if (s) { s.obj.position.set(p.x, p.e, p.z); s.obj.rotation.y = p.head;
+      const s = this._spawn('ziel_torbogen', 'Wehen'), p = this._pt(d, 0); if (s) { centre(s.obj); s.obj.position.set(p.x, p.e, p.z); s.obj.rotation.y = p.head;
         const e = { ...s, step: () => {} }; this.active.push(e); return { remove: () => { e.dead = true; } }; } }
     const name = ['fahne_wimpel', 'fahne_dorf'].find(n => this.A.find(n)); if (!name) return null;
     const objs = [-1, 1].map(sd => { const s = this._spawn(name, 'Wehen'); if (!s) return null; const p = this._pt(d, sd * (ROAD_W + 0.9));
