@@ -126,6 +126,9 @@ export class Surprises {
   }
   /** flags left and right of the road at the finish of a challenge */
   finishFlags(d) {
+    if (this.A.find('ziel_torbogen')) { // a medieval finish arch across the road (9 m wide), its banners wave
+      const s = this._spawn('ziel_torbogen', 'Wehen'), p = this._pt(d, 0); if (s) { s.obj.position.set(p.x, p.e, p.z); s.obj.rotation.y = p.head;
+        const e = { ...s, step: () => {} }; this.active.push(e); return { remove: () => { e.dead = true; } }; } }
     const name = ['fahne_wimpel', 'fahne_dorf'].find(n => this.A.find(n)); if (!name) return null;
     const objs = [-1, 1].map(sd => { const s = this._spawn(name, 'Wehen'); if (!s) return null; const p = this._pt(d, sd * (ROAD_W + 0.9));
       s.obj.position.set(p.x, p.y, p.z); s.obj.rotation.y = p.head + Math.PI / 2; if (s.mixer) this.active.push({ ...s, step: () => {} }); return s.obj; }).filter(Boolean);
@@ -155,7 +158,7 @@ export class Surprises {
     this.fx.pts.visible = true;
   }
   _wizLife(dt, cam, d) {
-    const h = this.wiz, t = this.clock || 0;
+    const h = this.wiz, t = this.clock || 0; this.A.pulse?.(t);
     if (h && !h.gone && h.e?.obj) { // a slow purple shimmer around him while he waits
       const o = h.e.obj.position;
       for (let k = 0; k < 3; k++) { const a = t * 2.4 + k * 2.1 + Math.random() * 0.6, r = 0.9 + Math.random() * 0.5;

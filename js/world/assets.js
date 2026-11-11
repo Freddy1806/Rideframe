@@ -57,7 +57,14 @@ export class Assets {
       if (e.file.includes('buckelwal')) mixer.stopAllAction();
     }
     const wheel = obj.getObjectByName('muehlrad'); if (wheel) wheel.userData.millWheel = true;
+    if (!e.fxDone) { e.fxDone = true; // the MacBook's magic and lava materials (shared by all copies): sparks glow additively, lava pulses
+      e.scene.traverse(o => { const ms = o.material ? [].concat(o.material) : []; for (const m of ms) {
+        if (m.name === 'magie') { m.blending = THREE.AdditiveBlending; m.depthWrite = false; m.transparent = true; m.needsUpdate = true; }
+        if ((m.name === 'lava' || m.name === 'augenglut') && m.emissive) { m.userData.glow0 = m.emissiveIntensity || 1; GLOW.add(m); } } }); }
     return { obj, mixer };
   }
   clip(e, name) { return e.clips.find(c => c.name === name) || null; }
+  /** lava and glowing eyes breathe (call once per frame) */
+  pulse(t) { for (const m of GLOW) m.emissiveIntensity = m.userData.glow0 * (0.75 + 0.35 * Math.sin(t * 2.6) + 0.12 * Math.sin(t * 7.3)); }
 }
+const GLOW = new Set();
