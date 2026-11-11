@@ -122,7 +122,7 @@ export class Surprises {
     }, { idle: ['Jubeln', 'Winken', 'Stehen'] });
     if (!e) return null;
     h.e = e; h.obj = e.obj;
-    h.go = () => { h.race = true; this._play(e, fly ? ['Fliegen', 'Gleiten'] : ['Rennen', 'Trab', 'Gehen']); };
+    h.go = () => { h.race = true; this._play(e, fly ? ['Fliegen', 'Gleiten'] : ['Treten', 'Rennen', 'Trab', 'Gehen']); }; // Treten: pedalling (riders on bikes)
     h.say = (text, t = 2.6) => this._say(e.obj, text, t);
     return h;
   }
@@ -179,9 +179,9 @@ export class Surprises {
       const c = Math.random(); this.fx._p(x, y + Math.random() * 3, z, (Math.random() - .5) * 0.8, 1.5 + Math.random() * 2.5, (Math.random() - .5) * 0.8, 1, 0.3 + c * 0.4, c * 0.08, 2 + Math.random() * 2); }
     this.fx.pts.visible = true;
     this.hellT = (this.hellT || 0) + dt;
-    if (this.hellT > 12 && t > (this.dragonNext || 0) && this.A.find('drache')) { this.dragonNext = t + 50; this._dragon(); } // a dragon sweeps over the road, breathing fire
+    if (this.hellT > 4 && t > (this.dragonNext || 0) && this.A.find('drache')) { this.dragonNext = t + 45; this._dragon(); } // a dragon sweeps over the road, breathing fire
     if (t > (this.burstNext || 0)) { this.burstNext = t + 0.7 + Math.random() * 1.1; this.fireBurst(d + 30 + Math.random() * 90, (Math.random() < 0.5 ? -1 : 1) * (ROAD_W + 2 + Math.random() * 9)); }
-    const kinds = (this._hellKinds ||= ['lava_fels', 'lava_fels_b', 'lava_fels_c', 'feuersaeule', 'lava_riss', 'hoellen_tor', 'totenschaedel', 'lava_see', 'obsidian_zacken', 'feuerdaemon', 'feuerdaemon'].filter(n => this.A.find(n)));
+    const kinds = (this._hellKinds ||= ['lava_fels', 'lava_fels_b', 'lava_fels_c', 'feuersaeule', 'lava_riss', 'hoellen_tor', 'totenschaedel', 'lava_see', 'obsidian_zacken', 'feuerdaemon', 'feuerdaemon', 'feuerdaemon'].filter(n => this.A.find(n)));
     if (kinds.length && d > (this.hellNextD || 0)) {
       this.hellNextD = d + 35 + Math.random() * 45;
       const kind = kinds[Math.floor(Math.random() * kinds.length)], wide = /lava_see|hoellen_tor/.test(kind) ? 4.5 : 0; // wide pieces keep clear of the asphalt

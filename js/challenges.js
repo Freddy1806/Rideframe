@@ -8,13 +8,13 @@ import { powerFor, step as physStep } from './physics.js';
 export const CHALLENGERS = [
   { id: 'knight', name: 'Der Ritter', models: ['reiter_ritter', 'pferd'], k: 0.95, kind: 'ride',
     ask: 'Ha! Race me to the flag, cyclist!', win: 'By my sword... you are fast!', lose: 'Too slow for the King!' },
-  { id: 'oma', name: 'Die Oma', models: ['alte_frau'], k: 1.03, kind: 'run',
+  { id: 'oma', name: 'Die Oma', models: ['oma_fahrrad', 'alte_frau'], k: 1.03, kind: 'run', // on her old bicycle once the MacBook has built it
     ask: 'Think you can beat granny?', win: 'Oh my, what legs!', lose: 'Hah! Granny wins again!' },
   { id: 'gull', name: 'Die Möwe', models: ['moewe'], k: 1.1, kind: 'fly',
     ask: 'Skraa! Catch me if you can!', win: 'Skraa... skraa...', lose: 'Skraa! Too slow!' },
   { id: 'eagle', name: 'Der Seeadler', models: ['seeadler'], k: 1.18, kind: 'fly',
     ask: 'The sky is mine. Prove me wrong!', win: 'A worthy rival.', lose: 'Nobody outruns the eagle.' },
-  { id: 'kid', name: 'Das Kind', models: ['junge', 'maedchen'], k: 1.32, kind: 'run',
+  { id: 'kid', name: 'Das Kind', models: ['kind_fahrrad'], k: 1.32, kind: 'run', // never on foot: a child running 37 km/h looked wrong (Freddy); comes back on its bike
     ask: 'Bet you can\'t beat me! Go go go!', win: 'Nooo! Again! Again!', lose: 'I won! I won!' },
 ];
 const DIST = [[600, 0.1], [1000, 0], [1500, -0.06]]; // distance and how much harder (shorter) or easier (longer)

@@ -1302,6 +1302,8 @@ export class WorldScene {
     { const cu = this.cumulus.material.uniforms; cu.uSun.value.copy(s); cu.uCover.value = cover; cu.uLow.value = low; cu.uVeil.value = veil; }
     // image-based light from the sky, re-baked only when the sun has moved noticeably (~0.2°)
     const hb = (this.hellK || 0) > 0.5; if (hb !== !!this._envHell) { this._envHell = hb; this.envSun = null; } // hell in, hell out: re-bake the sky light
+    if (hb !== !!this._herdHell) { this._herdHell = hb; // no grazing cows in hell (Mac mini QA): farm animals leave while the screen burns red, and come back after
+      for (const o of this.props) if (/kuh|schaf|pferd|rentier|ziege|schwein|huhn|gans/.test(o.userData.asset || '')) o.visible = !hb; }
     if (!this.envSun || this.envSun.distanceToSquared(s) > 1.2e-5) {
       (this.envSun ||= new THREE.Vector3()).copy(s);
       const rt = this.pmrem.fromScene(this.envScene, 0, 0.1, 9000);
