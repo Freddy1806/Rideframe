@@ -953,6 +953,19 @@ export class WorldScene {
           m.material = this.rockMat; });
       }
     }
+    // now and then the road is cut into the rock (Freddy: "ab und zu Klippen direkt an der Straße"): a wall close beside
+    // the asphalt on the land side, only where the ground rises anyway, never in a village
+    if (cliffs.length && !QS.has('nocut')) for (let d = 900 + r() * 800; d < t.length - 300; d += 1800 + r() * 1600) {
+      const sg = segAt(d); if (sg.village || sg.temple) continue;
+      const side = sg.land === 'coast' || sg.land === 'river' || sg.land === 'cliff' ? 1 : (r() < 0.5 ? -1 : 1), p = f.at(d), q = spot(d, side * 22);
+      if (f.height(q.x, q.z) - p.e < 5) continue;
+      const e = cliffs[Math.floor(r() * cliffs.length)], k = 0.55 + r() * 0.2, R = Math.max(...e.size) / 2 * k;
+      const o = place(e, d, side * (ROAD_W + 3.5 + R), { face: 'road', dy: -3, radK: k, gap: 2.5, scale: k });
+      if (o && !QS.has('cliffglb')) o.traverse(m => { if (!m.isMesh) return; const g = m.geometry, n = g.attributes.position.count;
+        if (!g.attributes.splat) { g.setAttribute('splat', new THREE.Float32BufferAttribute(new Float32Array(n * 4).map((_, i) => i % 4 === 1 ? 1 : 0), 4)); g.setAttribute('color', new THREE.Float32BufferAttribute(new Float32Array(n * 3).fill(0.85), 3)); }
+        m.material = this.rockMat; });
+      if (o) console.info(`RIDEFRAME Felsen an der Straße d=${Math.round(d)} ${side > 0 ? 'rechts' : 'links'}`);
+    }
     // the castle is under siege: knights storm up from the road, a catapult and camp below, banners of both sides
     for (const s of segs) if (s.top === 'castle') {
       const d0 = s.to + 70, attackers = ['ritter', 'wache', 'bogenschuetze', 'soldat'].map(byName).filter(Boolean);
