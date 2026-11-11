@@ -293,6 +293,7 @@ export class RideSession {
       this._workout(dt);
       this._chTick(dt);
       this._wizTick(dt);
+      if ((this._moodT = (this._moodT || 0) + dt) > 1) { this._moodT = 0; this._mood(); }
       if (this.berg && !(this.workout && this.erg)) this.state.trainer.setPower(this._bergTarget());
       else this.state.trainer.setGrade(this._trainerGrade());
       this._syncVideo();
@@ -516,6 +517,13 @@ export class RideSession {
       }
     }
     const el = this.q('#hWiz'); if (el) { el.classList.toggle('hellcard', z.state === 'hell'); this._card(el, z.card(this.d), '_wizHtml'); }
+  }
+  /** music follows the ride: minor in a shower, motivation only in the hard parts of a workout, the wizard's flight and hell */
+  _mood() {
+    const m = this.music; if (!m?.setMood || this.group) return;
+    const z = this.wiz?.state, rain = this.player?.weather?.rain || 0;
+    m.setMood(this.workout ? (this.wNow?.step?.pct >= 88 ? 'hard' : 'workout') : z === 'fly' ? 'fly' : z === 'hell' ? 'hell'
+      : rain > 0.35 || (m.mood === 'rain' && rain > 0.1) ? 'rain' : 'world');
   }
   /** in hell the trainer adds 2 % on top of the road (virtual shifting included) */
   _wizGrade(g) {
