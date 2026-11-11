@@ -15,10 +15,11 @@ export class Music {
     this.a.addEventListener('ended', () => this._next());
     this._duck = () => { this.duckK = 0.35; clearTimeout(this._dt); this._dt = setTimeout(() => { this.duckK = 1; this._apply(); }, 2600); this._apply(); };
     window.addEventListener('rf-voice', this._duck);
+    this.bandK = 1; this._band = e => { this.bandK = 1 - 0.9 * Math.min(1, e.detail * 1.6); this._apply(); }; window.addEventListener('rf-band', this._band);
     audioManifest().then(m => { const M = m.music || {}; this.list = [...(M[mood] || []), ...(M[mood]?.length ? [] : M.world || [])].sort(() => Math.random() - 0.5); this.i = -1; if (this.on && !this.paused) this._next(); });
   }
   get available() { return !!this.list?.length; }
-  _apply() { this.a.volume = Math.max(0, Math.min(1, this.vol * this.duckK)); }
+  _apply() { this.a.volume = Math.max(0, Math.min(1, this.vol * this.duckK * (this.bandK ?? 1))); }
   _next() {
     if (!this.list?.length) return;
     this.i = (this.i + 1) % this.list.length;
@@ -30,7 +31,7 @@ export class Music {
   setVolume(v) { this.vol = v; this.on = v > 0; this._apply(); if (this.on && this.a.paused && !this.paused) (this.a.src ? this.a.play().catch(() => {}) : this._next()); if (!this.on) this.a.pause(); }
   pause() { this.paused = true; this.a.pause(); }
   resume() { this.paused = false; if (this.on) (this.a.src ? this.a.play().catch(() => {}) : this._next()); }
-  destroy() { window.removeEventListener('rf-voice', this._duck); this.a.pause(); this.a.src = ''; }
+  destroy() { window.removeEventListener('rf-voice', this._duck); window.removeEventListener('rf-band', this._band); this.a.pause(); this.a.src = ''; }
 }
 
 /** short German coach lines for training programs (only recorded files, no computer voice) */

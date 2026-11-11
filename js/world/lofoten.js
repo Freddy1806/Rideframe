@@ -246,6 +246,7 @@ export class WorldScene {
     scene.environmentIntensity = ENV_I;
     scene.fog = new THREE.FogExp2(0xbfc6cd, 0.00042); // a bit more aerial perspective: far ridges step back in layers
     this.clouds = cloudLayer(sun); scene.add(this.clouds);
+    this.rain = rainLayer(); scene.add(this.rain); this.rainPlan = planRain(track.length || 40000, QS.has('rain'));
     this.cumulus = cumulusLayer(sun); scene.add(this.cumulus); // thick cumulus heaps (impostors) under the thin fbm deck
     this.sunGlow = sunGlow(); scene.add(this.sunGlow); // fake bloom: soft halo around the low sun, cut by the terrain in front
 
@@ -350,6 +351,7 @@ export class WorldScene {
   play() { this.paused = false; this.events?.sound.resume(); return Promise.resolve(); }
   pause() { this.paused = true; this.events?.sound.pause(); }
   destroy() {
+    this._blurEl?.remove();
     this.dead = true; this.events?.sound.destroy();
     this.scene.traverse(o => { o.geometry?.dispose?.(); });
     this.renderer.dispose();
@@ -737,12 +739,14 @@ export class WorldScene {
     // Each species carries its altitude band (zone_m) from the Mac; groves, not an even sprinkle.
     const trees = A.by.tree || [];
     if (trees.length) {
+      // land all round (14 m): no tree on a thin spit or skerry, where the coarse far terrain shows only sea
+      const dry = (x, z) => [[14, 0], [-14, 0], [0, 14], [0, -14], [10, 10], [-10, -10]].every(([a, c]) => f.height(x + a, z + c) > 1.2);
       let n = 0;
       for (let d = 80; d < t.length - 60 && n < 1400; d += 9 + r() * 10) {
         const grove = f.n2(d / 400, 7.3) * 0.5 + 0.5; // stretches with woods and open stretches between them
         if (r() > 0.25 + grove * 0.9) continue;
         const side = r() < 0.5 ? -1 : 1, off = side * (ROAD_W + 9 + Math.pow(r(), 1.6) * 210), q = spot(d, off), h = f.height(q.x, q.z);
-        if (h < 2.5) continue;
+        if (h < 2.5 || !dry(q.x, q.z)) continue;
         const slope = Math.hypot(f.height(q.x + 3, q.z) - h, f.height(q.x, q.z + 3) - h) / 3; if (slope > 0.75) continue; // no trees on cliffs
         const fit = trees.filter(e => !e.zone_m || (h >= e.zone_m[0] && h <= e.zone_m[1]));
         if (!fit.length) continue;
@@ -765,7 +769,7 @@ export class WorldScene {
         const cnt = 5 + Math.floor(r() * 8); groves++;
         for (let k = 0; k < cnt; k++) {
           const dd = d + (r() - 0.5) * 50, oo = off + (r() - 0.5) * 45, qq = spot(dd, oo), hh = f.height(qq.x, qq.z);
-          if (hh < 2.5 || Math.hypot(f.height(qq.x + 3, qq.z) - hh, f.height(qq.x, qq.z + 3) - hh) / 3 > 0.5) continue;
+          if (hh < 2.5 || !dry(qq.x, qq.z) || Math.hypot(f.height(qq.x + 3, qq.z) - hh, f.height(qq.x, qq.z + 3) - hh) / 3 > 0.5) continue;
           const fit = pool.filter(e => !e.zone_m || (hh >= e.zone_m[0] - 40 && hh <= e.zone_m[1] + 40)), e = (fit.length ? fit : pool)[Math.floor(r() * (fit.length || pool.length))];
           tried++; const o = place(e, dd, oo, { face: r() * 6.28, scale: 0.75 + r() * 0.5, radK: 0.35, gap: 5 }); if (!o) continue;
           n++; o.userData.near = !!e.farScene;
@@ -1008,6 +1012,19 @@ export class WorldScene {
   }
   /** 0 = rider's eyes, 1 = chase view from behind and above, 2 = looking back */
   setView(v) { this.view = v; this.lookPos = null; }
+  /** speed blur: the screen edges and the ground close by smear when you go fast (CSS backdrop blur with a radial mask, cheap) */
+  _speedBlur(k) {
+    if (this.instant || this._shot) k = 0;
+    if (!this._blurEl) {
+      if (!k || !this.c.parentElement) return;
+      const el = this._blurEl = document.createElement('div');
+      Object.assign(el.style, { position: 'absolute', inset: '0', pointerEvents: 'none', zIndex: 0, opacity: 0, backdropFilter: 'blur(6px)', webkitBackdropFilter: 'blur(6px)',
+        maskImage: 'radial-gradient(ellipse 62% 52% at 50% 42%, transparent 55%, rgba(0,0,0,.55) 78%, #000 100%)',
+        webkitMaskImage: 'radial-gradient(ellipse 62% 52% at 50% 42%, transparent 55%, rgba(0,0,0,.55) 78%, #000 100%)' });
+      this.c.after(el); // right above the 3D view, below the HUD
+    }
+    const o = Math.round(k * 20) / 20; if (o !== this._blurO) { this._blurO = o; this._blurEl.style.opacity = o; this._blurEl.style.display = o ? '' : 'none'; }
+  }
   /** one picture of you on the bike for the share image (next frame); resolves with a 1080×810 canvas */
   snapshot() { return new Promise(res => { this._shot = res; }); }
   setCockpit(on) { this.showCockpit = on; }
@@ -1032,7 +1049,7 @@ export class WorldScene {
       const x = cam.x + bx / bl * 7, z = cam.z + bz / bl * 7, y = Math.max(cam.y + 2.4, this.field.height(x, z) + 1.8);
       this.camera.position.set(x, y, z); this.camera.lookAt(this.lookPos.x, this.lookPos.y + 0.6, this.lookPos.z);
     } else if (this.view === 2) this.camera.lookAt(2 * cam.x - this.lookPos.x, this.lookPos.y, 2 * cam.z - this.lookPos.z);
-    if (fast > 0 && !this.instant) { const t = performance.now() / 1000, a = fast * 0.004;
+    if (fast > 0 && !this.instant) { const t = performance.now() / 1000, a = fast * 0.0015;
       this.camera.rotation.z += Math.sin(t * 23) * a + Math.sin(t * 37) * a * 0.6; this.camera.rotation.x += Math.sin(t * 29) * a * 0.7; }
     if (this.shakeImpulse > 0.01 && !this.instant) { const t = performance.now() / 1000, a = this.shakeImpulse * 0.014; // explosions (siege.js)
       this.camera.rotation.x += Math.sin(t * 41) * a + Math.sin(t * 17) * a * 0.5; this.camera.rotation.y += Math.sin(t * 33) * a * 0.6; this.camera.rotation.z += Math.sin(t * 27) * a * 0.7;
@@ -1062,8 +1079,9 @@ export class WorldScene {
   // Everything is a smooth function of the distance (plus a slow drift in time), so it never jumps.
   _weather(d, time) {
     const L = this.track.length || 40000, u = Math.max(0, Math.min(1, d / L));
-    const cover = Math.max(0.1, Math.min(0.8, 0.32 + 0.2 * Math.sin(d / 5200 + 1.3) + 0.1 * Math.sin(d / 1700 + 4) + 0.06 * Math.sin(time * 0.003)));
-    const veil = smooth(0.3, 0.95, 0.5 + 0.5 * Math.sin(d / 6100 + 2.6)) * (0.4 + 0.6 * cover);
+    const rain = this.rainPlan.reduce((m, s) => Math.max(m, smooth(s.a - 700, s.a, d) * smooth(s.b + 500, s.b, d)), 0); // showers: at least one per ride, never the same
+    const cover0 = Math.max(0.1, Math.min(0.8, 0.32 + 0.2 * Math.sin(d / 5200 + 1.3) + 0.1 * Math.sin(d / 1700 + 4) + 0.06 * Math.sin(time * 0.003)));
+    const cover = lerp(cover0, 0.95, rain), veil = Math.max(smooth(0.3, 0.95, 0.5 + 0.5 * Math.sin(d / 6100 + 2.6)) * (0.4 + 0.6 * cover0), rain * 0.95);
     const s = sunAt(u, this.sunDir), low = 1 - Math.max(0, Math.min(1, (s.y - 0.035) / (0.113 - 0.035)));
     const su = this.sky.material.uniforms;
     su.sunPosition.value.copy(s); su.uCover.value = cover; su.uVeil.value = veil; su.uLow.value = low;
@@ -1090,7 +1108,10 @@ export class WorldScene {
       const rt = this.pmrem.fromScene(this.envScene, 0, 0.1, 9000);
       this.envRT?.dispose(); this.envRT = rt; this.scene.environment = rt.texture;
     }
-    this.weather = { cover, veil, sunEl: THREE.MathUtils.radToDeg(Math.asin(s.y)) };
+    this.scene.fog.density = 0.00042 * (1 + 2.2 * rain);
+    this.rain.visible = rain > 0.02 && !(this.tunnelK > 0.5); this.rain.material.uniforms.uRain.value = rain;
+    this.light.intensity *= 1 - 0.35 * rain; this.hemi.color.lerp(H_GREY, rain * 0.5);
+    this.weather = { cover, veil, rain, sunEl: THREE.MathUtils.radToDeg(Math.asin(s.y)) };
   }
 
   _setQuality(q) {
@@ -1139,12 +1160,14 @@ export class WorldScene {
     this.light.target.position.set(cam.x - this.sunDir.x * 40, cam.y, cam.z - this.sunDir.z * 40);
     this.sky.position.copy(this.camera.position);
     this.roadBlur.value = Math.max(0, Math.min(1, ((this.speed || 0) * 3.6 - 12) / 50));
+    this._speedBlur(Math.max(0, Math.min(1, ((this.speed || 0) * 3.6 - 24) / 30)));
     this.streaks.position.copy(this.camera.position); this.streaks.quaternion.copy(this.camera.quaternion); this.streaks.userData.tick(dt, this.speed || 0, this.view === 2 || this._shot ? 0 : this.fast || 0);
     this.water.position.x = Math.round(cam.x / 100) * 100; this.water.position.z = Math.round(cam.z / 100) * 100;
     this.water.material.uniforms.time.value = time * 0.6; this.grassTime.value = time; TIME.value = time;
     { const sd = this.sky.material.uniforms.sunPosition.value, g = this.sunGlow, veil = this.weather?.veil || 0;
       g.position.copy(this.camera.position).addScaledVector(sd, 8200); g.material.opacity = 0.5 * (1 - 0.65 * veil) * (1 - (this.tunnelK || 0)); }
     this.cumulus.material.uniforms.uTime.value = time;
+    if (this.rain.visible) { const ru = this.rain.material.uniforms; ru.uTime.value = time; ru.uCam.value.copy(this.camera.position); }
     this.clouds.position.copy(this.camera.position); this.clouds.material.uniforms.uTime.value = time; this.sky.material.uniforms.uTime.value = time;
     for (const o of this.animated) {
       if (o.userData.spin) o.rotation.z = time * 0.6;
@@ -1190,7 +1213,7 @@ export class WorldScene {
     for (const o of this.props) { const w = o.userData.walk; if (!w || !o.visible) continue; // walk along the road, turn round at the village ends
       w.d += w.v * Math.min(dt, 0.1); if (w.d < w.a || w.d > w.b) { w.v = -w.v; w.d = Math.max(w.a, Math.min(w.b, w.d)); }
       const p = this.field.at(w.d), l = Math.hypot(p.tx, p.tz) || 1, x = p.x - p.tz / l * w.off, z = p.z + p.tx / l * w.off;
-      o.position.set(x, this.field.height(x, z), z); o.rotation.y = Math.atan2(p.tx * Math.sign(w.v), p.tz * Math.sign(w.v)); }
+      o.position.set(x, this.field.ground(x, z), z); o.rotation.y = Math.atan2(p.tx * Math.sign(w.v), p.tz * Math.sign(w.v)); }
     for (const b of this.birds) { const c = b.userData.circle, a = c.ph + time * c.w;
       b.position.set(c.x + Math.cos(a) * c.R, c.y + Math.sin(time * 0.3 + c.ph) * 4, c.z + Math.sin(a) * c.R); b.rotation.y = -a; }
     const fwd = this.camera.getWorldDirection(_v);
@@ -1500,3 +1523,31 @@ function windStreaks(n = 90) {
 }
 function noMirror(o) { o.traverse(c => c.layers.set(1)); }
 function freeze(o) { o.updateMatrixWorld(true); o.traverse(c => { c.matrixAutoUpdate = false; }); o.matrixWorldAutoUpdate = false; }
+
+// ---- rain: one or two showers per ride at random spots, 4-9 km long (~10-20 min), heavier in the middle ----
+function planRain(L, force) {
+  const out = [], len = () => Math.min(L * 0.45, 4000 + Math.random() * 5000);
+  if (force) return [{ a: 0, b: L }];
+  const n = L > 30000 && Math.random() < 0.4 ? 2 : 1;
+  for (let k = 0; k < n; k++) { const l = len(), a = (k / n + Math.random() * 0.6 / n) * (L - l) + 600; out.push({ a, b: a + l }); }
+  console.info('RIDEFRAME Regen bei', out.map(s => `km ${(s.a / 1000).toFixed(1)}–${(s.b / 1000).toFixed(1)}`).join(', '));
+  return out;
+}
+/** falling streaks in a box that travels with the camera; all motion in the vertex shader (one draw call) */
+function rainLayer(N = 6000, B = 70, H = 36) {
+  const pos = new Float32Array(N * 6), end = new Float32Array(N * 2);
+  for (let i = 0; i < N; i++) { const x = Math.random() * B, y = Math.random() * H, z = Math.random() * B;
+    pos.set([x, y, z, x, y, z], i * 6); end[i * 2 + 1] = 1; }
+  const g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.BufferAttribute(pos, 3)); g.setAttribute('aEnd', new THREE.BufferAttribute(end, 1));
+  const m = new THREE.ShaderMaterial({ transparent: true, depthWrite: false, fog: false,
+    uniforms: { uTime: { value: 0 }, uCam: { value: new THREE.Vector3() }, uRain: { value: 0 } },
+    vertexShader: `attribute float aEnd; uniform float uTime; uniform vec3 uCam; uniform float uRain; varying float vA;
+      void main() { vec3 box = vec3(${B}., ${H}., ${B}.);
+        vec3 p = position - vec3(uTime * 2.2, uTime * 13., uTime * 1.1);           // fall, a little wind
+        p = mod(p - uCam + box * .5, box) + uCam - box * .5; p.y += 6.;
+        p += vec3(.08, .75, .04) * aEnd;                                           // streak length ~0.75 m
+        float far = length(p - uCam); vA = uRain * smoothstep(${B * 0.5}., 8., far) * step(fract(position.x * 7.13 + position.z * 3.7), .35 + .65 * uRain);
+        gl_Position = projectionMatrix * viewMatrix * vec4(p, 1.); }`,
+    fragmentShader: 'varying float vA; void main() { gl_FragColor = vec4(.78, .82, .88, vA * .45); }' });
+  const L = new THREE.LineSegments(g, m); L.frustumCulled = false; L.visible = false; L.layers.set(1); L.renderOrder = 5; return L;
+}

@@ -215,6 +215,11 @@ export class Field {
     const hh = lerp(r.e - 0.25, h, flat);
     return out < 3 ? Math.min(hh, r.e - 0.25 + Math.max(0, out) * 0.4) : hh;
   }
+  /** Where feet stand: the asphalt surface on the road (the terrain lies a little below it there), the terrain elsewhere. */
+  ground(x, z) {
+    const h = this.height(x, z), r = this.road(x, z);
+    return r && r.d < ROAD_W + 0.4 && !this.tunnel?.[r.i] ? Math.max(h, r.e + 0.05) : h;
+  }
   /** Height of a terrain mesh vertex for a grid with spacing S: coarse grids are pulled down near the road
    *  so that the interpolated triangles never cover the asphalt. */
   /** True when a rock tunnel (or its mouth) lies within [d - back, d + ahead]: no shouting into a tunnel. */

@@ -29,6 +29,7 @@ export class Surprises {
       { id: 'gulls', need: ['moewe'], go: () => this._flyby('moewe', 6) },
       { id: 'spray', need: [], sea: true, go: () => this._spray() },
       { id: 'rainbow', need: [], go: () => this._rainbow() },
+      { id: 'band', need: [], go: () => this._band() },
       { id: 'crowd', need: ['junge', 'maedchen', 'alte_frau', 'bauer_sense', 'wache'], go: () => this._crowd() },
     ];
     this.fw = new Fireworks(world.scene);
@@ -62,7 +63,7 @@ export class Surprises {
 
   // ---- helpers ----
   _pt(d, off) { const p = this.f.at(Math.max(0, Math.min(this.track.length - 1, d))), l = Math.hypot(p.tx, p.tz) || 1;
-    const x = p.x - p.tz / l * off, z = p.z + p.tx / l * off; return { x, z, y: this.f.height(x, z), head: Math.atan2(p.tx, p.tz), e: p.e }; }
+    const x = p.x - p.tz / l * off, z = p.z + p.tx / l * off; return { x, z, y: this.f.ground(x, z), head: Math.atan2(p.tx, p.tz), e: p.e }; }
   _seaSide(d) { for (const s of [-1, 1]) for (const o of [60, 120, 200]) if (this.f.height(this._pt(d, s * o).x, this._pt(d, s * o).z) < -3) return s * o; return 0; }
   _inVillage(d) { return this.villages.some(s => d > s.from + (s.to - s.from) * s.village[0] && d < s.from + (s.to - s.from) * s.village[1]); }
   _landSide(d) { // the side where the ground next to the road is fairly flat
@@ -76,13 +77,22 @@ export class Surprises {
     const { obj, mixer } = this.A.make(e, clip); if (mixer) mixer.timeScale = ts;
     obj.scale.setScalar(scale); layer1(obj); this.w.scene.add(obj); return { obj, mixer, e };
   }
+  _idle(e, names) { // switch a finished mover to a standing clip
+    const c = names.map(n => e.e?.clips && this.A.clip(e.e, n)).find(Boolean); if (!c) return;
+    e.mixer.stopAllAction(); e.mixer.timeScale = 1; e.mixer.clipAction(c).play();
+  }
   _say(obj, text, t = 2.6) { this.ev?.say?.(obj, text, t); }
   _run(name, anim, path, opts = {}) { // generic mover: path(t, v) -> {d, off} along the road, or null when finished
     const s = this._spawn(name, anim, opts.scale); if (!s) return null;
-    const e = { ...s, t: 0, step: (dt, v) => {
-      e.t += dt; const q = path(e.t, v, Math.min(dt, 0.1)); if (!q) { e.dead = true; return; }
+    const e = { ...s, t: 0, step: (dt, v, cam) => {
+      e.t += dt;
+      if (e.over) { // finished: stays where it is until it is out of sight, so nothing vanishes in front of you
+        const dx = e.obj.position.x - cam.x, dz = e.obj.position.z - cam.z, dist = Math.hypot(dx, dz), f = this.w.camera.getWorldDirection(_f);
+        if (dist > 170 || (dx * f.x + dz * f.z) / (dist || 1) < 0.15) e.dead = true; return; }
+      const q = path(e.t, v, Math.min(dt, 0.1)); if (!q) { e.over = true; if (opts.idle && e.mixer) this._idle(e, opts.idle); return; }
       const p = this._pt(q.d, q.off), p2 = this._pt(q.d + (q.back ? -1 : 1), q.off + (q.doff || 0));
       e.obj.position.set(p.x, q.fly != null ? Math.max(p.y, p.e) + q.fly : Math.max(q.water ? 0 : -50, q.water ? 0 : p.y), p.z);
+      if (!e.shown) { e.shown = true; e.obj.visible = true; }
       e.obj.rotation.y = Math.atan2(p2.x - p.x, p2.z - p.z);
     } };
     this.active.push(e); return e;
@@ -91,42 +101,57 @@ export class Surprises {
   // ---- the surprises ----
   _knight() { // a knight gallops up beside you, races you, then pulls away and turns off
     const side = this._landSide(this.w.d + 30); if (!side) return false;
-    const name = this.A.find('reiter_ritter') ? 'reiter_ritter' : 'pferd', d0 = this.w.d + 14;
+    const name = this.A.find('reiter_ritter') ? 'reiter_ritter' : 'pferd', d0 = this.w.d - 30; // comes up from behind you
     let dd = 0;
     const e = this._run(name, [['Rennen', 1], ['Trab', 1.7], ['Schritt', 2.6]], (t, v, dt) => {
-      if (t > 26) return null;
-      dd += (t < 16 ? v + 0.6 : v + 2 + (t - 16) * 1.6) * dt;
+      if (t > 30 || d0 + dd > this.w.d + 160) return null;
+      dd += (t < 16 ? v + 2.2 : v + 3 + (t - 16) * 1.6) * dt;
       return { d: d0 + dd, off: side * (ROAD_W + 3.5 + Math.max(0, t - 19) * 4), doff: t > 19 ? side * 2 : 0 };
     });
     if (!e) return false;
-    setTimeout(() => this._say(e.obj, 'Race thee to the castle, cyclist!', 3), 1500);
+    setTimeout(() => this._say(e.obj, 'Race thee to the castle, cyclist!', 3), 9000);
   }
   _kids() { // children run beside you for a few seconds, cheering
     const side = this._landSide(this.w.d + 20); if (!side) return false;
-    const d0 = this.w.d + 10;
+    const d0 = this.w.d + 110;
     ['junge', 'maedchen', 'junge'].forEach((n, k) => {
-      let dd = 0;
-      const e = this._run(n, [['Rennen', 1], ['Gehen', 1.8]], (t, v, dt) => { if (t > 9) return null; dd += Math.min(v - 0.5, 5.5) * dt; return { d: d0 + 6 + k * 2.5 + dd, off: side * (ROAD_W + 2.2 + k * 1.4) }; });
-      if (e) { if (!k) setTimeout(() => this._say(e.obj, 'Faster! Faster!', 2.4), 700); }
+      let dd = 0, run = 0;
+      const e = this._run(n, [['Rennen', 0.8], ['Gehen', 1.4]], (t, v, dt) => {
+        const me = d0 + k * 2.5 + dd;
+        if (!run && this.w.d > me - 22) run = t;                    // you are close: they start running along
+        if (!run) return { d: me, off: side * (ROAD_W + 2.2 + k * 1.4), doff: -side * 3 };
+        if (t - run > 7) return null;
+        dd += 3.2 * dt; return { d: me, off: side * (ROAD_W + 2.2 + k * 1.4) }; // a child's run, ~11 km/h
+      }, { idle: ['Jubeln', 'Winken', 'Stehen'] });
+      if (e) { if (!k) setTimeout(() => this._say(e.obj, 'Faster! Faster!', 2.4), 9000); }
     });
   }
   _crossing(name, n, call) { // a little herd crosses the road ahead of you
-    const d0 = this.w.d + 45, side = Math.random() < .5 ? -1 : 1;
+    const d0 = this.w.d + 120, side = Math.random() < .5 ? -1 : 1;
     for (let k = 0; k < n; k++) {
-      const e = this._run(name, [['Schritt', 1.4], ['Gehen', 1.4]], t => { const u = (t - k * 0.9) / 11; if (u > 1) return null;
-        return { d: d0 + k * 2.2 + Math.sin(k) * 1.5, off: side * (16 - 32 * Math.max(0, u)), doff: -side * 3 }; });
-      if (e && k === 0) setTimeout(() => this._say(e.obj, call, 2), 1800);
+      let off = side * (18 + k * 0.7), flee = 0; const dk = d0 + k * 2.2 + Math.sin(k) * 1.5;
+      const e = this._run(name, [['Schritt', 1.4], ['Gehen', 1.4]], (t, v, dt) => {
+        if (t < k * 0.9) return { d: dk, off, doff: -side * 3 };
+        const gap = dk - this.w.d;
+        if (!flee && gap < 16 && gap > -4 && Math.abs(off) < ROAD_W + 2) flee = Math.sign(off) || side; // you ride at them: they bolt to the nearer verge
+        if (flee) { off += flee * 4.5 * dt; if (Math.abs(off) > 20) return null; return { d: dk + flee * 0.3, off, doff: flee * 3 }; }
+        off -= side * 1.2 * dt; if (side * off < -20) return null;  // calm walk across (~4 km/h)
+        return { d: dk, off, doff: -side * 3 };
+      }, { idle: ['Grasen', 'Fressen', 'Stehen'] });
+      if (e && k === 0) setTimeout(() => this._say(e.obj, call, 2), 4000);
     }
   }
   _pig() { // a runaway pig dashes along your lane with the farmer right behind it, then both bolt into the field
-    const d0 = this.w.d + 32, side = Math.random() < .5 ? -1 : 1; let dd = 0;
-    const path = lag => (t, v, dt) => { if (t > 13) return null; if (!lag) dd += 4.6 * dt;
-      return { d: d0 + dd - lag, off: side * (1.4 + lag * 0.3 + Math.max(0, t - 7) * 3), doff: t > 7 ? side * 2 : 0 }; };
+    const d0 = this.w.d + 100, side = Math.random() < .5 ? -1 : 1; let dd = 0, bolt = 0;
+    const path = lag => (t, v, dt) => { if (!lag) dd += 4.6 * dt;
+      if (!bolt && this.w.d > d0 + dd - 18) bolt = t;              // you catch up: pig and farmer bolt into the field
+      const b = bolt ? t - bolt : 0; if (b > 6) return null;
+      return { d: d0 + dd - lag, off: side * (1.4 + lag * 0.3 + b * 3.2), doff: bolt ? side * 2 : 0 }; };
     const e = this._run('schwein', 'Rennen', path(0));
     if (!e) return false;
-    setTimeout(() => this._say(e.obj, 'Oink! Oink!', 1.6), 500);
+    setTimeout(() => this._say(e.obj, 'Oink! Oink!', 1.6), 5000);
     const farmer = this._run('bauer_sense', [['Rennen', 1], ['Gehen', 2.2]], path(4.5));
-    if (farmer) setTimeout(() => this._say(farmer.obj, 'Stop that swine!', 2.6), 1800);
+    if (farmer) setTimeout(() => this._say(farmer.obj, 'Stop that swine!', 2.6), 7000);
   }
   _ship() { // a viking longship rows along the coast with you, a little faster
     const off = this._seaSide(this.w.d + 120); if (!off) return false;
@@ -138,27 +163,47 @@ export class Surprises {
     setTimeout(() => this._say(e.obj, 'Row, ye dogs! Beat the rider!', 3), 2500);
   }
   _juggler() { // a juggler performs at the roadside
-    const side = this._landSide(this.w.d + 60); if (!side) return false;
-    const d0 = this.w.d + 60;
-    const e = this._run('gaukler', 'Jonglieren', t => t > 25 || this.w.d > d0 + 15 ? null : { d: d0, off: side * (ROAD_W + 2.6), doff: -side * 3 });
-    if (e) setTimeout(() => this._say(e.obj, 'Behold, the great Bartholomew!', 3), 1500);
+    const side = this._landSide(this.w.d + 110); if (!side) return false;
+    const d0 = this.w.d + 110;
+    const e = this._run('gaukler', 'Jonglieren', t => t > 45 || this.w.d > d0 + 15 ? null : { d: d0, off: side * (ROAD_W + 2.6), doff: -side * 3 });
+    if (e) setTimeout(() => this._say(e.obj, 'Behold, the great Bartholomew!', 3), 7000);
   }
   _dog() { // a dog chases you for a while, barking
-    const side = this._landSide(this.w.d + 15); if (!side) return false;
-    const d0 = this.w.d + 8; let dd = 0;
-    const e = this._run('hund', 'Rennen', (t, v, dt) => { if (t > 12) return null; dd += Math.min(v - 0.7, 9) * dt; return { d: d0 + 10 + dd, off: side * (ROAD_W + 0.8) }; }); // runs just ahead: always in view
+    const side = this._landSide(this.w.d + 100); if (!side) return false;
+    const d0 = this.w.d + 100; let dd = 0, go = 0;
+    const e = this._run('hund', 'Rennen', (t, v, dt) => {
+      if (!go && this.w.d > d0 - 20) go = t;                      // it waits by its gate, then chases you
+      if (!go) return { d: d0, off: side * (ROAD_W + 3), doff: -side * 3 };
+      const g = t - go; if (g > 11) return null;
+      dd += Math.min(v + 0.5, 8) * Math.max(0.2, 1 - g / 11) * dt; // keeps up at first, then gives up
+      return { d: d0 + dd, off: side * (ROAD_W + 0.8) }; }, { idle: ['Sitzen', 'Stehen'] });
     if (!e) return false;
-    setTimeout(() => this._say(e.obj, 'Woof! Woof!', 1.8), 500);
+    setTimeout(() => this._say(e.obj, 'Woof! Woof!', 1.8), 6000);
   }
   _crowd() { // villagers line both sides of the road and cheer you through, like a mountain stage
-    const d0 = this.w.d + 38, who = ['junge', 'maedchen', 'alte_frau', 'bauer_sense', 'wache', 'ritter', 'fischerin', 'haendler'].filter(n => this.A.find(n));
+    const d0 = this.w.d + 110, who = ['junge', 'maedchen', 'alte_frau', 'bauer_sense', 'wache', 'ritter', 'fischerin', 'haendler'].filter(n => this.A.find(n));
     if (!who.length) return false;
     const calls = ['Allez! Allez!', 'Huzzah!', 'Go, go, go!', 'For the King!', 'Glory!'];
     for (let k = 0; k < 10; k++) {
       const side = k % 2 ? 1 : -1, dk = d0 + Math.floor(k / 2) * 5 + Math.random() * 2, n = who[k % who.length];
       const e = this._run(n, [['Jubeln', 1], ['Winken', 1], ['Stehen', 1]], () => this.w.d > dk + 12 ? null : { d: dk, off: side * (ROAD_W + 1.6 + Math.random() * 0.2), doff: -side * 3 });
-      if (e && k % 3 === 0) setTimeout(() => this._say(e.obj, calls[(k / 3) % calls.length], 2), 600 + k * 250);
+      if (e && k % 3 === 0) setTimeout(() => this._say(e.obj, calls[(k / 3) % calls.length], 2), 7000 + k * 250);
     }
+  }
+  _band() { // street musicians at the roadside: their song takes over from the game music while you ride past
+    const mus = this.A.by?.figure_music || []; if (!mus.length || !this.ev?.sounds?.music?.length) return false;
+    if ((this.clock || 0) < (this.bandNext || 0)) return false;
+    const side = this._landSide(this.w.d + 150); if (!side) return false;
+    const d0 = this.w.d + 150, members = [];
+    mus.slice(0, 4).forEach((m, k) => {
+      const name = m.file.replace(/^.*\//, '').replace(/\.glb$/, '');
+      const e = this._run(name, m.clips?.[0]?.name || 'Spielen', () => this.w.d > d0 + 40 ? null : { d: d0 + k * 2.2, off: side * (ROAD_W + 3 + (k % 2) * 1.2), doff: -side * 3 });
+      if (e) members.push(e.obj);
+    });
+    if (!members.length) return false;
+    this.bandNext = (this.clock || 0) + 300 + Math.random() * 300; // a rare treat, not on every stretch
+    const p = this._pt(d0 + 3, side * (ROAD_W + 3));
+    this.ev.bands.push({ members, x: p.x, z: p.z, song: Math.floor(Math.random() * 99) });
   }
   _flyby(name, n, call) { // birds come in low from ahead and sweep right over your head
     const side = Math.random() < .5 ? -1 : 1, d0 = this.w.d + 90;

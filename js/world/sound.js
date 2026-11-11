@@ -204,8 +204,9 @@ export class Sound {
     if (file) this.voiceFile(file, where || (() => ({ vol, pan: 0 }))); // ElevenLabs recordings only: no computer voice, ever
   }
   /** a recorded line from a speaker in the world: where() -> { vol, pan } follows them as you ride past */
-  voiceFile(file, where) {
+  voiceFile(file, where0) {
     if (!this.on || !this.voicesOn || this.paused || !file || !this._ctx()) return;
+    const where = () => { const r = where0(); return { vol: r.vol > 0 ? Math.min(1.8, Math.pow(r.vol, 0.6) * 2.4) : 0, pan: r.pan }; }; // voices clearly louder than the world
     const r = where(); if (!(r.vol > 0.03)) return;
     window.dispatchEvent(new Event('rf-voice')); // music ducks
     const f = 'assets/audio/' + file;

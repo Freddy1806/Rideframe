@@ -404,7 +404,7 @@ function settings() {
         <div id="hudBox">${hudControlsHTML(hudPrefs(s))}</div>
       </div>
       <div class="panel"><h3>Ansicht 3D-Welt</h3>
-        <label class="field"><div>Sichtfeld <b id="fovV">${fovOf(s)}°</b><div class="hint">Wie bei Minecraft: nach rechts weiter, nach links näher dran. Normal 62°, 90–110° = sehr weit. Während der Fahrt: Tasten [ und ] oder Knopf „Sicht“.</div></div><input type="range" id="fov" min="${FOV_MIN}" max="${FOV_MAX}" step="1" value="${fovOf(s)}"></label>
+        <label class="field"><div>Sichtfeld <b id="fovV">${fovOf(s)}°</b><div class="hint">Wie bei Minecraft: nach rechts weiter, nach links näher dran. Normal 62°, 90–130° = sehr weit. Während der Fahrt: Tasten [ und ] oder Knopf „Sicht“.</div></div><input type="range" id="fov" min="${FOV_MIN}" max="${FOV_MAX}" step="1" value="${fovOf(s)}"></label>
         <label class="field"><div>In Unreal fahren (Beta)<div class="hint">Die Fahrt läuft weiter hier (Trainer, Gruppe, Training), das Bild zeigt die Unreal-App in der schönen Grafik. Sobald sie verbunden ist, zeichnet der Browser keine eigene 3D-Welt mehr.</div></div><input type="checkbox" class="toggle" id="ueBridge" ${s.ueBridge ? 'checked' : ''}></label>
         <label class="field"><div>Wetter in Unreal<div class="hint">Auto = das Wetter wechselt je nach Streckenabschnitt. Sonst bleibt es die ganze Fahrt so.</div></div>${seg('ueWeather', s.ueWeather || 'auto', UE_WEATHER_OPTS)}</label>
         <label class="field"><div>Lenker im Bild<div class="hint">Rennlenker mit Griffen und Unterarmen in der Fahrersicht. Aus = nur freie Sicht. Während der Fahrt: Taste H oder Knopf „Lenker“.</div></div><input type="checkbox" class="toggle" id="cockpit" ${s.cockpit !== false ? 'checked' : ''}></label>

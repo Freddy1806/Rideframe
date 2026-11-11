@@ -168,7 +168,7 @@ export class Events {
         if (!e.neigh && r.vol > 0.35) { e.neigh = true; this.sound.play3d('pferd', this._where(e.obj, 140, 0.9)); } }
       const p = this.f.at(e.d), l = Math.hypot(p.tx, p.tz) || 1, off = -Math.min(2.5, ROAD_W - (e.w || 2) / 2 - 0.15); // keep inside the oncoming lane, clear of the rider
       const x = p.x - p.tz / l * off, z = p.z + p.tx / l * off;
-      e.obj.position.set(x, this.f.height(x, z), z); e.obj.rotation.y = Math.atan2(-p.tx, -p.tz);
+      e.obj.position.set(x, this.f.ground(x, z), z); e.obj.rotation.y = Math.atan2(-p.tx, -p.tz);
       if (!e.wheels) { e.wheels = []; e.obj.traverse(o => { if (/^rad_(vorne|hinten)/.test(o.name)) e.wheels.push([o, o.name.includes('vorne') ? 0.72 : 0.58]); }); }
       for (const [w, rad] of e.wheels) w.rotation.x += -e.v / rad * Math.min(dt, 0.1); // wheels roll with the coach
     }
@@ -178,23 +178,26 @@ export class Events {
   // ---- bands: their music fades in as you ride up, panned to their side ----
   _bands(cam) {
     const tracks = this.sounds?.music; if (!tracks?.length) return;
+    let loud = 0;
     this.bands.forEach((b, i) => {
       const { dist } = this._ahead(b.x, b.z, cam), vol = Math.max(0, 1 - dist / 140);
       if (vol > 0 && !b.audio) {
         try {
-          const ctx = this.ctx ||= new AudioContext(); const a = new Audio('assets/audio/' + tracks[i % tracks.length].file); a.loop = true;
+          const ctx = this.ctx ||= new AudioContext(); const a = new Audio('assets/audio/' + tracks[(b.song ?? i) % tracks.length].file); a.loop = true;
           const src = ctx.createMediaElementSource(a); b.pan = ctx.createStereoPanner(); b.gain = ctx.createGain(); b.gain.gain.value = 0;
           b.lp = ctx.createBiquadFilter(); b.lp.type = 'lowpass'; b.lp.Q.value = 0.5;
           src.connect(b.lp).connect(b.pan).connect(b.gain).connect(ctx.destination); a.play().catch(() => {}); b.audio = a;
         } catch { b.audio = {}; }
       }
       if (b.gain) {
-        b.gain.gain.value = vol * vol * 0.8; b.lp && (b.lp.frequency.value = muffle(vol * vol));
+        b.gain.gain.value = vol * vol * 0.8; loud = Math.max(loud, vol); b.lp && (b.lp.frequency.value = muffle(vol * vol));
         const fwd = this.w.camera.getWorldDirection(new THREE.Vector3()), side = (b.x - cam.x) * -fwd.z + (b.z - cam.z) * fwd.x;
         b.pan.pan.value = Math.max(-0.8, Math.min(0.8, side / 40));
         if (vol === 0 && b.audio.pause) { b.audio.pause(); b.audio = null; b.gain = null; }
       }
     });
+    const k = Math.round(loud * 20) / 20; // the game music gives way to the band
+    if (k !== this._bandK) { this._bandK = k; window.dispatchEvent(new CustomEvent('rf-band', { detail: k })); }
   }
 
   // ---- a wolf breaks out of the rocks and the herd scatters ----
@@ -220,13 +223,13 @@ export class Events {
     }
     for (const e of this.active) if (e.kind === 'wolf') {
       e.t += dt; const k = Math.min(1, e.t / e.dur), p = new THREE.Vector3().lerpVectors(e.start, e.end, k);
-      e.obj.position.set(p.x, this.f.height(p.x, p.z), p.z); e.obj.lookAt(e.end.x, e.obj.position.y, e.end.z);
+      e.obj.position.set(p.x, this.f.ground(p.x, p.z), p.z); e.obj.lookAt(e.end.x, e.obj.position.y, e.end.z);
       if (k >= 1) e.dead = true;
     }
     for (const h of this.herds) if (h.done) for (const sh of h.members) {
       const fl = sh.userData.flee; if (!fl || fl.t > 7) continue;
       fl.t += dt; const v = 6 * Math.max(0, 1 - fl.t / 7);
-      sh.position.x += fl.dir.x * v * dt; sh.position.z += fl.dir.z * v * dt; sh.position.y = this.f.height(sh.position.x, sh.position.z);
+      sh.position.x += fl.dir.x * v * dt; sh.position.z += fl.dir.z * v * dt; sh.position.y = this.f.ground(sh.position.x, sh.position.z);
       sh.rotation.y = Math.atan2(fl.dir.x, fl.dir.z);
     }
   }
