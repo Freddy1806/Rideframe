@@ -180,8 +180,9 @@ export class Surprises {
     const kinds = (this._hellKinds ||= ['lava_fels', 'lava_fels_b', 'lava_fels_c', 'feuersaeule', 'lava_riss', 'hoellen_tor', 'totenschaedel', 'lava_see', 'obsidian_zacken'].filter(n => this.A.find(n)));
     if (kinds.length && d > (this.hellNextD || 0)) {
       this.hellNextD = d + 35 + Math.random() * 45;
-      const s = this._spawn(kinds[Math.floor(Math.random() * kinds.length)], ['Brennen', 'Idle'], 0.8 + Math.random() * 0.6);
-      if (s) { const side = Math.random() < 0.5 ? -1 : 1, p = this._pt(d + 140, side * (ROAD_W + 2.5 + Math.random() * 10));
+      const kind = kinds[Math.floor(Math.random() * kinds.length)], wide = /lava_see|hoellen_tor/.test(kind) ? 4.5 : 0; // wide pieces keep clear of the asphalt
+      const s = this._spawn(kind, ['Brennen', 'Idle'], 0.8 + Math.random() * 0.6);
+      if (s) { const side = Math.random() < 0.5 ? -1 : 1, p = this._pt(d + 140, side * (ROAD_W + 2.5 + wide + Math.random() * 10));
         s.obj.position.set(p.x, p.y, p.z); s.obj.rotation.y = Math.random() * 6.28; const e = { ...s, d: d + 140, step: () => {} }; this.active.push(e); (this.hellProps ||= []).push(e); }
     }
     if (this.hellProps) this.hellProps = this.hellProps.filter(e => e.d > d - 60 || (e.dead = true, false));
