@@ -56,7 +56,7 @@ export function dirtRoad(w = 256, h = 1024, seed = 5) {
 }
 
 /** Asphalt with edge lines. */
-export function asphalt(w = 256, h = 1024, seed = 9, centerDash = true) {
+export function asphalt(w = 256, h = 1024, seed = 9, centerDash = true, lines = true) { // lines = false: markings drawn elsewhere (lofoten: roadlines.js)
   const [c, g] = canvas(w, h); const r = rng(seed); const n = createNoise2D(r);
   const img = g.createImageData(w, h);
   for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
@@ -69,8 +69,8 @@ export function asphalt(w = 256, h = 1024, seed = 9, centerDash = true) {
   }
   g.putImageData(img, 0, 0);
   g.fillStyle = 'rgba(232,232,224,.92)';
-  g.fillRect(w * .055, 0, w * .022, h); g.fillRect(w * .923, 0, w * .022, h);
-  if (centerDash) for (let y = 0; y < h; y += h / 4) g.fillRect(w * .493, y, w * .014, h / 8);
+  if (lines) { g.fillRect(w * .055, 0, w * .022, h); g.fillRect(w * .923, 0, w * .022, h); }
+  if (lines && centerDash) for (let y = 0; y < h; y += h / 4) g.fillRect(w * .493, y, w * .014, h / 8);
   // shoulder gravel at edges
   for (let k = 0; k < 4000; k++) { const s = r() < .5 ? r() * .045 : 1 - r() * .045; g.fillStyle = hsl(35, 8, 35 + r() * 30); g.fillRect(s * w, r() * h, 2, 2); }
   return tex(c);

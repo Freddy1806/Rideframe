@@ -19,6 +19,7 @@ import { Water } from '../../vendor/jsm/objects/Water.js';
 import { mergeGeometries } from '../../vendor/jsm/utils/BufferGeometryUtils.js';
 import { loadAssets } from './assets.js';
 import { Riders } from './riders.js';
+import { ROAD_LINES_GLSL } from './roadlines.js';
 import { Events } from './events.js';
 import { placeWaterfalls } from './waterfalls.js';
 import { Siege } from './siege.js';
@@ -282,14 +283,14 @@ export class WorldScene {
     if (QS.has('noreflect')) { const wr = this.water.onBeforeRender; let k = 0; this.water.onBeforeRender = (...x) => { if (k++ < 30) wr.apply(this.water, x); }; } // mirror frozen after the first frames
 
 
-    const at = asphalt(256, 1024, 9, true); at.anisotropy = 16; at.repeat.set(1, 1);
+    const at = asphalt(256, 1024, 9, true, false); at.anisotropy = 16; at.repeat.set(1, 1);
     this.roadMat = new THREE.MeshStandardMaterial({ map: at, roughness: 0.95, side: THREE.DoubleSide, polygonOffset: true, polygonOffsetFactor: -2 });
     // photo asphalt (assets/tex/asphalt_*) under the painted lines of the procedural texture
     const aC = tex('asphalt', 'col', [128, 128, 130]), aN = tex('asphalt', 'nrm', [128, 128, 255]);
     this.roadBlur = { value: 0 }; // speed blur on the asphalt, strongest right in front of the wheel
     this.roadMat.onBeforeCompile = sh => {
       sh.uniforms.tAsph = { value: aC }; sh.uniforms.tAsphN = { value: aN }; sh.uniforms.uBlur = this.roadBlur;
-      sh.fragmentShader = sh.fragmentShader.replace('#include <common>', '#include <common>\nuniform sampler2D tAsph, tAsphN; uniform float uBlur;')
+      sh.fragmentShader = sh.fragmentShader.replace('#include <common>', '#include <common>\nuniform sampler2D tAsph, tAsphN; uniform float uBlur;' + ROAD_LINES_GLSL)
         .replace('#include <map_fragment>', `
   float bl = uBlur * clamp(6. / max(length(vViewPosition), .5), 0., 1.) * .012;
   vec4 painted = vec4(0.); vec3 asph = vec3(0.);
@@ -299,10 +300,10 @@ export class WorldScene {
     vec2 auv = vec2(uvo.x * 6.6, uvo.y * 40.) / 2.5;
     asph += mix(texture2D(tAsph, auv).rgb, texture2D(tAsph, auv * 0.23 + .5).rgb, .35) * .2;
   }
-  float line = smoothstep(.45, .7, dot(painted.rgb, vec3(.333))) * (abs(vMapUv.x - .5) < .05 ? .45 : 1.); // white edge lines, the centre dash only faint
+  float line = roadPaint(vMapUv, bl * 160.); // edge lines + centre dashes (roadlines.js), speed blur stretches the dashes
   float aL = max(dot(asph, vec3(.333)), 1e-3); asph = vec3(.14) * (.6 + .4 * clamp(aL / .06, 0., 2.5)) * mix(vec3(1.), asph / aL, .3) * vec3(1.04, 1., .95); // linear space: photo mean ~.06 -> ~.14 (sRGB ~.41), grain kept // light, grippy grey asphalt (albedo ~0.35), not the sun-glared black
   float edge = smoothstep(.0, .06, vMapUv.x) * (1. - smoothstep(.94, 1., vMapUv.x));
-  diffuseColor.rgb *= mix(painted.rgb, mix(asph * .95, painted.rgb, line), edge);`)
+  diffuseColor.rgb *= mix(mix(painted.rgb, asph * .95, edge), vec3(.74, .74, .70), line);`)
         .replace('#include <normal_fragment_maps>', `#include <normal_fragment_maps>
   { vec3 an = texture2D(tAsphN, vec2(vMapUv.x * 6.6, vMapUv.y * 40.) / 2.5).xyz * 2. - 1.; normal = normalize(normal + (viewMatrix * vec4(an.x, 0., an.y, 0.)).xyz * .35); }`);
     };
