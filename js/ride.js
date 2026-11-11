@@ -230,7 +230,7 @@ export class RideSession {
   /** Berg-Watt: target power from the grade (relative to FTP); the trainer holds it in ERG, cadence is up to you */
   _bergTarget() {
     const now = performance.now(); if (this._bergW && now - (this._bergAt || 0) < 1000) return this._bergW; // once per second is plenty for BLE
-    this._bergAt = now; const g = this._roadGrade(), ftp = this.ftp || 200;
+    this._bergAt = now; const g = this._roadGrade() + (this.wiz?.state === 'hell' ? 2 : 0), ftp = this.ftp || 200;
     const k = g >= 0 ? 0.62 + 0.055 * g : 0.62 + 0.09 * g; // flat ~62 % FTP, 6 % ~95 %, downhill easing off
     const w = Math.round(ftp * Math.max(0.3, Math.min(1.25, k)) / 5) * 5;
     this._bergW = this._bergW ? this._bergW + Math.sign(w - this._bergW) * Math.min(Math.abs(w - this._bergW), 10) : w; // max 10 W per second, no jumps
@@ -494,13 +494,14 @@ export class RideSession {
     if (this.wiz.state === 'off') { this.wiz = null; return; }
     if (qs.has('wizard')) for (const x of this.ch?.list || []) if (x.at > this.wiz.at - 1400 && x.at < this.wiz.at + 2900) x.state = 'skipped';
     const c = document.createElement('div'); c.className = 'chcard glass wizcard'; c.id = 'hWiz'; c.hidden = true; this.el.querySelector('.hud').append(c);
-    for (const id of ['hHell', 'hWizFx']) { const f = document.createElement('div'); f.className = 'wizfx'; f.id = id; this.el.append(f); } // hell glow below, flashes on top
+    const hud = this.el.querySelector('.hud');
+    for (const id of ['hHell', 'hWizFx']) { const f = document.createElement('div'); f.className = 'wizfx'; f.id = id; hud ? hud.before(f) : this.el.append(f); } // under the HUD: power and cards stay readable
   }
   _wizTick(dt) {
     const z = this.wiz; if (!z || this.workout) return;
     if (this.ch?.active && (z.state === 'wait' || z.state === 'ann')) return; // a race is on: the wizard waits his turn
     const sp = this.player?.events?.surprises, P = this.player, fx = this.q('#hWizFx');
-    const flashFx = k => { if (!fx) return; fx.classList.remove(k); void fx.offsetWidth; fx.classList.add(k); };
+    const flashFx = k => { if (!fx) return; fx.className = 'wizfx'; void fx.offsetWidth; fx.classList.add(k); };
     for (const e of z.tick(dt, this.d, this.power)) {
       if (e === 'ann') { this._flash('Ein Zauberer erwartet dich · 1 km'); this.coach?.say('wizard', 0); }
       else if (e === 'near') { z.h = sp?.wizard?.(z.at); if (sp) sp.hold = true; this._flash(`Zauberer in 200 m · gleich ${z.W} W`); }
@@ -510,7 +511,7 @@ export class RideSession {
         P?.hell?.(true); if (sp) sp.hell = true; if (P) P.shakeImpulse = Math.max(P.shakeImpulse || 0, 1.6);
         this.q('#hHell')?.classList.add('hell'); flashFx('quake'); this._flash('Durchgefallen · die Erde reißt auf');
       } else if (e === 'end') {
-        P?.hell?.(false); if (sp) { sp.hell = false; sp.hold = false; }
+        P?.hell?.(false); P?.land?.(); if (sp) { sp.hell = false; sp.hold = false; }
         this.q('#hHell')?.classList.remove('hell'); flashFx('land'); this._flash(z.was === 'fly' ? 'Sanft gelandet' : 'Du hast dich aus der Hölle gefahren!');
       }
     }
@@ -518,7 +519,7 @@ export class RideSession {
   }
   /** in hell the trainer adds 2 % on top of the road (virtual shifting included) */
   _wizGrade(g) {
-    const w = this.wiz; this.wiz = null; const r = this._trainerGrade(); this.wiz = w; // the normal grade, then harder
+    const w = this.wiz; this.wiz = null; let r; try { r = this._trainerGrade(); } finally { this.wiz = w; } // the normal grade, then harder
     return r + 2 * Math.min(1, (w.t || 0) / 8) * Math.min(1, (WIZ.hell - (w.t || 0)) / 8);
   }
   _card(el, card, key) { // the big centred card (challenges, wizard)

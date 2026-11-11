@@ -992,7 +992,7 @@ export class WorldScene {
 
   _ensure(cx, cz) {
     // road chunks within 2 km
-    const f = this.field, k0 = Math.floor(this.d / 500);
+    const f = this.field, k0 = Math.floor((this._fly?.d ?? this.d) / 500); // in flight the road is built under the camera
     for (let k = k0 - 2; k <= k0 + 4; k++) if (k >= 0 && !this.roadChunks.has(k)) { const c = this._roadChunk(k); if (c) { this.scene.add(c); freeze(c); this.roadChunks.set(k, c); } }
     for (const [k, c] of this.roadChunks) if (k < k0 - 3 || k > k0 + 6) { this.scene.remove(c); c.traverse(o => o.geometry?.dispose?.()); this.roadChunks.delete(k); }
     // tiles: resolution by distance
@@ -1097,7 +1097,9 @@ export class WorldScene {
   lookBack(side = 1) { if (!this._lb && !this.view && !this._shot) this._lb = { t: 0, side }; }
   setCockpit(on) { this.showCockpit = on; }
   /** the wizard's gift: for dur seconds the camera lifts off and flies ahead over the island */
-  fly(dur = 30) { if (!this.instant) this._fly = { t: 0, dur, fd: 0, sp: 0, h: 0 }; }
+  fly(dur = 30) { if (!this.instant) this._fly = { t: 0, dur, fd: 0, sp: 0, h: null }; }
+  /** the ride ends the flight (its clock rules, also when you stop pedalling and the world pauses) */
+  land() { if (this._fly) { this._fly = null; this.lookPos = null; } }
   /** the wizard's curse: the world sinks into red haze, lava water and ember light (eased in and out) */
   hell(on) { this._hellTo = on ? 1 : 0; }
   /** other riders (group ride, ghost): [{ id, name, d, v }] */
@@ -1135,13 +1137,16 @@ export class WorldScene {
       this.shakeImpulse *= Math.exp(-dt * 2.8); }
     if (this._fly) { // flight: up to ~220 m above the route, speeding ahead along it, looking ahead and down; snaps back at the end
       const f = this._fly, ft = this.paused ? 0 : dt; f.t += ft; const u = f.t / f.dur;
-      if (u >= 1) { this._fly = null; this.lookPos = null; }
+      if (f.t >= f.dur * 3) this.land(); // fallback only: normally the ride lands you
       else {
         f.sp = Math.min(62, f.sp + ft * (f.t < 3 ? 4 : 9)); f.fd += f.sp * ft; // gentle lift-off, then real speed
         const L = this.track.length - 1, a = this.field.pose(Math.min(L, d + f.fd)), b = this.field.pose(Math.min(L, d + f.fd + 30 + 390 * smooth(0, 0.15, u)));
-        const lift = 220 * smooth(0, 0.28, u), ground = Math.max(a.y, this.field.height(a.x, a.z), 0);
+        const lift = 220 * smooth(0, 0.28, u), ground = Math.max(a.y, this.field.height(a.x, a.z), 0); if (f.h == null) f.h = cam.y;
         f.h = Math.max(f.h + (ground + 3 + lift - f.h) * Math.min(1, dt * 1.6), this.field.height(a.x, a.z) + 25 * smooth(0, 0.06, u)); // never through a ridge
         f.y = f.y == null ? cam.y : f.y + (f.h - f.y) * Math.min(1, dt * 2.5);
+        let top = this.field.height(a.x, a.z); for (const k of [60, 140]) { const q = this.field.at(Math.min(L, d + f.fd + k)); top = Math.max(top, this.field.height(q.x, q.z)); }
+        f.y = Math.max(f.y, top + 4 + 21 * smooth(0, 0.06, u)); // never inside a ridge or a tunnel mountain, even while easing
+        f.d = d + f.fd;
         this.camera.position.set(a.x, f.y, a.z);
         const lb = Math.max(b.y, this.field.height(b.x, b.z), 0); this.camera.lookAt(b.x, lb + (f.y - lb) * 0.35, b.z);
         this.camera.rotation.z += Math.sin(f.t * 0.45) * 0.07 * smooth(0, 0.2, u); // a slow bank like a gliding bird
@@ -1203,6 +1208,7 @@ export class WorldScene {
     this.clouds.material.uniforms.uLow.value = low;
     { const cu = this.cumulus.material.uniforms; cu.uSun.value.copy(s); cu.uCover.value = cover; cu.uLow.value = low; cu.uVeil.value = veil; }
     // image-based light from the sky, re-baked only when the sun has moved noticeably (~0.2°)
+    const hb = (this.hellK || 0) > 0.5; if (hb !== !!this._envHell) { this._envHell = hb; this.envSun = null; } // hell in, hell out: re-bake the sky light
     if (!this.envSun || this.envSun.distanceToSquared(s) > 1.2e-5) {
       (this.envSun ||= new THREE.Vector3()).copy(s);
       const rt = this.pmrem.fromScene(this.envScene, 0, 0.1, 9000);
@@ -1301,7 +1307,7 @@ export class WorldScene {
   _life(time, dt, cam) {
     if (this.field.tunnel) this.tunnelK = lerp(this.tunnelK || 0, this.field.tunnel[Math.max(0, Math.min(this.field.n - 1, Math.round(this.d / DS)))] ? 1 : 0, Math.min(1, dt * 1.5)); // eyes adjust to the tunnel
     if (this.field.tunnel) this.scene.environmentIntensity = ENV_I * (1 - 0.45 * this.tunnelK);
-    this.riders?.update(Math.min(dt, 0.1), this.d || 0, !this.view && !this._shot && !this._fly); // in flight you see yourself down on the road
+    this.riders?.update(Math.min(dt, 0.1), this.d || 0, !this.view && !this._shot);
     if (!this.props) return;
     this.falls?.update(time, dt, cam);
     this.events?.update(time, dt, cam, this.d);
