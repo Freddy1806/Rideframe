@@ -246,6 +246,7 @@ export class WorldScene {
     scene.environmentIntensity = ENV_I;
     scene.fog = new THREE.FogExp2(0xbfc6cd, 0.00042); // a bit more aerial perspective: far ridges step back in layers
     this.clouds = cloudLayer(sun); scene.add(this.clouds);
+    this.cumulus = cumulusLayer(sun); scene.add(this.cumulus); // thick cumulus heaps (impostors) under the thin fbm deck
     this.sunGlow = sunGlow(); scene.add(this.sunGlow); // fake bloom: soft halo around the low sun, cut by the terrain in front
 
     const light = this.light = new THREE.DirectionalLight(0xffd8bc, 3.0);
@@ -517,7 +518,8 @@ export class WorldScene {
       if (spl[i * 4] < 0.6 || H[i] < 2.6) continue;
       const rd = f.road(x, z); if (!rd || rd.d < ROAD_W + 3 || rd.d > 60) continue;
       if (f.n2(x / 31, z / 31) * 0.5 + 0.5 < 0.45 + r() * 0.3) continue; // in patches, open meadow between them
-      const sz = 0.55 + r() * r() * 1.3;
+      const sz = 0.55 + r() * r() * 1.3, h0 = f.height(x, z);
+      if (Math.hypot(f.height(x + 2, z) - h0, f.height(x, z + 2) - h0) / 2 > 0.45) continue; // not on steep rock faces
       if (rd.d < ROAD_W + 3 + sz * 1.3) continue;
       sb.push([x, f.height(x, z) - 0.1 * sz, z, sz, r() * 6.28]);
     }
@@ -749,7 +751,28 @@ export class WorldScene {
         n++; o.userData.near = !!e.farScene;
         if (e.farScene) { const lo = e.farScene.clone(true); lo.position.copy(o.position); lo.rotation.copy(o.rotation); lo.scale.copy(o.scale); lo.userData.far = true; this.scene.add(lo); this.props.push(lo); }
       }
-      console.info('RIDEFRAME Bäume', n);
+      // groves on sheltered ground: valley floors and hollows (ground lower than its surroundings), gentle slopes,
+      // mostly birch; 5-12 trees per grove, never on the road (place) and not on steep bare rock (slope)
+      const birch = trees.filter(e => /birke/.test(e.file || e.name || '')), pool = birch.length ? birch : trees;
+      let groves = 0, n0 = n, tried = 0;
+      for (let d = 120; d < t.length - 120 && n < 2400; d += 35 + r() * 40) {
+        if (r() > 0.6 + 0.4 * (f.n2(d / 650, 2.1) * 0.5 + 0.5)) continue;
+        const side = r() < 0.5 ? -1 : 1, off = side * (ROAD_W + 14 + Math.pow(r(), 1.6) * 230), q = spot(d, off), h = f.height(q.x, q.z);
+        if (h < 3 || h > 260) continue;
+        let ring = 0; for (let k = 0; k < 8; k++) { const a = k * 0.785; ring += f.height(q.x + Math.cos(a) * 70, q.z + Math.sin(a) * 70); } ring /= 8;
+        const slope = Math.hypot(f.height(q.x + 4, q.z) - h, f.height(q.x, q.z + 4) - h) / 4;
+        if (slope > 0.45 || ring - h < (h < 80 ? -4 : 2)) continue; // a hollow, or flat low valley floor
+        const cnt = 5 + Math.floor(r() * 8); groves++;
+        for (let k = 0; k < cnt; k++) {
+          const dd = d + (r() - 0.5) * 50, oo = off + (r() - 0.5) * 45, qq = spot(dd, oo), hh = f.height(qq.x, qq.z);
+          if (hh < 2.5 || Math.hypot(f.height(qq.x + 3, qq.z) - hh, f.height(qq.x, qq.z + 3) - hh) / 3 > 0.5) continue;
+          const fit = pool.filter(e => !e.zone_m || (hh >= e.zone_m[0] - 40 && hh <= e.zone_m[1] + 40)), e = (fit.length ? fit : pool)[Math.floor(r() * (fit.length || pool.length))];
+          tried++; const o = place(e, dd, oo, { face: r() * 6.28, scale: 0.75 + r() * 0.5, radK: 0.35, gap: 5 }); if (!o) continue;
+          n++; o.userData.near = !!e.farScene;
+          if (e.farScene) { const lo = e.farScene.clone(true); lo.position.copy(o.position); lo.rotation.copy(o.rotation); lo.scale.copy(o.scale); lo.userData.far = true; this.scene.add(lo); this.props.push(lo); }
+        }
+      }
+      console.info('RIDEFRAME Bäume', n, 'Haine', groves, 'Hain-Bäume', n - n0, 'von', tried);
     }
     this.falls = placeWaterfalls(this, A, taken); // before the rock walls, which then keep clear of them
     // big rock walls where the ground rises steeply beside the road (serpentines, cliffs)
@@ -1050,6 +1073,7 @@ export class WorldScene {
     wu.waterColor.value.lerpColors(WC_CLEAR, WC_GREY, Math.min(1, cover * 0.7 + veil * 0.5 + (this.weather?.rain || 0)));
     this.clouds.material.uniforms.uSun.value.copy(s); this.clouds.material.uniforms.uCover.value = cover;
     this.clouds.material.uniforms.uLow.value = low;
+    { const cu = this.cumulus.material.uniforms; cu.uSun.value.copy(s); cu.uCover.value = cover; cu.uLow.value = low; cu.uVeil.value = veil; }
     // image-based light from the sky, re-baked only when the sun has moved noticeably (~0.2°)
     if (!this.envSun || this.envSun.distanceToSquared(s) > 1.2e-5) {
       (this.envSun ||= new THREE.Vector3()).copy(s);
@@ -1110,6 +1134,7 @@ export class WorldScene {
     this.water.material.uniforms.time.value = time * 0.6; this.grassTime.value = time; TIME.value = time;
     { const sd = this.sky.material.uniforms.sunPosition.value, g = this.sunGlow, veil = this.weather?.veil || 0;
       g.position.copy(this.camera.position).addScaledVector(sd, 8200); g.material.opacity = 0.5 * (1 - 0.65 * veil) * (1 - (this.tunnelK || 0)); }
+    this.cumulus.material.uniforms.uTime.value = time;
     this.clouds.position.copy(this.camera.position); this.clouds.material.uniforms.uTime.value = time; this.sky.material.uniforms.uTime.value = time;
     for (const o of this.animated) {
       if (o.userData.spin) o.rotation.z = time * 0.6;
@@ -1131,7 +1156,7 @@ export class WorldScene {
     this.falls?.update(time, dt, cam);
     this.events?.update(time, dt, cam, this.d);
     this.siege?.update(time, dt, cam, this.d);
-    if (this.cockpit) { this.cockpit.visible = !this.view && this.showCockpit !== false; if (this.cockpit.visible) this.cockpitMixer?.update(Math.min(dt, 0.1) * (0.4 + (this.speed || 0) / 8)); }
+    if (this.cockpit) { this.cockpit.visible = !this.view && this.showCockpit !== false && this.camera.fov >= 40; /* narrow lens: forearms would fill the frame */ if (this.cockpit.visible) this.cockpitMixer?.update(Math.min(dt, 0.1) * (0.4 + (this.speed || 0) / 8)); }
     // show only what is near (draw calls), animate only what is close
     if (!this._cullT || time - this._cullT > 0.5 || this.instant) {
       this._cullT = time;
@@ -1265,6 +1290,87 @@ float sn(vec2 p) { vec2 i = floor(p), f = fract(p); f = f * f * (3. - 2. * f); r
   vec3 stCol = mix(vec3(.26, .22, .30), vec3(1.5, .5, .18), clamp(pow(cs, 10.) * 1.4 + .25 * pow(cs, 2.), 0., 1.));
   retColor = mix(retColor, stCol * (.7 + .5 * st), thick * .85);
   gl_FragColor = vec4( retColor, 1.0 );`);
+}
+
+// Cumulus heaps as impostors: ~70 camera-facing cards 1.2-2 km up, wrapped around the camera so the sky is never empty.
+// Each card samples one of 4 baked cloud shapes (built once from overlapping spheres): alpha, a sphere normal and the
+// thickness. The shader lights the normal with the real sun (sunlit tops and edges, slate-blue shaded undersides,
+// silver lining when the sun stands behind a heap). Coverage follows the weather (uCover), the veil dims the sunlit side.
+function cumulusTexture() {
+  const W = 256, H = 128, V = 4, data = new Uint8Array(W * H * V * 4), rr = rng(911), nz = createNoise2D(rng(17));
+  for (let v = 0; v < V; v++) {
+    const puffs = [], base = H * 0.78;
+    const nb = 5 + Math.floor(rr() * 3);
+    for (let k = 0; k < nb; k++) { const x = W * (0.16 + 0.68 * (k + rr() * 0.6) / nb), r = H * (0.17 + rr() * 0.1); puffs.push([x, base - r * 0.55, r]); }
+    for (let k = 0; k < 7 + v; k++) { const a = puffs[Math.floor(rr() * puffs.length)], r = a[2] * (0.6 + rr() * 0.45);
+      const x = a[0] + (rr() - 0.5) * a[2] * 1.2, y = a[1] - a[2] * (0.45 + rr() * 0.45); if (y - r > 2 && x - r > 2 && x + r < W - 2) puffs.push([x, y, r]); }
+    for (const [cx, cy, r] of puffs.slice()) for (let k = 0; k < 4; k++) { // cauliflower: small lumps on the upper rims
+      const an = -Math.PI * (0.1 + 0.8 * rr()), rs = r * (0.25 + rr() * 0.18), x = cx + Math.cos(an) * r * 0.8, y = cy + Math.sin(an) * r * 0.8;
+      if (y - rs > 1 && x - rs > 1 && x + rs < W - 1) puffs.push([x, y, rs]); }
+    for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
+      let best = -1, nx = 0, ny = 0, nzz = 0, th = 0;
+      for (const [cx, cy, r] of puffs) { const dx = (x - cx) / r, dy = (y - cy) / r, d2 = dx * dx + dy * dy; if (d2 >= 1) continue;
+        const z = Math.sqrt(1 - d2), wgt = z * z * r; th += z * r; best = Math.max(best, z); nx += dx * wgt; ny -= dy * wgt; nzz += z * wgt; } // blended normals: one soft heap, not separate balls
+      { const l = Math.hypot(nx, ny, nzz) || 1; nx /= l; ny /= l; nzz = best; }
+      const i = ((v * H + y) * W + x) * 4;
+      if (best < 0) { data[i] = 128; data[i + 1] = 128; data[i + 2] = 0; data[i + 3] = 0; continue; }
+      const flat = Math.min(1, Math.max(0, (base + H * 0.06 - y) / (H * 0.1))); // flat, slightly soft base
+      const edge = Math.min(1, nzz * 3.2) * (0.7 + 0.3 * (nz(x / 7 + v * 40, y / 7) * 0.35 + nz(x / 3 + v * 40, y / 3) * 0.15 + 0.5)); // dense body, soft frayed rims
+      data[i] = (nx * 0.5 + 0.5) * 255; data[i + 1] = (ny * 0.5 + 0.5) * 255; data[i + 2] = Math.min(1, th / (H * 0.5)) * 255;
+      data[i + 3] = Math.min(1, edge * 1.15) * flat * 255;
+    }
+  }
+  const t = new THREE.DataTexture(data, W, H * V); t.magFilter = THREE.LinearFilter; t.minFilter = THREE.LinearMipmapLinearFilter; t.generateMipmaps = true;
+  t.flipY = false; t.needsUpdate = true; return t;
+}
+function cumulusLayer(sun) {
+  const N = 90, rr = rng(4711), g = new THREE.InstancedBufferGeometry();
+  g.index = new THREE.BufferAttribute(new Uint16Array([0, 1, 2, 0, 2, 3]), 1);
+  g.setAttribute('position', new THREE.Float32BufferAttribute([-0.5, 0, 0, 0.5, 0, 0, 0.5, 1, 0, -0.5, 1, 0], 3));
+  const a = new Float32Array(N * 4), b = new Float32Array(N * 4);
+  for (let i = 0; i < N; i++) {
+    a.set([(rr() - 0.5) * 16000, 1300 + rr() * 900, (rr() - 0.5) * 16000, 2400 + rr() * 3000], i * 4); // x, base height, z, width
+    b.set([Math.floor(rr() * 4), rr(), rr() < 0.5 ? 1 : -1, 0.55 + rr() * 0.3], i * 4); // shape, threshold, mirror, height ratio
+  }
+  g.setAttribute('iA', new THREE.InstancedBufferAttribute(a, 4)); g.setAttribute('iB', new THREE.InstancedBufferAttribute(b, 4));
+  g.instanceCount = N;
+  const m = new THREE.ShaderMaterial({
+    transparent: true, depthWrite: false, fog: false,
+    uniforms: { tC: { value: cumulusTexture() }, uTime: { value: 0 }, uSun: { value: sun.clone() }, uCover: { value: 0.4 }, uLow: { value: 0 }, uVeil: { value: 0 } },
+    vertexShader: `attribute vec4 iA, iB; uniform float uTime, uCover; varying vec2 vUv; varying float vFade, vShape, vToSun, vFar; varying vec3 vR, vU, vV; uniform vec3 uSun;
+void main() {
+  vec2 c = iA.xz + vec2(uTime * 4., uTime * 1.5); // drift with the wind
+  c = mod(c - cameraPosition.xz + 8000., 16000.) - 8000.; // wrapped around the camera
+  vec3 C = vec3(cameraPosition.x + c.x, iA.y, cameraPosition.z + c.y);
+  vec3 V = normalize(cameraPosition - C); vec3 R = normalize(cross(vec3(0., 1., 0.), V)); vec3 U = cross(V, R);
+  U = normalize(mix(vec3(0., 1., 0.), U, .35)); // stays upright, leans only a little towards a camera below
+  float w = iA.w, h = w * .5 * iB.w;
+  vec3 P = C + R * position.x * w * iB.z + U * (position.y * h - h * .12);
+  float d = length(c);
+  float on = smoothstep(iB.y, iB.y + .12, uCover * 1.25 + .05); // how many heaps exist follows the cloud cover
+  vFade = on * (1. - smoothstep(6000., 7900., d)) * smoothstep(.01, .06, normalize(P - cameraPosition).y);
+  vUv = vec2(position.x + .5, (iB.x + 1. - position.y) / 4.);
+  vFar = smoothstep(2500., 7800., d);
+  vR = R * iB.z; vU = U; vV = V; vShape = iB.x; vToSun = max(dot(-V, uSun), 0.);
+  gl_Position = projectionMatrix * viewMatrix * vec4(P, 1.);
+}`,
+    fragmentShader: `uniform sampler2D tC; uniform vec3 uSun; uniform float uLow, uVeil, uCover; varying vec2 vUv; varying float vFade, vShape, vToSun, vFar; varying vec3 vR, vU, vV;
+void main() {
+  vec4 t = texture2D(tC, vUv);
+  float a = t.a * vFade; if (a < .01) discard;
+  vec2 n2 = t.rg * 2. - 1.; vec3 n = normalize(vR * n2.x + vU * n2.y + vV * sqrt(max(0., 1. - dot(n2, n2))));
+  float l = smoothstep(-.35, .9, dot(n, uSun));
+  float hgt = 1. - fract(vUv.y * 4.); // 0 = base, 1 = top of the card
+  vec3 shade = mix(vec3(.5, .44, .54), vec3(.5, .48, .55), uCover) * (.62 + .38 * smoothstep(.0, .7, hgt)) * (.85 + .25 * n.y * .5 + .1);
+  vec3 lit = mix(vec3(1.25, .82, .55), vec3(1.35, .64, .38), uLow) * (1. - .45 * uVeil); // midnight-sun gold, never paper white
+  vec3 col = mix(shade, lit, l * (.55 + .45 * hgt));
+  col += vec3(1.3, .62, .3) * pow(vToSun, 6.) * (1. - t.b) * 1.2; // silver lining against the sun
+  col = mix(col, vec3(1., .74, .62), vFar * .45); // far heaps sink into the warm horizon haze
+  gl_FragColor = vec4(col, a * .93);
+  #include <tonemapping_fragment>
+  #include <colorspace_fragment>
+}` });
+  const o = new THREE.Mesh(g, m); o.frustumCulled = false; o.renderOrder = -1; o.layers.set(1); return o;
 }
 
 // cumulus deck 1.5 km up: fbm noise drifting with the wind; coverage follows the weather (uCover). Undersides
