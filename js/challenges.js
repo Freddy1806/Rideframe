@@ -30,12 +30,13 @@ export class Challenges {
     this.list = []; this.stats = { offered: 0, accepted: 0, won: 0 };
     const who = CHALLENGERS.filter(c => has(c.models)), from = startD + Math.max(1200, length * 0.06), to = length - 1800;
     if (!who.length || n <= 0 || to - from < 2500) return;
+    n = Math.min(n, Math.floor((to - from) / 1900)); if (n <= 0) return; // room for a race between two dares
     const span = (to - from) / n;
     const deck = [...who].sort(() => rng() - 0.5); // every challenger once before anyone comes twice
     for (let i = 0; i < n; i++) {
       const c = deck[i % deck.length], [D, dk] = DIST[Math.floor(rng() * DIST.length)];
       const W = Math.round(ftp * (c.k + dk) / 5) * 5;
-      this.list.push({ c, at: from + span * (i + 0.2 + rng() * 0.6), D, W, state: 'wait' });
+      this.list.push({ c, at: from + span * i + Math.min(span - 1700, span * 0.6) * rng() + 100, D, W, state: 'wait' });
     }
   }
   get active() { return this.list.find(x => x.state === 'offer' || x.state === 'count' || x.state === 'race'); }
@@ -44,6 +45,7 @@ export class Challenges {
   tick(dt, d, power, accept = false, v = 0) {
     const ev = [], x = this.active;
     if (!x) {
+      for (const y of this.list) if (y.state === 'wait' && d > y.at - 40) y.state = 'skipped'; // passed during another race: never offered from behind
       const n = this.list.find(y => y.state === 'wait' && d >= y.at - LEAD);
       if (n) { n.state = 'offer'; n.t = 0; n.hold = 0; n.spot = n.at; n.base = power; this.stats.offered++; ev.push({ type: 'offer', ch: n }); }
       return ev;

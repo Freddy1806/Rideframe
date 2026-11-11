@@ -475,12 +475,13 @@ export class RideSession {
     const x = ch.active;
     if (x?.h && x.state === 'race') {
       x.h.d = x.opp;
-      if (x.opp < this.d - 6 && x.opp > this.d - 45 && performance.now() > (this._lbNext || 0)) { this._lbNext = performance.now() + 14000; this.player?.lookBack?.(x.h.side > 0 ? 1 : -1); }
+      if (x.opp < this.d - 6 && x.opp > this.d - 45 && performance.now() > (this._lbNext || 0)) { this._lbNext = performance.now() + 14000; this.player?.lookBack?.(x.h.side > 0 ? -1 : 1); }
     }
     const el = this.q('#hCh'), card = ch.card(this.d); if (!el) return;
     el.hidden = !card; if (!card) return;
     el.classList.toggle('lead', !!card.lead); el.classList.toggle('trail', card.lead === false);
-    el.innerHTML = `<div class="label">${esc(card.title)}</div><div class="chbig num">${esc(card.big)}</div><div class="chsub">${esc(card.sub)}</div>${card.bar != null ? `<div class="chbar"><i style="width:${Math.round(card.bar * 100)}%"></i>${card.hold ? `<b style="width:${Math.round(card.hold * 100)}%"></b>` : ''}</div>` : ''}`;
+    const html = `<div class="label">${esc(card.title)}</div><div class="chbig num">${esc(card.big)}</div><div class="chsub">${esc(card.sub)}</div>${card.bar != null ? `<div class="chbar"><i style="width:${Math.round(card.bar * 100)}%"></i>${card.hold ? `<b style="width:${Math.round(card.hold * 100)}%"></b>` : ''}</div>` : ''}`;
+    if (html !== this._chHtml) { this._chHtml = html; el.innerHTML = html; }
   }
   _chEnd(x, sp, ms) { // the challenger stays until out of sight, the flags until you have passed them
     if (sp) sp.hold = false;

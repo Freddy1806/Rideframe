@@ -105,7 +105,10 @@ export class Surprises {
     const name = c.models.find(n => this.A.find(n)); if (!name) return null;
     const side = this._landSide(spotD) || 1, fly = c.kind === 'fly';
     const h = { d: spotD, race: false, done: false, side };
-    const e = this._run(name, fly ? [['Gleiten', 1], ['Fliegen', 1]] : [['Winken', 1], ['Jubeln', 1], ['Stehen', 1], ['Schritt', 1]], () => {
+    let gone = 0;
+    const e = this._run(name, fly ? [['Gleiten', 1], ['Fliegen', 1]] : [['Winken', 1], ['Jubeln', 1], ['Stehen', 1], ['Schritt', 1]], (t, v, dt) => {
+      if (h.done && fly) { gone += dt; if (gone > 6) return null; h.d += (v + 8) * dt; // a bird never hangs in the air: it climbs away ahead
+        return { d: h.d, off: side * (2.5 + gone * 6), fly: 3.2 + gone * gone * 2.5 }; }
       if (h.done) return null;
       if (fly) return { d: h.d, off: side * (h.race ? 2.5 : ROAD_W + 4), fly: h.race ? 3.2 : 6 + Math.sin((this.clock || 0) * 1.3) * 0.8 };
       return { d: h.d, off: side * (ROAD_W + (h.race ? 1.2 : 2.2)), doff: h.race ? 0 : -side * 3 };
