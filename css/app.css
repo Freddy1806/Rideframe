@@ -280,7 +280,7 @@ input[type=number]::-webkit-inner-spin-button, input[type=number]::-webkit-outer
 .ride.world3d .metric .v { font-size: 34px; margin-top: 4px; }
 .ride.world3d .metric.power .v { font-size: 56px; }
 .ride.world3d .metric .sub { margin-top: 4px; font-size: 11px; }
-.ride.world3d .hud-profile { margin-top: 8px; height: 38px; }
+.ride.world3d .hud-profile { margin-top: 8px; height: 72px; } /* 38 px left only ~4 px for the mountains: the profile looked flat */
 
 /* group ride */
 .chip.groupchip { min-width: 170px; text-align: left; }

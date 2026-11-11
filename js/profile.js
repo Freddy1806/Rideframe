@@ -56,7 +56,7 @@ export function drawDetailProfile(canvas, track) {
 export function drawHudProfile(canvas, track, d, ghostD) {
   const { ctx, W, H } = setup(canvas);
   ctx.clearRect(0, 0, W, H);
-  const lo = track.minEle - 5, hi = track.maxEle + 5, top = 18, bottom = 16;
+  const lo = track.minEle - 5, hi = track.maxEle + 5, top = Math.min(24, H * 0.34), bottom = 16; // the rider pin needs ~16 px on top, the km labels 16 below
   const X = dd => dd / track.length * W;
   const Y = e => top + (1 - (e - lo) / Math.max(20, hi - lo)) * (H - top - bottom);
   const path = (to) => {
@@ -67,7 +67,7 @@ export function drawHudProfile(canvas, track, d, ghostD) {
     ctx.lineTo(X(to), Y(track.ele[last])); ctx.lineTo(X(to), H - bottom); ctx.closePath();
   };
   const acc = css('--accent');
-  path(track.length); ctx.fillStyle = 'rgba(244,244,239,.16)'; ctx.fill();
+  path(track.length); ctx.fillStyle = 'rgba(244,244,239,.3)'; ctx.fill();
   path(d); ctx.fillStyle = acc; ctx.fill();
   // km ticks
   ctx.fillStyle = 'rgba(244,244,239,.55)'; ctx.font = '700 10px Archivo';
