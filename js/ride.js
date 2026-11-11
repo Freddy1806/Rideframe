@@ -12,6 +12,7 @@ import { MiniMap } from './minimap.js';
 import { fovOf, FOV_MIN, FOV_MAX, FOV_DEFAULT } from './fov.js';
 import { workoutAt, workoutSVG } from './workouts.js';
 import { Challenges } from './challenges.js';
+import { Wizard, WIZ } from './wizard.js';
 import { Music, Coach } from './music.js';
 import { MIC_SVG, SPK_SVG, voiceStatus } from './voice.js';
 import { hudPrefs, applyHud, hudControlsHTML, wireHudControls, HUD_ORDER, HUD_PRESETS } from './hudprefs.js';
@@ -148,6 +149,7 @@ export class RideSession {
     this.el.querySelector('#hMusic')?.addEventListener('click', () => this._toggleMusic());
     if (this.group) this._wireVoice();
     this._initChallenges();
+    this._initWizard();
     this.running = true; this.last = performance.now();
     this._updateHUD(true);
     if (!this.autopilot) await this._countdown();
@@ -203,6 +205,7 @@ export class RideSession {
   }
   _trainerGrade() {
     const g = this._roadGrade();
+    if (this.wiz?.state === 'hell') return this._wizGrade(g); // the wizard's hell: the road feels steeper
     if (!this.virtual) return g;
     const t = this.state.trainer, k = this.gears[this.gi].ratio / this.realGear.ratio;
     const ws = t.data?.speed > 0.5 ? t.data.speed : Math.max(1, this.v / k);
@@ -289,6 +292,7 @@ export class RideSession {
       const e = eleAt(this.track, this.d); if (e > this.lastEle) this.gainAcc += e - this.lastEle; this.lastEle = e;
       this._workout(dt);
       this._chTick(dt);
+      this._wizTick(dt);
       if (this.berg && !(this.workout && this.erg)) this.state.trainer.setPower(this._bergTarget());
       else this.state.trainer.setGrade(this._trainerGrade());
       this._syncVideo();
@@ -460,6 +464,7 @@ export class RideSession {
   }
   _chTick(dt) {
     const ch = this.ch; if (!ch || this.workout) return;
+    if (this.wiz?.busy && !ch.active) return; // the wizard's trial or flight or hell: no dares meanwhile
     const sp = this.player?.events?.surprises, evs = ch.tick(dt, this.d, this.power, this._chKey, this.v); this._chKey = false;
     for (const { type, ch: x } of evs) {
       if (type === 'offer') { x.h = sp?.challenger(x.c, x.spot); x.h?.say(x.c.ask, 3.2); if (sp) sp.hold = true; this.coach?.say('challenge', 0); }
@@ -477,11 +482,50 @@ export class RideSession {
       x.h.d = x.opp;
       if (x.opp < this.d - 6 && x.opp > this.d - 45 && performance.now() > (this._lbNext || 0)) { this._lbNext = performance.now() + 14000; this.player?.lookBack?.(x.h.side > 0 ? -1 : 1); }
     }
-    const el = this.q('#hCh'), card = ch.card(this.d); if (!el) return;
+    const el = this.q('#hCh'); if (el) this._card(el, ch.card(this.d), '_chHtml');
+  }
+
+  // ---------- the wizard (rare, free rides only): a 60 s trial; pass = 30 s flight, fail = 5 min hell ----------
+  _initWizard() {
+    if (this.workout || this.group || this.autopilot || this.state.settings.wizard === false) return;
+    const qs = new URLSearchParams(location.search), spots = this.ch?.list.map(x => x.at) || [];
+    this.wiz = new Wizard({ length: this.track.length, startD: this.d, ftp: this.ftp, force: qs.has('wizard'), chance: qs.has('nowizard') ? 0 : 0.35,
+      avoid: d => spots.some(a => d > a - 1400 && d < a + 2900) }); // never on top of a dare and its race
+    if (this.wiz.state === 'off') { this.wiz = null; return; }
+    if (qs.has('wizard')) for (const x of this.ch?.list || []) if (x.at > this.wiz.at - 1400 && x.at < this.wiz.at + 2900) x.state = 'skipped';
+    const c = document.createElement('div'); c.className = 'chcard glass wizcard'; c.id = 'hWiz'; c.hidden = true; this.el.querySelector('.hud').append(c);
+    for (const id of ['hHell', 'hWizFx']) { const f = document.createElement('div'); f.className = 'wizfx'; f.id = id; this.el.append(f); } // hell glow below, flashes on top
+  }
+  _wizTick(dt) {
+    const z = this.wiz; if (!z || this.workout) return;
+    if (this.ch?.active && (z.state === 'wait' || z.state === 'ann')) return; // a race is on: the wizard waits his turn
+    const sp = this.player?.events?.surprises, P = this.player, fx = this.q('#hWizFx');
+    const flashFx = k => { if (!fx) return; fx.classList.remove(k); void fx.offsetWidth; fx.classList.add(k); };
+    for (const e of z.tick(dt, this.d, this.power)) {
+      if (e === 'ann') { this._flash('Ein Zauberer erwartet dich · 1 km'); this.coach?.say('wizard', 0); }
+      else if (e === 'near') { z.h = sp?.wizard?.(z.at); if (sp) sp.hold = true; this._flash(`Zauberer in 200 m · gleich ${z.W} W`); }
+      else if (e === 'cast') { sp?.poof?.(z.h); flashFx('cast'); this._flash(`${z.W} W · 60 s · JETZT!`); }
+      else if (e === 'pass') { flashFx('rise'); P?.fly?.(WIZ.fly); this._flash('Bestanden! Du fliegst!'); }
+      else if (e === 'fail') {
+        P?.hell?.(true); if (sp) sp.hell = true; if (P) P.shakeImpulse = Math.max(P.shakeImpulse || 0, 1.6);
+        this.q('#hHell')?.classList.add('hell'); flashFx('quake'); this._flash('Durchgefallen · die Erde reißt auf');
+      } else if (e === 'end') {
+        P?.hell?.(false); if (sp) { sp.hell = false; sp.hold = false; }
+        this.q('#hHell')?.classList.remove('hell'); flashFx('land'); this._flash(z.was === 'fly' ? 'Sanft gelandet' : 'Du hast dich aus der Hölle gefahren!');
+      }
+    }
+    const el = this.q('#hWiz'); if (el) { el.classList.toggle('hellcard', z.state === 'hell'); this._card(el, z.card(this.d), '_wizHtml'); }
+  }
+  /** in hell the trainer adds 2 % on top of the road (virtual shifting included) */
+  _wizGrade(g) {
+    const w = this.wiz; this.wiz = null; const r = this._trainerGrade(); this.wiz = w; // the normal grade, then harder
+    return r + 2 * Math.min(1, (w.t || 0) / 8) * Math.min(1, (WIZ.hell - (w.t || 0)) / 8);
+  }
+  _card(el, card, key) { // the big centred card (challenges, wizard)
     el.hidden = !card; if (!card) return;
     el.classList.toggle('lead', !!card.lead); el.classList.toggle('trail', card.lead === false);
     const html = `<div class="label">${esc(card.title)}</div><div class="chbig num">${esc(card.big)}</div><div class="chsub">${esc(card.sub)}</div>${card.bar != null ? `<div class="chbar"><i style="width:${Math.round(card.bar * 100)}%"></i>${card.hold ? `<b style="width:${Math.round(card.hold * 100)}%"></b>` : ''}</div>` : ''}`;
-    if (html !== this._chHtml) { this._chHtml = html; el.innerHTML = html; }
+    if (html !== this[key]) { this[key] = html; el.innerHTML = html; }
   }
   _chEnd(x, sp, ms) { // the challenger stays until out of sight, the flags until you have passed them
     if (sp) sp.hold = false;
@@ -669,7 +713,7 @@ export class RideSession {
       duration: Math.round(this.elapsed), distance: Math.round(this.d - this.startD), gain: Math.round(this.gainAcc), startD: Math.round(this.startD), workout: this.workout?.name || this._wName || undefined,
       avgPower: pw.length ? Math.round(pw.reduce((a, b) => a + b, 0) / pw.length) : 0,
       maxPower: Math.max(0, ...pw), best5: bestAvg(pw, 300), best20: bestAvg(pw, 1200),
-      samples: this.samples, challenges: this.ch?.stats.offered ? { ...this.ch.stats } : undefined,
+      samples: this.samples, challenges: this.ch?.stats.offered ? { ...this.ch.stats } : undefined, wizard: this.wiz?.was || (this.wiz?.state === 'hell' ? 'hell' : this.wiz?.state === 'fly' ? 'fly' : undefined),
     };
   }
 
@@ -700,6 +744,7 @@ export class RideSession {
         <div><div class="label">Arbeit</div><div class="v">${fmtNum(rec.avgPower * rec.duration / 1000)}<small>kJ</small></div></div>
       </div>
       ${rec.challenges ? `<div class="chsum">⚔ ${rec.challenges.offered} Challenges · ${rec.challenges.accepted} angenommen · ${rec.challenges.won} gewonnen</div>` : ''}
+      ${rec.wizard ? `<div class="chsum">🧙 ${rec.wizard === 'fly' ? 'Prüfung des Zauberers bestanden · über die Insel geflogen' : 'Beim Zauberer durchgefallen · durch die Hölle gefahren'}</div>` : ''}
       <div class="row-actions"><button class="btn ghost" id="fShare">Bild zum Teilen</button><button class="btn ghost" id="fStrava">Auf Strava hochladen</button><button class="btn" id="fDone">Fertig</button></div></div>`;
     this.el.append(o);
     o.querySelector('#fDone').onclick = () => this._close(true);

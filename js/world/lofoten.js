@@ -1096,6 +1096,10 @@ export class WorldScene {
   /** turn the head and look back for a moment (side +1 over the left shoulder, -1 over the right) */
   lookBack(side = 1) { if (!this._lb && !this.view && !this._shot) this._lb = { t: 0, side }; }
   setCockpit(on) { this.showCockpit = on; }
+  /** the wizard's gift: for dur seconds the camera lifts off and flies ahead over the island */
+  fly(dur = 30) { if (!this.instant) this._fly = { t: 0, dur, fd: 0, sp: 0, h: 0 }; }
+  /** the wizard's curse: the world sinks into red haze, lava water and ember light (eased in and out) */
+  hell(on) { this._hellTo = on ? 1 : 0; }
   /** other riders (group ride, ghost): [{ id, name, d, v }] */
   setRiders(list) { (this.riders ||= new Riders(this.scene, this.field)).set(list); }
 
@@ -1122,6 +1126,21 @@ export class WorldScene {
     if (this.shakeImpulse > 0.01 && !this.instant) { const t = performance.now() / 1000, a = this.shakeImpulse * 0.014; // explosions (siege.js)
       this.camera.rotation.x += Math.sin(t * 41) * a + Math.sin(t * 17) * a * 0.5; this.camera.rotation.y += Math.sin(t * 33) * a * 0.6; this.camera.rotation.z += Math.sin(t * 27) * a * 0.7;
       this.shakeImpulse *= Math.exp(-dt * 2.8); }
+    if (this._fly) { // flight: up to ~220 m above the route, speeding ahead along it, looking ahead and down; snaps back at the end
+      const f = this._fly, ft = this.paused ? 0 : dt; f.t += ft; const u = f.t / f.dur;
+      if (u >= 1) { this._fly = null; this.lookPos = null; }
+      else {
+        f.sp = Math.min(62, f.sp + ft * (f.t < 3 ? 4 : 9)); f.fd += f.sp * ft; // gentle lift-off, then real speed
+        const L = this.track.length - 1, a = this.field.pose(Math.min(L, d + f.fd)), b = this.field.pose(Math.min(L, d + f.fd + 30 + 390 * smooth(0, 0.15, u)));
+        const lift = 220 * smooth(0, 0.28, u), ground = Math.max(a.y, this.field.height(a.x, a.z), 0);
+        f.h = Math.max(f.h + (ground + 3 + lift - f.h) * Math.min(1, dt * 1.6), this.field.height(a.x, a.z) + 25 * smooth(0, 0.06, u)); // never through a ridge
+        f.y = f.y == null ? cam.y : f.y + (f.h - f.y) * Math.min(1, dt * 2.5);
+        this.camera.position.set(a.x, f.y, a.z);
+        const lb = Math.max(b.y, this.field.height(b.x, b.z), 0); this.camera.lookAt(b.x, lb + (f.y - lb) * 0.35, b.z);
+        this.camera.rotation.z += Math.sin(f.t * 0.45) * 0.07 * smooth(0, 0.2, u); // a slow bank like a gliding bird
+        cam.set(a.x, a.y, a.z); // tiles, shadows and props follow the flight
+      }
+    }
     if (this._lb) { // a quick look over the shoulder at the challenger behind you (challenges)
       this._lb.t += dt; const u = this._lb.t / 1.7;
       if (u >= 1) this._lb = null; else { _lbQ.setFromAxisAngle(_lbY, Math.sin(u * Math.PI) ** 0.7 * 2.5 * this._lb.side); this.camera.quaternion.premultiply(_lbQ); }
@@ -1183,7 +1202,17 @@ export class WorldScene {
     this.scene.fog.density = 0.00042 * (1 + 2.2 * rain);
     this.rain.visible = rain > 0.02 && !(this.tunnelK > 0.5); this.rain.material.uniforms.uRain.value = rain;
     this.light.intensity *= 1 - 0.35 * rain; this.hemi.color.lerp(H_GREY, rain * 0.5);
-    this.weather = { cover, veil, rain, sunEl: THREE.MathUtils.radToDeg(Math.asin(s.y)) };
+    const hk = this.hellK || 0;
+    if (hk > 0.002) { // the wizard's hell: red-brown haze closing in, ember light, lava instead of sea, clouds like smoke
+      this.scene.fog.color.lerp(F_HELL, hk); this.scene.fog.density *= 1 + 2.4 * hk;
+      this.light.color.lerp(L_HELL, hk * 0.85); this.light.intensity *= 1 - 0.4 * hk;
+      this.hemi.color.lerp(H_HELL, hk * 0.8); this.hemi.intensity *= 1 - 0.25 * hk;
+      FOG_SUNCOL.x = lerp(FOG_SUNCOL.x, 0.9, hk); FOG_SUNCOL.y = lerp(FOG_SUNCOL.y, 0.12, hk); FOG_SUNCOL.z = lerp(FOG_SUNCOL.z, 0.02, hk);
+      wu.waterColor.value.lerp(WC_HELL, hk); wu.sunColor.value.lerp(L_HELL, hk);
+      su.uCover.value = lerp(su.uCover.value, 1, hk * 0.9); su.uVeil.value = lerp(su.uVeil.value, 1, hk * 0.9);
+      this.clouds.material.uniforms.uCover.value = lerp(cover, 1, hk); this.cumulus.material.uniforms.uCover.value = lerp(cover, 1, hk);
+    }
+    this.weather = { cover, veil, rain, hell: hk, sunEl: THREE.MathUtils.radToDeg(Math.asin(s.y)) };
   }
 
   _setQuality(q) {
@@ -1223,6 +1252,7 @@ export class WorldScene {
       if (this.composer) this.composer.setSize(W, H);
     }
     this.d = distAtTime(this.track, this.currentTime);
+    this.hellK = (this.hellK || 0) + ((this._hellTo || 0) - (this.hellK || 0)) * Math.min(1, dt * 0.7);
     this._weather(this.d, time);
     const cam = this._camera(this.d, dt);
     this._far(cam.x, cam.z); this.farCam.value.set(cam.x, cam.z);
@@ -1262,12 +1292,12 @@ export class WorldScene {
   _life(time, dt, cam) {
     if (this.field.tunnel) this.tunnelK = lerp(this.tunnelK || 0, this.field.tunnel[Math.max(0, Math.min(this.field.n - 1, Math.round(this.d / DS)))] ? 1 : 0, Math.min(1, dt * 1.5)); // eyes adjust to the tunnel
     if (this.field.tunnel) this.scene.environmentIntensity = ENV_I * (1 - 0.45 * this.tunnelK);
-    this.riders?.update(Math.min(dt, 0.1), this.d || 0, !this.view && !this._shot);
+    this.riders?.update(Math.min(dt, 0.1), this.d || 0, !this.view && !this._shot && !this._fly); // in flight you see yourself down on the road
     if (!this.props) return;
     this.falls?.update(time, dt, cam);
     this.events?.update(time, dt, cam, this.d);
     this.siege?.update(time, dt, cam, this.d);
-    if (this.cockpit) { this.cockpit.visible = !this.view && !this._shot && !this._lb && this.showCockpit !== false && this.camera.fov >= 40; /* narrow lens: forearms would fill the frame */ if (this.cockpit.visible) this.cockpitMixer?.update(Math.min(dt, 0.1) * (0.4 + Math.min(this.speed || 0, 14) / 8)); /* legs capped at a real cadence: at preview speeds they strobe and seem to pedal backwards */ }
+    if (this.cockpit) { this.cockpit.visible = !this.view && !this._shot && !this._lb && !this._fly && this.showCockpit !== false && this.camera.fov >= 40; /* narrow lens: forearms would fill the frame */ if (this.cockpit.visible) this.cockpitMixer?.update(Math.min(dt, 0.1) * (0.4 + Math.min(this.speed || 0, 14) / 8)); /* legs capped at a real cadence: at preview speeds they strobe and seem to pedal backwards */ }
     // show only what is near (draw calls), animate only what is close
     if (!this._cullT || time - this._cullT > 0.5 || this.instant) {
       this._cullT = time;
@@ -1360,6 +1390,7 @@ export const FOV_NORMAL = 62;
 const ENV_I = 0.55; // sky image light: less blue cast on meadows than before (0.95)
 const F_CLEAR = new THREE.Color(0xbfc6cd), F_GREY = new THREE.Color(0xb4b9c2);
 const WS_HIGH = new THREE.Color(0xffb27a), WS_LOW = new THREE.Color(0xff8a52);
+const F_HELL = new THREE.Color(0x5a1c10), L_HELL = new THREE.Color(0xff6a2a), H_HELL = new THREE.Color(0x8a2a14), WC_HELL = new THREE.Color(0x9a2a04);
 const WC_CLEAR = new THREE.Color(0x0b3448), WC_GREY = new THREE.Color(0x26323a); // sea body colour: clear vs. overcast
 
 // sunset grade on top of three's Sky (Preetham): deep blue overhead, a pink belt of Venus opposite the sun,

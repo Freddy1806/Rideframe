@@ -33,6 +33,7 @@ export class Surprises {
       { id: 'crowd', need: ['junge', 'maedchen', 'alte_frau', 'bauer_sense', 'wache'], go: () => this._crowd() },
     ];
     this.fw = new Fireworks(world.scene);
+    this.fx = new Fireworks(world.scene, 900, 0.5); // close-up sparks (wizard, hell): small points, so nothing blobs over the screen
     // background life: smoke curling from some chimneys, so villages never look empty
     const b = new THREE.Box3(), r = (() => { let x = 7; return () => (x = (x * 16807) % 2147483647) / 2147483647; })();
     const chim = world.props.filter(o => /rorbu|steinhaus|fachwerk/.test(o.userData.asset || '') && r() < 0.45)
@@ -59,7 +60,8 @@ export class Surprises {
     // fireworks: over the festival town and for the last few hundred metres
     if (this.festD > 0 && !this.festFired && d > this.festD - 260 && d < this.festD) { this.festFired = true; this._salvo(this.festD + 40, 7); }
     if (this.track.length - d < 450 && time > (this.fwNext || 0)) { this.fwNext = time + 0.7 + Math.random() * 0.8; this._salvo(Math.min(this.track.length - 5, d + 160), 1); }
-    this.fw.update(dt); this.smoke.update(dt, cam); this.bow?.update(dt, cam, this.f.at(Math.min(this.track.length - 1, d + 30)));
+    this._wizLife(dt, cam, d);
+    this.fw.update(dt); this.fx.update(dt); this.smoke.update(dt, cam); this.bow?.update(dt, cam, this.f.at(Math.min(this.track.length - 1, d + 30)));
   }
 
   // ---- helpers ----
@@ -125,6 +127,52 @@ export class Surprises {
     const objs = [-1, 1].map(sd => { const s = this._spawn(name, 'Wehen'); if (!s) return null; const p = this._pt(d, sd * (ROAD_W + 0.9));
       s.obj.position.set(p.x, p.y, p.z); s.obj.rotation.y = p.head + Math.PI / 2; if (s.mixer) this.active.push({ ...s, step: () => {} }); return s.obj; }).filter(Boolean);
     return { remove: () => objs.forEach(o => { this.w.scene.remove(o); const a = this.active.find(x => x.obj === o); if (a) a.dead = true; }) };
+  }
+  // ---- the wizard (js/wizard.js decides; this only shows him and his magic) ----
+  /** the wizard standing in the middle of the road at d, facing you; purple sparks drift around him */
+  wizard(d) {
+    const name = ['zauberer', 'magier', 'hexer', 'moench'].find(n => this.A.find(n)), h = { d, gone: false };
+    if (name) h.e = this._run(name, [['Zaubern', 1], ['Beschwoeren', 1], ['Winken', 1], ['Stehen', 1]], () => h.gone ? null : { d, off: 0, back: true },
+      { scale: name === 'moench' ? 1.15 : 1 });
+    this.wiz = h; return h;
+  }
+  /** he vanishes in a cloud of purple and white sparks */
+  poof(h = this.wiz) {
+    if (!h) return; h.gone = true; const p = this._pt(h.d, 0);
+    if (h.e) h.e.dead = true; // gone at once: the sparks hide the moment
+    for (let k = 0; k < 520; k++) { _v.randomDirection().multiplyScalar(2 + Math.random() * 7); const w = Math.random() < 0.3;
+      this.fx._p(p.x, p.y + 0.4 + Math.random() * 1.8, p.z, _v.x, Math.abs(_v.y) * 1.3 + 1, _v.z, w ? 1 : 0.62, w ? 0.95 : 0.25, 1, 1 + Math.random() * 1.6); }
+    this.fx.pts.visible = true; this.w.shakeImpulse = Math.max(this.w.shakeImpulse || 0, 0.5);
+  }
+  /** a fountain of fire beside the road (hell) */
+  fireBurst(d, off, n = 140) {
+    const p = this._pt(d, off), y = Math.max(p.y, -0.5);
+    for (let k = 0; k < n; k++) { const a = Math.random() * 6.28, r = Math.random() * 2.2, hot = Math.random();
+      this.fx._p(p.x + Math.cos(a) * r * 0.4, y, p.z + Math.sin(a) * r * 0.4, Math.cos(a) * r, 6 + Math.random() * 9, Math.sin(a) * r, 1, 0.35 + hot * 0.45, hot * 0.15, 1 + Math.random() * 1.2); }
+    this.fx.pts.visible = true;
+  }
+  _wizLife(dt, cam, d) {
+    const h = this.wiz, t = this.clock || 0;
+    if (h && !h.gone && h.e?.obj) { // a slow purple shimmer around him while he waits
+      const o = h.e.obj.position;
+      for (let k = 0; k < 3; k++) { const a = t * 2.4 + k * 2.1 + Math.random() * 0.6, r = 0.9 + Math.random() * 0.5;
+        this.fx._p(o.x + Math.cos(a) * r, o.y + 0.2 + Math.random() * 2.2, o.z + Math.sin(a) * r, Math.cos(a + 1.6) * 0.6, 0.5 + Math.random() * 0.8, Math.sin(a + 1.6) * 0.6, 0.7, 0.3, 1, 1.2 + Math.random()); }
+      this.fx.pts.visible = true;
+    }
+    if (!this.hell) { if (this.hellProps?.length) { for (const o of this.hellProps) o.dead = true; this.hellProps = []; } return; }
+    // hell: embers rising all around you, fire bursting from cracks beside the road, the Mac's lava pieces at the roadside
+    for (let k = 0; k < 4; k++) { const a = Math.random() * 6.28, r = 4 + Math.random() * 36, x = cam.x + Math.cos(a) * r, z = cam.z + Math.sin(a) * r, y = this.f.ground(x, z);
+      const c = Math.random(); this.fx._p(x, y + Math.random() * 3, z, (Math.random() - .5) * 0.8, 1.5 + Math.random() * 2.5, (Math.random() - .5) * 0.8, 1, 0.3 + c * 0.4, c * 0.08, 2 + Math.random() * 2); }
+    this.fx.pts.visible = true;
+    if (t > (this.burstNext || 0)) { this.burstNext = t + 0.7 + Math.random() * 1.1; this.fireBurst(d + 30 + Math.random() * 90, (Math.random() < 0.5 ? -1 : 1) * (ROAD_W + 2 + Math.random() * 9)); }
+    const kinds = (this._hellKinds ||= ['lava_fels', 'lavafels', 'feuersaeule', 'feuer_saeule', 'lava_riss', 'riss_lava', 'hoellen_tor', 'totenschaedel'].filter(n => this.A.find(n)));
+    if (kinds.length && d > (this.hellNextD || 0)) {
+      this.hellNextD = d + 35 + Math.random() * 45;
+      const s = this._spawn(kinds[Math.floor(Math.random() * kinds.length)], ['Brennen', 'Idle'], 0.8 + Math.random() * 0.6);
+      if (s) { const side = Math.random() < 0.5 ? -1 : 1, p = this._pt(d + 140, side * (ROAD_W + 2.5 + Math.random() * 10));
+        s.obj.position.set(p.x, p.y, p.z); s.obj.rotation.y = Math.random() * 6.28; const e = { ...s, d: d + 140, step: () => {} }; this.active.push(e); (this.hellProps ||= []).push(e); }
+    }
+    if (this.hellProps) this.hellProps = this.hellProps.filter(e => e.d > d - 60 || (e.dead = true, false));
   }
   _play(e, names) { if (!e.mixer) return; const c = names.map(n => this.A.clip(e.e, n)).find(Boolean); if (!c) return; e.mixer.stopAllAction(); e.mixer.timeScale = 1; e.mixer.clipAction(c).play(); }
 
@@ -291,15 +339,15 @@ class Rainbow {
 
 // one pooled point cloud for every rocket and spark: a single draw call
 class Fireworks {
-  constructor(scene) {
-    const N = this.N = 1600;
+  constructor(scene, N = 1600, size = 2.2) {
+    this.N = N;
     this.pos = new Float32Array(N * 3); this.col = new Float32Array(N * 3); this.vel = new Float32Array(N * 3); this.life = new Float32Array(N); this.i = 0;
     const g = new THREE.BufferGeometry();
     g.setAttribute('position', new THREE.BufferAttribute(this.pos, 3).setUsage(THREE.DynamicDrawUsage));
     g.setAttribute('color', new THREE.BufferAttribute(this.col, 3).setUsage(THREE.DynamicDrawUsage));
     const c = document.createElement('canvas'); c.width = c.height = 32; const x = c.getContext('2d'), gr = x.createRadialGradient(16, 16, 0, 16, 16, 16);
     gr.addColorStop(0, 'rgba(255,255,255,1)'); gr.addColorStop(0.3, 'rgba(255,255,255,.6)'); gr.addColorStop(1, 'rgba(255,255,255,0)'); x.fillStyle = gr; x.fillRect(0, 0, 32, 32);
-    this.pts = new THREE.Points(g, new THREE.PointsMaterial({ size: 2.2, map: new THREE.CanvasTexture(c), vertexColors: true, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, fog: false }));
+    this.pts = new THREE.Points(g, new THREE.PointsMaterial({ size, map: new THREE.CanvasTexture(c), vertexColors: true, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, fog: false }));
     this.pts.frustumCulled = false; this.pts.visible = false; this.pts.layers.set(1); scene.add(this.pts);
     this.rockets = [];
   }

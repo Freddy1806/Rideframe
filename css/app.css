@@ -390,3 +390,23 @@ input[type=number]::-webkit-inner-spin-button, input[type=number]::-webkit-outer
 .chcard .chbar i { position: absolute; inset: 0 auto 0 0; background: rgba(255,255,255,.55); }
 .chcard .chbar b { position: absolute; inset: 0 auto 0 0; background: var(--accent); }
 .finish .chsum { margin-top: 14px; font-weight: 700; }
+
+/* the wizard: purple card, full-screen magic (cast, lift-off, landing) and the red pulse of hell */
+.chcard.wizcard { border: 1px solid rgba(178,120,255,.55); box-shadow: 0 0 28px rgba(150,90,255,.35); }
+.chcard.wizcard .label { color: #cfb2ff; }
+.chcard.wizcard .chbar i { background: #b98cff; }
+.chcard.wizcard.hellcard { border-color: rgba(255,90,40,.6); box-shadow: 0 0 30px rgba(255,60,20,.45); }
+.chcard.wizcard.hellcard .label, .chcard.wizcard.hellcard .chbig { color: #ff8a4a; }
+.chcard.wizcard.hellcard .chbar i { background: #ff5a2a; }
+.wizfx { position: absolute; inset: 0; pointer-events: none; z-index: 9; opacity: 0; }
+.wizfx.cast { animation: wizCast 1.4s ease-out; background: radial-gradient(circle at 50% 55%, rgba(220,190,255,.9), rgba(130,60,255,.55) 35%, rgba(40,0,90,0) 75%); }
+.wizfx.rise { animation: wizRise 2.2s ease-out; background: linear-gradient(to top, rgba(255,255,255,0), rgba(200,230,255,.75)); }
+.wizfx.land { animation: wizLand 1.1s ease-out; background: #fff; }
+.wizfx.quake { animation: wizQuake 1.6s ease-out; background: radial-gradient(circle at 50% 80%, rgba(255,140,40,.85), rgba(160,20,0,.6) 45%, rgba(0,0,0,.4)); }
+.wizfx.hell { opacity: 1; background: radial-gradient(ellipse at 50% 45%, rgba(0,0,0,0) 38%, rgba(110,8,0,.55) 82%, rgba(40,0,0,.8)); animation: wizHell 2.6s ease-in-out infinite; }
+.wizfx.hell::after { content: ''; position: absolute; inset: 0; background: rgba(255,70,10,.16); mix-blend-mode: multiply; }
+@keyframes wizCast { 0% { opacity: 0; } 12% { opacity: 1; } 100% { opacity: 0; } }
+@keyframes wizRise { 0% { opacity: .9; } 100% { opacity: 0; } }
+@keyframes wizLand { 0% { opacity: 1; } 100% { opacity: 0; } }
+@keyframes wizQuake { 0% { opacity: 1; transform: translate(0,0); } 10% { transform: translate(-8px,4px); } 20% { transform: translate(7px,-5px); } 30% { transform: translate(-5px,3px); } 100% { opacity: 0; transform: none; } }
+@keyframes wizHell { 0%, 100% { opacity: .85; } 50% { opacity: 1; } }
