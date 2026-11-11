@@ -23,6 +23,11 @@ function dispose(o) { // shared kit geometry/materials (bike.glb, hands.glb) sta
   o.traverse(x => { if (!x.userData.kit) x.geometry?.dispose(); for (const m of [x.material].flat()) if (m && !m.userData.kit) { if (!m.map?.userData.kit) m.map?.dispose(); m.dispose(); } });
 }
 
+// lateral lanes for other riders next to your line (1.2 m right of centre, asphalt ±3.3 m): 1.1 m apart = shoulder to shoulder
+const LANES = [-1.1, 1.1, -2.2, 2.0, -3.3];
+const SIDE_LOCK = 1.5, SIDE_FREE = 4; // within 1.5 m: exactly alongside; from 4 m: true gap
+const smooth = (a, b, x) => { const t = Math.min(1, Math.max(0, (x - a) / (b - a))); return t * t * (3 - 2 * t); };
+
 export class Riders {
   constructor(scene, field) {
     this.scene = scene; this.field = field; this.list = new Map(); this.n = 0;
@@ -38,7 +43,7 @@ export class Riders {
       const key = JSON.stringify([r.look || null, !!r.ghost, r.name || '']);
       if (e && e.key !== key) { this.scene.remove(e.obj); dispose(e.obj); e.obj = null; }
       if (!e) {
-        e = { d: r.d, shown: r.d, v: 0, crank: Math.random() * 6, color: r.color ?? COLORS[this.n % COLORS.length], lane: r.self ? 0 : [-0.9, 0.9, 0, -1.8, 1.8][this.n % 5] };
+        e = { d: r.d, shown: r.d, v: 0, crank: Math.random() * 6, color: r.color ?? COLORS[this.n % COLORS.length], lane: r.self ? 0 : LANES[this.n % LANES.length] };
         if (!r.self) this.n++;
         this.list.set(r.id, e);
       }
@@ -48,7 +53,7 @@ export class Riders {
         this.scene.add(e.obj); e.key = key;
       }
       if (r.d !== e.d) e.at = performance.now() / 1000; // a fresh position from the network (friends send ~2 per second)
-      e.d = r.d; e.v = r.v || 0; e.self = !!r.self;
+      e.d = r.d; e.v = r.v || 0; e.self = !!r.self; e.ghost = !!r.ghost;
     }
     for (const [id, e] of this.list) if (!seen.has(id)) { this.scene.remove(e.obj); dispose(e.obj); this.list.delete(id); }
   }
@@ -65,10 +70,15 @@ export class Riders {
         e.shown += e.v > 0.5 ? Math.max(step, e.v * dt * 0.4) : step; // while riding never roll backwards, only a bit slower
         if (Math.abs(err) > 60) e.shown = e.d + e.v * age;
       }
-      const near = !e.self && Math.abs(e.shown - ownD) < 3; // alongside: one lane further out so nobody rides through the camera
-      const p = this.field.pose(Math.max(0, e.shown), 1.2 + e.lane + (near ? 1.4 : 0), 0);
+      // side by side: a friend within a bike length or two is drawn exactly level with you (wheel by wheel, no
+      // jitter from network lag); further back or ahead the real gap shows again, blended in so nothing jumps
+      const gap = e.shown - ownD, ag = Math.abs(gap);
+      const at = e.self || e.ghost ? e.shown : ownD + gap * smooth(SIDE_LOCK, SIDE_FREE, ag);
+      // own lane, eased: no rider ever shares your line, so nobody rides through the camera
+      const lat = 1.2 + e.lane; e.lat = e.lat == null ? lat : e.lat + (lat - e.lat) * Math.min(1, dt * 2);
+      const p = this.field.pose(Math.max(0, at), e.lat, 0);
       const o = e.obj; if (!o) continue;
-      const dist = Math.abs(e.shown - ownD);
+      const dist = ag;
       o.visible = dist < 400; // beyond 400 m a rider is a few pixels
       if (!o.visible) continue;
       const sh = dist < 25 || e.self; for (const m of o.userData.shadow || []) m.castShadow = sh;

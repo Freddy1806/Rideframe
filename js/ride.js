@@ -8,6 +8,7 @@ import { fmtTime, fmtKm, fmtNum, esc, bestAvg } from './util.js';
 import { stravaExport } from './tcx.js';
 import { gearsFrom, gearName, parseGear, estimateGear, virtualGrade } from './gears.js';
 import { UEBridge } from './uebridge.js';
+import { fovOf, FOV_MIN, FOV_MAX, FOV_DEFAULT } from './fov.js';
 import { workoutAt, workoutSVG } from './workouts.js';
 import { Music, Coach } from './music.js';
 import { hudPrefs, applyHud, hudControlsHTML, wireHudControls, HUD_ORDER, HUD_PRESETS } from './hudprefs.js';
@@ -117,7 +118,7 @@ export class RideSession {
       }
       if (!this.player) this.player = new DemoScene(c, this.track);
       this.player.currentTime = timeAt(this.track, this.d);
-      this.player.setLens?.(this.state.settings.lensMm || 0); this.player.setView?.(this.state.settings.view3d || 0); this.player.setCockpit?.(this.state.settings.cockpit !== false);
+      this.player.setFov ? this.player.setFov(fovOf(this.state.settings)) : this.player.setLens?.(this.state.settings.lensMm || 0); this.player.setView?.(this.state.settings.view3d || 0); this.player.setCockpit?.(this.state.settings.cockpit !== false);
       el.classList.toggle('world3d', !!this.player.setLens); // compact HUD over the 3D world
       this.player._placeCockpit?.();
       if (this.player.ready) { // 3D world: show a loading card instead of a black screen until the ground around the start stands
@@ -249,7 +250,7 @@ export class RideSession {
     }
     if (now - (this.lastHud || 0) > 100) { this.lastHud = now; this._updateHUD(); }
     if (this.ue) this._ueLive();
-    this.ue?.update(now, { d: Math.round(this.d * 100) / 100, v: Math.round(this.v * 100) / 100, grade: Math.round(gradeAt(this.track, this.d) * 10) / 10, watt: Math.round(this.power), hr: this.hr, cad: Math.round(this.cadence), paused: this.paused || this.finished, t: Math.round(this.elapsed * 10) / 10 });
+    this.ue?.update(now, { d: Math.round(this.d * 100) / 100, v: Math.round(this.v * 100) / 100, grade: Math.round(gradeAt(this.track, this.d) * 10) / 10, fov: fovOf(this.state.settings), watt: Math.round(this.power), hr: this.hr, cad: Math.round(this.cadence), paused: this.paused || this.finished, t: Math.round(this.elapsed * 10) / 10 });
     requestAnimationFrame(this._tick);
   }
 
@@ -451,12 +452,12 @@ export class RideSession {
     const s = this.state.settings; s.view3d = ((s.view3d || 0) + 1) % 3; this.player.setView(s.view3d);
     this._flash(['Fahrersicht', 'Verfolger', 'Rückblick'][s.view3d]); import('./app.js').then(m => m.saveSettings());
   }
-  _lens(dir, wrap = false) { // [ wider, ] narrower; the HUD button steps wider and wraps back to normal
-    if (!this.player.setLens) return;
-    const steps = [6, 8, 10, 12, 14, 0, 24, 35], s = this.state.settings, i = Math.max(0, steps.indexOf(s.lensMm || 0));
-    let j = i + dir; if (wrap && j < 0) j = steps.indexOf(0);
-    s.lensMm = steps[Math.max(0, Math.min(steps.length - 1, j))]; this.player.setLens(s.lensMm);
-    this._flash(s.lensMm ? `Sichtfeld ${s.lensMm} mm` : 'Sichtfeld normal'); import('./app.js').then(m => m.saveSettings());
+  _lens(dir, wrap = false) { // [ wider, ] narrower (5° steps); the HUD button steps wider and wraps back to normal
+    if (!this.player.setFov) return;
+    const s = this.state.settings; let f = fovOf(s) + (wrap ? 15 : -dir * 5);
+    if (wrap && f > FOV_MAX) f = FOV_DEFAULT;
+    s.fov = Math.max(FOV_MIN, Math.min(FOV_MAX, f)); s.lensMm = 0; this.player.setFov(s.fov);
+    this._flash(`Sichtfeld ${s.fov}°`); import('./app.js').then(m => m.saveSettings());
   }
   _setHud(h) {
     this.state.settings.hud = h; applyHud(this.el, hudPrefs(this.state.settings));

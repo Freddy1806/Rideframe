@@ -960,7 +960,9 @@ export class WorldScene {
   }
 
   /** Lens as a full-frame focal length (14 mm = very wide). null keeps the default 62° vertical view. */
-  setLens(mm) { this.lensMm = mm || null; this._applyLens(); this.camera.updateProjectionMatrix(); this._placeCockpit(); }
+  setLens(mm) { this.lensMm = mm || null; this.fovDeg = null; this._applyLens(); this.camera.updateProjectionMatrix(); this._placeCockpit(); }
+  /** field of view like in Minecraft: vertical angle in degrees (30 zoomed in … 62 normal … 110 very wide) */
+  setFov(deg) { this.fovDeg = deg || null; this.lensMm = null; this._applyLens(); this.camera.updateProjectionMatrix(); this._placeCockpit(); }
   _placeCockpit() { // aim the hoods at fixed screen spots for every lens (reference photo: hood tops at ~67 % height, hoods at 19 % / 81 % width)
     const ck = this.cockpit; if (!ck) return;
     if (!this.ckGeo) { // hood width and height from the bar itself (model: bar centre 0.45 m below / 0.55 m ahead of the eye)
@@ -975,7 +977,8 @@ export class WorldScene {
   }
 
   _applyLens() {
-    if (!this.lensMm) { this.camera.fov = 62; return; }
+    if (this.fovDeg) { this.camera.fov = this.fovDeg; return; }
+    if (!this.lensMm) { this.camera.fov = FOV_NORMAL; return; }
     const h = 2 * Math.atan(36 / (2 * this.lensMm)); // horizontal angle of a 36 mm wide sensor
     this.camera.fov = THREE.MathUtils.radToDeg(2 * Math.atan(Math.tan(h / 2) / this.camera.aspect));
   }
@@ -1216,6 +1219,7 @@ function sunAt(u, out = new THREE.Vector3()) {
 // light colours (linear) for a high (6.5°) and a low (2°) sun; sky fill clear / overcast; haze clear / overcast
 const W_HIGH = new THREE.Color(0xffdcc2), W_LOW = new THREE.Color(0xffc9a4);
 const H_CLEAR = new THREE.Color(0xb6c4d6), H_GREY = new THREE.Color(0xaab4c4);
+export const FOV_NORMAL = 62;
 const ENV_I = 0.55; // sky image light: less blue cast on meadows than before (0.95)
 const F_CLEAR = new THREE.Color(0xbfc6cd), F_GREY = new THREE.Color(0xb4b9c2);
 const WS_HIGH = new THREE.Color(0xffb27a), WS_LOW = new THREE.Color(0xff8a52);

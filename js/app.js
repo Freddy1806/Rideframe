@@ -8,6 +8,7 @@ import { gearsFrom, CASSETTES, parseRings } from './gears.js';
 import { profileSVG, drawDetailProfile } from './profile.js';
 import { RideSession, simulateRide } from './ride.js';
 import { gameVersion } from './uebridge.js';
+import { fovOf, FOV_MIN, FOV_MAX } from './fov.js';
 import { fmtTime, fmtKm, fmtNum, esc, bestAvg } from './util.js';
 import { openControllerTest } from './controller.js';
 import { stravaExport } from './tcx.js';
@@ -291,7 +292,6 @@ function wireSeg(root, id, onChange) {
 }
 const SHIFT_OPTS = [['real', 'Echt am Rad'], ['virtual', 'Virtuell']];
 const UE_WEATHER_OPTS = [['auto', 'Auto'], ['clear', 'Klar'], ['fog', 'Nebel'], ['rain', 'Regen'], ['storm', 'Gewitter'], ['clearing', 'Regenbogen'], ['dramatic', 'Dramatisch']];
-const LENS_OPTS = [['35', '35 mm'], ['24', '24 mm'], ['0', 'Normal'], ['14', '14 mm'], ['12', '12 mm'], ['10', '10 mm'], ['8', '8 mm'], ['6', '6 mm']];
 const VIEW_OPTS = [['0', 'Fahrer'], ['1', 'Verfolger'], ['2', 'Rückblick']];
 
 function shiftHint(m) {
@@ -371,7 +371,7 @@ function settings() {
         <div id="hudBox">${hudControlsHTML(hudPrefs(s))}</div>
       </div>
       <div class="panel"><h3>Ansicht 3D-Welt</h3>
-        <label class="field"><div>Sichtfeld (Brennweite)<div class="hint">Kleinere mm = weiter Blick. Normal entspricht ca. 17 mm. Während der Fahrt: Tasten [ und ] oder Knopf „Sicht“. 6–8 mm = extremer Weitwinkel.</div></div>${seg('lensMm', String(s.lensMm || 0), LENS_OPTS)}</label>
+        <label class="field"><div>Sichtfeld <b id="fovV">${fovOf(s)}°</b><div class="hint">Wie bei Minecraft: nach rechts weiter, nach links näher dran. Normal 62°, 90–110° = sehr weit. Während der Fahrt: Tasten [ und ] oder Knopf „Sicht“.</div></div><input type="range" id="fov" min="${FOV_MIN}" max="${FOV_MAX}" step="1" value="${fovOf(s)}"></label>
         <label class="field"><div>In Unreal fahren (Beta)<div class="hint">Die Fahrt läuft weiter hier (Trainer, Gruppe, Training), das Bild zeigt die Unreal-App in der schönen Grafik. Sobald sie verbunden ist, zeichnet der Browser keine eigene 3D-Welt mehr.</div></div><input type="checkbox" class="toggle" id="ueBridge" ${s.ueBridge ? 'checked' : ''}></label>
         <label class="field"><div>Wetter in Unreal<div class="hint">Auto = das Wetter wechselt je nach Streckenabschnitt. Sonst bleibt es die ganze Fahrt so.</div></div>${seg('ueWeather', s.ueWeather || 'auto', UE_WEATHER_OPTS)}</label>
         <label class="field"><div>Lenker im Bild<div class="hint">Rennlenker mit Griffen und Unterarmen in der Fahrersicht. Aus = nur freie Sicht. Während der Fahrt: Taste H oder Knopf „Lenker“.</div></div><input type="checkbox" class="toggle" id="cockpit" ${s.cockpit !== false ? 'checked' : ''}></label>
@@ -399,7 +399,7 @@ function settings() {
   $('#lookBtn').onclick = () => import('./avatar-ui.js').then(x => x.avatarModal());
   $('#cockpit').onchange = e => { s.cockpit = e.target.checked; saveSettings(); };
   $('#ueBridge').onchange = e => { s.ueBridge = e.target.checked; saveSettings(); };
-  wireSeg(main, 'lensMm', v => { s.lensMm = +v; saveSettings(); });
+  $('#fov').oninput = e => { s.fov = +e.target.value; s.lensMm = 0; $('#fovV').textContent = s.fov + '°'; saveSettings(); };
   wireSeg(main, 'ueWeather', v => { s.ueWeather = v; saveSettings(); });
   wireSeg(main, 'view3d', v => { s.view3d = +v; saveSettings(); });
   wireSeg(main, 'shiftMode', v => { s.shiftMode = v; saveSettings(); settings(); });

@@ -201,16 +201,7 @@ export class Sound {
   speak(text, vol = 1, style = 'call', seed = 0, where = null) {
     if (!this.on || !this.voicesOn || this.paused || !text || !(vol > 0.05)) return;
     const file = this.m?.voices?.[text];
-    if (!file && this.m?.voices && Object.keys(this.m.voices).length) return; // recorded voices present: no computer voice for the rest
-    if (file) return this.voiceFile(file, where || (() => ({ vol, pan: 0 })));
-    if (/^(oink|woof|baa|moo)/i.test(text)) return; // animal noises read out by a narrator sound wrong
-    const S = globalThis.speechSynthesis; if (!S) return;
-    if (S.speaking && style !== 'shout') return; // never queue villagers up behind each other
-    if (style === 'shout') S.cancel();
-    const u = new SpeechSynthesisUtterance(text.replace(/!+/g, '!')), v = this._voice(seed);
-    if (v) { u.voice = v; u.lang = v.lang; } else u.lang = 'en-GB';
-    u.volume = Math.min(1, vol); u.rate = style === 'shout' ? 1.12 : 1.0; u.pitch = style === 'shout' ? 0.55 + 0.15 * (seed % 3) : 0.8 + 0.12 * (seed % 4);
-    S.speak(u);
+    if (file) this.voiceFile(file, where || (() => ({ vol, pan: 0 }))); // ElevenLabs recordings only: no computer voice, ever
   }
   /** a recorded line from a speaker in the world: where() -> { vol, pan } follows them as you ride past */
   voiceFile(file, where) {
@@ -221,17 +212,8 @@ export class Sound {
     (this.files[f] ? Promise.resolve(this.files[f]) : fetch(f).then(x => x.arrayBuffer()).then(a => this.ctx.decodeAudioData(a)).then(b => (this.files[f] = b)))
       .then(b => { if (!this.paused) this._playBuf(b, r.vol, r.pan, where); }).catch(() => {});
   }
-  _voice(seed) {
-    const S = globalThis.speechSynthesis; if (!S) return null;
-    if (!this._voices?.length) {
-      const all = S.getVoices(), gb = all.filter(v => /^en[-_]GB/i.test(v.lang)), en = all.filter(v => /^en/i.test(v.lang));
-      const pool = gb.length ? gb : en, male = pool.filter(v => /daniel|arthur|oliver|fred|ralph|reed|rocko|eddy|grandpa|george|harry|male/i.test(v.name));
-      this._voices = male.length ? male : pool;
-    }
-    return this._voices.length ? this._voices[seed % this._voices.length] : null;
-  }
 
-  pause() { this.paused = true; globalThis.speechSynthesis?.cancel(); this.ctx?.suspend().catch(() => {}); }
+  pause() { this.paused = true; this.ctx?.suspend().catch(() => {}); }
   resume() { this.paused = false; this.ctx?.resume().catch(() => {}); }
   destroy() { this.pause(); this.moving = []; for (const L of this.loops.values()) L.dead = true; this.loops.clear(); this.ctx?.close().catch(() => {}); this.ctx = null; }
 }
