@@ -224,6 +224,16 @@ const ALBEDO = `
     float strk = smoothstep(.6, .85, wallN(hzP, P.y, vec2(7., 60.), bwXZ) * .7 + mix(wallN(hzP, P.y, vec2(1.6, 14.), bwXZ), .5, smoothstep(40., 160., tDist)) * .3) * (1. - flatR) * (1. - smoothstep(.3, .6, up));
     cR *= 1. - .45 * strk;
     rWet = strk;
+    // macro crags: ridged noise along the wall at two scales -> lit ledges and dark clefts that still read from afar
+    // (photo detail fades out with distance, so big walls were smooth before); breaks up the texture repeat too
+    {
+      float c1 = 1. - abs(wallN(hzP, P.y, vec2(26., 34.), bwXZ) * 2. - 1.);
+      float c2 = 1. - abs(wallN(hzP + 13.1, P.y + 7.7, vec2(9., 12.), bwXZ) * 2. - 1.);
+      float crag = c1 * .65 + c2 * .35;
+      float kC = (1. - flatR) * mix(.55, 1., smoothstep(40., 300., tDist));
+      cR *= mix(1., .62 + .62 * smoothstep(.35, .95, crag), kC);
+      cR *= mix(1., .85 + .3 * vnoise(P.xz / 90. + P.y / 140.), .6); // large light/dark patches across a mountain side
+    }
     // gullies: vertical ribs in the shading of big walls (seen from afar, where the tiles are coarse)
     if (tDist > 60.) {
       float g0 = wallN(hzP, P.y, vec2(11., 90.), bwXZ), g1 = wallN(hzP + 1.5, P.y, vec2(11., 90.), bwXZ);
@@ -241,7 +251,7 @@ const ALBEDO = `
     float dl = dot(alb, vec3(.299, .587, .114));
     vec3 sd = sat * clamp(.55 + dl * 1.6, .6, 1.5);
     float sl = dot(sd, vec3(.299, .587, .114)); sd = max(mix(vec3(sl), sd, 1.35) * mix(vec3(1.), vec3(.95, 1.05, .82), sp.x), 0.); // summer meadows: richer green than the hazy satellite pixel
-    alb = mix(alb, sd, mix(.45, .85, smoothstep(60., 900., tDist)) * smoothstep(1., 4., vWP.y));
+    alb = mix(alb, sd, mix(.45, .85, smoothstep(60., 900., tDist)) * smoothstep(1., 4., vWP.y) * (1. - .4 * sp.y)); // rock keeps more of its own crag structure
   }
   // wet dark band + rolling surf where land meets the sea (water plane at y = 0)
   float wl = vWP.y - .12 * sin(uTime * .8 + vWP.x * .05 + vWP.z * .04);

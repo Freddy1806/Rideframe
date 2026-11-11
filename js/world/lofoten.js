@@ -70,7 +70,9 @@ function installFog() {
     float fogH = exp( - fogY0 / ${FOG_H.toFixed(1)} ) * ( abs( fogK ) > 1e-4 ? ( 1.0 - exp( - fogK ) ) / fogK : 1.0 );
     float fogFactor = 1.0 - exp( - fogDensity * fogDensity * fogLen * fogLen * min( fogH, 1.6 ) );
     float fogS = max( dot( fogRd, fogSunDir ), 0.0 );
-    vec3 fogC = fogColor + fogSunCol * ( 0.7 * pow( fogS, 5.0 ) + 0.5 * pow( fogS, 40.0 ) );
+    // far islands never wash out to a white cut-out (they read as icebergs): looking into the low sun they stay darker backlit silhouettes
+    fogFactor = min( fogFactor * ( 1.0 - 0.25 * pow( fogS, 4.0 ) ), 0.88 - 0.16 * pow( fogS, 2.0 ) ); // a trace of the land's own darker tone always stays
+    vec3 fogC = fogColor * ( 1.0 - 0.18 * pow( fogS, 3.0 ) ) + fogSunCol * ( 0.7 * pow( fogS, 5.0 ) + 0.5 * pow( fogS, 40.0 ) );
     gl_FragColor.rgb = mix( gl_FragColor.rgb, fogC, fogFactor );
   #else
     float fogFactor = smoothstep( fogNear, fogFar, vFogDepth );
@@ -243,6 +245,7 @@ export class WorldScene {
     scene.environmentIntensity = ENV_I;
     scene.fog = new THREE.FogExp2(0xbfc6cd, 0.00042); // a bit more aerial perspective: far ridges step back in layers
     this.clouds = cloudLayer(sun); scene.add(this.clouds);
+    this.sunGlow = sunGlow(); scene.add(this.sunGlow); // fake bloom: soft halo around the low sun, cut by the terrain in front
 
     const light = this.light = new THREE.DirectionalLight(0xffd8bc, 3.0);
     light.castShadow = !QS.has('noshadow'); light.shadow.mapSize.set(2048, 2048);
@@ -316,6 +319,7 @@ export class WorldScene {
     this.tuftGeo = card();
     this.grassTime = { value: 0 }; this.clumpGeo = clumpGeometry(7, 3); this.clumpMat = grassMaterial(this.grassTime);
     this.tuftMats = [tuft, tuftF].map(t => new THREE.MeshStandardMaterial({ map: t, alphaTest: 0.4, side: THREE.DoubleSide, roughness: 1 }));
+    this.shrubGeo = shrubGeometry(); this.shrubMat = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.95, map: leafTex(), alphaTest: 0.3, side: THREE.DoubleSide });
 
     this.farCam = { value: new THREE.Vector2() };
     this.farHole = { value: 0 }; // far backdrop is cut out only where detailed tiles already stand (none at the start)
@@ -503,6 +507,26 @@ export class WorldScene {
       const im = new THREE.InstancedMesh(this.tuftGeo, this.tuftMats[1], fl.length);
       fl.forEach(([x, y, z, sz, a], k) => im.setMatrixAt(k, m4.compose(p.set(x, y, z), q.setFromAxisAngle(up, a), s.set(sz * 1.4, sz, sz * 1.4))));
       grp.add(im);
+    }
+    // low shrubs (willow, juniper, crowberry heaps) in loose groups along the verge: one instanced draw per tile,
+    // never on the asphalt or the mown strip, only on green ground above the shore
+    const sb = [];
+    for (let k = 0; k < 420; k++) {
+      const x = ox + r() * TILE, z = oz + r() * TILE, i = vi(x, z);
+      if (spl[i * 4] < 0.6 || H[i] < 2.6) continue;
+      const rd = f.road(x, z); if (!rd || rd.d < ROAD_W + 3 || rd.d > 60) continue;
+      if (f.n2(x / 31, z / 31) * 0.5 + 0.5 < 0.45 + r() * 0.3) continue; // in patches, open meadow between them
+      const sz = 0.55 + r() * r() * 1.3;
+      if (rd.d < ROAD_W + 3 + sz * 1.3) continue;
+      sb.push([x, f.height(x, z) - 0.1 * sz, z, sz, r() * 6.28]);
+    }
+    if (sb.length) {
+      const im = new THREE.InstancedMesh(this.shrubGeo, this.shrubMat, sb.length), c0 = new THREE.Color();
+      sb.forEach(([x, y, z, sz, a], k) => {
+        im.setMatrixAt(k, m4.compose(p.set(x, y, z), q.setFromAxisAngle(up, a), s.set(sz * (0.9 + 0.4 * r()), sz * (0.95 + 0.5 * r()), sz)));
+        const t = r(); im.setColorAt(k, c0.setRGB(0.8 + 0.5 * t, 0.9 + 0.25 * t, 0.6 + 0.2 * r())); // some fresh green willow, some yellowish
+      });
+      im.receiveShadow = true; im.layers.set(1); grp.add(im);
     }
   }
 
@@ -1080,6 +1104,8 @@ export class WorldScene {
     this.streaks.position.copy(this.camera.position); this.streaks.quaternion.copy(this.camera.quaternion); this.streaks.userData.tick(dt, this.speed || 0, this.view === 2 ? 0 : this.fast || 0);
     this.water.position.x = Math.round(cam.x / 100) * 100; this.water.position.z = Math.round(cam.z / 100) * 100;
     this.water.material.uniforms.time.value = time * 0.6; this.grassTime.value = time; TIME.value = time;
+    { const sd = this.sky.material.uniforms.sunPosition.value, g = this.sunGlow, veil = this.weather?.veil || 0;
+      g.position.copy(this.camera.position).addScaledVector(sd, 8200); g.material.opacity = 0.5 * (1 - 0.65 * veil) * (1 - (this.tunnelK || 0)); }
     this.clouds.position.copy(this.camera.position); this.clouds.material.uniforms.uTime.value = time; this.sky.material.uniforms.uTime.value = time;
     for (const o of this.animated) {
       if (o.userData.spin) o.rotation.z = time * 0.6;
@@ -1267,6 +1293,65 @@ void main() {
 }` });
   const g = new THREE.SphereGeometry(7000, 32, 12, 0, Math.PI * 2, 0, Math.PI / 2); // upper half dome around the camera
   const o = new THREE.Mesh(g, m); o.renderOrder = -1; o.frustumCulled = false; return o;
+}
+
+// leaf clusters on transparent ground; the centre stays solid for the shrub core
+function leafTex() {
+  const s = 128, cv = document.createElement('canvas'); cv.width = cv.height = s; const g = cv.getContext('2d'), rr = rng(31);
+  g.clearRect(0, 0, s, s); g.fillStyle = '#d8e0c8'; g.beginPath(); g.arc(64, 64, 26, 0, 6.283); g.fill(); // solid heart
+  for (let k = 0; k < 340; k++) {
+    const a = rr() * 6.283, d = Math.sqrt(rr()) * 50, x = 64 + Math.cos(a) * d, y = 64 + Math.sin(a) * d, l = 150 + rr() * 105;
+    g.fillStyle = `rgb(${l * 0.92 | 0},${l | 0},${l * 0.8 | 0})`; // near white: the vertex colour carries the green
+    g.beginPath(); g.ellipse(x, y, 5 + rr() * 4, 2.5 + rr() * 2, rr() * 3.14, 0, 6.283); g.fill();
+  }
+  const t = new THREE.CanvasTexture(cv); t.colorSpace = THREE.SRGBColorSpace; t.anisotropy = 4; return t;
+}
+// one shrub: a few lumpy, overlapping leaf heaps; normals point away from the bush centre (soft foliage shading),
+// vertex colour dark inside/below, lighter yellow-green on top (~600 triangles)
+function shrubGeometry() {
+  const parts = [], rr = rng(77), c = new THREE.Color(), v = new THREE.Vector3();
+  for (let b = 0; b < 5; b++) {
+    const g = new THREE.IcosahedronGeometry(1, 1), P = g.attributes.position, cols = [];
+    const R = b === 0 ? 0.8 : 0.45 + rr() * 0.3, cx = b === 0 ? 0 : (rr() - .5) * 1.1, cz = b === 0 ? 0 : (rr() - .5) * 1.1, cy = b === 0 ? 0.45 : 0.3 + rr() * 0.35;
+    for (let i = 0; i < P.count; i++) {
+      v.fromBufferAttribute(P, i);
+      const bump = 1 + 0.22 * Math.sin(v.x * 5.3 + b) * Math.sin(v.y * 4.1 + 2 * b) * Math.sin(v.z * 4.7);
+      v.multiplyScalar(R * bump); v.y *= 0.8; v.x += cx; v.z += cz; v.y += cy; if (v.y < 0) v.y *= 0.3;
+      P.setXYZ(i, v.x, v.y, v.z);
+      const t = Math.min(1, Math.max(0, v.y / 1.1));
+      c.setRGB(0.05 + 0.1 * t, 0.1 + 0.13 * t, 0.03 + 0.03 * t); cols.push(c.r, c.g, c.b);
+    }
+    g.setAttribute('color', new THREE.Float32BufferAttribute(cols, 3));
+    g.computeVertexNormals(); const N = g.attributes.normal;
+    for (let i = 0; i < P.count; i++) { v.set(P.getX(i), P.getY(i) - 0.3, P.getZ(i)).normalize(); const n = new THREE.Vector3().fromBufferAttribute(N, i).lerp(v, 0.6).normalize(); N.setXYZ(i, n.x, n.y, n.z); }
+    const uv = g.attributes.uv; for (let i = 0; i < uv.count; i++) uv.setXY(i, 0.5, 0.5); // core: dense centre of the leaf texture
+    parts.push(g.index ? g.toNonIndexed() : g);
+  }
+  // leaf clusters: small cards on the surface, facing outwards, alpha-cut -> a broken, leafy silhouette instead of a ball
+  const card = new THREE.PlaneGeometry(0.75, 0.75);
+  for (let k = 0; k < 30; k++) {
+    const g = card.clone(), th = rr() * 6.283, ph = Math.acos(1 - rr() * 1.15), rad = 0.75 + rr() * 0.35;
+    const n = new THREE.Vector3(Math.sin(ph) * Math.cos(th), Math.cos(ph) * 0.8, Math.sin(ph) * Math.sin(th));
+    g.lookAt(n); g.rotateZ(rr() * 6.283); g.translate(n.x * rad, 0.4 + n.y * rad, n.z * rad);
+    const t = Math.min(1, Math.max(0, (0.4 + n.y * rad) / 1.2)), cols = [];
+    for (let i = 0; i < 4; i++) { c.setRGB(0.07 + 0.17 * t, 0.12 + 0.2 * t, 0.03 + 0.06 * t); cols.push(c.r, c.g, c.b); }
+    g.setAttribute('color', new THREE.Float32BufferAttribute(cols, 3));
+    const N = g.attributes.normal; for (let i = 0; i < 4; i++) N.setXYZ(i, n.x, n.y, n.z);
+    parts.push(g.toNonIndexed());
+  }
+  return mergeGeometries(parts);
+}
+
+// halo around the sun instead of a bloom pass (a full-screen bloom cost too much): one additive sprite far out on the
+// sun direction; depth-tested, so hills and walls in front cut it off like real glare over a ridge
+function sunGlow() {
+  const s = 256, cv = document.createElement('canvas'); cv.width = cv.height = s; const g = cv.getContext('2d');
+  const gr = g.createRadialGradient(s / 2, s / 2, 0, s / 2, s / 2, s / 2);
+  gr.addColorStop(0, 'rgba(255,214,160,1)'); gr.addColorStop(0.08, 'rgba(255,190,120,.7)'); gr.addColorStop(0.3, 'rgba(255,150,80,.22)'); gr.addColorStop(1, 'rgba(255,120,60,0)');
+  g.fillStyle = gr; g.fillRect(0, 0, s, s);
+  const t = new THREE.CanvasTexture(cv); t.colorSpace = THREE.SRGBColorSpace;
+  const m = new THREE.SpriteMaterial({ map: t, blending: THREE.AdditiveBlending, transparent: true, depthWrite: false, fog: false, opacity: 0.5, toneMapped: false });
+  const o = new THREE.Sprite(m); o.scale.setScalar(5200); o.renderOrder = 2; o.frustumCulled = false; return o;
 }
 
 /** Static object: world matrices computed now, never again (three skips it in updateMatrixWorld). */
