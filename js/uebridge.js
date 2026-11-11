@@ -3,6 +3,8 @@
 //   {type:'hello', version, route, length, ascent, hash, profile:{step:10, ele:[m...]}}   once per connection;
 //     profile = the height the trainer uses every 10 m, so Unreal can check its road and warn instead of showing wrong heights
 //     version = version.json of this game; the Unreal view has the same file and warns when they differ
+//   Unreal -> browser: {type:'ue_hello', version} when it connects, then {type:'ue_alive'} every ~2 s.
+//     While Unreal is alive the browser stops drawing its own 3D world (both at once halve Unreal's fps).
 //   {type:'ride', d, v, grade, watt, hr, cad, paused, t}   every 100 ms
 export class UEBridge {
   constructor(route, track, url = 'ws://localhost:8790') {
@@ -16,9 +18,19 @@ export class UEBridge {
   _open() {
     if (this.dead) return;
     try { this.ws = new WebSocket(this.url); } catch { return this._retry(); }
-    this.ws.onopen = () => this._send({ type: 'hello', version: this.version, route: this.route, length: this.length, ascent: this.ascent, hash: this.hash, profile: this.profile });
+    this.ws.onopen = () => this._hello();
+    this.ws.onmessage = e => {
+      let j; try { j = JSON.parse(e.data); } catch { return; }
+      if (!String(j?.type).startsWith('ue_')) return;
+      this.ueSeen = performance.now();
+      if (j.type === 'ue_hello') { this.ueVersion = j.version || '?'; this._hello(); } // Unreal started after us: it missed the first hello
+    };
     this.ws.onclose = () => this._retry(); this.ws.onerror = () => {};
   }
+  _hello() { this._send({ type: 'hello', version: this.version, route: this.route, length: this.length, ascent: this.ascent, hash: this.hash, profile: this.profile }); }
+  /** true while the Unreal view is connected and talking (last sign of life < 5 s ago) */
+  get unreal() { return this.connected && performance.now() - (this.ueSeen || -1e9) < 5000; }
+  get mismatch() { return this.unreal && this.ueVersion && this.ueVersion !== '?' && this.version !== '?' && this.ueVersion !== this.version; }
   _retry() { if (!this.dead) setTimeout(() => this._open(), 3000); }
   _send(o) { if (this.ws?.readyState === 1) this.ws.send(JSON.stringify(o)); }
   get connected() { return this.ws?.readyState === 1; }

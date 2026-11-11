@@ -371,7 +371,7 @@ function settings() {
       </div>
       <div class="panel"><h3>Ansicht 3D-Welt</h3>
         <label class="field"><div>Sichtfeld (Brennweite)<div class="hint">Kleinere mm = weiter Blick. Normal entspricht ca. 17 mm. Während der Fahrt: Tasten [ und ] oder Knopf „Sicht“. 6–8 mm = extremer Weitwinkel.</div></div>${seg('lensMm', String(s.lensMm || 0), LENS_OPTS)}</label>
-        <label class="field"><div>Unreal-Anzeige (Beta)<div class="hint">Schickt die Fahrt live an die Unreal-Version (Relay: node tools/ue-relay.mjs).</div></div><input type="checkbox" class="toggle" id="ueBridge" ${s.ueBridge ? 'checked' : ''}></label>
+        <label class="field"><div>In Unreal fahren (Beta)<div class="hint">Die Fahrt läuft weiter hier (Trainer, Gruppe, Training), das Bild zeigt die Unreal-App in der schönen Grafik. Sobald sie verbunden ist, zeichnet der Browser keine eigene 3D-Welt mehr.</div></div><input type="checkbox" class="toggle" id="ueBridge" ${s.ueBridge ? 'checked' : ''}></label>
         <label class="field"><div>Lenker im Bild<div class="hint">Rennlenker mit Griffen und Unterarmen in der Fahrersicht. Aus = nur freie Sicht. Während der Fahrt: Taste H oder Knopf „Lenker“.</div></div><input type="checkbox" class="toggle" id="cockpit" ${s.cockpit !== false ? 'checked' : ''}></label>
         <label class="field"><div>Kamera<div class="hint">Während der Fahrt umschalten mit Taste V oder dem Kamera-Knopf.</div></div>${seg('view3d', String(s.view3d || 0), VIEW_OPTS)}</label>
       </div>

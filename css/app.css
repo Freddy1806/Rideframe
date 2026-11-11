@@ -334,3 +334,7 @@ input[type=number]::-webkit-inner-spin-button, input[type=number]::-webkit-outer
 .hudpresets { display: flex; flex-wrap: wrap; gap: 6px; margin: 10px 0 12px; }
 .hudchecks { display: grid; grid-template-columns: 1fr 1fr; gap: 8px 14px; font-size: 13px; }
 .hudchecks label { display: flex; align-items: center; gap: 8px; cursor: pointer; }
+/* Unreal view connected: the browser world sleeps, dark backdrop behind the HUD */
+.ride.ue-live canvas { visibility: hidden; }
+.ride.ue-live { background: #0b0b0b; }
+.ride.ue-live::before { content: 'Bild läuft in Unreal'; position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); color: rgba(255,255,255,.35); font-size: 15px; letter-spacing: .08em; text-transform: uppercase; pointer-events: none; }

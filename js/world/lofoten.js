@@ -989,7 +989,7 @@ export class WorldScene {
     if (!this.paused) this.currentTime = Math.min(this.duration, this.currentTime + dt * this.playbackRate);
     if (this.instant && !this.texOk) { if (!this.texWait) this.texWait = texReady().then(() => this.texOk = true); requestAnimationFrame(this._loop); return; }
     if (this.instant) { this.shotWait = (this.shotWait || 0) + 1; if (this.shotDone || (this.currentTime <= 0 && this.shotWait < 20)) { if (!this.shotDone) requestAnimationFrame(this._loop); return; } this.render(10); this.shotDone = true; window.__shot = true; return; }
-    this.render(now / 1000, dt);
+    if (!this.sleep) this.render(now / 1000, dt); // sleep: the Unreal view draws the world, keep the GPU for it
     requestAnimationFrame(this._loop);
   }
 

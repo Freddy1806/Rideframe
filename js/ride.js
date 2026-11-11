@@ -218,6 +218,14 @@ export class RideSession {
     }
   }
 
+  /** Unreal view connected: stop drawing the browser 3D world, show only the HUD */
+  _ueLive() {
+    const on = this.ue.unreal;
+    if (on === !!this._ueOn) return;
+    this._ueOn = on; if (this.player) this.player.sleep = on;
+    this.el?.classList.toggle('ue-live', on);
+    this._flash?.(on ? (this.ue.mismatch ? `Achtung: RIDEFRAME ${this.ue.version} und Unreal ${this.ue.ueVersion} passen nicht zusammen` : 'Bild läuft jetzt in Unreal') : 'Unreal getrennt, Bild wieder hier');
+  }
   _tick(now) {
     if (!this.running) return;
     const dt = Math.min(0.25, (now - this.last) / 1000); this.last = now;
@@ -240,6 +248,7 @@ export class RideSession {
       if (this.d >= this.track.length) this._finish();
     }
     if (now - (this.lastHud || 0) > 100) { this.lastHud = now; this._updateHUD(); }
+    if (this.ue) this._ueLive();
     this.ue?.update(now, { d: Math.round(this.d * 100) / 100, v: Math.round(this.v * 100) / 100, grade: Math.round(gradeAt(this.track, this.d) * 10) / 10, watt: Math.round(this.power), hr: this.hr, cad: Math.round(this.cadence), paused: this.paused || this.finished, t: Math.round(this.elapsed * 10) / 10 });
     requestAnimationFrame(this._tick);
   }
