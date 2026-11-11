@@ -27,4 +27,5 @@ server.on('upgrade', (req, sock) => {
   });
   sock.on('error', bye); sock.on('close', bye);
 });
+server.on('error', e => console.log(e.code === 'EADDRINUSE' ? `Unreal-Relay läuft schon (Port ${port})` : `Unreal-Relay aus: ${e.message}`)); // never takes the game server down
 server.listen(port, '127.0.0.1', () => console.log(`Unreal-Relay läuft auf ws://localhost:${port}`));

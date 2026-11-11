@@ -16,3 +16,5 @@ createServer(async (req, res) => {
     res.end(await readFile(file));
   } catch { res.writeHead(404); res.end('not found'); }
 }).listen(port, '127.0.0.1', () => console.log(`RIDEFRAME läuft auf http://localhost:${port}`));
+// the relay to the Unreal view rides along, so "In Unreal fahren" needs nothing extra to start
+import('./tools/ue-relay.mjs').catch(e => console.log('Unreal-Relay aus:', e.message));
