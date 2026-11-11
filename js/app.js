@@ -1,3 +1,4 @@
+import { trainingView } from './training.js';
 import { account, accountsAvailable, syncAccount, settingsChanged, accountModal } from './account.js';
 import { db, uid } from './db.js';
 import { readGoProGPS } from './gpmf.js';
@@ -124,7 +125,7 @@ export function go(view, arg) {
   state.view = view;
   document.querySelectorAll('.tab').forEach(t => t.classList.toggle('active', t.dataset.view === view || (view === 'detail' && t.dataset.view === 'library')));
   main.scrollTop = 0;
-  ({ library, detail, history, settings })[view](arg);
+  ({ library, detail, history, settings, training: () => trainingView(main, { state, saveSettings, startRide, routeById }) })[view](arg);
 }
 
 // ---------------- library ----------------
