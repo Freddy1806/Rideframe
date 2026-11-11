@@ -285,7 +285,9 @@ export class WorldScene {
       .replace('sunLight( surfaceNormal, eyeDirection, 100.0, 2.0, 0.5, diffuseLight, specularLight );', 'sunLight( surfaceNormal, eyeDirection, 260.0, 5.0, 0.5, diffuseLight, specularLight );')
       .replace('vec3 scatter = max( 0.0, dot( surfaceNormal, eyeDirection ) ) * waterColor;', 'vec3 scatter = ( 0.35 + 0.65 * max( 0.0, dot( surfaceNormal, eyeDirection ) ) ) * waterColor * 1.15;')
       // deeper sea: the mirrored sky is a touch darker and bluer (rough open water never mirrors the full horizon glare)
-      .replace('vec3 albedo = mix( ( sunColor * diffuseLight * 0.3 + scatter ) * getShadowMask(), ( vec3( 0.1 ) + reflectionSample * 0.9 + reflectionSample * specularLight ), reflectance);', 'vec3 albedo = mix( ( sunColor * diffuseLight * 0.3 + scatter ) * getShadowMask(), ( vec3( 0.03, 0.06, 0.08 ) + reflectionSample * vec3( 0.72, 0.8, 0.86 ) + reflectionSample * specularLight ), reflectance);');
+      .replace('vec3 albedo = mix( ( sunColor * diffuseLight * 0.3 + scatter ) * getShadowMask(), ( vec3( 0.1 ) + reflectionSample * 0.9 + reflectionSample * specularLight ), reflectance);', 'vec3 albedo = mix( ( sunColor * diffuseLight * 0.3 + scatter ) * mix( getShadowMask(), 1.0, uHigh ), ( vec3( 0.03, 0.06, 0.08 ) + reflectionSample * vec3( 0.72, 0.8, 0.86 ) + reflectionSample * specularLight ), reflectance * ( 1.0 - 0.7 * uHigh ));')
+      .replace('uniform float alpha;', 'uniform float alpha; uniform float uHigh;'); // from high up no shadow-map box and no mirror frustum edge on the sea (the bright trapezoid in the flight)
+    this.water.material.uniforms.uHigh = { value: 0 };
     this.water.material.transparent = true;
     this.water.rotation.x = -Math.PI / 2; this.water.position.y = 0; scene.add(this.water);
     if (QS.has('noreflect')) { const wr = this.water.onBeforeRender; let k = 0; this.water.onBeforeRender = (...x) => { if (k++ < 30) wr.apply(this.water, x); }; } // mirror frozen after the first frames
@@ -1366,7 +1368,7 @@ export class WorldScene {
     this._weather(this.d, time);
     const cam = this._camera(this.d, dt);
     { const wu = this.water.material.uniforms, hk = smooth(15, 120, this.camera.position.y); // from high up (wizard flight) the sea is opaque and its sun glare calmer
-      if (wu.alpha) wu.alpha.value = Math.max(lerp(0.86, 1, this.hellK || 0), lerp(0.86, 1, hk)); if (hk > 0) wu.sunColor.value.multiplyScalar(1 - 0.6 * hk); }
+      if (wu.alpha) wu.alpha.value = Math.max(lerp(0.86, 1, this.hellK || 0), lerp(0.86, 1, hk)); wu.uHigh.value = hk; if (hk > 0) wu.sunColor.value.multiplyScalar(1 - 0.6 * hk); }
     this._far(cam.x, cam.z); this.farCam.value.set(cam.x, cam.z);
     this._ensure(cam.x, cam.z);
     // shadows follow the rider

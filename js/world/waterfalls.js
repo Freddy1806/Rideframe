@@ -403,7 +403,9 @@ export function placeWaterfalls(world, A, taken = []) {
         c.castShadow = false; c.receiveShadow = false; nWet++;
         const fast = /(wasserfall_wasser|gerinne_wasser)/.test(wet?.[1] || c.material?.name || '');
         c.material = [].concat(c.material || []).map(m0 => { const map = m0?.map || null; if (map) { map.colorSpace = THREE.SRGBColorSpace; map.wrapT = map.wrapS = THREE.RepeatWrapping; scroll.set(map, fast ? 2.0 : 0.5); }
-          return new THREE.MeshBasicMaterial({ map, color: map ? 0xffffff : 0xe8f0f2, transparent: true, opacity: fast ? 0.9 : 0.75, depthWrite: false, side: THREE.DoubleSide, fog: true }); });
+          // streaks: a scrolling noise alpha (narrow across, long down the fall), so the model's water never reads as one flat white sheet (Mac mini QA)
+          const am = noiseTex().clone(); am.needsUpdate = true; am.repeat.set(fast ? 3.5 : 2, fast ? 0.35 : 0.6); scroll.set(am, fast ? 0.9 : 0.25);
+          return new THREE.MeshBasicMaterial({ map, alphaMap: am, color: map ? 0xffffff : 0xdfe9ee, transparent: true, opacity: fast ? 1 : 0.85, depthWrite: false, side: THREE.DoubleSide, fog: true }); });
         if (c.material.length === 1) c.material = c.material[0]; }
       if (c.userData.millWheel) F.glbWheel = c;
       const src = /^gischt_quelle_(unten|mitte|rad)/.exec(c.name);
