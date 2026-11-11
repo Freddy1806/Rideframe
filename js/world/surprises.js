@@ -124,6 +124,11 @@ export class Surprises {
     h.say = (text, t = 2.6) => this._say(e.obj, text, t);
     return h;
   }
+  /** the START arch across the road where a ride begins (stays until out of sight) */
+  startArch(d) {
+    if (!this.A.find('start_torbogen')) return; const s = this._spawn('start_torbogen', 'Wehen'), p = this._pt(d, 0); if (!s) return;
+    s.obj.position.set(p.x, p.e, p.z); s.obj.rotation.y = p.head; const e = { ...s, step: (dt, v, cam) => { if (this.w.d > d + 150) e.dead = true; } }; this.active.push(e);
+  }
   /** flags left and right of the road at the finish of a challenge */
   finishFlags(d) {
     if (this.A.find('ziel_torbogen')) { // a medieval finish arch across the road (9 m wide), its banners wave
@@ -137,7 +142,8 @@ export class Surprises {
   // ---- the wizard (js/wizard.js decides; this only shows him and his magic) ----
   /** the wizard standing in the middle of the road at d, facing you; purple sparks drift around him */
   wizard(d) {
-    const name = ['zauberer', 'magier', 'hexer', 'moench'].find(n => this.A.find(n)), h = { d, gone: false };
+    const robes = ['zauberer', 'zauberer_rot', 'zauberer_gruen'].filter(n => this.A.find(n)); // three robes: every wizard looks a bit different
+    const name = robes.length ? robes[Math.floor(Math.random() * robes.length)] : ['magier', 'hexer', 'moench'].find(n => this.A.find(n)), h = { d, gone: false };
     if (name) h.e = this._run(name, [['Zaubern', 1], ['Beschwoeren', 1], ['Winken', 1], ['Stehen', 1]], () => h.gone ? null : { d, off: 0, back: true },
       { scale: name === 'moench' ? 1.15 : 1 });
     this.wiz = h; return h;
@@ -171,7 +177,7 @@ export class Surprises {
       const c = Math.random(); this.fx._p(x, y + Math.random() * 3, z, (Math.random() - .5) * 0.8, 1.5 + Math.random() * 2.5, (Math.random() - .5) * 0.8, 1, 0.3 + c * 0.4, c * 0.08, 2 + Math.random() * 2); }
     this.fx.pts.visible = true;
     if (t > (this.burstNext || 0)) { this.burstNext = t + 0.7 + Math.random() * 1.1; this.fireBurst(d + 30 + Math.random() * 90, (Math.random() < 0.5 ? -1 : 1) * (ROAD_W + 2 + Math.random() * 9)); }
-    const kinds = (this._hellKinds ||= ['lava_fels', 'lavafels', 'feuersaeule', 'feuer_saeule', 'lava_riss', 'riss_lava', 'hoellen_tor', 'totenschaedel'].filter(n => this.A.find(n)));
+    const kinds = (this._hellKinds ||= ['lava_fels', 'lava_fels_b', 'lava_fels_c', 'feuersaeule', 'lava_riss', 'hoellen_tor', 'totenschaedel', 'lava_see', 'obsidian_zacken'].filter(n => this.A.find(n)));
     if (kinds.length && d > (this.hellNextD || 0)) {
       this.hellNextD = d + 35 + Math.random() * 45;
       const s = this._spawn(kinds[Math.floor(Math.random() * kinds.length)], ['Brennen', 'Idle'], 0.8 + Math.random() * 0.6);

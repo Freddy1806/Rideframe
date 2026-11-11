@@ -648,7 +648,7 @@ export class WorldScene {
         }
         const well = A.list.find(e => /marktbrunnen/.test(e.file)) || byName('brunnen');
         if (place(well, mid + 26, ROAD_W + 6, { face: 'road', anim: 'Fliessen' })) place(byName('magd_eimer'), mid + 22.5, ROAD_W + 3.4, { gap: 0.4, radK: 0.4, anim: 'Stehen', face: 'road' }); // at the well a maid with her bucket
-        if (s === festSeg || r() < 0.4) place(byName('reiterstandbild'), mid + 46, ROAD_W + 7.5, { face: 'road' }); // the market square's statue
+        if (s === festSeg || r() < 0.4) place(byName(r() < 0.5 ? 'koenigsstandbild' : 'reiterstandbild') || byName('reiterstandbild'), mid + 46, ROAD_W + 7.5, { face: 'road' }); // the market square's statue: the king or the knight
         place(byName('faesser_kisten'), mid - 25, ROAD_W + 4, { face: 'road' });
         place(byName('kutsche'), mid + 34, ROAD_W + 5.5, { face: 'along' });
         place(byName('pferd'), mid + 40, ROAD_W + 5.5, { face: 'along', anim: 'Stehen' });

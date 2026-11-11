@@ -150,6 +150,7 @@ export class RideSession {
     if (this.group) this._wireVoice();
     this._initChallenges();
     this._initWizard();
+    if (!this.group) this.player?.events?.surprises?.startArch?.(this.d + 14); // ride off under the START arch
     this.running = true; this.last = performance.now();
     this._updateHUD(true);
     if (!this.autopilot) await this._countdown();
