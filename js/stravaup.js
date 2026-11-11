@@ -63,8 +63,8 @@ export async function stravaButton(btn, rec, name, eleAt, makeImage = null) {
     } catch (e) { console.warn('Teilen-Bild:', e); }
     const url = await stravaUpload(rec, name, eleAt, set, imageUrl);
     set('Auf Strava ✓ öffnen'); btn.disabled = false; btn.onclick = () => window.open(url, '_blank');
-    window.open(url, '_blank');
-    if (makeImage) import('./app.js').then(m => m.toast('Bild ist gespeichert (Downloads). In Strava bei der Fahrt auf Bearbeiten → Foto hinzufügen.', 8000));
+    window.open(makeImage ? url + '/edit' : url, '_blank'); // with an image: straight to Strava's edit page, where photos can be added
+    if (makeImage) import('./app.js').then(m => m.toast('Bild ist gespeichert (Downloads). Strava ist zum Bearbeiten offen: dort das Bild als Foto hinzufügen und speichern.', 8000));
   } catch (e) {
     btn.disabled = false; set(label);
     import('./app.js').then(m => m.toast(e.message || String(e), 6000));
