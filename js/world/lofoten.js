@@ -1419,8 +1419,8 @@ export class WorldScene {
     const B = this._bolts ||= { next: 0, flash: 0, mesh: null };
     if (hk < 0.5) { if (B.mesh) B.mesh.visible = false; B.next = time + 2; return; }
     if (time >= B.next) {
-      B.next = time + 1.8 + Math.random() * 4.2; B.flash = 1;
-      const p = this.field.at(this.d + 250 + Math.random() * 650), l = Math.hypot(p.tx, p.tz) || 1, side = (Math.random() - 0.5) * 900;
+      B.next = time + 1.2 + Math.random() * 3; B.flash = 1;
+      const p = this.field.at(this.d + 250 + Math.random() * 650), l = Math.hypot(p.tx, p.tz) || 1, side = (Math.random() - 0.5) * 520; // in front of you, inside the picture
       const x = p.x - p.tz / l * side, z = p.z + p.tx / l * side, g = Math.max(0, this.field.height(x, z));
       B.mesh ||= (() => { const m = new THREE.Mesh(new THREE.BufferGeometry(), new THREE.MeshBasicMaterial({ color: 0xf4e6ff, transparent: true, blending: THREE.AdditiveBlending, depthWrite: false, fog: false, side: THREE.DoubleSide }));
         m.frustumCulled = false; m.renderOrder = 5; this.scene.add(m); return m; })();
@@ -1433,10 +1433,10 @@ export class WorldScene {
       const main = zig(x, g + 700, z, g, 14, 60); strip(main, 3.2);
       for (let k = 0; k < 2; k++) { const s0 = main[3 + Math.floor(Math.random() * 6)]; strip(zig(s0[0], s0[1], s0[2], s0[1] - 160 - Math.random() * 160, 6, 50), 1.6); }
       B.mesh.geometry.dispose(); B.mesh.geometry = new THREE.BufferGeometry(); B.mesh.geometry.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
-      const far = Math.hypot(x - cam.x, z - cam.z), pan = Math.max(-0.9, Math.min(0.9, (side / 900) * 1.6));
+      const far = Math.hypot(x - cam.x, z - cam.z), pan = Math.max(-0.9, Math.min(0.9, (side / 520) * 1.6));
       setTimeout(() => this.events?.sfx('thunder', Math.max(0.35, 1 - far / 1600), pan), Math.min(3500, far / 343 * 1000 * 0.6));
     }
-    B.flash = Math.max(0, B.flash - 0.07); const f = B.flash > 0.6 || (B.flash > 0.3 && B.flash < 0.45) ? 1 : B.flash * 0.4; // a double flicker, then it fades
+    const bdt = Math.min(0.1, Math.max(0, time - (B.t ?? time))); B.t = time; B.flash = Math.max(0, B.flash - bdt * 1.6); // ~0.5 s visible, independent of fps const f = B.flash > 0.6 || (B.flash > 0.3 && B.flash < 0.45) ? 1 : B.flash * 0.4; // a double flicker, then it fades
     if (B.mesh) { B.mesh.visible = B.flash > 0.25; B.mesh.material.opacity = Math.min(1, B.flash * 1.4); }
     if (f > 0.01) { this.light.intensity *= 1 + 2.6 * f; this.hemi.intensity *= 1 + 3.5 * f; this.hemi.color.lerp(H_BOLT, f * 0.8); this.scene.fog.color.lerp(H_BOLT, f * 0.35); }
   }

@@ -67,7 +67,9 @@ export function buildVillage(ctx, v = {}) {
   const exact = n => { const e = byName(n); return e && e.file.split('/').pop().replace(/\.glb$/, '').replace(/_v\d+$/, '') === n ? e : null; }; // no substring hits: 'wirtshaus' must not find the sign
   const any = (...names) => { for (const n of names) { const e = n && exact(n); if (e) return e; } return null; };
   const built = [], anim = ctx.anim || [];
-  const put = (e, m, off, o = {}) => { const obj = place(e, at(m), off, o); if (obj) built.push(e.file); return obj; };
+  const missed = [];
+  const put = (e, m, off, o = {}) => { if (!e) return null; const obj = place(e, at(m), off, o);
+    if (obj) { built.push(e.file); obj.userData.village = { m, file: e.file }; } else missed.push(e.file.split('/').pop() + '@' + m); return obj; };
   const house = (e, m, off, o = {}, strong = false) => { // a lived-in building: smoke from the roof (thatched farmhouses had no chimney, it seeps out at the ridge)
     const obj = put(e, m, off, o); if (!obj) return obj;
     const sm = smoke(strong); sm.position.set(obj.position.x, obj.position.y + e.size[1] * (o.scale || 1) * 0.95, obj.position.z);
@@ -75,7 +77,7 @@ export function buildVillage(ctx, v = {}) {
   const loose = (obj, m, off, y = 0, face = 0) => { // a procedural piece, set straight onto the ground beside the road
     if (ctx.mirror?.(at(m))) off = -off; // sea on the right: the whole layout mirrors, like place()
     const q = spot(at(m), off); obj.position.set(q.x, f.height(q.x, q.z) + y, q.z); obj.rotation.y = Math.atan2(q.tx, q.tz) + face;
-    scene.add(obj); props.push(obj); obj.traverse(c => { if (c.userData.flutter) anim.push(c); }); return obj; };
+    obj.userData.village = { m, file: 'procedural' }; scene.add(obj); props.push(obj); obj.traverse(c => { if (c.userData.flutter) anim.push(c); }); return obj; };
 
   // ---- stage 0: the inn of the three bettors at the finish, the lime tree and well before it, a wayside cross on the way in ----
   const inn = any('wirtshaus') ? house(any('wirtshaus'), 14, ROAD_W + 9, { face: 'road', gap: 2 }, true)
@@ -140,7 +142,8 @@ export function buildVillage(ctx, v = {}) {
   if (nx) { const site = any('baustelle'); const where = { 1: 95, 2: 160, 3: 260, 4: 300, 5: 340, 6: 45, 7: 470, 8: 400 }[STAGES.indexOf(nx)];
     const left = { 1: 1, 4: 1, 6: 1, 7: 1 }[STAGES.indexOf(nx)] ? -1 : 1;
     if (site && where) put(site, where, left * (ROAD_W + 12), { face: 'road', gap: 2 }); }
-  return { stage: st, name: STAGES[st].name, next: nx, built: built.length };
+  console.log('[village]', `stage ${st} ${STAGES[st].name}`, `km ${Math.round(km)}`, `built ${built.length}`, missed.length ? `refused ${missed.join(', ')}` : '');
+  return { stage: st, name: STAGES[st].name, next: nx, built: built.length, missed };
 }
 
 /** per frame, only the few animated village nodes (ctx.anim): lanterns flicker, pennants flutter */
