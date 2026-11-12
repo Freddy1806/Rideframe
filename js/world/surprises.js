@@ -414,7 +414,7 @@ class Fireworks {
     this.col[k] = r; this.col[k + 1] = g; this.col[k + 2] = b; this.life[i] = life; }
   /** bright sky: additive sparks wash out to white glitter (Mac mini QA at the pass finish), so by day they are drawn opaque, bigger and in deep colours */
   setDay(day) { if (day === this.day) return; this.day = day; const m = this.pts.material;
-    m.blending = day ? THREE.NormalBlending : THREE.AdditiveBlending; m.size = day ? 3.6 : this.size0; m.needsUpdate = true; }
+    m.blending = day ? THREE.NormalBlending : THREE.AdditiveBlending; m.size = day ? Math.min(1.4, this.size0 * 1.4) : this.size0; m.needsUpdate = true; } /* 3.6 m sparks read as pink/green blobs in daylight (Mac mini 12.11.): small glitter instead */
   launch(x, y, z, h) { this.rockets.push({ x, y, z, vy: Math.sqrt(2 * 9.81 * h), t: 0 }); this.pts.visible = true; }
   update(dt) {
     if (!this.pts.visible) return;

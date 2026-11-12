@@ -676,6 +676,7 @@ export class WorldScene {
     };
     const groupOf = kind => { const l = GROUPS.filter(g => g.kind === kind); return l.length ? l[Math.floor(r() * l.length)] : null; };
     let bandDone = false, villageNo = 0; this.villageThemes = [];
+    const THEMES = ['hochzeit', 'kirchenfest', 'beerdigung', 'markt'], themeOff = [...String(t.id || t.name || '')].reduce((h, c) => (h * 31 + c.charCodeAt(0)) >>> 0, 7) % 4;
     const festSeg = segs.filter(s => s.village).sort((p, q) => (q.to - q.from) * (q.village[1] - q.village[0]) - (p.to - p.from) * (p.village[1] - p.village[0]))[0];
     const segAt = d => segs.find(s => d >= s.from && d < s.to) || segs[segs.length - 1];
 
@@ -686,8 +687,10 @@ export class WorldScene {
     for (const s of segs) {
       const L = s.to - s.from;
       // ---- villages: houses, harbour, market square, musicians, people ----
-      if (s.village) {
-        const a = s.from + L * s.village[0], b = s.from + L * s.village[1], mid = (a + b) / 2;
+      const vb = s.village && (this.village ? Math.min(s.from + L * s.village[1], t.length - 650) : s.from + L * s.village[1]); /* the messenger's village owns the last ~600 m: a theme village there sat right on top of it (Mac mini 12.11.) */
+      if (s.village && vb - (s.from + L * s.village[0]) >= 250) {
+        const a = s.from + L * s.village[0], b = vb;
+        const mid = (a + b) / 2;
         // market square in the middle of the village (land side)
         const stalls = (A.by.stall || []).filter(e => !/verpflegungsstand/.test(e.file)); // the feed station belongs on the tops, not in the market
         for (let k = 0; k < Math.min(5, stalls.length); k++) {
@@ -715,7 +718,7 @@ export class WorldScene {
           const dd = mid + (k % 2 ? 1 : -1) * (58 + Math.floor(k / 2) * 24), h = place(e, dd, ROAD_W + 6 + Math.max(...e.size) / 2, { face: 'road', anim: 'Schwingen', gap: 3 });
           if (h && /schmiede/.test(e.file)) place(byName('schmied'), dd + 3, ROAD_W + 3.2, { face: 'road', anim: 'Haemmern', radK: 0.4, gap: 0.8 }); });
         // the village's theme (Freddy: town fair, wedding, a dark church fest, a funeral, a plain market), its music changes there
-        const theme = s === festSeg ? 'stadtfest' : ['hochzeit', 'kirchenfest', 'beerdigung', 'markt'][villageNo++ % 4];
+        const theme = s === festSeg ? 'stadtfest' : (villageNo === 0 && THEMES.includes(QS.get('theme')) ? QS.get('theme') : THEMES[(villageNo + themeOff) % 4]); villageNo++; /* each route starts the rotation elsewhere, so funeral and market appear too (max 3 villages per route); ?theme= forces the first */
         this.villageThemes.push({ a, b, theme });
         if (theme === 'stadtfest') {
           place(byName('karussell'), mid + 70, ROAD_W + 12, { face: 'road', anim: 'Drehen', gap: 3 });
@@ -755,23 +758,26 @@ export class WorldScene {
           if (r() < 0.7) place(r() < 0.6 ? byName('nordlandboot') : byName('fischerboot'), d + 4, -(w + 14 + r() * 10), { water: true, y: 0.12, face: 'along', rot: r() * 0.6 });
         }
         // villagers walking along the roadside (only models with a walk cycle 'Gehen'; others would glide)
-        const walkers = (A.by.figure_walk || []).concat(A.by.figure_idle || []).filter(e => e.clips.some(c => c.name === 'Gehen'));
+        let walkers = (A.by.figure_walk || []).concat(A.by.figure_idle || []).filter(e => e.clips.some(c => c.name === 'Gehen'));
+        const faced = walkers.filter(e => !/^dorf_|\/dorf_/.test(e.file || '')); /* own-face villagers (MacBook, Meshy) replace the recoloured dorf_* copies once enough exist */
+        if (faced.length >= 5) walkers = faced;
+        walkers = walkers.map(e => [r(), e]).sort((x, y) => x[0] - y[0]).map(x => x[1]); /* mixed per village, not always the same first figures */
         if (walkers.length) for (let k = 0; k < 14; k++) {
           const side = k % 2 ? 1 : -1, dd = a + r() * (b - a), off = side * (ROAD_W + 1.4 + r() * 0.8);
           const o = place(walkers[k % walkers.length], dd, off, { anim: 'Gehen', overlap: true, gap: 0.6, radK: 0.3 });
-          if (o) { const f = o.userData.asset || '', st = Object.entries(STRIDE).find(([n]) => f.includes(n))?.[1] ?? 0.86; // walk exactly as fast as the clip's steps: no sliding feet
+          if (o) { const f = o.userData.asset || '', st = walkers[k % walkers.length].speed ?? Object.entries(STRIDE).find(([n]) => f.includes(n))?.[1] ?? 0.86; /* manifest 'speed' (m/s at scale 1, measured from the foot bones) wins */ // walk exactly as fast as the clip's steps: no sliding feet
             o.userData.walk = { d: dd, off, v: st * o.scale.y * (0.96 + r() * 0.1) * (r() < 0.5 ? 1 : -1), a, b }; }
         }
         // children and onlookers at the roadside who wave and call out as you pass
         // a mixed crowd, not always the farmer: hunter with bow, women with bread, fishers, traders, children; right at the asphalt
-        const watchers = ['zuschauer_jubelnd', 'junge', 'maedchen', 'kind', 'alte_frau', 'moench', 'bogenschuetze', 'jaeger', 'baeckerin', 'frau_brot', 'magd', 'fischerin', 'haendler'].map(byName).filter(Boolean)
+        const watchers = ['zuschauer_jubelnd', 'junge', 'maedchen', 'kind', 'alte_frau', 'moench', 'bogenschuetze', 'jaeger', 'baeckerin', 'frau_brot', 'magd', 'fischerin', 'haendler', 'dorf_frau', 'knecht', 'alter_mann', 'marktfrau', 'pfarrer', 'bauer_kapuze', 'waescherin', 'lehrling', 'wirt', 'schmied_neu', 'trauernder', 'kaufmann', 'baeuerin_alt', 'edeldame'].map(byName).filter(Boolean)
           .sort(() => r() - 0.5);
         if (r() < 0.25 && byName('bauer_sense')) watchers.push(byName('bauer_sense'));
         for (let k = 0; watchers.length && k < 8; k++) place(watchers[k % watchers.length], a + (k + 0.5) * (b - a) / 8, (k % 2 ? 1 : -1) * (ROAD_W + 1.5 + r() * 0.6), { face: 'road', anim: r() < 0.6 ? 'Winken' : 'Stehen', gap: 0.5, radK: 0.35 });
         // the biggest village holds a street festival: garlands over the road, tents, jugglers, a second band, crowd
         if (s === festSeg) {
           const gar = byName('girlande'), tents = ['zelt', 'buehne', 'maibaum', 'tisch', 'fackel'].map(byName).filter(Boolean);
-          const crowd = ['gaukler', 'junge', 'maedchen', 'haendler', 'fischerin', 'moench'].map(byName).filter(Boolean);
+          const crowd = ['gaukler', 'junge', 'maedchen', 'haendler', 'fischerin', 'moench', 'marktfrau', 'kaufmann', 'edeldame', 'lehrling', 'wirt', 'dorf_frau'].map(byName).filter(Boolean);
           for (let d = a + 15; gar && d < b - 15; d += 22) place(gar, d, 0.01, { face: 'along', overlap: true, gap: -99, radK: 0.01 });
           for (let k = 0; tents.length && k < 8; k++) place(tents[k % tents.length], mid - 60 + k * 15, (k % 2 ? 1 : -1) * (ROAD_W + 8 + r() * 4), { face: 'road', gap: 2 });
           for (let k = 0; crowd.length && k < 18; k++) place(crowd[k % crowd.length], a + r() * (b - a), (r() < .5 ? 1 : -1) * (ROAD_W + 2 + r() * 5), { face: 'road', anim: ['Jonglieren', 'Winken', 'Jubeln', 'Stehen'][k % 4], gap: 0.6, radK: 0.35 });
@@ -1266,9 +1272,9 @@ export class WorldScene {
     if (!this._blurEl) {
       if (!k || !this.c.parentElement) return;
       const el = this._blurEl = document.createElement('div');
-      Object.assign(el.style, { position: 'absolute', inset: '0', pointerEvents: 'none', zIndex: 0, opacity: 0, backdropFilter: 'blur(11px)', webkitBackdropFilter: 'blur(11px)',
-        maskImage: 'radial-gradient(ellipse 60% 50% at 50% 42%, transparent 46%, rgba(0,0,0,.7) 72%, #000 100%)',
-        webkitMaskImage: 'radial-gradient(ellipse 60% 50% at 50% 42%, transparent 46%, rgba(0,0,0,.7) 72%, #000 100%)' });
+      Object.assign(el.style, { position: 'absolute', inset: '0', pointerEvents: 'none', zIndex: 0, opacity: 0, backdropFilter: 'blur(8px)', webkitBackdropFilter: 'blur(8px)',
+        maskImage: 'radial-gradient(ellipse 60% 50% at 50% 42%, transparent 54%, rgba(0,0,0,.6) 78%, #000 100%)',
+        webkitMaskImage: 'radial-gradient(ellipse 60% 50% at 50% 42%, transparent 54%, rgba(0,0,0,.6) 78%, #000 100%)' });
       this.c.after(el); // right above the 3D view, below the HUD
     }
     const o = Math.round(k * 20) / 20; if (o !== this._blurO) { this._blurO = o; this._blurEl.style.opacity = o; this._blurEl.style.display = o ? '' : 'none'; }
@@ -1500,7 +1506,7 @@ export class WorldScene {
     this.light.target.position.set(cam.x - this.sunDir.x * 40, cam.y, cam.z - this.sunDir.z * 40);
     this.sky.position.copy(this.camera.position);
     this.roadBlur.value = Math.max(0, Math.min(1, ((this.speed || 0) * 3.6 - 12) / 50));
-    this._speedBlur(Math.max(0, Math.min(1, ((this.speed || 0) * 3.6 - 20) / 22))); /* visible from ~25 km/h, full at 42 */
+    this._speedBlur(Math.max(0, Math.min(1, ((this.speed || 0) * 3.6 - 24) / 36))); /* visible from ~28 km/h, full at 60 (at 42 it smeared the mountains, Mac mini 12.11.) */
     this.streaks.position.copy(this.camera.position); this.streaks.quaternion.copy(this.camera.quaternion); this.streaks.userData.tick(dt, this.speed || 0, this.view === 2 || this._shot ? 0 : this.fast || 0);
     this.water.position.x = Math.round(cam.x / 100) * 100; this.water.position.z = Math.round(cam.z / 100) * 100;
     this.water.material.uniforms.time.value = time * 0.6; this.grassTime.value = time; TIME.value = time;
