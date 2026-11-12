@@ -14,8 +14,11 @@ createServer(async (req, res) => {
   if (p.endsWith('/')) p += 'index.html';
   const file = join(root, p);
   try {
-    if (!file.startsWith(root) || !(await stat(file)).isFile()) throw 0;
-    res.writeHead(200, { 'Content-Type': types[extname(file)] || 'application/octet-stream', 'Cache-Control': 'no-cache' });
+    const st = await stat(file); if (!file.startsWith(root) || !st.isFile()) throw 0;
+    // validators, so a second visit only asks "changed?" and gets 304 instead of downloading every model again (friends over the home upload line)
+    const etag = `"${st.size.toString(36)}-${Math.floor(st.mtimeMs).toString(36)}"`, head = { 'Content-Type': types[extname(file)] || 'application/octet-stream', 'Cache-Control': 'no-cache', ETag: etag, 'Last-Modified': st.mtime.toUTCString() };
+    if (req.headers['if-none-match'] === etag) { res.writeHead(304, head); res.end(); return; }
+    res.writeHead(200, head);
     res.end(await readFile(file));
   } catch { res.writeHead(404); res.end('not found'); }
 }).listen(port, '127.0.0.1', () => console.log(`RIDEFRAME läuft auf http://localhost:${port}`));
