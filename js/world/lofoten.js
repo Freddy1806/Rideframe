@@ -1077,37 +1077,45 @@ export class WorldScene {
     if (ck) { const { obj, mixer } = A.make(ck, 'Treten'); obj.traverse(c => { c.castShadow = false; c.layers.set(1); c.frustumCulled = false; });
       this.camera.add(obj); this.scene.add(this.camera); this.cockpit = obj; this.cockpitMixer = mixer; this._placeCockpit(); }
     this.events = new Events(this, A); // villagers calling out, birds, carts: before batching, which drops the props list
-    if (!/[?&]nobatch/.test(location.search)) this._batch();
+    if (!/[?&]nobatch/.test(location.search)) this._batchP = this._batch(); // async in slices: one 10-25 s block froze weaker laptops ("Seite reagiert nicht")
     // the sea mirror renders the scene a second time (was the biggest GPU cost): only terrain, road and big buildings go in
     for (const o of this.props) if (o.userData.small || o.userData.mid || o.userData.walk || o.userData.circle || o.userData.whale || moving.has(o)) noMirror(o);
   }
   // static batching: every still prop is baked into one mesh per 500 m cell, size class and material (~1500 draw calls -> a few hundred)
-  _batch() {
-    const CELL = 500, buckets = new Map(), keep = [];
+  async _batch() {
+    // pass 1 only notes which mesh goes into which bucket (no copies yet); pass 2 builds one bucket at a time and frees its copies
+    // right away, yielding to the browser every ~30 ms. The old version copied every still mesh first (peak ~2 GB heap, one 10 s task).
+    const CELL = 500, buckets = new Map(), keep = [], still = [];
     for (const o of this.props) {
       if (!o.userData.still) { keep.push(o); continue; }
+      still.push(o);
       const cls = o.userData.near ? 'near' : o.userData.far ? 'far' : o.userData.small ? 'small' : o.userData.mid ? 'mid' : 'big';
       const C = cls === 'small' || cls === 'near' || cls === 'far' ? CELL / 2 : CELL, cx = Math.floor(o.position.x / C), cz = Math.floor(o.position.z / C);
       o.traverse(m => {
         if (!m.isMesh || m.isSkinnedMesh || Array.isArray(m.material)) return;
         const g = m.geometry, sig = Object.keys(g.attributes).sort().join(',') + (g.index ? ':i' : ':n');
         const key = `${cx},${cz},${cls},${m.material.uuid},${m.castShadow ? 1 : 0}${m.receiveShadow ? 1 : 0},${sig}`;
-        let b = buckets.get(key); if (!b) buckets.set(key, b = { cls, mat: m.material, cast: m.castShadow, recv: m.receiveShadow, list: [], x: 0, z: 0 });
-        b.list.push(g.clone().applyMatrix4(m.matrixWorld)); b.x += o.position.x; b.z += o.position.z;
+        let b = buckets.get(key); if (!b) buckets.set(key, b = { cls, mat: m.material, cast: m.castShadow, recv: m.receiveShadow, items: [], x: 0, z: 0 });
+        b.items.push([g, m.matrixWorld.clone()]); b.x += o.position.x; b.z += o.position.z;
       });
-      this.scene.remove(o);
     }
+    const added = []; let t0 = performance.now();
     for (const b of buckets.values()) {
-      const cx = b.x / b.list.length, cz = b.z / b.list.length;
-      const g = mergeGeometries(b.list, false); b.list.forEach(x => x.dispose()); if (!g) continue;
+      if (this._disposed) return;
+      if (performance.now() - t0 > 30) { await new Promise(r => setTimeout(r, 0)); t0 = performance.now(); }
+      const list = b.items.map(([g, mw]) => g.clone().applyMatrix4(mw)); b.items = null;
+      const cx = b.x / list.length, cz = b.z / list.length;
+      const g = mergeGeometries(list, false); list.forEach(x => x.dispose()); if (!g) continue;
       g.translate(-cx, 0, -cz); g.computeBoundingSphere();
       const mesh = new THREE.Mesh(g, b.mat); mesh.position.set(cx, 0, cz); mesh.castShadow = b.cast; mesh.receiveShadow = b.recv;
       mesh.userData.small = b.cls === 'small'; mesh.userData.mid = b.cls !== 'big'; mesh.userData.rad = g.boundingSphere.radius;
       mesh.userData.near = b.cls === 'near'; mesh.userData.far = b.cls === 'far';
       if (b.cls !== 'big') noMirror(mesh);
-      this.scene.add(mesh); freeze(mesh); keep.push(mesh);
+      mesh.visible = false; this.scene.add(mesh); freeze(mesh); added.push(mesh);
     }
-    this.props = keep;
+    for (const o of still) this.scene.remove(o); // swap in one go: never the props and their batched copies both drawn
+    for (const m of added) m.visible = true;
+    const known = new Set(keep.concat(still)); this.props = keep.concat(added, this.props.filter(o => !known.has(o))); // anything added to props meanwhile stays
   }
   // real routes: concrete bridges (deck slab, parapets, piers into the water) where the road crosses a sound
   _bridges() {
@@ -1225,7 +1233,7 @@ export class WorldScene {
     if (this.loading && hole >= 500) { this.loading = false; // compile every shader of the start area first: no stutter in the first seconds
       const warm = new THREE.Group(); // plus the flight and hell visitors (their first frame stalled 0.4 s), compiled while the loading screen still shows
       if (ASSETS.count) for (const n of ['vogelschwarm_hoch', 'fledermaeuse', 'drache', 'gluehende_kohle_haufen', 'feuerdaemon', 'lava_fels', 'feuersaeule']) { const e = ASSETS.find(n); if (e) { const o = ASSETS.make(e, null).obj; o.position.copy(this.camera.position); o.position.y -= 400; warm.add(o); } }
-      this.scene.add(warm); const done = () => { this.scene.remove(warm); this._readyRes(); if (QS.has('assetstats')) console.info('RIDEFRAME Modelle benutzt', ASSETS.used.size, 'von', ASSETS.count, JSON.stringify([...ASSETS.used])); };
+      this.scene.add(warm); const done = () => { this.scene.remove(warm); Promise.resolve(this._batchP).catch(() => {}).then(() => this._readyRes()); if (QS.has('assetstats')) console.info('RIDEFRAME Modelle benutzt', ASSETS.used.size, 'von', ASSETS.count, JSON.stringify([...ASSETS.used])); };
       (this.renderer.compileAsync ? this.renderer.compileAsync(this.scene, this.camera) : Promise.resolve()).then(done, done); }
   }
 
