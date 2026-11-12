@@ -39,7 +39,7 @@ export async function loadAssets() {
 // of every still mesh (applyMatrix4 + mergeGeometries): on integer attributes that clamps or refuses to merge.
 // And on the Mac (Metal via ANGLE) 8/16-bit vertex formats cost ~4 fps at the Stadtfest even on figures.
 // So every mesh goes back to plain floats once at load (GPU memory as before compression, the download stays small).
-function floatify(g) {
+export function floatify(g) {
   for (const k in g.attributes) { const a = g.attributes[k]; if (k === 'skinIndex') continue; /* bone indices stay integers */
     if (!a.isInterleavedBufferAttribute && a.array instanceof Float32Array && !a.normalized) continue;
     const n = a.itemSize, f = new Float32Array(a.count * n), get = [a.getX, a.getY, a.getZ, a.getW];
