@@ -328,8 +328,15 @@ export class RideSession {
     this.padPrev = b;
     if (!this.padSeen) { this.padSeen = true; this._flash('🎮 Controller bereit · Start = Pause · L/R = schalten'); }
     const hit = i => b[i] && !was[i];
-    if (hit(9)) { this.paused ? this._resume() : this._pause(); return; }
-    if (this.paused || this.finished) return;
+    if (hit(9) || hit(16)) { this.paused ? this._resume() : this._pause(); return; } // Start or Home: pause menu
+    if (this.paused) { // menu navigation like on a console
+      if (hit(12) || hit(14)) this._padFocus((this._padI || 0) - 1);
+      if (hit(13) || hit(15)) this._padFocus((this._padI || 0) + 1);
+      if (hit(0)) this.q('#pauseOverlay')?.querySelectorAll('.padmenu button')[this._padI || 0]?.click();
+      if (hit(1)) this.q('#oBack') ? this.q('#oBack').click() : this._resume();
+      return;
+    }
+    if (this.finished) return;
     const sh = d => { if (!this.virtual && !this.berg) this.toggleShift(); this.shift(d); }; // a pad means virtual shifting: switch over on first use
     if (hit(4) || hit(13)) sh(-1);
     if (hit(5) || hit(12)) sh(1);
@@ -341,7 +348,6 @@ export class RideSession {
     if (hit(8)) this.toggleShift();
     if (hit(10) || hit(14)) this._toggleMusic();
     if (hit(11) || hit(15)) { this.music?.skip(); setTimeout(() => this._flash('♫ ' + (this.music?.title() || '')), 300); }
-    if (hit(16)) this._toggleBar();
   }
 
 
@@ -774,14 +780,44 @@ export class RideSession {
   _pause() {
     if (this.finished) return;
     this.paused = true; this.player.pause(); this.music?.pause();
+    this.q('#pauseOverlay')?.remove();
     const o = document.createElement('div'); o.className = 'paused'; o.id = 'pauseOverlay';
     o.innerHTML = `<div class="box"><div class="label">${fmtKm(this.d)} km · ${fmtTime(this.elapsed)}</div><h2 class="display">Pause</h2>
-      <div class="row-actions"><button class="btn" id="pResume">Weiterfahren</button><button class="btn ghost" id="pSave">Beenden &amp; speichern</button><button class="btn ghost" id="pDiscard">Verwerfen</button>${this.group?.voice?.on ? '<button class="btn ghost" id="pVoice">Sprachchat aus</button>' : ''}</div></div>`;
+      <div class="row-actions padmenu"><button class="btn" id="pResume">Weiterfahren</button><button class="btn ghost" id="pOpts">Optionen</button><button class="btn ghost" id="pSave">Beenden &amp; speichern</button><button class="btn ghost" id="pDiscard">Verwerfen</button>${this.group?.voice?.on ? '<button class="btn ghost" id="pVoice">Sprachchat aus</button>' : ''}</div>
+      <div class="hint pad-hint" style="margin-top:12px;opacity:.7">🎮 Steuerkreuz wählen · A ok · B zurück</div></div>`;
     this.el.append(o);
     o.querySelector('#pResume').onclick = () => this._resume();
+    o.querySelector('#pOpts').onclick = () => this._options();
     o.querySelector('#pSave').onclick = () => this._end(true);
     o.querySelector('#pDiscard').onclick = () => this._end(false);
     o.querySelector('#pVoice')?.addEventListener('click', e => { this.group.voice?.stop(); this.group.voice = null; e.target.remove(); this._flash('Sprachchat aus'); });
+    this._padFocus(0);
+  }
+  /** in-ride options (game-style, all reachable with the controller): each button shows its current state and toggles it */
+  _options() {
+    const o = this.q('#pauseOverlay'); if (!o) return;
+    const s = this.state.settings, mode = this.berg ? 'Berg-Watt' : this.auto ? 'Automatik' : this.virtual ? 'virtuell' : 'echt am Rad';
+    const items = [
+      ['oShift', `Schaltung: ${mode}`, () => this.toggleShift()],
+      ['oView', `Sicht: ${['Fahrersicht', 'Verfolger', 'Rückblick'][s.view3d || 0]}`, () => this._cycleView()],
+      ['oHud', 'Anzeige wechseln', () => this._cycleHud()],
+      ['oBar', `Lenker: ${s.cockpit === false ? 'aus' : 'an'}`, () => this._toggleBar()],
+      ['oMusic', `Musik: ${this.music?.on ? 'an' : 'aus'}`, () => this._toggleMusic()],
+      ['oNext', 'Nächstes Lied', () => this.music?.skip()],
+      ['oWide', 'Sichtfeld weiter', () => this._lens(-1)], ['oNarrow', 'Sichtfeld enger', () => this._lens(1)],
+    ];
+    o.querySelector('.box').innerHTML = `<div class="label">Pause</div><h2 class="display">Optionen</h2>
+      <div class="row-actions padmenu" style="flex-wrap:wrap">${items.map(([id, t]) => `<button class="btn ghost" id="${id}">${t}</button>`).join('')}<button class="btn" id="oBack">Zurück</button></div>
+      <div class="hint pad-hint" style="margin-top:12px;opacity:.7">🎮 Steuerkreuz wählen · A ändern · B zurück</div>`;
+    items.forEach(([id, , fn], i) => o.querySelector('#' + id).onclick = () => { fn(); setTimeout(() => { this._options(); this._padFocus(i); }, 60); });
+    o.querySelector('#oBack').onclick = () => this._pause();
+    this._padFocus(0);
+  }
+  _padFocus(i) { // highlight one menu button for controller navigation
+    const bs = [...(this.q('#pauseOverlay')?.querySelectorAll('.padmenu button') || [])]; if (!bs.length) return;
+    this._padI = (i + bs.length) % bs.length;
+    bs.forEach((b, k) => { b.style.outline = k === this._padI ? '3px solid var(--accent, #ff5a1f)' : ''; b.style.outlineOffset = '3px'; });
+    bs[this._padI].focus?.({ preventScroll: true });
   }
   _resume() { this.music?.resume(); this.paused = false; this.q('#pauseOverlay')?.remove(); this.last = performance.now(); }
 

@@ -10,7 +10,7 @@ const CANDIDATES = [
 // what each gamepad button does during a ride (standard mapping; same numbers as js/ride.js _pollPad)
 export const PAD_MAP = [['L / R', 'Gang leichter / schwerer'], ['Steuerkreuz ↓ / ↑', 'Gang leichter / schwerer'], ['A', 'Challenge annehmen'], ['B', 'Anzeige wechseln'],
   ['X', 'Foto'], ['Y', 'Sicht wechseln'], ['L2 / R2', 'Sichtfeld weiter / enger'], ['Select (−)', 'Schaltmodus: echt / virtuell / Automatik / Berg-Watt'],
-  ['Start (+)', 'Pause / weiter'], ['Steuerkreuz ←', 'Musik an / aus'], ['Steuerkreuz →', 'Nächstes Lied'], ['Home', 'Lenker ein / aus']];
+  ['Start (+) / Home', 'Pausemenü (Steuerkreuz wählen, A ok, B zurück; dort auch Optionen)'], ['Steuerkreuz ←', 'Musik an / aus'], ['Steuerkreuz →', 'Nächstes Lied']];
 const hex = dv => [...new Uint8Array(dv.buffer, dv.byteOffset, dv.byteLength)].map(b => b.toString(16).padStart(2, '0')).join(' ');
 
 export function openControllerTest() {
