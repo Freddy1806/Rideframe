@@ -47,7 +47,7 @@ input, select { font: inherit; color: inherit; }
 .tab.active::after { content: ''; position: absolute; left: 16px; right: 16px; bottom: -1px; height: 3px; background: var(--accent); }
 .topbar .spacer { flex: 1; }
 
-.pill { display: inline-flex; align-items: center; gap: 10px; height: 40px; padding: 0 16px; border: 1px solid var(--line-2); border-radius: 999px; font-size: 12px; font-weight: 800; font-stretch: 112%; text-transform: uppercase; letter-spacing: .08em; }
+.pill { white-space: nowrap; display: inline-flex; align-items: center; gap: 10px; height: 40px; padding: 0 16px; border: 1px solid var(--line-2); border-radius: 999px; font-size: 12px; font-weight: 800; font-stretch: 112%; text-transform: uppercase; letter-spacing: .08em; }
 .pill .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--muted); }
 .pill.on { border-color: var(--accent); }
 .pill.on .dot { background: var(--accent); box-shadow: 0 0 0 4px color-mix(in srgb, var(--accent) 25%, transparent); }
@@ -79,6 +79,7 @@ main { overflow-y: auto; min-width: 0; }
 .card .badge { position: absolute; top: 14px; left: 14px; z-index: 2; background: var(--accent); color: var(--accent-ink); font-size: 11px; font-weight: 900; font-stretch: 115%; letter-spacing: .08em; text-transform: uppercase; padding: 6px 10px; border-radius: 2px; }
 .card .go { position: absolute; top: 14px; right: 14px; z-index: 2; width: 44px; height: 44px; border-radius: 50%; background: var(--paper); color: var(--ink); display: grid; place-items: center; opacity: 0; transform: scale(.85); transition: .15s; }
 .card:hover .go { opacity: 1; transform: none; }
+.card .thumb .go svg { position: static; width: 18px; height: 18px; margin-left: 3px; } /* the thumb's profile-svg rule must not catch the play icon */
 .card .body { padding: 20px 22px 22px; }
 .card h3 { font-size: 26px; font-weight: 900; font-stretch: 118%; text-transform: uppercase; letter-spacing: -0.01em; line-height: 1; }
 .card .place { color: var(--muted); font-size: 13px; margin-top: 6px; }
@@ -120,8 +121,8 @@ main { overflow-y: auto; min-width: 0; }
 .panel h3 { font-size: 18px; font-weight: 900; font-stretch: 118%; text-transform: uppercase; margin-bottom: 18px; }
 .field { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 12px 0; border-top: 1px solid var(--line); font-size: 14px; }
 .field .hint { color: var(--muted); font-size: 12px; margin-top: 4px; max-width: 32ch; }
-.field input[type=number], .field select, .field input[type=text] { width: 110px; height: 40px; background: var(--ink); border: 1px solid var(--line-2); border-radius: var(--radius); padding: 0 12px; font-weight: 700; text-align: right; }
-.field input[type=text] { width: 220px; text-align: left; }
+.field input[type=number], .field select, .field input[type=text], .field input[type=password], .field input[type=email], .field input[type=search] { width: 110px; height: 40px; background: var(--ink); border: 1px solid var(--line-2); border-radius: var(--radius); padding: 0 12px; font-weight: 700; text-align: right; }
+.field input[type=text], .field input[type=password], .field input[type=email], .field input[type=search] { width: 220px; text-align: left; }
 .field input[type=range] { width: 180px; accent-color: var(--accent); }
 .swatches { display: flex; gap: 10px; }
 .swatch { width: 32px; height: 32px; border-radius: 50%; border: 2px solid transparent; }
@@ -148,7 +149,7 @@ h2.section { font-size: 28px; font-weight: 900; font-stretch: 118%; text-transfo
 .modal p { color: var(--muted); font-size: 14px; line-height: 1.5; }
 .bar { height: 6px; background: var(--ink-3); border-radius: 3px; overflow: hidden; margin: 24px 0 10px; }
 .bar > div { height: 100%; background: var(--accent); width: 0; transition: width .2s; }
-.modal .field input[type=text] { width: 100%; }
+.modal .field input[type=text], .modal .field input[type=password], .modal .field input[type=email] { width: 100%; }
 .modal .actions { display: flex; justify-content: flex-end; gap: 12px; margin-top: 24px; }
 
 .toast { position: fixed; bottom: 24px; left: 50%; transform: translateX(-50%); background: var(--paper); color: var(--ink); padding: 14px 22px; border-radius: 4px; font-weight: 700; font-size: 14px; z-index: 80; }
@@ -413,3 +414,12 @@ input[type=number]::-webkit-inner-spin-button, input[type=number]::-webkit-outer
 /* slipstream: the group chip shows a soft wind stripe while you ride in a friend's draft */
 .groupchip.drafting { box-shadow: inset 3px 0 0 #3dd8ff, 0 0 18px rgba(61, 216, 255, .25); }
 .groupchip.drafting .label::after { content: ' · Windschatten'; color: #3dd8ff; }
+.field input:focus, .field select:focus, .modal input:focus, .modal select:focus { outline: none; border-color: var(--accent); }
+.modal .actions { flex-wrap: wrap; } .modal .actions .btn, .row-actions .btn { white-space: nowrap; }
+.modal .actions .btn { padding: 0 20px; }
+
+/* every text field in a dialog looks the same (Freddy: login fields differed) */
+.modal input[type=text], .modal input[type=password], .modal input[type=email], .modal input[type=number], .modal select { background: var(--ink); border: 1px solid var(--line-2); border-radius: var(--radius); height: 40px; padding: 0 12px; font-weight: 700; color: var(--paper); }
+.modal input::placeholder { color: var(--muted); font-weight: 600; }
+.field input#chainrings { text-align: right; }
+@media (max-width: 1500px) { .topbar { gap: 14px; } .topbar .pill { letter-spacing: .04em; } .tabs { gap: 2px; } }

@@ -88,10 +88,10 @@ export function groupModal({ routeId = null, code = null, startRide }) {
     if (!g) {
       m.innerHTML = `<div class="box"><div class="label">Zusammen fahren</div><h2 class="display">Live mit<br>Freunden</h2>
         <p>Jeder fährt zu Hause auf seinem Trainer. Ihr seht euch gegenseitig auf der Strecke und den Abstand in Metern. Ihr braucht beide RIDEFRAME und Internet.</p>
-        <label class="field"><div>Dein Name</div><input type="text" id="gName" maxlength="20" placeholder="Name" value="${esc(state.settings.riderName || '')}"></label>
+        <label class="field"><div style="min-width:110px;white-space:nowrap">Dein Name</div><input type="text" id="gName" maxlength="20" placeholder="Name" value="${esc(state.settings.riderName || '')}"></label>
         <div class="actions" style="justify-content:flex-start;gap:10px;flex-wrap:wrap">
           <button class="btn" id="gHost">Gruppe erstellen</button>
-          <input type="text" id="gCode" placeholder="Code" maxlength="5" style="width:110px;text-transform:lowercase" value="${esc(code || '')}">
+          <input type="text" id="gCode" placeholder="Code" maxlength="5" style="width:120px;height:56px;text-transform:lowercase;text-align:center;letter-spacing:.15em" value="${esc(code || '')}">
           <button class="btn ghost" id="gJoin">Beitreten</button>
           <button class="btn ghost small" id="gLook2">Aussehen</button>
           <button class="btn ghost small" id="gClose" style="margin-left:auto">Schließen</button>

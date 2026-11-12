@@ -214,7 +214,7 @@ function detail(id) {
         <div class="row-actions">
           <button class="btn" id="rideBtn">Losfahren ▸</button>
           <button class="btn ghost" id="groupBtn">Zusammen fahren</button>
-          ${t.world ? '<a class="btn ghost" href="preview.html?route=' + id + '">Vorschau ⏩</a>' : ''}
+          ${t.world ? '<a class="btn ghost" href="preview.html?route=' + id + '" style="text-decoration:none">Vorschau ▸</a>' : ''}
           <div class="field" style="border:0;padding:0;gap:10px">
             <span class="label">Gegner</span>
             <select id="ghostSel" style="width:auto">
@@ -224,14 +224,14 @@ function detail(id) {
           </div>
         </div>
         <div class="panel workout-pick" style="margin-top:22px">
-          <div class="field" style="border:0;padding:0;gap:10px;flex-wrap:wrap">
-            <span class="label">Training</span>
+          <div class="field" style="border:0;padding:0;gap:10px;flex-wrap:wrap;justify-content:flex-start">
+            <span class="label" style="min-width:130px">Training</span>
             <select id="workSel" style="width:auto"><option value="">Freie Fahrt (Steigung der Strecke)</option>${allWorkouts().map(w => `<option value="${w.id}">${w.mine ? '★ ' : ''}${esc(w.name)} · ${Math.round(workoutDuration(w) / 60)} min</option>`).join('')}</select>
-            <label style="display:flex;gap:8px;align-items:center" title="Der Trainer hält die Zielwatt selbst, egal wie steil die Strecke ist"><input type="checkbox" class="toggle" id="ergChk" ${state.settings.erg !== false ? 'checked' : ''}> ERG (Trainer hält die Watt)</label>
+            <label style="display:flex;gap:8px;align-items:center;margin-left:auto" title="Der Trainer hält die Zielwatt selbst, egal wie steil die Strecke ist"><input type="checkbox" class="toggle" id="ergChk" ${state.settings.erg !== false ? 'checked' : ''}> ERG (Trainer hält die Watt)</label>
           </div>
           <div id="workInfo"></div>
-          <div class="field" id="chRow" style="border:0;padding:10px 0 0;gap:10px;flex-wrap:wrap" title="Unterwegs fordern dich Ritter, Oma, Möwe, Seeadler oder ein Kind zu kurzen Rennen heraus. Annehmen: einfach antreten (oder K). Nie im Training.">
-            <span class="label">Challenges</span>
+          <div class="field" id="chRow" style="border:0;padding:10px 0 0;gap:10px;flex-wrap:wrap;justify-content:flex-start" title="Unterwegs fordern dich Ritter, Oma, Möwe, Seeadler oder ein Kind zu kurzen Rennen heraus. Annehmen: einfach antreten (oder K). Nie im Training.">
+            <span class="label" style="min-width:130px">Challenges</span>
             <select id="chSel" style="width:auto">${[0, 2, 3, 4, 6, 8].map(n => `<option value="${n}">${n ? n + ' pro Fahrt' : 'aus'}</option>`).join('')}</select>
           </div>
         </div>

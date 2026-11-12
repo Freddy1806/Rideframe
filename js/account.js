@@ -62,11 +62,11 @@ export function accountModal(state, onChange, { first = false } = {}) {
     m.innerHTML = `<div class="box"><div class="label">${first ? 'Willkommen' : 'Konto'}</div><h2 class="display">Anmelden</h2>
       <p>Nur ein Name und ein Passwort, keine E-Mail. Dann sind deine Fahrten, Einstellungen und dein Fahrer gespeichert, auch auf anderen Geräten.</p>
       <div class="form">
-        <div class="field"><div>Name</div><input type="text" id="aName" maxlength="24" autocomplete="username" autocapitalize="off" spellcheck="false"></div>
-        <div class="field"><div>Passwort</div><input type="password" id="aPw" autocomplete="current-password" style="width:100%"></div>
+        <div class="field"><div style="min-width:90px">Name</div><input type="text" id="aName" maxlength="24" autocomplete="username" autocapitalize="off" spellcheck="false"></div>
+        <div class="field"><div style="min-width:90px">Passwort</div><input type="password" id="aPw" autocomplete="current-password"></div>
       </div>
       <p id="aErr" style="color:var(--accent);min-height:20px;margin-top:10px"></p>
-      <div class="actions"><button class="btn ghost" id="aSkip">${first ? 'Ohne Konto weiter' : 'Abbrechen'}</button><button class="btn ghost" id="aNew">Neues Konto</button><button class="btn" id="aIn">Anmelden</button></div></div>`;
+      <div class="actions"><button class="btn ghost" id="aSkip" style="margin-right:auto">${first ? 'Ohne Konto weiter' : 'Abbrechen'}</button><button class="btn ghost" id="aNew">Neues Konto</button><button class="btn" id="aIn">Anmelden</button></div></div>`;
     document.body.append(m);
     const $ = s => m.querySelector(s), err = t => { $('#aErr').textContent = t; };
     $('#aName').focus();

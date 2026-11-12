@@ -4,6 +4,7 @@
 // Mac's models when present; without a model that surprise is simply skipped.
 import * as THREE from 'three';
 import { ROAD_W } from './field.js';
+const WIZ_K = 2.8; // wizard size factor: the ~1.8 m model becomes a ~5 m giant
 
 const _v = new THREE.Vector3(), _f = new THREE.Vector3();
 const layer1 = o => o.traverse(c => c.layers.set(1));
@@ -154,15 +155,15 @@ export class Surprises {
     const robes = ['zauberer', 'zauberer_rot', 'zauberer_gruen'].filter(n => this.A.find(n)); // three robes: every wizard looks a bit different
     const name = robes.length ? robes[Math.floor(Math.random() * robes.length)] : ['magier', 'hexer', 'moench'].find(n => this.A.find(n)), h = { d, gone: false };
     if (name) h.e = this._run(name, [['Zaubern', 1], ['Beschwoeren', 1], ['Winken', 1], ['Stehen', 1]], () => h.gone ? null : { d, off: 0, back: true },
-      { scale: name === 'moench' ? 1.15 : 1 });
+      { scale: (name === 'moench' ? 1.15 : 1) * WIZ_K }); // a giant: about 5 m tall (Freddy)
     this.wiz = h; return h;
   }
   /** he vanishes in a cloud of purple and white sparks */
   poof(h = this.wiz) {
     if (!h) return; h.gone = true; const p = this._pt(h.d, 0);
     if (h.e) h.e.dead = true; // gone at once: the sparks hide the moment
-    for (let k = 0; k < 520; k++) { _v.randomDirection().multiplyScalar(2 + Math.random() * 7); const w = Math.random() < 0.3;
-      this.fx._p(p.x, p.y + 0.4 + Math.random() * 1.8, p.z, _v.x, Math.abs(_v.y) * 1.3 + 1, _v.z, w ? 1 : 0.62, w ? 0.95 : 0.25, 1, 1 + Math.random() * 1.6); }
+    for (let k = 0; k < 520; k++) { _v.randomDirection().multiplyScalar((2 + Math.random() * 7) * Math.sqrt(WIZ_K)); const w = Math.random() < 0.3;
+      this.fx._p(p.x, p.y + 0.4 + Math.random() * 1.8 * WIZ_K, p.z, _v.x, Math.abs(_v.y) * 1.3 + 1, _v.z, w ? 1 : 0.62, w ? 0.95 : 0.25, 1, 1 + Math.random() * 1.6); }
     this.fx.pts.visible = true; this.w.shakeImpulse = Math.max(this.w.shakeImpulse || 0, 0.5);
   }
   /** a fountain of fire beside the road (hell) */
