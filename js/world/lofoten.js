@@ -1004,6 +1004,17 @@ export class WorldScene {
         const e = byName(n); if (e) place(e, d0 + dd, off, { face: face(d0 + dd, off), gap: 1 }); }
     }
     { const bn = byName('rideframe_banner'); if (bn) for (const sd of [1, -1]) place(bn, sd > 0 ? 26 : 22, sd * (ROAD_W + 1.5), { face: 'road', rotT: Math.PI + 0.87, anim: 'Wehen', gap: 0.3, radK: 0.2, overlap: true }); } // RIDEFRAME beach flags just past the start arch, the print turned ~50° towards the oncoming rider (side-mirrored via rotT)
+    { // the MacBook's ride furniture (each only once its model exists): feed stations on the tops, a grandstand at the finish, hot-air balloons over the land, signposts at the turn-offs
+      const L = t.length, vs = byName('verpflegungsstand'), tb = byName('zuschauer_tribuene'), hb = byName('heissluftballon'), ws = byName('wegweiser');
+      for (const s of segs) {
+        if (s.kind === 'climb' && vs) place(vs, s.to + 70, ROAD_W + 4 + Math.max(...vs.size) / 2, { face: 'road', gap: 1.5 });
+        if (s.kind === 'climb' && tb && r() < 0.5) place(tb, s.to - 120, -(ROAD_W + 5 + Math.min(tb.size[0], tb.size[2]) / 2), { face: 'road', gap: 2 });
+        if (ws && s.from > 50) { const o = place(ws, s.from + 15, ROAD_W + 2.2, { face: 'road', gap: 0.5, radK: 0.3 });
+          if (o) { const keep = 1 + Math.floor(r() * 3); o.traverse(c => { const m = /^pfeil_(\d)$/.exec(c.name); if (m) c.visible = +m[1] === keep || r() < 0.4; }); } }
+      }
+      if (tb) for (const sd of [1, -1]) place(tb, L - 70, sd * (ROAD_W + 5 + Math.min(tb.size[0], tb.size[2]) / 2), { face: 'road', gap: 2 }); // the crowd at the finish
+      if (hb) for (let d = 3000 + r() * 4000; d < L - 2000; d += 9000 + r() * 6000) place(hb, d, (r() < 0.5 ? -1 : 1) * (180 + r() * 220), { face: r() * 6.28, anim: 'Schweben', dy: 140 + r() * 160, overlap: true, gap: 20 });
+    }
     this._placeLegacyTops(segs);
     // everything that never moves: matrices once, then skipped by three's per-frame scene-graph update (was ~30 % CPU)
     const moving = new Set([...this.mixers.map(m => m.obj), ...this.birds, ...this.whales.map(w => w.obj), ...this.animated]);
