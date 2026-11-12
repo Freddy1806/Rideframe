@@ -32,7 +32,7 @@ export async function stravaUpload(rec, name, eleAt, onState = () => {}, imageUr
   const km = (rec.distance / 1000).toFixed(1).replace('.', ',');
   const r = await fetch('/api/strava/upload', { method: 'POST', headers: { ...hdr(), 'Content-Type': 'application/json' },
     body: JSON.stringify({ tcx: toTCX(rec, name, eleAt), name: `RIDEFRAME · ${name}`, external_id: 'rideframe-' + rec.id,
-      description: `${km} km · ${rec.gain} hm · Ø ${rec.avgPower} W\nGefahren in RIDEFRAME (Indoor, virtuelle Strecke).` /* no image link in the description (Freddy 12.11.: it exposed the Mac mini address) */ }) });
+      description: `${km} km · ${rec.gain} hm · Ø ${rec.avgPower} W\nGefahren in RIDEFRAME (Indoor, virtuelle Strecke).` + intervalText(rec) /* no image link in the description (Freddy 12.11.: it exposed the Mac mini address) */ }) });
   const j = await r.json().catch(() => ({}));
   if (!r.ok) throw new Error(j.error || 'Upload fehlgeschlagen');
   onState('Strava verarbeitet die Fahrt …');
@@ -69,4 +69,11 @@ export async function stravaButton(btn, rec, name, eleAt, makeImage = null) {
     btn.disabled = false; set(label);
     import('./app.js').then(m => m.toast(e.message || String(e), 6000));
   }
+}
+
+/** the intervals (workout steps or climbs) as lines for the Strava description: name · time · average watts (target) */
+function intervalText(rec) {
+  const iv = rec.ivs; if (!iv?.length) return '';
+  const mm = t => `${Math.floor(t / 60)}:${String(Math.round(t % 60)).padStart(2, '0')}`;
+  return '\n\nIntervalle:\n' + iv.map((x, i) => `${i + 1}. ${x.name} · ${mm(x.t)} · Ø ${x.w} W${x.target ? ` (Ziel ${x.target} W)` : ''}`).join('\n');
 }

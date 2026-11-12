@@ -100,6 +100,7 @@ export class RideSession {
     this.segs = findSegments(this.track); this.segDone = []; this.segBest = {}; // Strava-like segments: climbs, descents, flats, sprints
     db.ridesFor(this.route.id).then(rs => { this.segBest = segmentBests(rs); this.segLast = segmentLast(rs); }).catch(() => {});
     import('./account.js').then(a => a.loadSegBoard(this.route.id)).then(b => { this.segBoard = b; }).catch(() => {}); // the others' times on this route
+    this._wDef = workout; // kept when the workout is ended early: its intervals still go to Strava
     this.lapMarks = []; // climbs count as laps in the Strava file (start and top of each climb)
     const st = state.settings;
     this.gears = gearsFrom(st); this.virtual = st.shiftMode === 'virtual'; this.auto = this.virtual && !!st.autoShift; this.berg = !this.virtual && !!st.bergWatt; this.realGear = parseGear(st.realGear);
@@ -895,7 +896,7 @@ export class RideSession {
     const pw = this.samples.map(s => s[2]);
     return {
       id: uid(), routeId: this.route.id, date: Date.now(), complete,
-      duration: Math.round(this.elapsed), distance: Math.round(this._ridden()), laps: this.laps > 1 ? this._lapRows() : undefined, segs: this.segDone.length ? this.segDone.map(({ id, t, w }) => ({ id, t, w })) : undefined, lapMarks: this.lapMarks?.length ? this.lapMarks : undefined, gain: Math.round(this.gainAcc), startD: Math.round(this.startD), workout: this.workout?.name || this._wName || undefined,
+      duration: Math.round(this.elapsed), distance: Math.round(this._ridden()), laps: this.laps > 1 ? this._lapRows() : undefined, segs: this.segDone.length ? this.segDone.map(({ id, t, w }) => ({ id, t, w })) : undefined, lapMarks: this._marks(), ivs: this._intervals(), gain: Math.round(this.gainAcc), startD: Math.round(this.startD), workout: this.workout?.name || this._wName || undefined,
       avgPower: pw.length ? Math.round(pw.reduce((a, b) => a + b, 0) / pw.length) : 0,
       maxPower: Math.max(0, ...pw), best5: bestAvg(pw, 300), best20: bestAvg(pw, 1200),
       samples: this.samples, challenges: this.ch?.stats.offered ? { ...this.ch.stats } : undefined, wizard: this.wiz?.was || (this.wiz?.state === 'hell' ? 'hell' : this.wiz?.state === 'fly' ? 'fly' : undefined),
@@ -972,6 +973,22 @@ export class RideSession {
   _segSummary() {
     if (!this.segDone.length) return '';
     return `<div class="segsum"><div class="label">Segmente</div>${this.segDone.map(s => `<div class="${s.pr ? 'pr' : ''}"><span>${SEG_KIND[s.kind].icon} ${esc(s.name)}</span><span class="num">${fmtTime(s.t)}</span><span class="num">${s.w} W</span><b>${s.pr ? (s.prev ? 'Bestzeit' : 'erste Zeit') : '+' + fmtTime(s.t - s.prev)}${s.rank ? ` · ${s.rank}/${s.of}` : ''}</b></div>`).join('')}</div>`;
+  }
+  /** the hard parts with time and average watts (Freddy 12.11.: into the Strava description): workout intervals, else the climbs */
+  _intervals() {
+    const out = [], w = this._wDef, smp = this.samples;
+    if (w) { let s = 0, n = 0;
+      for (const st of w.steps) { const a = s, b = Math.min(s + st.dur, this.elapsed); s += st.dur;
+        if (st.pct < 88 || b - a < 5) continue; const ps = smp.filter(x => x[0] > a && x[0] <= b).map(x => x[2]); if (!ps.length) continue;
+        out.push({ name: `${st.name || 'Intervall'} ${++n}`, t: Math.round(b - a), w: Math.round(ps.reduce((x, y) => x + y, 0) / ps.length), target: Math.round(st.pct / 100 * (this.ftp || 0)) || undefined }); }
+    } else for (const s of this.segDone) if (s.kind === 'climb') out.push({ name: s.name, t: Math.round(s.t), w: s.w });
+    return out.length ? out : undefined;
+  }
+  /** lap marks for the Strava file: climbs and route laps, plus start and end of every hard workout interval */
+  _marks() {
+    const m = [...(this.lapMarks || [])], w = this._wDef;
+    if (w) { let s = 0; for (const st of w.steps) { if (st.pct >= 88 && s < this.elapsed) m.push(Math.round(s), Math.round(Math.min(s + st.dur, this.elapsed))); s += st.dur; } }
+    return m.length ? m : undefined;
   }
   _ridden() { return this.lapOff + this.d - this._lapBase; } // metres ridden in this session, over all laps
   _distSub() { return this.laps > 1 ? `Runde ${this.lap}/${this.laps} · von ${fmtKm(this.track.length * this.laps - this.startD)} km` : `von ${fmtKm(this.track.length)} km`; }
