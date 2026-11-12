@@ -5,6 +5,7 @@ import { defaultParams, step as physStep } from './physics.js';
 import { DemoScene } from './demo.js';
 import { drawHudProfile } from './profile.js';
 import { fmtTime, fmtKm, fmtNum, esc, bestAvg } from './util.js';
+import { bestClimb, distAtTime } from './climbghost.js';
 import { stravaButton } from './stravaup.js';
 import { gearsFrom, gearName, parseGear, estimateGear, virtualGrade } from './gears.js';
 import { UEBridge } from './uebridge.js';
@@ -305,6 +306,7 @@ export class RideSession {
       const e = eleAt(this.track, this.d); if (e > this.lastEle) this.gainAcc += e - this.lastEle; this.lastEle = e;
       this._workout(dt);
       this._chTick(dt);
+      this._cgTick();
       this._wizTick(dt);
       if ((this._moodT = (this._moodT || 0) + dt) > 1) { this._moodT = 0; this._mood(); }
       if (this.berg && !(this.workout && this.erg)) this.state.trainer.setPower(this._bergTarget());
@@ -403,7 +405,8 @@ export class RideSession {
     if (cur?.interval) {
       const n = this.climbs.indexOf(cur) + 1, left = cur.to - this.d;
       const eta = left / Math.max(1.5, this.v);
-      nx.innerHTML = `<b>Intervall ${n}/${this.climbs.length}</b> · ${esc(cur.name)} · noch ${fmtTime(eta)}${ftp ? ` · Ziel ${zLo}–${zHi} W` : ''}`; nx.hidden = false;
+      const cg = this._cg?.c === cur && this._cgD != null ? ` · 👻 ${this._cgD >= this.d ? '−' : '+'}${Math.round(Math.abs(this._cgD - this.d))} m` : '';
+      nx.innerHTML = `<b>Intervall ${n}/${this.climbs.length}</b> · ${esc(cur.name)} · noch ${fmtTime(eta)}${ftp ? ` · Ziel ${zLo}–${zHi} W` : ''}${cg}`; nx.hidden = false;
       if (ftp) pw.classList.add(pShow < zLo ? 'z-lo' : pShow > zHi ? 'z-hi' : 'z-ok');
     } else if (next?.interval) {
       nx.innerHTML = `Nächstes Intervall in ${fmtKm(next.from - this.d)} km · ${esc(next.name)} · ${next.minutes} min Ø ${fmtNum(next.grade, 1)} %`; nx.hidden = false;
@@ -615,6 +618,7 @@ export class RideSession {
     const list = [];
     const look = this.state.settings.look || null;
     if ((this.state.settings.view3d || 0) === 1 || this._shotArm) list.push({ id: 'me', self: true, d: this.d, v: this.paused ? 0 : this.v, look });
+    if (this._cgD != null) list.push({ id: 'cghost', ghost: true, look: this.state.settings.look || null, name: 'Dein Bestes', d: this._cgD, v: this.v, color: 0x9aa3ad });
     if (this.ghost && ghostD != null) list.push({ id: 'ghost', ghost: true, look: this.ghost.look || look, name: this.ghostName || (this.state.settings.ghost === 'last' ? 'Letzte Fahrt' : 'Bestzeit'), d: ghostD + (this.ghost.startD || 0), v: this.v, color: 0x9aa3ad });
     if (this.group) {
       this.group.update({ look, d: this.d, v: this.v, w: this.power, hr: this.hr, riding: !this.paused, done: this.finished });
@@ -664,6 +668,22 @@ export class RideSession {
     window.addEventListener('rf-voicechange', this._voiceUI); this._voiceUI();
   }
 
+  /** ghost challenge on the climbs: your own best effort on this climb rides with you (never in group rides or with a full-ride ghost) */
+  _cgTick() {
+    if (this.group || this.ghost || this.workout || this.state.settings.climbGhost === false) return;
+    const c = this.climbs.find(c => this.d >= c.from && this.d < c.to);
+    if (this._cg && (c !== this._cg.c || this.d >= this._cg.c.to)) { // over the top (or off the climb): the verdict
+      const x = this._cg; this._cg = null; this._cgD = null;
+      if (this.d >= x.c.to - 5) { const dur = this.elapsed - x.t, diff = dur - x.best.dur;
+        this._flash(diff < 0 ? `👻 Neue Bestzeit am ${x.c.name}! ${fmtTime(dur)} (−${fmtTime(-diff)})` : `👻 ${x.c.name}: ${fmtTime(dur)} · ${fmtTime(diff)} hinter deinem Besten`); }
+    }
+    if (!c || this._cg || this._cgDone?.has(c) || this.d > c.from + 40) { if (this._cg) { const x = this._cg; this._cgD = distAtTime(x.best.samples, x.best.t0 + (this.elapsed - x.t)); } return; }
+    (this._cgDone ||= new Set()).add(c);
+    this._cgRides ||= (this.state.rides || []).filter(r => r.routeId === this.route.id && r.samples?.length);
+    const best = bestClimb(this._cgRides, c); if (!best) return;
+    this._cg = { c, best, t: this.elapsed - Math.max(0, (this.d - c.from) / Math.max(1, this.v)) }; this._cgD = c.from;
+    this._flash(`👻 Dein Bestes am ${c.name}: ${fmtTime(best.dur)} · schlag dich selbst!`);
+  }
   _postureK() { // aero tuck: less drag; standing: more. Shown once per change.
     if (!this.pose) return 1;
     const p = this.pose.tick(), m = this._poseMod;
