@@ -83,7 +83,7 @@ export function buildVillage(ctx, v = {}) {
   const inn = any('wirtshaus') ? house(any('wirtshaus'), 14, ROAD_W + 9, { face: 'road', gap: 2 }, true)
     : house(any('fachwerkhaus_b', 'fachwerkhaus_a', 'steinhaus'), 14, ROAD_W + 8, { face: 'road', gap: 2, scale: 1.25 }, true);
   if (inn) { const sign = any('wirtshausschild'); if (sign) put(sign, 24, ROAD_W + 2.2, { face: 'road', overlap: true, radK: 0.3, gap: 0.4 });
-    const lt = loose(lanterns(v.leader), 26, ROAD_W + 2.6, 3.4, Math.PI / 2); /* hung out towards the road before the inn, seen on the approach */ lt.traverse(c => { if (c.userData.lantern) anim.push(c); }); }
+    const lt = loose(lanterns(v.leader), 19, ROAD_W + 2.6, 3.4, Math.PI / 2); /* hung out towards the road before the inn, seen on the approach */ lt.traverse(c => { if (c.userData.lantern) anim.push(c); }); }
   put(any('pferd'), 30, ROAD_W + 4.5, { face: 'along', anim: 'Stehen', gap: 0.8 });
   put(any('viehtraenke', 'fass'), 36, ROAD_W + 3.5, { face: 'along', gap: 0.6, radK: 0.5 });
   put(any('faesser_kisten', 'fass'), 6, ROAD_W + 3.2, { gap: 0.5 });
