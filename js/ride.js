@@ -325,12 +325,16 @@ export class RideSession {
     requestAnimationFrame(this._tick);
   }
 
-  _pollPad() { // gamepad / remote: LB/RB or D-pad down/up shift, A/Start pause
+  _pollPad() { // any Bluetooth gamepad (e.g. 8BitDo Micro on the bars): LB/RB or D-pad shift, A accepts a challenge, Y view, Start pause
     const pad = navigator.getGamepads?.().find(Boolean); if (!pad) return;
     const b = pad.buttons.map(x => x.pressed), was = this.padPrev || [];
     const hit = i => b[i] && !was[i];
-    if (hit(4) || hit(13)) this.shift(-1);
-    if (hit(5) || hit(12)) this.shift(1);
+    if (!this.padSeen) { this.padSeen = true; this._flash('🎮 Controller erkannt: LB/RB oder Steuerkreuz schalten'); }
+    const sh = d => { if (!this.virtual && !this.berg) this.toggleShift(); this.shift(d); }; // a pad means virtual shifting: switch over on first use
+    if (hit(4) || hit(13) || hit(14)) sh(-1);
+    if (hit(5) || hit(12) || hit(15)) sh(1);
+    if (hit(0)) this._chKey = true;
+    if (hit(3)) this._cycleView();
     if (hit(9)) this.paused ? this._resume() : this._pause();
     this.padPrev = b;
   }

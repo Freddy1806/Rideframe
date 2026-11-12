@@ -15,7 +15,7 @@ import { fmtTime, fmtKm, fmtNum, esc, bestAvg } from './util.js';
 import { openControllerTest } from './controller.js';
 import { stravaButton } from './stravaup.js';
 import { hudPrefs, hudControlsHTML, wireHudControls } from './hudprefs.js';
-import { WORKOUTS, workoutById, workoutDuration, workoutSVG } from './workouts.js';
+import { allWorkouts, setMyWorkouts, workoutById, workoutDuration, workoutSVG } from './workouts.js';
 import { loadShared, sharedFor, shareRide, importShared, groupModal } from './share.js';
 
 const $ = s => document.querySelector(s);
@@ -47,8 +47,10 @@ function getDemoRoute() { return getBuiltin('demo'); }
 async function boot() {
   const saved = await db.kvGet('settings').catch(() => null);
   if (saved) Object.assign(state.settings, saved);
+  setMyWorkouts(state.settings.myWorkouts);
   const hasAcc = await accountsAvailable();
   if (hasAcc && account()) await syncAccount(state).catch(e => console.warn('Konto-Abgleich:', e.message));
+  setMyWorkouts(state.settings.myWorkouts); // the account may have brought own workouts from another device
   const params = new URLSearchParams(location.search);
   if (params.get('accent')) state.settings.accent = params.get('accent');
   applyAccent();
@@ -224,7 +226,7 @@ function detail(id) {
         <div class="panel workout-pick" style="margin-top:22px">
           <div class="field" style="border:0;padding:0;gap:10px;flex-wrap:wrap">
             <span class="label">Training</span>
-            <select id="workSel" style="width:auto"><option value="">Freie Fahrt (Steigung der Strecke)</option>${WORKOUTS.map(w => `<option value="${w.id}">${esc(w.name)} · ${Math.round(workoutDuration(w) / 60)} min</option>`).join('')}</select>
+            <select id="workSel" style="width:auto"><option value="">Freie Fahrt (Steigung der Strecke)</option>${allWorkouts().map(w => `<option value="${w.id}">${w.mine ? '★ ' : ''}${esc(w.name)} · ${Math.round(workoutDuration(w) / 60)} min</option>`).join('')}</select>
             <label style="display:flex;gap:8px;align-items:center" title="Der Trainer hält die Zielwatt selbst, egal wie steil die Strecke ist"><input type="checkbox" class="toggle" id="ergChk" ${state.settings.erg !== false ? 'checked' : ''}> ERG (Trainer hält die Watt)</label>
           </div>
           <div id="workInfo"></div>

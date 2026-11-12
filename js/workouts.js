@@ -36,7 +36,21 @@ export const WORKOUTS = [
     steps: [W(5, 50, 'Einfahren'), ...Array.from({ length: 25 }, (_, i) => W(1, 60 + i * 6, `Stufe ${i + 1}`)), ...cool] },
 ];
 
-export const workoutById = id => WORKOUTS.find(w => w.id === id) || null;
+// ---- own workouts (Pro-Modus): built in the Training tab, stored in settings.myWorkouts as plain rows ----
+// def = { id, name, warm, cool, rows: [{ t: 'b', min, pct, label } | { t: 'i', n, onMin, onPct, offMin, offPct, label }] }
+export const MY = [];
+const num = (v, d, lo, hi) => { const x = +v; return Number.isFinite(x) ? Math.min(hi, Math.max(lo, x)) : d; };
+export function buildMy(def) {
+  const rows = (def.rows || []).flatMap(r => r.t === 'i'
+    ? reps(num(r.n, 3, 1, 30), W(num(r.onMin, 1, 0.25, 120), num(r.onPct, 105, 30, 200), r.label || 'Intervall'), W(num(r.offMin, 1, 0, 120), num(r.offPct, 55, 30, 200), 'Pause')).filter(x => x.dur > 0)
+    : [W(num(r.min, 5, 0.25, 240), num(r.pct, 70, 30, 200), r.label || 'Block')]);
+  const steps = [...(def.warm !== false ? warm : []), ...rows, ...(def.cool !== false ? cool : [])];
+  const what = (def.rows || []).map(r => r.t === 'i' ? `${r.n} × ${r.onMin} min ${r.onPct} % / ${r.offMin} min ${r.offPct} %` : `${r.min} min ${r.pct} %`).join(', ');
+  return { id: def.id, name: def.name || 'Mein Workout', what: `Eigenes Workout: ${what || 'leer'}.`, steps: steps.length ? steps : [W(5, 50, 'Locker')], mine: true };
+}
+export function setMyWorkouts(defs = []) { MY.length = 0; for (const d of defs || []) if (d && d.id) MY.push(buildMy(d)); }
+export const allWorkouts = () => [...MY, ...WORKOUTS];
+export const workoutById = id => MY.find(w => w.id === id) || WORKOUTS.find(w => w.id === id) || null;
 export const workoutDuration = w => w.steps.reduce((s, x) => s + x.dur, 0);
 
 /** where in the program we are at time t (seconds since start) */
