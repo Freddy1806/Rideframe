@@ -60,7 +60,8 @@ export class Surprises {
     this.active = this.active.filter(e => !e.dead);
     // fireworks: over the festival town and for the last few hundred metres
     if (this.festD > 0 && !this.festFired && d > this.festD - 260 && d < this.festD) { this.festFired = true; this._salvo(this.festD + 40, 7); }
-    if (this.track.length - d < 450 && time > (this.fwNext || 0)) { this.fwNext = time + 0.7 + Math.random() * 0.8; this._salvo(Math.min(this.track.length - 5, d + 160), 1); }
+    if (!this._finishArch && this.track.length - d < 700 && d > 200) { this._finishArch = true; this.finishFlags(this.track.length - 6); } // the ZIEL arch at the very end of every ride, not only for challenges
+    if (this.track.length - d < 450 && time > (this.fwNext || 0)) { this.fwNext = time + 0.7 + Math.random() * 0.8; this._salvo(Math.min(this.track.length - 5, d + 160), 2); }
     // a rainbow only right after a shower (never out of a clear sky): when the rain has just stopped
     const rain = this.w.weather?.rain || 0;
     if (rain > 0.3) this.wet = true;

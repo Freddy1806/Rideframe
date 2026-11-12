@@ -541,9 +541,11 @@ export class RideSession {
     const m = this.music; if (!m?.setMood || this.group) return;
     const z = this.wiz?.state, rain = this.player?.weather?.rain || 0;
     const vt = !this.workout && this.player?.villageTheme?.(this.d), VM = { stadtfest: 'fest', hochzeit: 'hochzeit', kirchenfest: 'kirchenfest', beerdigung: 'beerdigung' };
-    m.setMood(this.workout ? (this.wNow?.step?.pct >= 88 ? 'hard' : 'workout') : z === 'fly' ? 'fly' : z === 'hell' ? 'hell'
+    const mood = this.workout ? (this.wNow?.step?.pct >= 88 ? 'hard' : 'workout') : z === 'fly' ? 'fly' : z === 'hell' ? 'hell'
       : vt && VM[vt] ? VM[vt] // each themed village has its own music (falls back when there is none)
-      : rain > 0.35 || (m.mood === 'rain' && rain > 0.1) ? 'rain' : 'world');
+      : rain > 0.35 || (m.mood === 'rain' && rain > 0.1) ? 'rain' : 'world';
+    if (mood !== this._moodLog) { this._moodLog = mood; console.info('[music]', mood, Math.round(this.d)); } // QA on a muted Mac: the mood changes show in the console
+    m.setMood(mood);
   }
   /** in hell the trainer adds 2 % on top of the road (virtual shifting included) */
   _wizGrade(g) {
