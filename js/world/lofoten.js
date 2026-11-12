@@ -1200,7 +1200,10 @@ export class WorldScene {
   _ensure(cx, cz) {
     // road chunks within 2 km
     const f = this.field, k0 = Math.floor((this._fly?.d ?? this.d) / 500); // in flight the road is built under the camera
-    for (let k = k0 - 2; k <= k0 + 4; k++) if (k >= 0 && !this.roadChunks.has(k)) { const c = this._roadChunk(k); if (c) { this.scene.add(c); freeze(c); this.roadChunks.set(k, c); } }
+    const r0 = performance.now(); // the chunk under the rider at once, the others one by one within a few ms per frame (7 at once blocked the first frame for seconds on slow laptops)
+    for (const k of [k0, k0 + 1, k0 - 1, k0 + 2, k0 + 3, k0 - 2, k0 + 4]) if (k >= 0 && !this.roadChunks.has(k)) {
+      if (k !== k0 && !this.instant && performance.now() - r0 > 8) break;
+      const c = this._roadChunk(k); if (c) { this.scene.add(c); freeze(c); this.roadChunks.set(k, c); } }
     for (const [k, c] of this.roadChunks) if (k < k0 - 3 || k > k0 + 6) { this.scene.remove(c); c.traverse(o => o.geometry?.dispose?.()); this.roadChunks.delete(k); }
     // tiles: resolution by distance
     const want = new Map(), R = Math.ceil(VIEW / TILE), tx0 = Math.floor(cx / TILE), tz0 = Math.floor(cz / TILE);
