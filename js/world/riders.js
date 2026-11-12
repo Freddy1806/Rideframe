@@ -39,7 +39,7 @@ function dispose(o) { // shared kit geometry/materials (bike.glb, hands.glb) sta
 // in rows 2.5 m behind; nobody ever rides on the edge line (asphalt ends at 3.3 m, line at 2.8-2.92 m)
 const SLOTS = [[-1.1, 0], [0, 1], [-1.1, 1], [0, 2], [-1.1, 2], [0, 3], [-1.1, 3]];
 const ROW_GAP = 2.5;
-const SIDE_LOCK = 1.5, SIDE_FREE = 4; // within 1.5 m: exactly alongside; from 4 m: true gap
+const SIDE_LOCK = 0.8, SIDE_FREE = 2.5; // within 0.8 m: exactly alongside; from 2.5 m: true gap (12.11.: wider made the slipstream look glued)
 const smooth = (a, b, x) => { const t = Math.min(1, Math.max(0, (x - a) / (b - a))); return t * t * (3 - 2 * t); };
 
 export class Riders {

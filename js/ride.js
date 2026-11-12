@@ -321,7 +321,7 @@ export class RideSession {
       this._readInputs(); this._autoShift(dt);
       const g = gradeAt(this.track, this.d);
       // drafting (group ride, Freddy: Windschatten zu zweit): right behind a friend you need up to a third less power
-      const dk = this._draftTo || 0; this._draftK = (this._draftK || 0) + (dk - (this._draftK || 0)) * Math.min(1, dt * 1.5);
+      const dk = this._draftTo || 0; this._draftK = (this._draftK || 0) + (dk - (this._draftK || 0)) * Math.min(1, dt * 0.8); // eases in and out, no sudden jolt
       this._togK = (this._togK || 0) + ((this._togetherTo || 0) - (this._togK || 0)) * Math.min(1, dt * 0.5);
       const pk = this._postureK(); this._dragK = pk * (1 - this._draftK) * (1 - this._togK); // posture by webcam (aero / standing) and the slipstream
       this.v = physStep(this.v, this.power, g, dt, Math.abs(this._dragK - 1) > 0.005 ? { ...this.params, cda: this.params.cda * this._dragK } : this.params);
@@ -516,12 +516,14 @@ export class RideSession {
     }
   }
 
-  // ---------- challenges (free rides only: never in a workout, never in a group ride) ----------
+  // ---------- challenges (never in a workout; in a group ride (Freddy 12.11.) the same challengers wait at the same spots for
+  // everyone, dice seeded with the group code; each races against his own FTP, the results are shared with the group) ----------
   _initChallenges() {
     const n = this.state.settings.challenges ?? 4, sp = this.player?.events?.surprises;
-    if (this.workout || this.group || this.autopilot || !n) return;
-    this.ch = new Challenges({ length: this.track.length, startD: this.d, n, ftp: this.ftp, params: this.params, gradeAt: d => gradeAt(this.track, d),
-      has: models => !sp || models.some(m => sp.A.find(m)) });
+    if (this.workout || this.autopilot || !n) return;
+    const grp = this.group ? seeded(this.group.code + this.route.id + 'ch' + (this.lap || 1)) : null;
+    this.ch = new Challenges({ length: this.track.length, startD: grp ? 0 : this.d, n, ftp: this.ftp, params: this.params, gradeAt: d => gradeAt(this.track, d),
+      has: models => !sp || models.some(m => sp.A.find(m)), rng: grp || Math.random });
     if (!this.ch.list.length) { this.ch = null; return; }
     if (new URLSearchParams(location.search).has('challenge')) { this.ch.list[0].at = this.d + 600; window.__ride = this; } // test: the first dare comes after 600 m
     const c = document.createElement('div'); c.className = 'chcard glass'; c.id = 'hCh'; c.hidden = true; this.el.querySelector('.hud').append(c);
@@ -538,6 +540,7 @@ export class RideSession {
       else if (type === 'win' || type === 'lose') {
         if (type === 'win') this.story?.challenge(x.c.id, 'win');
         x.h?.say(type === 'win' ? x.c.win : x.c.lose, 3); this._chEnd(x, sp, 4000);
+        if (this.group) { (this._cr ||= []).push([x.c.name.slice(0, 30), type === 'win' ? 1 : 0, Math.round(x.avg || 0)]); this.group.update({ cr: this._cr.slice(-4) }); }
         this._chRes = { until: performance.now() + 6000, card: { kind: 'result', name: x.c.name, won: type === 'win', avg: Math.round(x.avg || 0), gap: Math.round(Math.abs(this.d - x.opp)) } }; // the result stays up a moment
       }
     }
@@ -720,16 +723,21 @@ export class RideSession {
       const os = this.group.others();
       const vc = this.group.voice?.on ? this.group.voice : null;
       for (const r of os) list.push({ id: r.id, name: r.name, d: r.d, v: r.riding ? r.v : 0, look: r.look, speaking: !!vc?.isSpeaking(r.pid) });
-      { let k = 0, who = null; // the slipstream: 33 % less drag up to 1.5 m behind a riding friend, gone at 8 m (only on the flat and fast, below ~4 m/s it hardly matters)
-        for (const r of os) { const gap = r.d - this.d; if (!r.riding || r.done || gap < 0.3 || gap > 8) continue;
-          const kk = 0.33 * Math.min(1, 1 - (gap - 1.5) / 6.5) * Math.min(1, Math.max(0, (this.v - 2) / 4)); if (kk > k) { k = kk; who = r.name; } }
+      { let k = 0, who = null; // the slipstream (Freddy 12.11.: not glued, stronger or weaker): up to 30 % less drag 1-3 m behind, fading smoothly to 0 at 15 m.
+        // It stays while you are alongside (until 1.5 m ahead), so with the same watts you roll past and then give HIM the slipstream (like a real paceline) instead of getting stuck at his wheel.
+        for (const r of os) { const gap = r.d - this.d; if (!r.riding || r.done || gap < -1.5 || gap > 15) continue;
+          const near = gap < 1 ? Math.max(0, (gap + 1.5) / 2.5) : gap <= 3 ? 1 : 1 - (gap - 3) / 12;
+          const kk = 0.3 * near * near * Math.min(1, Math.max(0, (this.v - 2) / 4)); if (kk > k) { k = kk; who = r.name; } }
         this._draftTo = k;
         // stay together (Freddy: "zu zweit sich immer sehen", setting on by default): whoever drops back gets an
         // invisible tailwind that grows with the gap, so friends of different strength stay within sight
         const lead = os.filter(r => r.riding && !r.done).reduce((m, r) => Math.max(m, r.d - this.d), 0);
         this._togetherTo = this.state.settings.together === false ? 0 : Math.min(0.6, Math.max(0, (lead - 30) / 300));
-        if (k > 0.15 && !this._drafting && (this.elapsed - (this._draftMsgT ?? -99)) > 90) { this._draftMsgT = this.elapsed; this._flash?.(`Windschatten von ${who || 'deinem Mitfahrer'} · bis 30 % weniger Kraft`); }
-        this._drafting = k > 0.1; this.q?.('#hGroup')?.classList.toggle('drafting', this._drafting); }
+        if (k > 0.15 && !this._drafting && (this.elapsed - (this._draftMsgT ?? -99)) > 90) { this._draftMsgT = this.elapsed; this._flash?.(`Windschatten von ${who || 'deinem Mitfahrer'} · je näher, desto leichter`); }
+        // the others' challenge results (group): a short note when a friend beat or lost to a challenger
+        for (const r of os) (r.cr || []).forEach((c, i) => { const key = r.id + ':' + i + ':' + c[0]; if ((this._crSeen ||= new Set()).has(key)) return; this._crSeen.add(key);
+          if (this.elapsed > 5) this._flash?.(`⚔ ${r.name} gegen ${c[0]}: ${c[1] ? 'gewonnen' : 'verloren'}${c[2] ? ` · Ø ${c[2]} W` : ''}`); });
+        this._drafting = k > 0.03; const hg = this.q?.('#hGroup'); hg?.classList.toggle('drafting', this._drafting); if (hg) hg.style.setProperty('--draft', Math.round(this._draftK / 0.3 * 100) + '%'); }
       const gl = this.q?.('#hGroup .glist');
       if (gl) gl.innerHTML = os.length ? os.sort((a, b) => b.d - a.d).slice(0, 5).map(r => {
         const gap = r.d - this.d, txt = r.done ? 'im Ziel' : (gap >= 0 ? '+' : '−') + (Math.abs(gap) >= 1000 ? fmtKm(Math.abs(gap)) + ' km' : Math.round(Math.abs(gap)) + ' m');
