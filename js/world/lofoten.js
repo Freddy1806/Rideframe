@@ -772,6 +772,8 @@ export class WorldScene {
             place(byName('waescheleine'), d + 12, back + 2, { face: 'along', gap: 2, radK: 0.4 });
             if (r() < 0.7) place(byName('heuhaufen'), d - 16, back + 6, { gap: 2 });
             if (r() < 0.5) place(byName('schubkarre'), d + 5, back - 1, { face: r() * 6.28, gap: 1.5, radK: 0.4 });
+            if (r() < 0.6) place(byName('holzstapel'), d + 10, back + 4, { face: 'along', gap: 1.5, radK: 0.5 }); // new MacBook models (placed once they exist)
+            if (r() < 0.5) place(byName('viehtraenke'), d - 26, back + 10, { face: r() * 6.28, gap: 2, radK: 0.5 });
             const fl = byName('flechtzaun'); if (fl) { const len = Math.max(fl.size[0], fl.size[2]) * 0.97, turn = fl.size[0] > fl.size[2] ? Math.PI / 2 : 0;
               for (let k = 0; k * len < 30; k++) place(fl, d - 15 + k * len, ROAD_W + 6, { face: 'along', rot: turn, gap: 1, radK: 0.3, overlap: true }); }
             const idle = A.by.figure_idle || []; if (idle.length && r() < 0.8) place(idle[Math.floor(r() * idle.length)], d + 8, back - 3, { face: 'road', gap: 1, radK: 0.5, anim: 'Stehen' });
@@ -821,13 +823,17 @@ export class WorldScene {
       }
       // ---- mountain pass: stone walls at the hairpins, the pass sign on top ----
       if (s.land === 'serp') {
-        const cv = t.curve || [];
+        const cv = t.curve || []; let kehreNo = 0;
+        place(byName('wegkreuz'), s.from + 40, ROAD_W + 4, { face: 'road', gap: 1, radK: 0.4 }); // a wayside cross at the foot of every climb
+        const sp = byName('schneestangen'); if (sp) for (let d = s.from; d < s.to; d += 45) if (f.at(d).e > 1300) for (const sd of [-1, 1]) place(sp, d + (sd > 0 ? 0 : 22), sd * (ROAD_W + 1.6), { face: 'road', gap: 0.4, radK: 0.2, overlap: true }); // snow poles up high
         for (let i = Math.round(s.from / STEP) + 4; i < Math.round(s.to / STEP) - 4; i++) {
           let sum = 0; for (let k = -3; k <= 3; k++) sum += cv[i + k] || 0;
           if (Math.abs(sum) < 0.95) continue; // curve is clamped to ±0.15 per sample: only hairpins (π in ~70 m) get here
           const out = sum > 0 ? -1 : 1, d = i * STEP; // outside of the bend
           const e = s.style === 'asia' ? byName('steintreppe') : byName('steinmauer_kehre');
           place(e, d, out * (ROAD_W + 9 + (e ? Math.max(...e.size) / 2 : 0)), { face: 'road', gap: 2 });
+          const ks = byName('kehre_schild'); if (ks && ++kehreNo <= 10) { const o = place(ks, d - 45, -out * (ROAD_W + 2.5), { face: 'road', gap: 0.8, radK: 0.3 }); // hairpin numbers like on the classic passes
+            if (o) { const nr = kehreNo; o.traverse(c => { const m = /^nr_(\d+)$/.exec(c.name); if (m) c.visible = +m[1] === nr; }); } }
           i += 12;
         }
       }
@@ -853,6 +859,10 @@ export class WorldScene {
           if (monk) for (let k = 0; k < 7; k++) place(monk, mid - 18 + (k % 4) * 3.2, ROAD_W + 8 + Math.floor(k / 4) * 3.2, { face: 'road', anim: ['Kaempfen', 'Trainieren', 'Stehen'][k % 3], gap: 1, radK: 0.4 });
           place(byName('steintreppe'), mid + 30, ROAD_W + 14, { face: 'road', gap: 2 });
           place(byName('teehaus'), mid - 45, ROAD_W + 12 + 3, { face: 'road', gap: 3 }); // tea house on stilts with stone lanterns
+          for (let d = a + 40; d < b; d += 70 + r() * 50) place(byName('gebetsfahnen'), d, (r() < 0.5 ? -1 : 1) * (ROAD_W + 4), { face: 'along', anim: 'Wehen', gap: 1, radK: 0.4 });
+          place(byName('glockenpavillon'), mid + 70, ROAD_W + 12, { face: 'road', anim: 'Schwingen', gap: 3 });
+          const kw = byName('klostermauer'); if (kw) { const len = Math.max(kw.size[0], kw.size[2]) * 0.98, turn = kw.size[0] > kw.size[2] ? Math.PI / 2 : 0; // same as the wattle fence
+            for (let d = mid - 60; d < mid + 60; d += len) place(kw, d, ROAD_W + 32, { face: 'along', rot: turn, gap: 2, radK: 0.3, overlap: true }); } // the monastery wall behind pagoda and monks
         }
         if (s.top === 'pagode') {
           place(byName('pagode'), s.to + 55, ROAD_W + 22, { face: 'road', gap: 6 });
