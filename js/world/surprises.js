@@ -45,9 +45,6 @@ export class Surprises {
 
   update(_, dt, cam, d) {
     const time = this.clock = (this.clock || 0) + Math.min(dt, 0.1); // own clock: the preview's world time jumps when scrubbing
-    if (!this._warm) { this._warm = true; try { // shaders of the flight and hell visitors compiled up front: the bird flock's first frame took 0.4 s (Mac mini QA)
-      const tmp = new THREE.Scene(); for (const n of ['vogelschwarm_hoch', 'fledermaeuse', 'drache', 'gluehende_kohle_haufen', 'feuerdaemon', 'lava_fels', 'feuersaeule']) { const e = this.A.find(n); if (e) tmp.add(this.A.make(e, null).obj); }
-      if (tmp.children.length) this.w.renderer.compile(tmp, this.w.camera, this.w.scene); } catch (err) { console.warn('warm-up', err); } }
     const v = Math.max(2, this.w.speed || 6);
     if (time > this.next && this.f.tunnelNear?.(d, 20, 220)) this.next = time + 3; // nothing starts right before or inside a tunnel
     if (time > this.next && this.hold) this.next = time + 3; // a challenge is on: no other surprise steals the show

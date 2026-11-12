@@ -403,7 +403,7 @@ export class WorldScene {
     if (posts.length) {
       const pm = new THREE.InstancedMesh(new THREE.BoxGeometry(.16, .9, .16), new THREE.MeshStandardMaterial({ color: 0x5b4a3a, roughness: .9 }), posts.length * 2);
       const railGeo = new THREE.BoxGeometry(.06, .22, 1); railGeo.translate(0, 0, .5);
-      const rail = new THREE.InstancedMesh(railGeo, new THREE.MeshStandardMaterial({ color: 0x8d9196, roughness: .45, metalness: .7 }), posts.length);
+      const rail = new THREE.InstancedMesh(railGeo, new THREE.MeshStandardMaterial({ color: 0x8d9196, roughness: .7, metalness: .3, envMapIntensity: .6 }) /* galvanised, matt: shinier rails turned single segments white in the sky reflection */, posts.length);
       const m4 = new THREE.Matrix4(), q = new THREE.Quaternion(), s = new THREE.Vector3(1, 1, 1), p = new THREE.Vector3(), up = new THREE.Vector3(0, 1, 0);
       let nr = 0;
       posts.forEach(([x, y, z, a, i, side], k) => {
@@ -1003,7 +1003,8 @@ export class WorldScene {
       for (const [n, dd, off] of [['katapult', -55, 16], ['tribok', 50, 18], ['leiter', 5, 26], ['rammbock', -12, 24], ['zelt', -70, -12], ['palisade', -80, -10], ['banner', -40, 8], ['banner', 40, 8]]) {
         const e = byName(n); if (e) place(e, d0 + dd, off, { face: face(d0 + dd, off), gap: 1 }); }
     }
-    { const bn = byName('rideframe_banner'); if (bn) for (const sd of [1, -1]) place(bn, 6 + (sd > 0 ? 0 : 4), sd * (ROAD_W + (sd > 0 ? 2.8 : 3.8)), { face: 'road', rot: Math.PI, anim: 'Wehen', gap: 0.5, radK: 0.3, overlap: true }); } // RIDEFRAME banners at the start
+    { const bn = byName('rideframe_banner'); if (bn) { let rotY = null; for (const sd of [1, -1]) { const o = place(bn, sd > 0 ? 16 : 12, sd * (ROAD_W + 3.2), { face: 'road', rot: Math.PI, anim: 'Wehen', gap: 0.5, radK: 0.3, overlap: true });
+      if (o) { if (rotY == null) rotY = o.rotation.y; else o.rotation.y = rotY; } } } } // RIDEFRAME banners at the start, both with the print towards the camera (the mirrored one showed its edge)
     this._placeLegacyTops(segs);
     // everything that never moves: matrices once, then skipped by three's per-frame scene-graph update (was ~30 % CPU)
     const moving = new Set([...this.mixers.map(m => m.obj), ...this.birds, ...this.whales.map(w => w.obj), ...this.animated]);
@@ -1158,7 +1159,10 @@ export class WorldScene {
     // fast preview: a road chunk shows only once the ground under it stands, never as a band in the sky
     const has = d => { const q = f.at(Math.min(d, this.track.length)); return this.tiles.has(Math.floor(q.x / TILE) + ',' + Math.floor(q.z / TILE)); };
     for (const [k, c] of this.roadChunks) c.visible = k <= k0 + 1 || has(k * 500) && has(k * 500 + 250); // the road under and just ahead of the rider always shows
-    if (this.loading && hole >= 500) { this.loading = false; const done = () => this._readyRes(); // compile every shader of the start area first: no stutter in the first seconds
+    if (this.loading && hole >= 500) { this.loading = false; // compile every shader of the start area first: no stutter in the first seconds
+      const warm = new THREE.Group(); // plus the flight and hell visitors (their first frame stalled 0.4 s), compiled while the loading screen still shows
+      if (ASSETS.count) for (const n of ['vogelschwarm_hoch', 'fledermaeuse', 'drache', 'gluehende_kohle_haufen', 'feuerdaemon', 'lava_fels', 'feuersaeule']) { const e = ASSETS.find(n); if (e) { const o = ASSETS.make(e, null).obj; o.position.copy(this.camera.position); o.position.y -= 400; warm.add(o); } }
+      this.scene.add(warm); const done = () => { this.scene.remove(warm); this._readyRes(); };
       (this.renderer.compileAsync ? this.renderer.compileAsync(this.scene, this.camera) : Promise.resolve()).then(done, done); }
   }
 
