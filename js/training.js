@@ -129,7 +129,7 @@ export function trainingView(main, ctx) {
   <section class="view">
     <div class="view-head"><div><div class="label">Training</div><h1 class="display" style="margin-top:14px">Work&shy;outs</h1>
       <div class="meta">${WORKOUTS.length} Standard-Workouts${MY.length ? ` + ${MY.length} eigene` : ''} auf der ${coast === 'kueste60' ? 'Küstenstraße' : 'Felsenküste'} · Ziel-Watt aus deiner FTP (${ftp} W)</div></div>
-      <div><button class="btn" id="helperBtn">Welches Workout passt heute? ▸</button></div></div>
+      <div style="display:flex;gap:10px;flex-wrap:wrap;justify-content:flex-end"><a class="btn ghost" href="pure.html" style="text-decoration:none" title="Fürs Handy: nur Watt, Werte und Workouts, ohne Karte">Pure-Modus (Handy) ▸</a><button class="btn" id="helperBtn">Welches Workout passt heute? ▸</button></div></div>
     <label style="display:flex;gap:8px;align-items:center;margin:0 0 18px" title="Der Trainer hält die Zielwatt selbst"><input type="checkbox" class="toggle" id="ergChk2" ${state.settings.erg !== false ? 'checked' : ''}> ERG (Trainer hält die Watt)</label>
     <div class="view-head" style="margin-top:6px"><div><h3 style="margin:0">Meine Workouts</h3><div class="meta">Pro-Modus: eigene Intervalle bauen, unabhängig von der Strecke</div></div>
       <div><button class="btn ghost" id="newWBtn">+ Eigenes Workout bauen</button></div></div>

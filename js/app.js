@@ -115,6 +115,7 @@ function applyAccent() {
 }
 
 export function allRoutes() { return [...state.routes, ...Object.keys(BUILTIN).map(getBuiltin)]; }
+const routeName = id => id === 'pure' ? 'Pure (Handy)' : routeById(id)?.name;
 export function routeById(id) { return BUILTIN[id] ? getBuiltin(id) : state.routes.find(r => r.id === id); }
 export function ridesFor(id) { return state.rides.filter(r => r.routeId === id); }
 export function bestRide(id) { return ridesFor(id).filter(r => r.complete).sort((a, b) => a.duration - b.duration)[0]; }
@@ -289,19 +290,19 @@ function history() {
   <section class="view">
     <div class="view-head"><div><div class="label">Verlauf</div><h1 class="display" style="margin-top:14px">Fahrten &amp;<br>Rekorde</h1></div></div>
     <div class="records">
-      <div class="record"><div class="label">Beste 20 Minuten</div><div class="v">${best20 || '–'}<small>W</small></div><div class="s">${best20Ride ? esc(routeById(best20Ride.routeId)?.name || '') + ' · ' + new Date(best20Ride.date).toLocaleDateString('de-DE') : 'Fahre mind. 20 Minuten'}</div></div>
+      <div class="record"><div class="label">Beste 20 Minuten</div><div class="v">${best20 || '–'}<small>W</small></div><div class="s">${best20Ride ? esc(routeName(best20Ride.routeId) || '') + ' · ' + new Date(best20Ride.date).toLocaleDateString('de-DE') : 'Fahre mind. 20 Minuten'}</div></div>
       <div class="record"><div class="label">Gesamt</div><div class="v">${fmtKm(totalKm)}<small>km</small></div><div class="s">${rides.length} ${rides.length === 1 ? 'Fahrt' : 'Fahrten'} · ${(t => t >= 3600 ? `${Math.floor(t / 3600)} h ${Math.round(t % 3600 / 60)} min` : `${Math.round(t / 60)} min`)(rides.reduce((s, r) => s + r.duration, 0))}</div></div>
-      <div class="record"><div class="label">Meiste Höhenmeter</div><div class="v">${mostGain ? fmtNum(mostGain.gain) : '–'}<small>hm</small></div><div class="s">${mostGain ? esc(routeById(mostGain.routeId)?.name || '') : ''}</div></div>
+      <div class="record"><div class="label">Meiste Höhenmeter</div><div class="v">${mostGain ? fmtNum(mostGain.gain) : '–'}<small>hm</small></div><div class="s">${mostGain ? esc(routeName(mostGain.routeId) || '') : ''}</div></div>
       <div class="record"><div class="label">Längste Fahrt</div><div class="v">${longest ? fmtKm(longest.distance) : '–'}<small>km</small></div><div class="s">${longest ? fmtTime(longest.duration) : ''}</div></div>
     </div>
     <h2 class="section">Alle Fahrten</h2>
     ${rides.length ? `<table class="table">
       <tr><th class="label">Datum</th><th class="label">Strecke</th><th class="label">Zeit</th><th class="label">Distanz</th><th class="label">Höhenmeter</th><th class="label">Ø Watt</th><th class="label">Ø km/h</th><th class="label"></th><th class="label"></th></tr>
-      ${rides.map(x => { const pb = bestRide(x.routeId)?.id === x.id; return `<tr class="${pb ? 'pb' : ''}"><td>${new Date(x.date).toLocaleString('de-DE', { dateStyle: 'short', timeStyle: 'short' })}</td><td>${esc(routeById(x.routeId)?.name || 'Gelöschte Strecke')}</td><td>${fmtTime(x.duration)}</td><td>${fmtKm(x.distance)} km</td><td>${fmtNum(x.gain)} hm</td><td>${x.avgPower} W</td><td>${fmtNum(x.distance / x.duration * 3.6, 1)}</td><td>${pb ? 'BESTZEIT' : x.complete ? '' : '<span style="color:var(--muted)">abgebrochen</span>'}</td><td style="white-space:nowrap"><button class="btn ghost small strava" data-id="${x.id}">Strava</button> <button class="btn ghost small share" data-id="${x.id}">Teilen</button></td></tr>`; }).join('')}
+      ${rides.map(x => { const pb = x.routeId !== 'pure' && bestRide(x.routeId)?.id === x.id; return `<tr class="${pb ? 'pb' : ''}"><td>${new Date(x.date).toLocaleString('de-DE', { dateStyle: 'short', timeStyle: 'short' })}</td><td>${esc((routeName(x.routeId) || 'Gelöschte Strecke') + (x.routeId === 'pure' && x.workout ? ' · ' + x.workout : ''))}</td><td>${fmtTime(x.duration)}</td><td>${fmtKm(x.distance)} km</td><td>${fmtNum(x.gain)} hm</td><td>${x.avgPower} W</td><td>${fmtNum(x.distance / x.duration * 3.6, 1)}</td><td>${pb ? 'BESTZEIT' : x.complete ? '' : '<span style="color:var(--muted)">abgebrochen</span>'}</td><td style="white-space:nowrap"><button class="btn ghost small strava" data-id="${x.id}">Strava</button> <button class="btn ghost small share" data-id="${x.id}">Teilen</button></td></tr>`; }).join('')}
     </table>` : '<div class="empty">Noch keine Fahrten. Wähle eine Strecke und fahr los.</div>'}
   </section>`;
   main.querySelectorAll('.share').forEach(b => b.onclick = () => shareRide(rides.find(r => r.id === b.dataset.id)));
-  main.querySelectorAll('.strava').forEach(b => b.onclick = () => { const x = rides.find(r => r.id === b.dataset.id); if (x?.samples?.length) { const r = routeById(x.routeId), t = r?.track; stravaButton(b, x, r?.name || 'Fahrt', t?.ele ? d => eleAt(t, d) : null); } else toast('Diese Fahrt hat keine Messwerte.'); });
+  main.querySelectorAll('.strava').forEach(b => b.onclick = () => { const x = rides.find(r => r.id === b.dataset.id); if (x?.samples?.length) { const r = routeById(x.routeId), t = r?.track; stravaButton(b, x, routeName(x.routeId) || 'Fahrt', t?.ele ? d => eleAt(t, d) : null); } else toast('Diese Fahrt hat keine Messwerte.'); });
 }
 
 // ---- form controls: stepper (− value +) with optional "no answer", segmented switch ----
