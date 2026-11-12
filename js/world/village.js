@@ -30,11 +30,11 @@ function gateMesh() {
 function lanterns(leader) {
   const g = new THREE.Group();
   ['wizard', 'king', 'devil'].forEach((who, i) => {
-    const on = leader === who, m = new THREE.Mesh(new THREE.BoxGeometry(0.42, 0.6, 0.42),
+    const on = leader === who, m = new THREE.Mesh(new THREE.BoxGeometry(0.75, 1.05, 0.75),
       new THREE.MeshBasicMaterial({ color: new THREE.Color(WHO_COL[i]).multiplyScalar(on ? 1.6 : 0.85) }));
-    m.position.set((i - 1) * 1.3, 0, 0); m.userData.lantern = { base: on ? 1.6 : 0.85, ph: i * 2.1 }; g.add(m);
+    m.position.set((i - 1) * 1.7, 0, 0); m.userData.lantern = { base: on ? 1.6 : 0.85, ph: i * 2.1 }; g.add(m);
     const halo = new THREE.Sprite(new THREE.SpriteMaterial({ map: smokeTex(), color: WHO_COL[i], transparent: true, opacity: on ? 0.55 : 0.28, depthWrite: false, blending: THREE.AdditiveBlending }));
-    halo.scale.setScalar(on ? 2.4 : 1.6); halo.position.copy(m.position); g.add(halo);
+    halo.scale.setScalar(on ? 4 : 2.6); halo.position.copy(m.position); g.add(halo);
   });
   return g;
 }
@@ -83,7 +83,7 @@ export function buildVillage(ctx, v = {}) {
   const inn = any('wirtshaus') ? house(any('wirtshaus'), 14, ROAD_W + 9, { face: 'road', gap: 2 }, true)
     : house(any('fachwerkhaus_b', 'fachwerkhaus_a', 'steinhaus'), 14, ROAD_W + 8, { face: 'road', gap: 2, scale: 1.25 }, true);
   if (inn) { const sign = any('wirtshausschild'); if (sign) put(sign, 24, ROAD_W + 2.2, { face: 'road', overlap: true, radK: 0.3, gap: 0.4 });
-    const lt = loose(lanterns(v.leader), 14, ROAD_W + 3.2, 2.6, Math.PI / 2); lt.traverse(c => { if (c.userData.lantern) anim.push(c); }); }
+    const lt = loose(lanterns(v.leader), 26, ROAD_W + 2.6, 3.4, Math.PI / 2); /* hung out towards the road before the inn, seen on the approach */ lt.traverse(c => { if (c.userData.lantern) anim.push(c); }); }
   put(any('pferd'), 30, ROAD_W + 4.5, { face: 'along', anim: 'Stehen', gap: 0.8 });
   put(any('viehtraenke', 'fass'), 36, ROAD_W + 3.5, { face: 'along', gap: 0.6, radK: 0.5 });
   put(any('faesser_kisten', 'fass'), 6, ROAD_W + 3.2, { gap: 0.5 });
@@ -122,7 +122,7 @@ export function buildVillage(ctx, v = {}) {
     put(any('karren', 'leiterwagen', 'schubkarre'), 240, ROAD_W + 4.2, { face: 'along', gap: 0.8 });
   }
   // ---- 4 The Church: on the outside of the green, the tallest thing in the picture; climbing earns the spire (plan 3.2) ----
-  if (st >= 4) put(any('dorfkirche', 'kirche_gotisch'), 300, -(ROAD_W + 26), { face: 'road', gap: 6 });
+  if (st >= 4) put(any('dorfkirche', 'kirche_gotisch'), 300, -(ROAD_W + 26), { face: 'road', gap: 6, ground: 'centre' });
   // ---- 5 The Farms: the row of farmsteads between gate and smithy ----
   if (st >= 5) for (let k = 0; k < 6; k++) {
     const m = 320 + k * 13, s = k % 2 ? -1 : 1;
@@ -136,7 +136,7 @@ export function buildVillage(ctx, v = {}) {
     put(any('haendler'), 42, -(ROAD_W + 2.6), { face: 'road', anim: 'Rufen', radK: 0.4, gap: 0.4 });
   }
   // ---- 7 The Mill (on the way out would be past the finish, so it stands by the brook on the way in) ----
-  if (st >= 7) put(any('wassermuehle'), 470, -(ROAD_W + 30), { face: 'road', gap: 4 });
+  if (st >= 7) put(any('wassermuehle'), 470, -(ROAD_W + 30), { face: 'road', gap: 4, ground: 'centre' });
   // the next building as a bare timber frame: the preview of what the next kilometres will build
   const nx = nextStage(km);
   if (nx) { const site = any('baustelle'); const where = { 1: 95, 2: 160, 3: 260, 4: 300, 5: 340, 6: 45, 7: 470, 8: 400 }[STAGES.indexOf(nx)];

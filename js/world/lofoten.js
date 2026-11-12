@@ -646,7 +646,7 @@ export class WorldScene {
         for (const [a, b] of [[k, 0], [-k, 0], [0, k], [0, -k]]) { const h = f.height(q.x + a, q.z + b); lo = Math.min(lo, h); hi = Math.max(hi, h); }
         // farm animals, hay and yard things need level ground (Mac mini QA: cows "stacked" on a cliff, a haystack hanging over a snow slope)
         if ((o.flat ?? (/^animal_land/.test(e.category || '') || /heuhaufen|schubkarre|holzstapel|viehtraenke|waescheleine|katze|dorfbrunnen/.test(e.file))) && hi - lo > Math.max(1.2, k * 0.9)) return null;
-        y = rad < 1.5 ? Math.max(lo, y0 - 0.4) : lo; // lowest ground under the footprint, so nothing floats; small figures never sink into a steep bank (anglers were buried 5-10 m)
+        y = o.ground === 'centre' ? y0 - 0.3 : rad < 1.5 ? Math.max(lo, y0 - 0.4) : lo; // 'centre': big buildings on a slope sit on their middle, not sunk to the lowest corner // lowest ground under the footprint, so nothing floats; small figures never sink into a steep bank (anglers were buried 5-10 m)
         y += o.dy || 0;
       }
       const { obj, mixer } = A.make(e, o.anim, r);
