@@ -45,11 +45,11 @@ function hen(r) {
 function lanterns(leader) {
   const g = new THREE.Group();
   ['wizard', 'king', 'devil'].forEach((who, i) => {
-    const on = leader === who, m = new THREE.Mesh(new THREE.BoxGeometry(0.75, 1.05, 0.75),
-      new THREE.MeshBasicMaterial({ color: new THREE.Color(WHO_COL[i]).multiplyScalar(on ? 1.6 : 0.85) }));
-    m.position.set((i - 1) * 1.7, 0, 0); m.userData.lantern = { base: on ? 1.6 : 0.85, ph: i * 2.1 }; g.add(m);
-    const halo = new THREE.Sprite(new THREE.SpriteMaterial({ map: smokeTex(), color: WHO_COL[i], transparent: true, opacity: on ? 0.55 : 0.28, depthWrite: false, blending: THREE.AdditiveBlending }));
-    halo.scale.setScalar(on ? 4 : 2.6); halo.position.copy(m.position); g.add(halo);
+    const on = leader === who, m = new THREE.Mesh(new THREE.BoxGeometry(1.0, 1.4, 1.0), // unlit, not tone-mapped, not fogged: they glow even against the light
+      new THREE.MeshBasicMaterial({ color: new THREE.Color(WHO_COL[i]).multiplyScalar(on ? 1 : 0.7), toneMapped: false, fog: false }));
+    m.position.set((i - 1) * 2.4, 0, 0); m.userData.lantern = { base: on ? 1.6 : 0.85, ph: i * 2.1 }; g.add(m);
+    const halo = new THREE.Sprite(new THREE.SpriteMaterial({ map: smokeTex(), color: WHO_COL[i], transparent: true, toneMapped: false, fog: false, opacity: on ? 0.9 : 0.5, depthWrite: false, blending: THREE.AdditiveBlending }));
+    halo.scale.setScalar(on ? 5 : 3.4); halo.position.copy(m.position); g.add(halo);
   });
   return g;
 }
