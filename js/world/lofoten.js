@@ -646,7 +646,7 @@ export class WorldScene {
         for (const [a, b] of [[k, 0], [-k, 0], [0, k], [0, -k]]) { const h = f.height(q.x + a, q.z + b); lo = Math.min(lo, h); hi = Math.max(hi, h); }
         // farm animals, hay and yard things need level ground (Mac mini QA: cows "stacked" on a cliff, a haystack hanging over a snow slope)
         if ((o.flat ?? (/^animal_land/.test(e.category || '') || /heuhaufen|schubkarre|holzstapel|viehtraenke|waescheleine|katze|dorfbrunnen/.test(e.file))) && hi - lo > Math.max(1.2, k * 0.9)) return null;
-        y = o.ground === 'centre' ? y0 - 0.3 : rad < 1.5 ? Math.max(lo, y0 - 0.4) : lo; // 'centre': big buildings on a slope sit on their middle, not sunk to the lowest corner // lowest ground under the footprint, so nothing floats; small figures never sink into a steep bank (anglers were buried 5-10 m)
+        y = o.ground === 'centre' ? Math.min(y0 - 0.3, lo * 0.7 + y0 * 0.3 - 0.15) : rad < 1.5 ? Math.max(lo, y0 - 0.4) : lo; // 'centre': big buildings on a slope sit on their middle, not sunk to the lowest corner // lowest ground under the footprint, so nothing floats; small figures never sink into a steep bank (anglers were buried 5-10 m)
         y += o.dy || 0;
       }
       const { obj, mixer } = A.make(e, o.anim, r);
@@ -1401,7 +1401,7 @@ export class WorldScene {
     this.rain.visible = rain > 0.02 && !(this.tunnelK > 0.5); this.rain.material.uniforms.uRain.value = rain;
     this.light.intensity *= 1 - 0.35 * rain; this.hemi.color.lerp(H_GREY, rain * 0.5);
     const wk = WEEK_TINT[this.track.__village?.colour]; /* week colouring: the leader of the bet tints the light a little */
-    if (wk) { this.light.color.lerp(wk.l, 0.22); this.hemi.color.lerp(wk.h, 0.18); this.scene.fog.color.lerp(wk.f, 0.14); }
+    if (wk) { this.light.color.lerp(wk.l, 0.55); this.hemi.color.lerp(wk.h, 0.45); this.scene.fog.color.lerp(wk.f, 0.38); }
     const hk = this.hellK || 0; HELL.value = hk;
     if (hk > 0.002) { // the wizard's hell: red-brown haze closing in, ember light, lava instead of sea, clouds like smoke
       this.scene.fog.color.lerp(F_HELL, hk); this.scene.fog.density *= 1 + 2.4 * hk;
@@ -1623,7 +1623,7 @@ export const FOV_NORMAL = 62;
 const ENV_I = 0.55; // sky image light: less blue cast on meadows than before (0.95)
 const F_CLEAR = new THREE.Color(0xbfc6cd), F_GREY = new THREE.Color(0xb4b9c2);
 const WS_HIGH = new THREE.Color(0xffb27a), WS_LOW = new THREE.Color(0xff8a52);
-const WEEK_TINT = { wizard: { l: new THREE.Color(0xc4d6ff), h: new THREE.Color(0x9fb6e0), f: new THREE.Color(0xaebfd6) }, king: { l: new THREE.Color(0xffd27a), h: new THREE.Color(0xd8c48e), f: new THREE.Color(0xd6c6a2) }, devil: { l: new THREE.Color(0xff8a52), h: new THREE.Color(0xc89080), f: new THREE.Color(0xcfa596) } };
+const WEEK_TINT = { wizard: { l: new THREE.Color(0xa8c4ff), h: new THREE.Color(0x88a8e8), f: new THREE.Color(0x9fb6dc) }, king: { l: new THREE.Color(0xffc860), h: new THREE.Color(0xe0c070), f: new THREE.Color(0xe0c890) }, devil: { l: new THREE.Color(0xff7040), h: new THREE.Color(0xd07860), f: new THREE.Color(0xd89a88) } };
 const H_BOLT = new THREE.Color(0xd8ccff), F_HELL = new THREE.Color(0x5a1c10), L_HELL = new THREE.Color(0xff6a2a), H_HELL = new THREE.Color(0x8a2a14), WC_HELL = new THREE.Color(0xe04a08);
 const WC_CLEAR = new THREE.Color(0x0b3448), WC_GREY = new THREE.Color(0x26323a); // sea body colour: clear vs. overcast
 
