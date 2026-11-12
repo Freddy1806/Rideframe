@@ -108,6 +108,7 @@ export function buildVillage(ctx, v = {}) {
   put(any('dorflinde'), 75, -(ROAD_W + 10), { face: 'road', gap: 3 });
   put(any('dorfbrunnen', 'brunnen'), 62, ROAD_W + 6, { face: 'road', anim: 'Fliessen', gap: 0.8 });
   put(any('wegkreuz'), 430, ROAD_W + 4, { face: 'road', gap: 0.8 });
+  put(any('bildstock'), 445, ROAD_W + 5, { face: 'road', gap: 0.8 });
   put(any('wegweiser'), 434, -(ROAD_W + 3.5), { face: 'road', gap: 0.6 });
 
   // ---- 1 Home Gate: the messenger's own farm and the gate in the village fence ----
@@ -134,7 +135,14 @@ export function buildVillage(ctx, v = {}) {
     [[140, 1], [160, -1], [185, 1], [210, -1]].forEach(([m, s], i) => {
       house(any(i % 2 ? 'fachwerkhaus_b' : 'fachwerkhaus_a', 'steinhaus'), m, s * (ROAD_W + 10), { face: 'road', gap: 2 });
       put(any(i % 2 ? 'holzstapel' : 'heuhaufen'), m - 7, s * (ROAD_W + 4.5), { gap: 0.6 });
+      put(any('stall_klein'), m + 9, s * (ROAD_W + 17), { face: 'road', gap: 1.5 });
+      put(any(['korb', 'sack', 'hackklotz', 'trog'][i]), m + 6, s * (ROAD_W + 4), { face: 'road', gap: 0.5, radK: 0.5 });
+      if (i % 2) put(any('leiter'), m + 3, s * (ROAD_W + 6.2), { face: 'road', overlap: true, radK: 0.3, gap: 0.5 });
     });
+    put(any('bank'), 73, -(ROAD_W + 4.2), { face: 'road', gap: 0.5, radK: 0.5 }); // the bench under the lime tree
+    for (let k = 0; k < 4; k++) put(any('bienenkorb'), 165 + k * 1.6, ROAD_W + 32, { face: 'road', gap: 0.5, radK: 0.4, overlap: k > 0 });
+    for (const [m, sd, n] of [[150, 1, 'kulisse_dachreihe'], [190, -1, 'kulisse_dachreihe_b'], [250, -1, 'kulisse_dachreihe']]) put(any(n), m, sd * (ROAD_W + 46), { face: 'road', gap: 4, radK: 0.4 }); // the second row: roofs only
+    put(any('huette', 'huette_b'), 222, ROAD_W + 11, { face: 'road', gap: 1.5 }); // a day labourer's hut at the edge
     put(any('backhaus'), 75, -(ROAD_W + 18), { face: 'road', gap: 2 });
     put(any('karren_heu', 'karren'), 172, -(ROAD_W + 4.5), { face: 'along', gap: 0.8 });
     put(any('magd_eimer'), 58, ROAD_W + 3.6, { face: 'road', anim: 'Stehen', radK: 0.4, gap: 0.4 });
@@ -152,17 +160,29 @@ export function buildVillage(ctx, v = {}) {
     put(any('karren', 'leiterwagen', 'schubkarre'), 240, ROAD_W + 4.2, { face: 'along', gap: 0.8 });
   }
   // ---- 4 The Church: on the outside of the green, the tallest thing in the picture; climbing earns the spire (plan 3.2) ----
-  if (st >= 4) put(any('dorfkirche', 'kirche_gotisch'), 300, -(ROAD_W + 26), { face: 'road', gap: 6, ground: 'centre' });
+  if (st >= 4) {
+    const ch = put(any('dorfkirche', 'kirche_gotisch'), 300, -(ROAD_W + 26), { face: 'road', gap: 6, ground: 'centre' });
+    if (ch && (v.hm || 0) < 2000) { const helm = ch.getObjectByName('dorfkirche_helm'); if (helm) helm.parent.remove(helm); } // the spire is built by climbing (2 000 Hm)
+    const wall = any('kirchhofmauer'), gate2 = any('kirchhofmauer_tor'); // churchyard wall along the road side, gate opposite the church door
+    if (wall) for (let k = -4; k <= 4; k++) if (k) put(wall, 300 + k * 3.95, -(ROAD_W + 9), { face: 'road', overlap: true, radK: 0.3, gap: 0.5 });
+    put(gate2, 300, -(ROAD_W + 9), { face: 'road', overlap: true, radK: 0.3, gap: 0.5 });
+    const graves = ['grabkreuz', 'grabstein', 'grabstein_b'].map(any).filter(Boolean);
+    if (graves.length) for (let k = 0; k < 14; k++) put(graves[k % graves.length], 287 + (k % 7) * 4 + ctx.r(), -(ROAD_W + 12.5 + Math.floor(k / 7) * 2.6), { face: 'road', overlap: true, radK: 0.3, gap: 0.5 });
+    put(any('pfarrhof'), 328, -(ROAD_W + 20), { face: 'road', gap: 2 });
+  }
   // ---- 5 The Farms: the row of farmsteads between gate and smithy ----
   if (st >= 5) for (let k = 0; k < 6; k++) {
     const m = 320 + k * 13, s = k % 2 ? -1 : 1;
     house(any(k % 3 ? 'fachwerkhaus_a' : 'fachwerkhaus_b', 'steinhaus'), m, s * (ROAD_W + 9), { face: 'road', gap: 2 });
     put(any('scheune', 'heuhaufen'), m + 4, s * (ROAD_W + 22), { face: 'road', gap: 2 });
+    if (k === 5) { put(any('huette_b', 'huette'), 395, ROAD_W + 10, { face: 'road', gap: 1.5 });
+      const fence = any('stangenzaun'); if (fence) for (let j = 0; j < 10; j++) put(fence, 405 + j * 2.95, ROAD_W + 14, { face: 'road', overlap: true, radK: 0.3, gap: 1 }); } // the common pasture
   }
   // ---- 6 Market Square: market cross, stalls and a trader between the green and the inn ----
   if (st >= 6) {
     put(any('marktkreuz', 'wegkreuz'), 45, ROAD_W + 9, { face: 'road', gap: 0.8 });
     for (let k = 0; k < 3; k++) put(any('marktstand_obst'), [33, 40, 54][k], ROAD_W + 4.4, { face: 'road', gap: 0.6 });
+    for (const m of [26, 61]) put(any('verkaufsbank'), m, ROAD_W + 4.2, { face: 'road', gap: 0.5, radK: 0.5 });
     put(any('haendler'), 42, ROAD_W + 2.6, { face: 'road', anim: 'Rufen', radK: 0.4, gap: 0.4 });
   }
   // ---- 7 The Mill (on the way out would be past the finish, so it stands by the brook on the way in) ----
