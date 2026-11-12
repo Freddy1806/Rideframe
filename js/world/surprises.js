@@ -66,7 +66,7 @@ export class Surprises {
     if (rain > 0.3) this.wet = true;
     else if (this.wet && rain < 0.04 && !this.hell) { this.wet = false; if (!(this.bow && this.bow.busy())) setTimeout(() => (this.bow ||= new Rainbow(this.w.scene)).start(), 4000); }
     this._wizLife(dt, cam, d);
-    this.fw.setDay((this.w.sunY ?? 0) > 0.1 && !(this.w.hellK > 0.5)); this.fw.update(dt); this.fx.update(dt); this.smoke.update(dt, cam); this.bow?.update(dt, cam, this.f.at(Math.min(this.track.length - 1, d + 30)));
+    this.fw.setDay((this.w.sunY ?? 1) > -0.03 && !(this.w.hellK > 0.5)); this.fw.update(dt); this.fx.update(dt); this.smoke.update(dt, cam); this.bow?.update(dt, cam, this.f.at(Math.min(this.track.length - 1, d + 30))); // fireworks: any light sky counts as day (midnight sun!)
   }
 
   // ---- helpers ----

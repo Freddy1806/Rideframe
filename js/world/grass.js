@@ -1,5 +1,6 @@
 // Dense meadow grass: instanced clumps of thin curved blades, coloured per instance, swaying in the wind.
 import * as THREE from 'three';
+import { HELL } from './terrainmat.js';
 
 function rng(seed) { return () => { seed = (seed * 16807) % 2147483647; return (seed - 1) / 2147483646; }; }
 
@@ -31,9 +32,9 @@ export function clumpGeometry(blades = 9, seed = 3) {
 export function grassMaterial(timeU) {
   const m = new THREE.MeshStandardMaterial({ vertexColors: true, side: THREE.DoubleSide, roughness: 0.85 });
   m.onBeforeCompile = sh => {
-    sh.uniforms.uTime = timeU;
+    sh.uniforms.uTime = timeU; sh.uniforms.uHell = HELL;
     sh.vertexShader = sh.vertexShader
-      .replace('#include <common>', '#include <common>\nuniform float uTime;')
+      .replace('#include <common>', '#include <common>\nuniform float uTime, uHell;')
       .replace('#include <begin_vertex>', `#include <begin_vertex>
   {
     vec3 ip = vec3(instanceMatrix[3][0], 0., instanceMatrix[3][2]);
@@ -41,6 +42,7 @@ export function grassMaterial(timeU) {
     float gust = sin(uTime * 1.3 + ip.x * 0.07 + ip.z * 0.05) * 0.5 + 0.5;
     transformed.x += k * (0.10 + 0.18 * gust) * sin(uTime * 2.1 + ip.x * 0.9 + ip.z * 0.4);
     transformed.z += k * (0.06 + 0.10 * gust) * cos(uTime * 1.7 + ip.z * 0.8);
+    transformed *= 1. - step(.5, uHell); // hell: no green grass (collapsed, not hidden: hidden meshes are never uploaded and stalled the frame when hell ended)
   }`);
   };
   return m;
@@ -52,3 +54,8 @@ export function grassColor(r, out) {
   const i = r() < 0.06 ? 4 + Math.floor(r() * 2) : Math.floor(r() * 4);
   return out.copy(PAL[i]).multiplyScalar(0.85 + r() * 0.3);
 }
+
+/** the same hell collapse for the plain tuft materials */
+export function hellCollapse(m) { m.onBeforeCompile = sh => { sh.uniforms.uHell = HELL;
+  sh.vertexShader = 'uniform float uHell;\n' + sh.vertexShader.replace('#include <begin_vertex>', '#include <begin_vertex>\n  transformed *= 1. - step(.5, uHell);'); };
+  m.customProgramCacheKey = () => 'hellcollapse'; return m; }

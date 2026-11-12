@@ -27,7 +27,7 @@ import { EffectComposer } from '../../vendor/jsm/postprocessing/EffectComposer.j
 import { RenderPass } from '../../vendor/jsm/postprocessing/RenderPass.js';
 import { GTAOPass } from '../../vendor/jsm/postprocessing/GTAOPass.js';
 import { OutputPass } from '../../vendor/jsm/postprocessing/OutputPass.js';
-import { clumpGeometry, grassMaterial, grassColor } from './grass.js';
+import { clumpGeometry, grassMaterial, grassColor, hellCollapse } from './grass.js';
 const ASSETS = await loadAssets();
 // group templates from the Mac mini (herds, a band with its audience): [{ name, kind, radius_m, members: [{ file, x, z, rot, anim, phase }] }]
 const GROUPS = typeof fetch === 'undefined' ? [] : await fetch(new URL('../../assets/world/gruppen.json', import.meta.url)).then(r => r.ok ? r.json() : []).catch(() => []);
@@ -333,7 +333,7 @@ export class WorldScene {
     const card = () => { const g = new THREE.PlaneGeometry(1, 1); g.translate(0, .5, 0); const g2 = g.clone().rotateY(Math.PI / 2); return mergeGeos([g, g2]); };
     this.tuftGeo = card();
     this.grassTime = { value: 0 }; this.clumpGeo = clumpGeometry(7, 3); this.clumpMat = grassMaterial(this.grassTime);
-    this.tuftMats = [tuft, tuftF].map(t => new THREE.MeshStandardMaterial({ map: t, alphaTest: 0.4, side: THREE.DoubleSide, roughness: 1 }));
+    this.tuftMats = [tuft, tuftF].map(t => hellCollapse(new THREE.MeshStandardMaterial({ map: t, alphaTest: 0.4, side: THREE.DoubleSide, roughness: 1 })));
     this.shrubGeo = shrubGeometry(); this.shrubMat = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.95, map: leafTex(), alphaTest: 0.3, side: THREE.DoubleSide });
     charred(this.shrubMat, true);
 
@@ -1353,7 +1353,6 @@ export class WorldScene {
     this.rain.visible = rain > 0.02 && !(this.tunnelK > 0.5); this.rain.material.uniforms.uRain.value = rain;
     this.light.intensity *= 1 - 0.35 * rain; this.hemi.color.lerp(H_GREY, rain * 0.5);
     const hk = this.hellK || 0; HELL.value = hk;
-    { const gv = hk < 0.5; if (this.clumpMat.visible !== gv) { this.clumpMat.visible = gv; this.tuftMats.forEach(m => { m.visible = gv; }); } } // no green grass in hell
     if (hk > 0.002) { // the wizard's hell: red-brown haze closing in, ember light, lava instead of sea, clouds like smoke
       this.scene.fog.color.lerp(F_HELL, hk); this.scene.fog.density *= 1 + 2.4 * hk;
       this.light.color.lerp(L_HELL, hk * 0.85); this.light.intensity *= 1 - 0.4 * hk;
