@@ -146,6 +146,7 @@ function library() {
       </div>
       <div style="display:flex;gap:10px"><button class="btn ghost" id="lookBtnLib">Mein Fahrer</button><button class="btn ghost" id="groupBtnLib">Zusammen fahren</button><button class="btn" id="uploadBtn">＋ Strecke hochladen</button></div>
     </div>
+    <div id="board" hidden></div>
     <div class="grid">
       ${routes.map(card).join('')}
       <button class="add-card" id="addCard">
@@ -159,6 +160,28 @@ function library() {
   $('#groupBtnLib').onclick = () => groupModal({ startRide });
   $('#lookBtnLib').onclick = () => import('./avatar-ui.js').then(x => x.avatarModal());
   main.querySelectorAll('.card').forEach(c => c.addEventListener('click', () => go('detail', c.dataset.id)));
+  showBoard();
+}
+
+/* friends leaderboard: every account on this host, this week (Monday to Sunday) */
+const BOARD_SORT = { km: ['km', 'km'], hm: ['Hm', 'Höhenmeter'], pts: ['Punkte', 'Wette'] };
+async function showBoard() {
+  if (!account()) return;
+  const { loadBoard } = await import('./account.js'), b = await loadBoard(), el = $('#board');
+  if (!b?.rows?.length || !el || !el.isConnected) return;
+  const tot = r => r.pts ? r.pts.wizard + r.pts.king + r.pts.devil : 0;
+  const draw = () => {
+    const k = state.settings.boardSort || 'km', val = r => k === 'km' ? r.km : k === 'hm' ? r.hm : tot(r);
+    const rows = [...b.rows].sort((x, y) => val(y) - val(x) || y.km - x.km);
+    el.innerHTML = `<div class="board">
+      <div class="board-head"><div class="label">Rangliste diese Woche</div>
+        <div class="board-tabs">${Object.entries(BOARD_SORT).map(([id, [t]]) => `<button class="${id === k ? 'on' : ''}" data-k="${id}">${t}</button>`).join('')}</div></div>
+      <table><tbody>${rows.map((r, i) => `<tr class="${r.me ? 'me' : ''}"><td class="rank">${i + 1}</td><td class="nm">${esc(r.name)}</td>
+        <td>${fmtNum(r.km, 1)} km</td><td>${fmtNum(r.hm)} Hm</td><td class="dim">${r.days} ${r.days === 1 ? 'Tag' : 'Tage'}</td>
+        <td class="pts">${r.pts ? `<span class="wz">${r.pts.wizard}</span><span class="kg">${r.pts.king}</span><span class="dv">${r.pts.devil}</span>` : '<span class="dim">–</span>'}</td></tr>`).join('')}</tbody></table></div>`;
+    el.querySelectorAll('.board-tabs button').forEach(x => x.onclick = () => { state.settings.boardSort = x.dataset.k; saveSettings(); draw(); });
+  };
+  el.hidden = false; draw();
 }
 
 function card(r) {

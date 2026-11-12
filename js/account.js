@@ -31,6 +31,7 @@ export async function syncAccount(state, preferServer = false) {
   const { ids } = await api('rides'), have = new Set(ids), local = await db.all('rides'), mine = new Set(local.map(r => r.id));
   for (const r of local) if (!have.has(r.id)) await pushRide(r);
   for (const id of ids) if (!mine.has(id)) { const r = await api('rides/' + id).catch(() => null); if (r?.id) await db.put('rides', r); }
+  const L = await db.kvGet('story').catch(() => null); if (L) pushStory(L); /* the leaderboard shows this week's wager points too */
   return true;
 }
 async function pushSettings(settings, at) { if (acc) await api('settings', { method: 'PUT', body: JSON.stringify({ settings, at }) }); }
@@ -42,6 +43,11 @@ export function settingsChanged(settings) {
 }
 /** call after a ride was saved locally */
 export async function pushRide(rec) { if (acc) await api('rides/' + rec.id, { method: 'PUT', body: JSON.stringify(rec) }).catch(() => {}); }
+
+/** the wager's points of this week, for the friends leaderboard */
+export async function pushStory(L) { if (acc && L?.week) await api('story', { method: 'PUT', body: JSON.stringify({ week: L.week, pts: L.pts }) }).catch(() => {}); }
+/** weekly leaderboard of all accounts on this host (null without an account) */
+export async function loadBoard() { return acc ? api('board').catch(() => null) : null; }
 
 const esc = s => String(s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
 

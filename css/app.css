@@ -455,3 +455,19 @@ input[type=number]::-webkit-inner-spin-button, input[type=number]::-webkit-outer
 .card .go { top: 50%; left: 50%; right: auto; width: 72px; height: 72px; transform: translate(-50%, -50%) scale(.8); box-shadow: 0 8px 30px rgba(0,0,0,.45); }
 .card:hover .go { transform: translate(-50%, -50%) scale(1); }
 .card .thumb .go svg { width: 28px; height: 28px; margin-left: 5px; }
+
+/* friends leaderboard (library) */
+.board { border: 1px solid var(--line-2); border-radius: var(--radius); padding: 16px 18px; margin: 0 0 28px; background: var(--ink-2); }
+.board-head { display: flex; justify-content: space-between; align-items: center; gap: 12px; margin-bottom: 10px; flex-wrap: wrap; }
+.board-tabs { display: flex; gap: 6px; }
+.board-tabs button { background: none; border: 1px solid var(--line-2); color: var(--muted); font: inherit; font-size: 13px; padding: 6px 12px; border-radius: 99px; cursor: pointer; }
+.board-tabs button.on { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); }
+.board table { width: 100%; border-collapse: collapse; font-size: 15px; }
+.board td { padding: 8px 6px; border-top: 1px solid var(--line); white-space: nowrap; }
+.board td.rank { font-weight: 900; width: 32px; }
+.board td.nm { font-weight: 700; width: 100%; white-space: normal; }
+.board td.dim, .board .dim { color: var(--muted); }
+.board tr.me td { color: var(--accent); }
+.board td.pts span { display: inline-block; min-width: 30px; text-align: center; padding: 2px 6px; margin-left: 4px; border-radius: 3px; font-size: 13px; font-weight: 700; color: #0b0b0b; }
+.board .wz { background: #7fa6ff; } .board .kg { background: #f2c14e; } .board .dv { background: #ff6a3d; }
+@media (max-width: 640px) { .board td.dim { display: none; } .board td.pts span { min-width: 0; margin-left: 2px; } }

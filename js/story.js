@@ -35,7 +35,7 @@ export async function loadLedger() {
   L.pts ||= zero();
   return L;
 }
-export const saveLedger = L => db.kvSet('story', L).catch(() => {});
+export const saveLedger = L => { import('./account.js').then(a => a.pushStory?.(L)).catch(() => {}); return db.kvSet('story', L).catch(() => {}); };
 
 // ---- the lines (English, max 8 words); keys are the ElevenLabs file names, text is the manifest key ----
 export const LINES = { // 12 per figure (stage 1); Fable's wording where the plan has it
