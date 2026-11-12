@@ -1004,7 +1004,9 @@ export class WorldScene {
         const e = byName(n); if (e) place(e, d0 + dd, off, { face: face(d0 + dd, off), gap: 1 }); }
     }
     { const bn = byName('rideframe_banner'), c = f.at(0), flip = QS.has('bannerflip') ? Math.PI : 0; if (bn) for (const sd of [1, -1]) { const o = place(bn, sd > 0 ? 26 : 22, sd * (ROAD_W + 1.5), { face: 'road', anim: 'Wehen', gap: 0.3, radK: 0.2, overlap: true });
-      if (o) o.rotation.y = Math.atan2(c.x - o.position.x, c.z - o.position.z) + flip; } } // RIDEFRAME beach flags past the start arch, the print side (+Z) turned straight at the start position
+      if (o) { o.rotation.y = Math.atan2(c.x - o.position.x, c.z - o.position.z) + flip;
+        o.traverse(m => { if (!m.isMesh || !m.material?.map || Array.isArray(m.material)) return; m.material = m.material.clone(); m.material.side = THREE.DoubleSide; // the print lit from within: against the low sun the cloth was pitch black at every angle (Mac mini QA)
+          if (m.material.emissive) { m.material.emissive.setRGB(1, 1, 1); m.material.emissiveMap = m.material.map; m.material.emissiveIntensity = 0.45; } }); } } } // RIDEFRAME beach flags past the start arch, the print side (+Z) turned straight at the start position
     { // the MacBook's ride furniture (each only once its model exists): feed stations on the tops, a grandstand at the finish, hot-air balloons over the land, signposts at the turn-offs
       const L = t.length, vs = byName('verpflegungsstand'), tb = byName('zuschauer_tribuene'), hb = byName('heissluftballon'), ws = byName('wegweiser');
       for (const s of segs) {
