@@ -101,7 +101,7 @@ export function buildVillage(ctx, v = {}) {
     const lt = loose(lanterns(v.leader), 45, -(ROAD_W + 2.6), 3.6, Math.PI / 2); /* hung out towards the road before the inn, seen on the approach */ lt.traverse(c => { if (c.userData.lantern) anim.push(c); }); }
   // the other two bettors wait in front of their inn (the wizard stands at the finish arch); the week's leader cheers
   if (inn) { put(any('koenig_wette'), 34, -(ROAD_W + 4), { face: 'road', anim: v.leader === 'king' ? 'Jubeln' : 'Winken', radK: 0.4, gap: 0.6 });
-    put(any('teufel_wette'), 50, -(ROAD_W + 4.5), { face: 'road', anim: v.leader === 'devil' ? 'Lachen' : 'Zeigen', radK: 0.4, gap: 0.6 }); }
+    put(any('teufel_wette'), 56, -(ROAD_W + 4.5), { face: 'road', anim: v.leader === 'devil' ? 'Lachen' : 'Zeigen', radK: 0.4, gap: 0.6 }); }
   put(any('pferd'), 30, ROAD_W + 4.5, { face: 'along', anim: 'Stehen', gap: 0.8 });
   put(any('viehtraenke', 'fass'), 36, ROAD_W + 3.5, { face: 'along', gap: 0.6, radK: 0.5 });
   put(any('faesser_kisten', 'fass'), 6, ROAD_W + 3.2, { gap: 0.5 });
