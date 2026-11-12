@@ -542,3 +542,9 @@ img.face.big{width:96px;height:96px}
 .pstats b{font-size:22px}.pstats span{font-size:12px;opacity:.7}
 .plist{overflow:auto;flex:1}
 @media (max-width:600px){.pstats{grid-template-columns:repeat(2,1fr)}}
+
+/* laps: the short fade back to the start line */
+.lapfade{position:absolute;inset:0;z-index:30;background:#000;display:grid;place-items:center;pointer-events:none;opacity:1;transition:opacity .9s}
+.lapfade.out{opacity:0}
+.lapfade div{font-size:64px;font-weight:900;font-stretch:112%;text-transform:uppercase;color:var(--paper);text-align:center;line-height:1}
+.lapfade small{display:block;font-size:18px;font-weight:600;color:var(--muted);margin-top:10px;letter-spacing:.08em}

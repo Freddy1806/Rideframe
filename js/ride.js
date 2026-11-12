@@ -86,6 +86,9 @@ export class RideSession {
     this.params = defaultParams(state.settings);
     this.d = Math.min(at, this.track.length - 1); this.v = 0; this.elapsed = 0;
     this.startD = this.d; // a ride started mid-route counts its own distance and never sets a best time
+    // laps (Freddy 12.11.): at the finish the route starts over until all laps are done; never in a group ride (all ride the same d)
+    if (/[?&]laptest/.test(location.search)) window.__ride = this; // test handle
+    this.laps = group || autopilot ? 1 : Math.max(1, Math.min(20, +state.settings.laps || 1)); this.lap = 1; this.lapOff = 0; this._lapBase = this.d; this._lapT0 = 0; this.lapList = [];
     this.manualPower = autopilot ? 240 : 0; this.power = 0; this.cadence = 0; this.hr = 0;
     this.powerHist = []; this.samples = []; this.lastSample = 0; this.gainAcc = 0; this.lastEle = eleAt(this.track, this.d);
     this.running = false; this.paused = false; this.finished = false;
@@ -200,7 +203,7 @@ export class RideSession {
           <div class="metric" data-hud="wkg"><div class="label">W/kg</div><div class="v num"><span id="hWkg">0,0</span></div><div class="sub" id="hWkgSub">Gewicht ${fmtNum(this.state.settings.riderKg || 75, 0)} kg</div></div>
           <div class="metric" data-hud="speed"><div class="label">Tempo</div><div class="v num"><span id="hSpd">0,0</span><small>km/h</small></div><div class="sub" id="hSpdSub">–</div></div>
           <div class="metric" data-hud="cad"><div class="label">Trittfrequenz</div><div class="v num"><span id="hCad">0</span><small>rpm</small></div><div class="sub" id="hHr">–</div></div>
-          <div class="metric" data-hud="dist"><div class="label">Distanz</div><div class="v num"><span id="hDist">0,0</span><small>km</small></div><div class="sub" id="hDistSub">von ${fmtKm(this.track.length)} km</div></div>
+          <div class="metric" data-hud="dist"><div class="label">Distanz</div><div class="v num"><span id="hDist">0,0</span><small>km</small></div><div class="sub" id="hDistSub">${this._distSub()}</div></div>
           <div class="metric" data-hud="hr"><div class="label">Puls</div><div class="v num"><span id="hBpm">–</span><small>bpm</small></div><div class="sub" id="hGain">0 m · +0 hm</div></div>
           <div class="metric" data-hud="grade"><div class="label">Steigung</div><div class="v num"><span id="hGrade2">0,0</span><small>%</small></div><div class="sub" id="hTrainer">${this.state.trainer.connected ? 'Trainer aktiv' : 'Ohne Trainer · ↑ ↓ Watt'}</div></div>
         </div>
@@ -323,10 +326,10 @@ export class RideSession {
       this._syncVideo();
       if (this.elapsed - this.lastSample >= 1) {
         this.lastSample = Math.floor(this.elapsed);
-        this.samples.push([this.lastSample, Math.round(this.d - this.startD), Math.round(this.power), Math.round(this.v * 36) / 10, Math.round(this.cadence), this.hr]);
+        this.samples.push([this.lastSample, Math.round(this._ridden()), Math.round(this.power), Math.round(this.v * 36) / 10, Math.round(this.cadence), this.hr]);
         this.powerHist.push(this.power);
       }
-      if (this.d >= this.track.length) this._finish();
+      if (this.d >= this.track.length) { if (this.lap < this.laps) this._nextLap(); else this._finish(); }
     }
     if (now - (this.lastHud || 0) > 100) { this.lastHud = now; this._updateHUD(); }
     if (this.ue) this._ueLive();
@@ -400,7 +403,7 @@ export class RideSession {
     q('#hPow').textContent = pShow; const wk = q('#hWkg'); if (wk) wk.textContent = fmtNum(pShow / (this.state.settings.riderKg || 75), 1);
     q('#hPowSub').textContent = `Ø ${avgP} W · ${fmtNum(pShow / this.state.settings.riderKg, 1)} W/kg`;
     q('#hSpd').textContent = fmtNum(this.v * 3.6, 1);
-    q('#hSpdSub').textContent = this.track.world ? `noch ${fmtNum(Math.max(0, this.track.length - this.d) / 1000, 1)} km` : this.v < 0.3 ? 'Video steht' : `Video ×${fmtNum(this.rate || 1, 2)}`;
+    q('#hSpdSub').textContent = this.track.world ? `noch ${fmtNum(Math.max(0, this.track.length * (this.laps - this.lap + 1) - this.d) / 1000, 1)} km` : this.v < 0.3 ? 'Video steht' : `Video ×${fmtNum(this.rate || 1, 2)}`;
     q('#hCad').textContent = this.cadence;
     const tc = this.state.settings.cadence, cadOff = tc && this.cadence > 20 ? this.cadence - tc : 0;
     const hint = cadOff < -8 ? '▼ leichter schalten' : cadOff > 8 ? '▲ schwerer schalten' : '';
@@ -416,7 +419,7 @@ export class RideSession {
       if (this.berg) { q('#hGear').textContent = (this._bergW || this._bergTarget()) + ' W'; q('#hGearL').textContent = 'Berg-Watt · Ziel'; }
       else { const g = estimateGear(this.gears, t.data?.speed, this.cadence, this.wheel * 1000); q('#hGear').textContent = g ? gearName(g) : '–'; }
     }
-    q('#hDist').textContent = fmtNum(this.d / 1000, 2);
+    q('#hDist').textContent = fmtNum((this.lapOff + this.d) / 1000, 2);
     q('#hBpm').textContent = this.hr || '–';
     q('#hGain').textContent = `${fmtNum(eleAt(this.track, this.d))} m · +${fmtNum(this.gainAcc)} hm`;
     q('#hGrade').textContent = fmtNum(Math.abs(g), 1);
@@ -443,7 +446,7 @@ export class RideSession {
     else nx.hidden = true;
     // ghost
     let ghostD = null;
-    if (this.ghost) {
+    if (this.ghost && this.lap === 1) { // the ghost rode one lap
       ghostD = this.ghostDistAt(this.elapsed);
       const gt = this.ghostTimeAt(this.d);
       const el = q('#hGap');
@@ -561,7 +564,7 @@ export class RideSession {
   _wizTick(dt) {
     const sp0 = this.player?.events?.surprises;
     // the wizard always waits at the finish line of a free ride and has the last word (Freddy)
-    if (sp0?.wizard && this.state.settings.wizard !== false && !this.workout && !this.group && !this.autopilot && this.track.length - this.d < 400 && !this._goalWiz) this._goalWiz = sp0.wizard(this.track.length + 6);
+    if (sp0?.wizard && this.state.settings.wizard !== false && !this.workout && !this.group && !this.autopilot && this.lap >= this.laps && this.track.length - this.d < 400 && !this._goalWiz) this._goalWiz = sp0.wizard(this.track.length + 6);
     if (this._goalWiz && !this._goalSaid && this.track.length - this.d < 70) { this._goalSaid = true; this.story?._line('wizard', 'goal'); }
     const z = this.wiz; if (!z || this.workout) return;
     if (z.exitH && this.d > z.exitH.d - 12) { sp0?.poof?.(z.exitH); z.exitH = null; } // he sends you on (up) and is gone in a puff
@@ -665,7 +668,7 @@ export class RideSession {
   /** share photos of you on the bike: after 800 m, then every 4 km; the highest spot (best view) is used later */
   _photoTick() {
     if (!this.player?.snapshot || this.paused || this.finished) return;
-    const rd = this.d - this.startD; this._nextShot ??= 800;
+    const rd = this._ridden(); this._nextShot ??= 800;
     if (!this._shotArm && rd >= this._nextShot) { this._nextShot += 4000; this._shotArm = performance.now(); }
     if (this._shotArm && !this._shooting && performance.now() - this._shotArm > 1200) this._takePhoto();
   }
@@ -880,7 +883,7 @@ export class RideSession {
     const pw = this.samples.map(s => s[2]);
     return {
       id: uid(), routeId: this.route.id, date: Date.now(), complete,
-      duration: Math.round(this.elapsed), distance: Math.round(this.d - this.startD), gain: Math.round(this.gainAcc), startD: Math.round(this.startD), workout: this.workout?.name || this._wName || undefined,
+      duration: Math.round(this.elapsed), distance: Math.round(this._ridden()), laps: this.laps > 1 ? this._lapRows() : undefined, gain: Math.round(this.gainAcc), startD: Math.round(this.startD), workout: this.workout?.name || this._wName || undefined,
       avgPower: pw.length ? Math.round(pw.reduce((a, b) => a + b, 0) / pw.length) : 0,
       maxPower: Math.max(0, ...pw), best5: bestAvg(pw, 300), best20: bestAvg(pw, 1200),
       samples: this.samples, challenges: this.ch?.stats.offered ? { ...this.ch.stats } : undefined, wizard: this.wiz?.was || (this.wiz?.state === 'hell' ? 'hell' : this.wiz?.state === 'fly' ? 'fly' : undefined),
@@ -889,15 +892,36 @@ export class RideSession {
 
   async _finish() {
     this.finished = true; this.player.pause();
-    const full = this.startD < 50; // only a ride from the start line is a time on this route
+    const full = this.startD < 50 && this.laps === 1; // only a ride from the start line is a time on this route (one lap)
     const rec = this._rideRecord(full);
     if (this.keyPower) { rec.unsaved = true; return this._summary(rec, null, 'Mit den Pfeiltasten gefahren: nicht gespeichert'); }
     const prev = (await db.ridesFor(this.route.id)).filter(r => r.complete).sort((a, b) => a.duration - b.duration);
     await db.put('rides', rec); import('./account.js').then(a => a.pushRide(rec));
-    this._summary(rec, full ? prev : null, full ? '' : 'Ab km ' + fmtKm(this.startD) + ' gestartet, zählt nicht als Bestzeit');
+    this._summary(rec, full ? prev : null, full ? '' : this.laps > 1 ? `${this.laps} Runden: ` + rec.laps.map((l, i) => `${i + 1}. ${fmtTime(l.t)}`).join(' · ') : 'Ab km ' + fmtKm(this.startD) + ' gestartet, zählt nicht als Bestzeit');
   }
 
   /** End screen; prev = completed rides to rank against (null: not ranked, note says why). */
+  _ridden() { return this.lapOff + this.d - this._lapBase; } // metres ridden in this session, over all laps
+  _distSub() { return this.laps > 1 ? `Runde ${this.lap}/${this.laps} · von ${fmtKm(this.track.length * this.laps - this.startD)} km` : `von ${fmtKm(this.track.length)} km`; }
+  _lapRows() { return [...this.lapList, { t: Math.round(this.elapsed - this._lapT0), d: Math.round(this.d - this._lapBase) }]; }
+  /** finish line reached with laps to go: a short fade, then back to the start line (the routes are point to point) */
+  _nextLap() {
+    const L = this.track.length;
+    this.lapList.push({ t: Math.round(this.elapsed - this._lapT0), d: Math.round(L - this._lapBase) });
+    this.lapOff += L - this._lapBase; this._lapBase = 0; this._lapT0 = this.elapsed; this.lap++;
+    this.d = 0; this.lastEle = eleAt(this.track, 0);
+    const sp = this.player?.events?.surprises; // dares and the wizard start over with the lap
+    if (this.ch?.active) this._chEnd(this.ch.active, sp, 0);
+    if (this._goalWiz) { sp?.poof?.(this._goalWiz); this._goalWiz = null; this._goalSaid = false; }
+    for (const id of ['#hCh', '#hWiz', '#hHell', '#hWizFx']) this.q?.(id)?.remove();
+    this.ch = null; this.wiz = null; this._initChallenges(); this._initWizard();
+    sp?.startArch?.(14);
+    const q = this.q?.('#hDistSub'); if (q) q.textContent = this._distSub();
+    const last = this.lapList[this.lapList.length - 1];
+    this._flash(`Runde ${this.lap - 1} geschafft: ${fmtTime(last.t)} · jetzt Runde ${this.lap} von ${this.laps}`);
+    const f = document.createElement('div'); f.className = 'lapfade'; f.innerHTML = `<div>Runde ${this.lap}<small>von ${this.laps}</small></div>`; this.el.append(f);
+    setTimeout(() => f.classList.add('out'), 1300); setTimeout(() => f.remove(), 2200);
+  }
   _summary(rec, prev, note) {
     const pb = prev && (!prev.length || rec.duration < prev[0].duration);
     const rank = prev ? prev.filter(r => r.duration < rec.duration).length + 1 : 0;

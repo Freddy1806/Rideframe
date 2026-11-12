@@ -265,6 +265,10 @@ function detail(id) {
             <span class="label" style="min-width:130px">Welt</span>
             <select id="wmSel" style="width:auto">${[['voll', 'Voll belebt'], ['ruhig', 'Ohne Menschen'], ['natur', 'Ohne Menschen und Tiere'], ['leer', 'Nur Landschaft']].map(([v, t]) => `<option value="${v}">${t}</option>`).join('')}</select>
           </div>
+          <div class="field" style="border:0;padding:10px 0 0;gap:10px;flex-wrap:wrap;justify-content:flex-start" title="Am Ziel geht es wieder am Start los, bis alle Runden gefahren sind (nicht in der Gruppenfahrt)">
+            <span class="label" style="min-width:130px">Runden</span>
+            <select id="lapSel" style="width:auto">${[1, 2, 3, 4, 5, 10].map(n => `<option value="${n}">${n === 1 ? '1 Runde' : n + ' Runden'} · ${fmtKm(t.length * n)} km</option>`).join('')}</select>
+          </div>
         </div>
         ${t.intervals?.length ? intervalPlan(t) : ''}
         <h2 class="section" style="margin-top:44px">Deine Zeiten</h2>
@@ -288,6 +292,8 @@ function detail(id) {
   $('#workSel').onchange = e => { state.settings.workout = e.target.value; saveSettings(); showWork(); };
   $('#ergChk').onchange = e => { state.settings.erg = e.target.checked; saveSettings(); };
   $('#chSel').value = String(state.settings.challenges ?? 4);
+  $('#lapSel').value = String(state.settings.laps || 1);
+  $('#lapSel').onchange = e => { state.settings.laps = +e.target.value; saveSettings(); };
   $('#wmSel').value = state.settings.worldMode || 'voll';
   $('#wmSel').onchange = e => { state.settings.worldMode = e.target.value; saveSettings(); };
   $('#chSel').onchange = e => { state.settings.challenges = +e.target.value; saveSettings(); };
