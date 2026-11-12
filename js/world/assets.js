@@ -66,6 +66,8 @@ export class Assets {
     this.rocks = list.filter(e => e.name.startsWith('Fels:'));
   }
   get count() { return this.list.length; }
+  /** the same models minus what a world mode switches off (see worldView) */
+  only(pred) { const v = new Assets(this.list.filter(pred)); v.used = this.used; return v; }
   has(cat) { return !!this.by[cat]?.length; }
   find(part) { // exact name first ('ritter' is not 'reiter_ritter'); a base name may hand out one of its loaded variants
     const base = this.list.find(e => e.file.split('/').pop().replace(/\.glb$/, '') === part && !e.variant_of);
@@ -96,3 +98,18 @@ export class Assets {
   pulse(t) { for (const m of GLOW) m.emissiveIntensity = m.userData.glow0 * (0.75 + 0.35 * Math.sin(t * 2.6) + 0.12 * Math.sin(t * 7.3)); }
 }
 const GLOW = new Set();
+
+/* ---- world modes (Freddy 12.11.): "Voll", "Ohne Menschen", "Ohne Menschen und Tiere", "Nur Landschaft" ---- */
+const PERSON = /figur|mensch|people|crowd|ritter|soldat|musiker|bauer|frau|mann|kind|oma|reiter|zuschauer|haendler|haendlerin|pfarrer|trauer|knecht|wirt|schmied|kaufmann|edeldame|waescherin|lehrling|hirte|jaeger|baecker|marktfrau|moench|nonne|koenig|king|knight|gaukler|bettler|wache|bogen|sarg/;
+const ANIMAL = /tiere\/|animal|kuh|schaf|pferd|pony|rentier|ziege|schwein|huhn|henne|gans|gaense|ente|ochse|buckelwal|wal_|orca|adler|moewe|moeve|papagei|wolf|reh|hase|vogel|fledermaus|fledermaeuse|hund|katze|drache|robbe|fisch/;
+const NATURE = /baum|tree|birke|kiefer|fichte|eiche|buche|weide|strauch|busch|bush|fels|cliff|rock|stein|stone|gras|grass|blume|flower|farn|moos|pflanze|plant|wasserfall|waterfall|treibholz|schilf|kraut|heide|beere/;
+export const WORLD_MODES = [['voll', 'Voll belebt'], ['ruhig', 'Ohne Menschen'], ['natur', 'Ohne Menschen und Tiere'], ['leer', 'Nur Landschaft']];
+export function worldView(A, mode) {
+  if (!mode || mode === 'voll') return A;
+  const id = e => ((e.category || '') + ' ' + (e.file || '') + ' ' + (e.name || '')).toLowerCase();
+  const keepCat = e => /^(cockpit|rider|fx)/.test(e.category || '');
+  const person = e => /^figure/.test(e.category || '') || PERSON.test(id(e)), animal = e => /^(animal|bird)/.test(e.category || '') || ANIMAL.test(id(e));
+  if (mode === 'ruhig') return A.only(e => keepCat(e) || !person(e));
+  if (mode === 'natur') return A.only(e => keepCat(e) || (!person(e) && !animal(e)));
+  return A.only(e => keepCat(e) || (!person(e) && !animal(e) && (NATURE.test(id(e)) || /^Fels:/.test(e.name || ''))));
+}

@@ -17,7 +17,7 @@ import { asphalt, grassTuft, planks, stone } from './tex.js';
 import { terrainMaterial, tex, texReady, TIME, HELL, useSatellite } from './terrainmat.js';
 import { Water } from '../../vendor/jsm/objects/Water.js';
 import { mergeGeometries } from '../../vendor/jsm/utils/BufferGeometryUtils.js';
-import { loadAssets } from './assets.js';
+import { loadAssets, worldView } from './assets.js';
 import { buildVillage, tickVillage } from './village.js';
 import { Riders } from './riders.js';
 import { ROAD_LINES_GLSL } from './roadlines.js';
@@ -357,7 +357,7 @@ export class WorldScene {
     Object.assign(this.farMat, { polygonOffset: true, polygonOffsetFactor: 4, polygonOffsetUnits: 4 });
     this.tiles = new Map(); this.queue = []; this.roadChunks = new Map(); this.animated = [];
     this._placeLandmarks();
-    { const c = this.scene.children.find(o => o.userData.castle); if (c) this.siege = new Siege(this, c, this.field.road(c.position.x, c.position.z).i * DS); } // the siege at the castle (siege.js)
+    { const c = this.scene.children.find(o => o.userData.castle); if (c && !/^(leer|ruhig|natur)$/.test(this.track.__mode || '')) this.siege = new Siege(this, c, this.field.road(c.position.x, c.position.z).i * DS); } // the siege at the castle (siege.js)
     this.d = 0; this.camPos = null;
     this.instant = new URLSearchParams(location.search).has('shot');
     // quality steps, lowered automatically while the frame rate stays under 50 fps (a trainer ride needs smooth video):
@@ -615,7 +615,7 @@ export class WorldScene {
 
   // ---- Blender assets along the route: villages with market, harbour life, animals, birds, whales, rock walls ----
   _placeAssets() {
-    const f = this.field, t = this.track, r = rng(9001), segs = t.segments || [], A = ASSETS;
+    const f = this.field, t = this.track, r = rng(9001), segs = t.segments || [], A = worldView(ASSETS, t.__mode ||= QS.get('mode') || 'voll'); /* world mode: without people / animals / villages */
     const taken = []; // footprint circles, so nothing overlaps
     const free = (x, z, rad) => taken.every(c => Math.hypot(c[0] - x, c[1] - z) > c[2] + rad);
     // world position at track distance d, lateral offset off (+ right, - left / sea side)
@@ -681,7 +681,7 @@ export class WorldScene {
     const segAt = d => segs.find(s => d >= s.from && d < s.to) || segs[segs.length - 1];
 
     // the messenger's own village on the last metres before the finish, first, so it gets the ground (story stage 2)
-    if (t.__village && t.length > 1500) try {
+    if (t.__village && t.length > 1500 && t.__mode !== 'leer') try {
       this.village = buildVillage({ place, byName, make: e => A.make(e, null, r).obj, mirror: d => segAt(d).seaSide === 1, r, spot, f, scene: this.scene, props: this.props, anim: this.villageAnim, len: t.length }, t.__village);
     } catch (e) { console.warn('village', e); }
     for (const s of segs) {

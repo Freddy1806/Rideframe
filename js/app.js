@@ -261,6 +261,10 @@ function detail(id) {
             <span class="label" style="min-width:130px">Challenges</span>
             <select id="chSel" style="width:auto">${[0, 2, 3, 4, 6, 8].map(n => `<option value="${n}">${n ? n + ' pro Fahrt' : 'aus'}</option>`).join('')}</select>
           </div>
+          <div class="field" style="border:0;padding:10px 0 0;gap:10px;flex-wrap:wrap;justify-content:flex-start" title="Weniger Leben auf der Strecke: läuft auch auf schwächeren Laptops flüssig">
+            <span class="label" style="min-width:130px">Welt</span>
+            <select id="wmSel" style="width:auto">${[['voll', 'Voll belebt'], ['ruhig', 'Ohne Menschen'], ['natur', 'Ohne Menschen und Tiere'], ['leer', 'Nur Landschaft']].map(([v, t]) => `<option value="${v}">${t}</option>`).join('')}</select>
+          </div>
         </div>
         ${t.intervals?.length ? intervalPlan(t) : ''}
         <h2 class="section" style="margin-top:44px">Deine Zeiten</h2>
@@ -284,6 +288,8 @@ function detail(id) {
   $('#workSel').onchange = e => { state.settings.workout = e.target.value; saveSettings(); showWork(); };
   $('#ergChk').onchange = e => { state.settings.erg = e.target.checked; saveSettings(); };
   $('#chSel').value = String(state.settings.challenges ?? 4);
+  $('#wmSel').value = state.settings.worldMode || 'voll';
+  $('#wmSel').onchange = e => { state.settings.worldMode = e.target.value; saveSettings(); };
   $('#chSel').onchange = e => { state.settings.challenges = +e.target.value; saveSettings(); };
   main.querySelectorAll('.share').forEach(b => b.onclick = () => shareRide(rides.find(r => r.id === b.dataset.id)));
   $('#ghostSel').onchange = e => { state.settings.ghost = e.target.value; saveSettings(); };
