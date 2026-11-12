@@ -7,6 +7,10 @@ const CANDIDATES = [
   '00000001-19ca-4651-86e5-fa29dcdd09d1',                         // Zwift Click / Play
   'a026ee01-0a7d-4ab3-97fa-f1500f9feb8b', 'a026e005-0a7d-4ab3-97fa-f1500f9feb8b',
 ];
+// what each gamepad button does during a ride (standard mapping; same numbers as js/ride.js _pollPad)
+export const PAD_MAP = [['L / R', 'Gang leichter / schwerer'], ['Steuerkreuz ↓ / ↑', 'Gang leichter / schwerer'], ['A', 'Challenge annehmen'], ['B', 'Anzeige wechseln'],
+  ['X', 'Foto'], ['Y', 'Sicht wechseln'], ['L2 / R2', 'Sichtfeld weiter / enger'], ['Select (−)', 'Schaltmodus: echt / virtuell / Automatik / Berg-Watt'],
+  ['Start (+)', 'Pause / weiter'], ['Steuerkreuz ←', 'Musik an / aus'], ['Steuerkreuz →', 'Nächstes Lied'], ['Home', 'Lenker ein / aus']];
 const hex = dv => [...new Uint8Array(dv.buffer, dv.byteOffset, dv.byteLength)].map(b => b.toString(16).padStart(2, '0')).join(' ');
 
 export function openControllerTest() {
@@ -14,6 +18,8 @@ export function openControllerTest() {
   m.innerHTML = `<div class="box" style="width:min(820px,94vw)">
     <div class="label">Bluetooth</div><h2 class="display" style="margin-top:10px">Controller<br>testen</h2>
     <p>Gerät wählen (z. B. dein Di2-Schaltwerk: vorher kurz schalten, damit es aufwacht), dann die Knöpfe drücken. Jede Nachricht erscheint unten. Gamepads und Tastatur werden auch angezeigt.</p>
+    <details style="margin:6px 0 10px"><summary style="cursor:pointer"><b>Gamepad-Belegung in der Fahrt</b> (z. B. 8BitDo Micro)</summary>
+      <table style="margin-top:8px;border-collapse:collapse">${PAD_MAP.map(([k, v]) => `<tr><td style="padding:2px 14px 2px 0;white-space:nowrap"><b>${k}</b></td><td>${v}</td></tr>`).join('')}</table></details>
     <div class="actions" style="justify-content:flex-start"><button class="btn small" id="ctScan">Gerät suchen</button><button class="btn ghost small" id="ctCopy">Log kopieren</button><button class="btn ghost small" id="ctClose">Schließen</button></div>
     <pre id="ctLog" style="margin-top:18px;height:340px;overflow:auto;background:#000;border:1px solid var(--line-2);border-radius:4px;padding:12px;font:12px/1.5 ui-monospace,Menlo,monospace;white-space:pre-wrap"></pre></div>`;
   document.body.append(m);

@@ -106,9 +106,6 @@ export class RideSession {
       this._poseMod = m; this.pose = new m.PoseCam(this.state.settings.poseCalib || null);
       try { await this.pose.start(); if (this._closed) this.pose.stop(); else this._flash?.('Kamera: Haltung wird erkannt'); }
       catch { this._flash?.('Haltungs-Kamera nicht verfügbar'); this.pose = null; } });
-    if (this.state.settings.voiceCmd) import('./voicecmd.js').then(m => { if (!this.running && this._closed) return; // "Rideframe Pause" & co.
-      this.voice = new m.VoiceCommands(c => this._voiceCmd(c), () => this.ch?.active?.state === 'offer' ? ['accept'] : []);
-      if (!this.voice.start()) this._flash?.('Sprachbefehle gehen nur in Chrome oder Edge'); });
     el.innerHTML = this._hudHTML();
     applyHud(el, hudPrefs(this.state.settings));
     el.querySelector('#hHudBtn')?.addEventListener('click', () => this._hudPanel());
@@ -325,19 +322,28 @@ export class RideSession {
     requestAnimationFrame(this._tick);
   }
 
-  _pollPad() { // any Bluetooth gamepad (e.g. 8BitDo Micro on the bars): LB/RB or D-pad shift, A accepts a challenge, Y view, Start pause
+  _pollPad() { // any Bluetooth gamepad (e.g. 8BitDo Micro on the bars) drives the whole ride; mapping in PAD_MAP (controller.js shows it)
     const pad = navigator.getGamepads?.().find(Boolean); if (!pad) return;
     const b = pad.buttons.map(x => x.pressed), was = this.padPrev || [];
-    const hit = i => b[i] && !was[i];
-    if (!this.padSeen) { this.padSeen = true; this._flash('🎮 Controller erkannt: LB/RB oder Steuerkreuz schalten'); }
-    const sh = d => { if (!this.virtual && !this.berg) this.toggleShift(); this.shift(d); }; // a pad means virtual shifting: switch over on first use
-    if (hit(4) || hit(13) || hit(14)) sh(-1);
-    if (hit(5) || hit(12) || hit(15)) sh(1);
-    if (hit(0)) this._chKey = true;
-    if (hit(3)) this._cycleView();
-    if (hit(9)) this.paused ? this._resume() : this._pause();
     this.padPrev = b;
+    if (!this.padSeen) { this.padSeen = true; this._flash('🎮 Controller bereit · Start = Pause · L/R = schalten'); }
+    const hit = i => b[i] && !was[i];
+    if (hit(9)) { this.paused ? this._resume() : this._pause(); return; }
+    if (this.paused || this.finished) return;
+    const sh = d => { if (!this.virtual && !this.berg) this.toggleShift(); this.shift(d); }; // a pad means virtual shifting: switch over on first use
+    if (hit(4) || hit(13)) sh(-1);
+    if (hit(5) || hit(12)) sh(1);
+    if (hit(0)) { this._chKey = true; if (this.ch?.active?.state === 'offer') this._flash('Angenommen!'); }
+    if (hit(1)) this._cycleHud();
+    if (hit(2) && this.player?.snapshot) { this._takePhoto(); this._flash('📸 Foto'); }
+    if (hit(3)) this._cycleView();
+    if (hit(6) || hit(7)) this._lens(hit(7) ? 1 : -1);
+    if (hit(8)) this.toggleShift();
+    if (hit(10) || hit(14)) this._toggleMusic();
+    if (hit(11) || hit(15)) { this.music?.skip(); setTimeout(() => this._flash('♫ ' + (this.music?.title() || '')), 300); }
+    if (hit(16)) this._toggleBar();
   }
+
 
   _syncVideo() {
     const p = this.player;
@@ -701,21 +707,6 @@ export class RideSession {
     this._pk = (this._pk ?? 1) + ((m?.POSTURE_K[this._postureShown || 'unknown'] ?? 1) - (this._pk ?? 1)) * 0.05;
     return this._pk;
   }
-  _voiceCmd({ cmd, n }) {
-    const say = t => this._flash?.('🎙 ' + t);
-    if (!this.running) return; // still loading: the player does not exist yet
-    if (cmd === 'pause') { if (!this.paused && !this.finished) { this._pause(); say('Pause'); } }
-    else if (cmd === 'resume') { if (this.paused) { this._resume(); say('Weiter'); } }
-    else if (!this.running || this.paused) return;
-    else if (cmd === 'harder') { this.shift(1); say('Schwerer'); }
-    else if (cmd === 'easier') { this.shift(-1); say('Leichter'); }
-    else if (cmd === 'photo') { if (this.player?.snapshot) { this._takePhoto?.(); say('Foto'); } }
-    else if (cmd === 'music') { this._toggleMusic(); }
-    else if (cmd === 'next') { this.music?.skip(); setTimeout(() => this._flash('♫ ' + (this.music?.title() || '')), 300); }
-    else if (cmd === 'view') this._cycleView();
-    else if (cmd === 'accept') { this._chKey = true; say('Angenommen!'); }
-    else if (cmd === 'watts' && n >= 50 && n <= 1500) { this.manualPower = n; say(n + ' W'); }
-  }
   _key(e) {
     if (!this.running && !e.key.startsWith('Arrow')) return; // still loading / counting down: only the power keys
     if (e.key === 'ArrowUp') { this.manualPower = Math.min(1500, this.manualPower + (e.shiftKey ? 50 : 10)); e.preventDefault(); }
@@ -858,7 +849,7 @@ export class RideSession {
   }
 
   _close(saved) {
-    this._closed = true; this.voice?.stop(); this.pose?.stop();
+    this._closed = true; this.pose?.stop();
     this.running = false; this.ue?.close(); this.state.trainer.setPower?.(null); this.music?.destroy();
     if (this.group?.voice) { this.group.voice.stop(); this.group.voice = null; } // ride over: microphone off, indicator off
     if (this._voiceUI) window.removeEventListener('rf-voicechange', this._voiceUI);
