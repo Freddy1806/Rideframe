@@ -674,9 +674,9 @@ export class WorldScene {
         if (place(well, mid + 26, ROAD_W + 6, { face: 'road', anim: 'Fliessen' })) place(byName('magd_eimer'), mid + 22.5, ROAD_W + 3.4, { gap: 0.4, radK: 0.4, anim: 'Stehen', face: 'road' }); // at the well a maid with her bucket
         if (s === festSeg || r() < 0.4) place(byName(r() < 0.5 ? 'koenigsstandbild' : 'reiterstandbild') || byName('reiterstandbild'), mid + 46, ROAD_W + 7.5, { face: 'road' }); // the market square's statue: the king or the knight
         place(byName('faesser_kisten'), mid - 25, ROAD_W + 4, { face: 'road' });
-        if (!stalls.some(e => /marktstand_obst/.test(e.file))) place(byName('marktstand_obst'), mid - 34, ROAD_W + 4.2, { face: 'road', gap: 0.6 }); // the MacBook's fruit stall
-        place(byName('dorfbrunnen'), a + 40 + r() * 40, ROAD_W + 5, { face: 'road', gap: 1, radK: 0.5 }); // a small pump well at the village edge
-        for (let k = 0, cat = byName('katze'); cat && k < 2; k++) place(cat, a + (b - a) * (0.25 + 0.5 * r()), ROAD_W + 3.2 + r() * 2, { face: r() * 6.28, anim: 'Schlafen', gap: 0.6, radK: 0.3 }); // cats asleep by the road
+        place(byName('marktstand_obst'), mid - 34, ROAD_W + 4.2, { face: 'road', gap: 0.6 }); // the MacBook's fruit stall
+        { const dw = byName('dorfbrunnen'); if (dw) for (let k = 0; k < 8 && !place(dw, a + 30 + k * 23, (k % 2 ? -1 : 1) * (ROAD_W + 4.5), { face: 'road', gap: 0.8, radK: 0.5 }); k++); } // a small pump well near the village edge: first free spot
+        for (let k = 0, cat = byName('katze'); cat && k < 2; k++) place(cat, a + (b - a) * (0.25 + 0.5 * r()), ROAD_W + 1.1, { face: r() * 6.28, anim: 'Schlafen', gap: 0.3, radK: 0.3 }); // cats asleep right at the kerb (further back they vanished in the grass)
         place(byName('kutsche'), mid + 34, ROAD_W + 7.5, { face: 'along' }); // a little back from the asphalt: it filled the picture
         place(byName('pferd'), mid + 41, ROAD_W + 7.5, { face: 'along', anim: 'Stehen' });
         // musicians in a half circle behind the market
@@ -1000,7 +1000,7 @@ export class WorldScene {
       for (const [n, dd, off] of [['katapult', -55, 16], ['tribok', 50, 18], ['leiter', 5, 26], ['rammbock', -12, 24], ['zelt', -70, -12], ['palisade', -80, -10], ['banner', -40, 8], ['banner', 40, 8]]) {
         const e = byName(n); if (e) place(e, d0 + dd, off, { face: face(d0 + dd, off), gap: 1 }); }
     }
-    { const bn = byName('rideframe_banner'); if (bn) for (const sd of [1, -1]) place(bn, 30 + (sd > 0 ? 0 : 6), sd * (ROAD_W + 2.5), { face: 'road', anim: 'Wehen', gap: 0.5, radK: 0.3, overlap: true }); } // RIDEFRAME banners at the start
+    { const bn = byName('rideframe_banner'); if (bn) for (const sd of [1, -1]) place(bn, 6 + (sd > 0 ? 0 : 4), sd * (ROAD_W + 2), { face: 'road', anim: 'Wehen', gap: 0.5, radK: 0.3, overlap: true }); } // RIDEFRAME banners at the start
     this._placeLegacyTops(segs);
     // everything that never moves: matrices once, then skipped by three's per-frame scene-graph update (was ~30 % CPU)
     const moving = new Set([...this.mixers.map(m => m.obj), ...this.birds, ...this.whales.map(w => w.obj), ...this.animated]);
