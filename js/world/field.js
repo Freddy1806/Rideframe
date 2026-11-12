@@ -142,10 +142,13 @@ export class Field {
   /** The smoothed values (sigma >= 40 m) change slowly: they come bilinearly from a cached 12 m grid,
    *  only the nearest sample is refined exactly. Terrain tiles build several times faster. */
   _roadFar(x, z) {
-    const G = 12, gx = Math.floor(x / G), gz = Math.floor(z / G), u = x / G - gx, v = z / G - gz;
     const C = this._farC ||= new Map(); if (C.size > 400000) C.clear();
-    const corner = (a, b) => { const k = (a + 1e6) * 4e6 + b + 1e6; let c = C.get(k);
-      if (c === undefined) { this._noFar = true; const r = this._road(a * G, b * G); this._noFar = false; c = r ? [r.i, r.ew, r.sea, r.cliff, r.beach, r.river] : null; C.set(k, c); } return c; };
+    // away from the road (> ~250 m) the smoothed values change over hundreds of metres: a 48 m grid needs 16x fewer
+    // full road searches (those were ~60 % of building the first terrain tiles, 9.7 s on a slow laptop)
+    let G = 48; const cg = (a, b, g) => { const k = (a + 1e6) * 4e6 + b + 1e6 + (g === 48 ? 0.5 : 0); let c = C.get(k);
+      if (c === undefined) { this._noFar = true; const r = this._road(a * g, b * g); this._noFar = false; c = r ? [r.i, r.ew, r.sea, r.cliff, r.beach, r.river, r.d] : null; C.set(k, c); } return c; };
+    const q = cg(Math.round(x / 48), Math.round(z / 48), 48); if (!q || q[6] < 250) G = 12;
+    const gx = Math.floor(x / G), gz = Math.floor(z / G), u = x / G - gx, v = z / G - gz, corner = (a, b) => cg(a, b, G);
     const c00 = corner(gx, gz), c10 = corner(gx + 1, gz), c01 = corner(gx, gz + 1), c11 = corner(gx + 1, gz + 1);
     if (!c00 || !c10 || !c01 || !c11) { this._noFar = true; const r = this._road(x, z); this._noFar = false; return r; }
     const bl = k => (c00[k] * (1 - u) + c10[k] * u) * (1 - v) + (c01[k] * (1 - u) + c11[k] * u) * v;
