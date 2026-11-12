@@ -859,7 +859,7 @@ export class WorldScene {
           if (monk) for (let k = 0; k < 7; k++) place(monk, mid - 18 + (k % 4) * 3.2, ROAD_W + 8 + Math.floor(k / 4) * 3.2, { face: 'road', anim: ['Kaempfen', 'Trainieren', 'Stehen'][k % 3], gap: 1, radK: 0.4 });
           place(byName('steintreppe'), mid + 30, ROAD_W + 14, { face: 'road', gap: 2 });
           place(byName('teehaus'), mid - 45, ROAD_W + 12 + 3, { face: 'road', gap: 3 }); // tea house on stilts with stone lanterns
-          for (let d = a + 40; d < b; d += 70 + r() * 50) place(byName('gebetsfahnen'), d, (r() < 0.5 ? -1 : 1) * (ROAD_W + 4), { face: 'along', anim: 'Wehen', gap: 1, radK: 0.4 });
+          for (let d = a + 40; d < b; d += 70 + r() * 50) place(byName('gebetsfahnen'), d, (r() < 0.5 ? -1 : 1) * (ROAD_W + 4), { face: 'road', anim: 'Wehen', gap: 1, radK: 0.4 });
           place(byName('glockenpavillon'), mid + 70, ROAD_W + 12, { face: 'road', anim: 'Schwingen', gap: 3 });
           const kw = byName('klostermauer'); if (kw) { const len = Math.max(kw.size[0], kw.size[2]) * 0.98, turn = kw.size[0] > kw.size[2] ? Math.PI / 2 : 0; // same as the wattle fence
             for (let d = mid - 60; d < mid + 60; d += len) place(kw, d, ROAD_W + 32, { face: 'along', rot: turn, gap: 2, radK: 0.3, overlap: true }); } // the monastery wall behind pagoda and monks
