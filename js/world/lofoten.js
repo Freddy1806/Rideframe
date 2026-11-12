@@ -1000,7 +1000,7 @@ export class WorldScene {
       for (const [n, dd, off] of [['katapult', -55, 16], ['tribok', 50, 18], ['leiter', 5, 26], ['rammbock', -12, 24], ['zelt', -70, -12], ['palisade', -80, -10], ['banner', -40, 8], ['banner', 40, 8]]) {
         const e = byName(n); if (e) place(e, d0 + dd, off, { face: face(d0 + dd, off), gap: 1 }); }
     }
-    { const bn = byName('rideframe_banner'); if (bn) for (const sd of [1, -1]) place(bn, 6 + (sd > 0 ? 0 : 4), sd * (ROAD_W + 2), { face: 'road', anim: 'Wehen', gap: 0.5, radK: 0.3, overlap: true }); } // RIDEFRAME banners at the start
+    { const bn = byName('rideframe_banner'); if (bn) for (const sd of [1, -1]) place(bn, 6 + (sd > 0 ? 0 : 4), sd * (ROAD_W + 3.8), { face: 'road', anim: 'Wehen', gap: 0.5, radK: 0.3, overlap: true }); } // RIDEFRAME banners at the start
     this._placeLegacyTops(segs);
     // everything that never moves: matrices once, then skipped by three's per-frame scene-graph update (was ~30 % CPU)
     const moving = new Set([...this.mixers.map(m => m.obj), ...this.birds, ...this.whales.map(w => w.obj), ...this.animated]);
