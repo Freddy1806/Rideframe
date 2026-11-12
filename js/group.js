@@ -138,7 +138,7 @@ export class Group {
     const { look, ...rest } = s; Object.assign(this.me, rest); if (this.me.riding) this.rolling = true;
     if (look && look !== this._lookSrc) { this._lookSrc = look; this.me.look = cleanLook(look); }
     const now = performance.now(); if (now - (this._sent || 0) < 500) return; this._sent = now;
-    if (this.routeId && this.me.d > 0) LS.set('rf_group_last', { code: this.code, host: this.host, routeId: this.routeId, d: Math.round(this.me.d), t: Date.now() });
+    if (this.routeId && this.me.d > 0) LS.set('rf_group_last', { code: this.code, host: this.host, routeId: this.routeId, d: Math.round(this.me.d), el: Math.round(this.me.el || 0), t: Date.now() });
     if (this.host) this._relayAll();
     else for (const c of this.conns) if (c.open) c.send({ t: 'state', r: this.me });
   }

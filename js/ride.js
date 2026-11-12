@@ -83,12 +83,16 @@ export function simulateRide(track, power, settings) {
 }
 
 export class RideSession {
-  constructor({ route, ghost, state, onExit, autopilot = false, at = 0, group = null, ghostName = '', workout = null }) {
+  constructor({ route, ghost, state, onExit, autopilot = false, at = 0, group = null, ghostName = '', workout = null, catchUp = false, elapsed0 = 0 }) {
     Object.assign(this, { route, ghost, state, onExit, autopilot, group, ghostName, workout });
     this.erg = state.settings.erg !== false; this.ftp = state.settings.ftp || 200;
     this.track = route.track;
     this.params = defaultParams(state.settings);
     this.d = Math.min(at, this.track.length - 1); this.v = 0; this.elapsed = 0;
+    if (elapsed0 > 0) this.elapsed = elapsed0; // rejoin: the ride clock goes on where it stopped
+    // late joiner: while his world loaded the others rode on; once it stands he jumps to just behind the leader (Mac mini 12.11.: ~400 m behind)
+    this._catchUpNow = catchUp && group ? () => { const os = group.others().filter(r => r.riding && !r.done), lead = os.reduce((m, r) => Math.max(m, r.d), 0);
+      if (lead - 20 > this.d + 30 && lead < this.track.length - 50) { this.d = lead - 20; this.startD = this._lapBase = this.d; this.lastEle = eleAt(this.track, this.d); } this._catchUpNow = null; } : null;
     this.startD = this.d; // a ride started mid-route counts its own distance and never sets a best time
     // laps (Freddy 12.11.): at the finish the route starts over until all laps are done; never in a group ride (all ride the same d)
     if (/[?&]laptest/.test(location.search)) window.__ride = this; // test handle
@@ -153,7 +157,7 @@ export class RideSession {
       this.player._placeCockpit?.();
       if (this.player.ready) { // 3D world: show a loading card instead of a black screen until the ground around the start stands
         const ld = document.createElement('div'); ld.className = 'countdown loading'; ld.textContent = 'Welt wird geladen …'; el.append(ld);
-        await Promise.race([this.player.ready, new Promise(r => setTimeout(r, 90000))]); ld.remove(); this.player._rideOn = true; /* slow laptops: rather a longer loading card than a stuttering start */
+        await Promise.race([this.player.ready, new Promise(r => setTimeout(r, 90000))]); ld.remove(); this.player._rideOn = true; this._catchUpNow?.(); /* slow laptops: rather a longer loading card than a stuttering start */
       }
     }
     this.profile = el.querySelector('#hudProfile');
@@ -709,7 +713,7 @@ export class RideSession {
     if (this._cgD != null) list.push({ id: 'cghost', ghost: true, look: this.state.settings.look || null, name: 'Dein Bestes', d: this._cgD, v: this.v, color: 0x9aa3ad });
     if (this.ghost && ghostD != null) list.push({ id: 'ghost', ghost: true, look: this.ghost.look || look, name: this.ghostName || (this.state.settings.ghost === 'last' ? 'Letzte Fahrt' : 'Bestzeit'), d: ghostD + (this.ghost.startD || 0), v: this.v, color: 0x9aa3ad });
     if (this.group) {
-      this.group.update({ look, d: this.d, v: this.v, w: this.power, hr: this.hr, riding: !this.paused, done: this.finished });
+      this.group.update({ look, d: this.d, v: this.v, w: this.power, hr: this.hr, riding: !this.paused, done: this.finished, el: Math.round(this.elapsed) });
       const os = this.group.others();
       const vc = this.group.voice?.on ? this.group.voice : null;
       for (const r of os) list.push({ id: r.id, name: r.name, d: r.d, v: r.riding ? r.v : 0, look: r.look, speaking: !!vc?.isSpeaking(r.pid) });

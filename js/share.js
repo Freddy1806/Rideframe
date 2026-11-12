@@ -105,8 +105,11 @@ export function groupModal({ routeId = null, code = null, startRide }) {
         name = nn || state.settings.riderName || 'Fahrer';
         m.querySelector('#gMsg').textContent = 'Verbinde …';
         const g2 = new Group({ name, look: state.settings.look, ...opts, onChange: () => render(), onError: msg => { const el = m.querySelector('#gMsg'); if (el) el.textContent = msg; else toast(msg, 5000); },
-          onStart: ({ routeId: rid, at, d }) => { const r = routeById(rid); if (!r) return toast('Diese Strecke hast du nicht.'); close(); const dd = rejoinAt(g2.code, rid, d); setTimeout(() => startRide(rid, { group: g2, ...(dd ? { at: dd } : {}) }), Math.max(0, at - Date.now())); toast('Gleich geht es los!', 3000); } });
-        try { await g2.connect(); group = g2; const lr = opts.hostCode && lastGroup()?.routeId; if (g2.host && (routeId || lr)) g2.setRoute(routeId || lr); render(); }
+          onStart: ({ routeId: rid, at, d }) => { const r = routeById(rid); if (!r) return toast('Diese Strecke hast du nicht.'); close(); const own = rejoinAt(g2.code, rid, null), dd = own ?? d, el = own != null ? lastGroup()?.el || 0 : 0; setTimeout(() => startRide(rid, { group: g2, ...(dd ? { at: dd } : {}), elapsed0: el, catchUp: own == null }), Math.max(0, at - Date.now())); toast('Gleich geht es los!', 3000); } });
+        try { await g2.connect(); group = g2; const lg2 = opts.hostCode ? lastGroup() : null, lr = lg2?.routeId; if (g2.host && (routeId || lr)) g2.setRoute(routeId || lr);
+          // host reopened his group after a reload: straight back onto the road at his own spot, the others reconnect by themselves
+          if (lg2?.d > 0 && lr && routeById(lr)) { g2.rolling = true; close(); toast('Weiter geht es, an deiner letzten Stelle', 3000); startRide(lr, { group: g2, at: lg2.d, elapsed0: lg2.el || 0 }); return; }
+          render(); }
         catch (e) { g2.close(); m.querySelector('#gMsg').textContent = e.message; }
       };
       const lg = lastGroup(); // you hosted a group in the last hours (page reloaded): the same code again, your friends reconnect by themselves
