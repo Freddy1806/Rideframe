@@ -1436,7 +1436,7 @@ export class WorldScene {
       const far = Math.hypot(x - cam.x, z - cam.z), pan = Math.max(-0.9, Math.min(0.9, (side / 520) * 1.6));
       setTimeout(() => this.events?.sfx('thunder', Math.max(0.35, 1 - far / 1600), pan), Math.min(3500, far / 343 * 1000 * 0.6));
     }
-    const bdt = Math.min(0.1, Math.max(0, time - (B.t ?? time))); B.t = time; B.flash = Math.max(0, B.flash - bdt * 1.6); // ~0.5 s visible, independent of fps const f = B.flash > 0.6 || (B.flash > 0.3 && B.flash < 0.45) ? 1 : B.flash * 0.4; // a double flicker, then it fades
+    const bdt = Math.min(0.1, Math.max(0, time - (B.t ?? time))); B.t = time; B.flash = Math.max(0, B.flash - bdt * 1.6); /* ~0.5 s visible, independent of fps */ const f = B.flash > 0.6 || (B.flash > 0.3 && B.flash < 0.45) ? 1 : B.flash * 0.4; // a double flicker, then it fades
     if (B.mesh) { B.mesh.visible = B.flash > 0.25; B.mesh.material.opacity = Math.min(1, B.flash * 1.4); }
     if (f > 0.01) { this.light.intensity *= 1 + 2.6 * f; this.hemi.intensity *= 1 + 3.5 * f; this.hemi.color.lerp(H_BOLT, f * 0.8); this.scene.fog.color.lerp(H_BOLT, f * 0.35); }
   }

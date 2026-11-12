@@ -125,7 +125,7 @@ export class Surprises {
         const gap = h.d - this.w.d, rel = !h.race ? gap : gap >= 0 ? 8 + gap : gap > -3 ? 8 + gap * 8 / 3 : gap + 3;
         const off = side * (h.race ? 1.6 : ROAD_W + 4), y = h.race ? 2.6 + Math.sin((this.clock || 0) * 2) * 0.4 : 6 + Math.sin((this.clock || 0) * 1.3) * 0.8;
         if (h.sm == null) h.sm = { rel, off, y };
-        const k = Math.min(1, dt * 1.8); h.sm.rel = h.race ? h.sm.rel + (rel - h.sm.rel) * k : rel; // waiting: pinned to its start line; only the switch into the race glides h.sm.off += (off - h.sm.off) * k; h.sm.y += (y - h.sm.y) * k;
+        const k = Math.min(1, dt * 1.8); h.sm.rel = h.race ? h.sm.rel + (rel - h.sm.rel) * k : rel; /* waiting: pinned to its start line; only the switch into the race glides */ h.sm.off += (off - h.sm.off) * k; h.sm.y += (y - h.sm.y) * k;
         return { d: this.w.d + h.sm.rel, off: h.sm.off, fly: h.sm.y }; }
       if (bike && h.race && e?.mixer) e.mixer.timeScale = Math.max(0.2, v / bike); // pedal in step with the road (MacBook: metres per loop / loop time)
       if (bike && h.race) { // on a bike the rival races in the left lane, drawn a few metres ahead while it is level with you or ahead,
