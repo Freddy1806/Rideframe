@@ -115,9 +115,12 @@ export function buildVillage(ctx, v = {}) {
     const gate = any('dorftor'), gm = [0, 120, 225, 285, 315, 400, 400, 400, 400][st]; // spans the road, so it bypasses place() (which keeps things off the asphalt)
     const go = gate && ctx.make ? ctx.make(gate) : gateMesh(); if (gate && ctx.make) go.scale.setScalar(Math.max(1, 9.4 / Math.max(gate.size[0], 0.1))); // posts clear the 6.6 m asphalt
     loose(go, gm, 0, 0, 0); // local x across the road
+    const hedge = [any('etter_hecke'), any('etter_hecke_b')].filter(Boolean); // the village fence runs out from both gate posts
+    if (hedge.length) for (const sd of [-1, 1]) for (let k = 0; k < 6; k++) put(hedge[k % hedge.length], gm, sd * (7.2 + k * 3.9), { face: 'along', overlap: true, radK: 0.5, gap: 0.5 });
     house(any('fachwerkhaus_a', 'steinhaus'), 95, -(ROAD_W + 9), { face: 'road', gap: 2 }); // the messenger's house, left before the inn
     put(any('holzstapel'), 88, -(ROAD_W + 4), { face: 'along', gap: 0.6 });
     put(any('misthaufen', 'heuhaufen'), 104, -(ROAD_W + 5), { gap: 0.8 });
+    put(any('scheune'), 100, -(ROAD_W + 24), { face: 'road', gap: 2 });
     const fl = any('flechtzaun'); if (fl) { const l = Math.max(fl.size[0], fl.size[2]) * 0.97, t = fl.size[0] > fl.size[2] ? Math.PI / 2 : 0;
       for (let k = 0; k * l < 22; k++) put(fl, 84 + k * l, -(ROAD_W + 3), { face: 'along', rot: t, overlap: true, radK: 0.3, gap: 0.6 }); }
   }
@@ -135,6 +138,9 @@ export function buildVillage(ctx, v = {}) {
     put(any('backhaus'), 75, -(ROAD_W + 18), { face: 'road', gap: 2 });
     put(any('magd_eimer'), 58, ROAD_W + 3.6, { face: 'road', anim: 'Stehen', radK: 0.4, gap: 0.4 });
     put(any('waescheleine'), 150, -(ROAD_W + 20), { face: 'along', gap: 2 });
+    const trees = ['obstbaum', 'obstbaum_b', 'obstbaum_c'].map(any).filter(Boolean); // orchards behind the farms
+    if (trees.length) for (let k = 0; k < 14; k++) put(trees[k % trees.length], 130 + k * 7 + ctx.r() * 3, (k % 2 ? -1 : 1) * (ROAD_W + 26 + ctx.r() * 10), { face: ctx.r() * 6.28, gap: 2, radK: 0.5 });
+    put(any('scheune_offen', 'scheune'), 196, ROAD_W + 24, { face: 'road', gap: 2 });
   }
   // ---- 3 Wheelwright: smithy and wheelwright share a yard on the right, a cart on the verge ----
   if (st >= 3) {
