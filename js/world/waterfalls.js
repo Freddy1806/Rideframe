@@ -6,7 +6,7 @@
 import * as THREE from 'three';
 import { mergeGeometries } from '../../vendor/jsm/utils/BufferGeometryUtils.js';
 import { ROAD_W, DS, smooth, lerp, rng } from './field.js';
-import { TIME } from './terrainmat.js';
+import { TIME, HELL } from './terrainmat.js';
 import { planks, stone, grassGround } from './tex.js';
 
 const QS = typeof location !== 'undefined' ? new URLSearchParams(location.search) : new URLSearchParams();
@@ -405,8 +405,9 @@ export function placeWaterfalls(world, A, taken = []) {
         c.material = [].concat(c.material || []).map(m0 => { const map = m0?.map || null; if (map) { map.colorSpace = THREE.SRGBColorSpace; map.wrapT = map.wrapS = THREE.RepeatWrapping; scroll.set(map, fast ? 2.0 : 0.5); }
           // streaks: a scrolling noise alpha (narrow across, long down the fall), so the model's water never reads as one flat white sheet (Mac mini QA)
           const am = noiseTex().clone(); am.needsUpdate = true; am.repeat.set(fast ? 3.5 : 2, fast ? 0.35 : 0.6); scroll.set(am, fast ? 0.9 : 0.25);
-          return new THREE.MeshBasicMaterial({ map, alphaMap: am, color: map ? 0xffffff : 0xdfe9ee, transparent: true, opacity: fast ? 1 : 0.85, depthWrite: false, side: THREE.DoubleSide, fog: true }); });
+          return lavaMat(new THREE.MeshBasicMaterial({ map, alphaMap: am, color: map ? 0xffffff : 0xdfe9ee, transparent: true, opacity: fast ? 1 : 0.85, depthWrite: false, side: THREE.DoubleSide, fog: true })); });
         if (c.material.length === 1) c.material = c.material[0]; }
+      else if (c.isMesh) { const ms = [].concat(c.material).map(charMat); c.material = ms.length === 1 ? ms[0] : ms; } // the rock and the mill char in hell
       if (c.userData.millWheel) F.glbWheel = c;
       const src = /^gischt_quelle_(unten|mitte|rad)/.exec(c.name);
       if (src) { const w = c.getWorldPosition(new THREE.Vector3()), rad = c.userData.radius_m ?? { unten: 3.5, mitte: 2.5, rad: 1.2 }[src[1]];
@@ -600,7 +601,7 @@ function waterUniforms(world) {
 const FOG_V = '#include <fog_pars_vertex>', FOG_F = '#include <fog_pars_fragment>';
 function waterMaterial(U) {
   return new THREE.ShaderMaterial({
-    uniforms: Object.assign(THREE.UniformsUtils.merge([THREE.UniformsLib.fog]), U),
+    uniforms: Object.assign(THREE.UniformsUtils.merge([THREE.UniformsLib.fog]), U, { uHell: HELL }),
     fog: true, transparent: true, depthWrite: false, side: THREE.DoubleSide,
     vertexShader: `attribute vec4 aF; attribute float aM;
 varying vec2 vUv; varying vec4 vF; varying float vM; varying vec3 vN; varying vec3 vW;
@@ -614,7 +615,7 @@ void main() {
   vec4 mvPosition = viewMatrix * w; gl_Position = projectionMatrix * mvPosition;
   #include <fog_vertex>
 }`,
-    fragmentShader: `uniform float uTime; uniform sampler2D tN; uniform vec3 uSun; uniform vec3 uSunCol; uniform vec3 uAmb;
+    fragmentShader: `uniform float uTime, uHell; uniform sampler2D tN; uniform vec3 uSun; uniform vec3 uSunCol; uniform vec3 uAmb;
 varying vec2 vUv; varying vec4 vF; varying float vM; varying vec3 vN; varying vec3 vW;
 ${FOG_F}
 #include <common>
@@ -665,6 +666,7 @@ void main() {
   if (vM > 1.5 && vM < 2.5) col = vec3(.1, .105, .1) * (uAmb + sun * dl) / 3.14159;
   float farK = smoothstep(250., 900., dist); // from afar (Mac mini QA: the white sheet at 700-950 m): grey-blue and see-through, like real spray in the haze
   if (vM < .5 || big > .5) { col = mix(col, col * vec3(.66, .72, .76), .55 * farK); a *= mix(1., .45, farK); }
+  col = mix(col, vec3(1.5, .38, .05) * (.35 + .9 * foam + .4 * n) , uHell * step(vM, 1.5)); a = mix(a, max(a, .9 * step(vM, 1.5)), uHell); // hell: the falls run with lava
   gl_FragColor = vec4(col, clamp(a, 0., 1.));
   #include <tonemapping_fragment>
   #include <colorspace_fragment>
@@ -720,3 +722,13 @@ void main() {
   const mesh = new THREE.Mesh(g, m); mesh.frustumCulled = false; mesh.renderOrder = 3;
   return mesh;
 }
+
+// hell: model water glows as lava, model rock and wood turn sooty; HELL is a shared uniform (no recompile when the gate opens)
+function lavaMat(m) { m.onBeforeCompile = sh => { sh.uniforms.uHell = HELL;
+  sh.fragmentShader = 'uniform float uHell;\n' + sh.fragmentShader.replace('#include <alphamap_fragment>', '#include <alphamap_fragment>\n  diffuseColor = mix( diffuseColor, vec4( vec3( 1.6, .42, .06 ) * ( .5 + .7 * dot( diffuseColor.rgb, vec3( .333 ) ) ), max( diffuseColor.a, .85 ) ), uHell );'); };
+  m.customProgramCacheKey = () => 'lava'; return m; }
+const charred = new Map();
+function charMat(m) { if (!m) return m; let c = charred.get(m); if (c) return c; c = m.clone();
+  c.onBeforeCompile = sh => { sh.uniforms.uHell = HELL;
+    sh.fragmentShader = 'uniform float uHell;\n' + sh.fragmentShader.replace('#include <color_fragment>', '#include <color_fragment>\n  diffuseColor.rgb = mix( diffuseColor.rgb, diffuseColor.rgb * vec3( .32, .2, .16 ), uHell );'); };
+  c.customProgramCacheKey = () => 'charfall'; charred.set(m, c); return c; }

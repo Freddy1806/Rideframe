@@ -302,8 +302,8 @@ export class WorldScene {
     const aC = tex('asphalt', 'col', [128, 128, 130]), aN = tex('asphalt', 'nrm', [128, 128, 255]);
     this.roadBlur = { value: 0 }; // speed blur on the asphalt, strongest right in front of the wheel
     this.roadMat.onBeforeCompile = sh => {
-      sh.uniforms.tAsph = { value: aC }; sh.uniforms.tAsphN = { value: aN }; sh.uniforms.uBlur = this.roadBlur;
-      sh.fragmentShader = sh.fragmentShader.replace('#include <common>', '#include <common>\nuniform sampler2D tAsph, tAsphN; uniform float uBlur;' + ROAD_LINES_GLSL)
+      sh.uniforms.tAsph = { value: aC }; sh.uniforms.tAsphN = { value: aN }; sh.uniforms.uBlur = this.roadBlur; sh.uniforms.uHell = HELL;
+      sh.fragmentShader = sh.fragmentShader.replace('#include <common>', '#include <common>\nuniform sampler2D tAsph, tAsphN; uniform float uBlur, uHell;' + ROAD_LINES_GLSL)
         .replace('#include <map_fragment>', `
   float bl = uBlur * clamp(6. / max(length(vViewPosition), .5), 0., 1.) * .012;
   vec4 painted = vec4(0.); vec3 asph = vec3(0.);
@@ -316,7 +316,8 @@ export class WorldScene {
   float line = roadPaint(vMapUv, bl * 160.); // edge lines + centre dashes (roadlines.js), speed blur stretches the dashes
   float aL = max(dot(asph, vec3(.333)), 1e-3); asph = vec3(.14) * (.6 + .4 * clamp(aL / .06, 0., 2.5)) * mix(vec3(1.), asph / aL, .3) * vec3(1.04, 1., .95); // linear space: photo mean ~.06 -> ~.14 (sRGB ~.41), grain kept // light, grippy grey asphalt (albedo ~0.35), not the sun-glared black
   float edge = smoothstep(.0, .06, vMapUv.x) * (1. - smoothstep(.94, 1., vMapUv.x));
-  diffuseColor.rgb *= mix(mix(painted.rgb, asph * .95, edge), vec3(.74, .74, .70), line);`)
+  diffuseColor.rgb *= mix(mix(painted.rgb, asph * .95, edge), vec3(.74, .74, .70), line);
+  diffuseColor.rgb *= mix(vec3(1.), vec3(.62, .42, .36), uHell); // hell: sooty, warm-dark asphalt instead of the cool grey`)
         .replace('#include <normal_fragment_maps>', `#include <normal_fragment_maps>
   { vec3 an = texture2D(tAsphN, vec2(vMapUv.x * 6.6, vMapUv.y * 40.) / 2.5).xyz * 2. - 1.; normal = normalize(normal + (viewMatrix * vec4(an.x, 0., an.y, 0.)).xyz * .35); }`);
     };
@@ -334,6 +335,7 @@ export class WorldScene {
     this.grassTime = { value: 0 }; this.clumpGeo = clumpGeometry(7, 3); this.clumpMat = grassMaterial(this.grassTime);
     this.tuftMats = [tuft, tuftF].map(t => new THREE.MeshStandardMaterial({ map: t, alphaTest: 0.4, side: THREE.DoubleSide, roughness: 1 }));
     this.shrubGeo = shrubGeometry(); this.shrubMat = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.95, map: leafTex(), alphaTest: 0.3, side: THREE.DoubleSide });
+    charred(this.shrubMat, true);
 
     this.farCam = { value: new THREE.Vector2() };
     this.farHole = { value: 0 }; // far backdrop is cut out only where detailed tiles already stand (none at the start)
@@ -897,7 +899,7 @@ export class WorldScene {
           const g = m.geometry.clone(), n = g.attributes.position.count, old = g.attributes.color, a = new Float32Array(n * 3);
           for (let i = 0; i < n; i++) for (let j = 0; j < 3; j++) a[i * 3 + j] = (old ? old.getComponent(i, j) : 1) * c[j];
           g.setAttribute('color', new THREE.Float32BufferAttribute(a, 3)); m.geometry = g;
-          let mt = tintMat.get(m.material.uuid); if (!mt) { mt = m.material.clone(); mt.vertexColors = true; tintMat.set(m.material.uuid, mt); }
+          let mt = tintMat.get(m.material.uuid); if (!mt) { mt = m.material.clone(); mt.vertexColors = true; charred(mt, leaf); tintMat.set(m.material.uuid, mt); }
           m.material = mt;
         });
       }
@@ -1308,7 +1310,7 @@ export class WorldScene {
     // the shower announces itself: from ~3 km before, the sky ahead closes up and darkens, so you see it coming
     const pre = this.rainPlan.reduce((m, s) => Math.max(m, smooth(s.a - 3000, s.a - 700, d) * smooth(s.b + 500, s.b, d)), 0);
     const cover = lerp(cover0, 0.95, Math.max(rain, pre * 0.85)), veil = Math.max(smooth(0.3, 0.95, 0.5 + 0.5 * Math.sin(d / 6100 + 2.6)) * (0.4 + 0.6 * cover0), rain * 0.95, pre * 0.55);
-    const s = sunAt(u, this.sunDir), low = 1 - Math.max(0, Math.min(1, (s.y - 0.035) / (0.113 - 0.035)));
+    const s = sunAt(u, this.sunDir); this.sunY = s.y; const low = 1 - Math.max(0, Math.min(1, (s.y - 0.035) / (0.113 - 0.035)));
     const su = this.sky.material.uniforms;
     su.sunPosition.value.copy(s); su.uCover.value = cover; su.uVeil.value = veil; su.uLow.value = low;
     // direct light: warm, a bit warmer as the sun sinks, dimmer behind the veil; never orange enough to rust the rock
@@ -1621,7 +1623,7 @@ function cumulusLayer(sun) {
   g.instanceCount = N;
   const m = new THREE.ShaderMaterial({
     transparent: true, depthWrite: false, fog: false,
-    uniforms: { tC: { value: cumulusTexture() }, uTime: { value: 0 }, uSun: { value: sun.clone() }, uCover: { value: 0.4 }, uLow: { value: 0 }, uVeil: { value: 0 } },
+    uniforms: { tC: { value: cumulusTexture() }, uHell: HELL, uTime: { value: 0 }, uSun: { value: sun.clone() }, uCover: { value: 0.4 }, uLow: { value: 0 }, uVeil: { value: 0 } },
     vertexShader: `attribute vec4 iA, iB; uniform float uTime, uCover; varying vec2 vUv; varying float vFade, vShape, vToSun, vFar; varying vec3 vR, vU, vV; uniform vec3 uSun;
 void main() {
   vec2 c = iA.xz + vec2(uTime * 4., uTime * 1.5); // drift with the wind
@@ -1639,7 +1641,7 @@ void main() {
   vR = R * iB.z; vU = U; vV = V; vShape = iB.x; vToSun = max(dot(-V, uSun), 0.);
   gl_Position = projectionMatrix * viewMatrix * vec4(P, 1.);
 }`,
-    fragmentShader: `uniform sampler2D tC; uniform vec3 uSun; uniform float uLow, uVeil, uCover; varying vec2 vUv; varying float vFade, vShape, vToSun, vFar; varying vec3 vR, vU, vV;
+    fragmentShader: `uniform sampler2D tC; uniform vec3 uSun; uniform float uHell; uniform float uLow, uVeil, uCover; varying vec2 vUv; varying float vFade, vShape, vToSun, vFar; varying vec3 vR, vU, vV;
 void main() {
   vec4 t = texture2D(tC, vUv);
   float a = smoothstep(.05, .75, t.a) * vFade; if (a < .01) discard; // soft, frayed rims instead of a cut-out cotton-wool edge
@@ -1651,6 +1653,7 @@ void main() {
   vec3 col = mix(shade, lit, l * (.55 + .45 * hgt));
   col += vec3(1.3, .62, .3) * pow(vToSun, 6.) * (1. - t.b) * 1.2; // silver lining against the sun
   col = mix(col, vec3(1., .74, .62), vFar * .45); // far heaps sink into the warm horizon haze
+  col = mix(col, col * vec3(.5, .2, .12) + vec3(.1, .025, .01), uHell); // hell: smoke-red, sooty heaps
   gl_FragColor = vec4(col, a * .82); // a little sky shows through: they sit in the haze, not on it
   #include <tonemapping_fragment>
   #include <colorspace_fragment>
@@ -1663,9 +1666,9 @@ void main() {
 function cloudLayer(sun) {
   const m = new THREE.ShaderMaterial({
     transparent: true, depthWrite: false, fog: false, side: THREE.BackSide,
-    uniforms: { uTime: { value: 0 }, uSun: { value: sun.clone() }, uCover: { value: 0.4 }, uLow: { value: 0 } },
+    uniforms: { uHell: HELL, uTime: { value: 0 }, uSun: { value: sun.clone() }, uCover: { value: 0.4 }, uLow: { value: 0 } },
     vertexShader: 'varying vec3 vW; void main() { vec4 w = modelMatrix * vec4(position, 1.); vW = w.xyz; gl_Position = projectionMatrix * viewMatrix * w; }',
-    fragmentShader: `varying vec3 vW; uniform float uTime, uCover, uLow; uniform vec3 uSun;
+    fragmentShader: `varying vec3 vW; uniform float uTime, uCover, uLow, uHell; uniform vec3 uSun;
 float h(vec2 p) { return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }
 float n(vec2 p) { vec2 i = floor(p), f = fract(p); f = f * f * (3. - 2. * f); return mix(mix(h(i), h(i + vec2(1, 0)), f.x), mix(h(i + vec2(0, 1)), h(i + vec2(1, 1)), f.x), f.y); }
 float fbm(vec2 p) { float v = 0., a = .5; for (int k = 0; k < 5; k++) { v += a * n(p); p = p * 2.03 + 17.1; a *= .5; } return v; }
@@ -1683,6 +1686,7 @@ void main() {
   vec3 col = mix(dark, sunlit, lit * (.55 + .45 * toSun)) * (.8 + .3 * smoothstep(.5, .9, fbm(p * 1.7)));
   col += vec3(1.3, .5, .2) * toSun * (1. - c) * .9;
   float fade = smoothstep(.015, .2, dir.y);
+  col = mix(col, col * vec3(.5, .2, .12) + vec3(.1, .025, .01), uHell); // hell: smoke-red, sooty heaps
   gl_FragColor = vec4(col, c * .85 * fade);
   #include <tonemapping_fragment>
   #include <colorspace_fragment>
@@ -1796,4 +1800,14 @@ function rainLayer(N = 6000, B = 70, H = 36) {
         gl_Position = projectionMatrix * viewMatrix * vec4(p, 1.); }`,
     fragmentShader: 'varying float vA; void main() { gl_FragColor = vec4(.78, .82, .88, vA * .45); }' });
   const L = new THREE.LineSegments(g, m); L.frustumCulled = false; L.visible = false; L.layers.set(1); L.renderOrder = 5; return L;
+}
+
+// hell: trees and shrubs burn out to charred black wood with a faint ember glow in the crowns; HELL is a shared uniform, so no recompile when the wizard opens the gate
+function charred(mt, leaf) {
+  const prev = mt.onBeforeCompile, burnt = leaf ? 'vec3( 0.07, 0.035, 0.025 ) + diffuseColor.rgb * vec3( 0.05, 0.015, 0.0 )' : 'vec3( 0.06, 0.045, 0.04 )';
+  mt.onBeforeCompile = (sh, r) => { prev?.call(mt, sh, r); sh.uniforms.uHell = HELL;
+    sh.fragmentShader = 'uniform float uHell;\n' + sh.fragmentShader
+      .replace('#include <color_fragment>', `#include <color_fragment>\n  diffuseColor.rgb = mix( diffuseColor.rgb, ${burnt}, uHell );`)
+      .replace('#include <emissivemap_fragment>', `#include <emissivemap_fragment>\n  totalEmissiveRadiance += vec3( ${leaf ? '0.045, 0.008, 0.0' : '0.0, 0.0, 0.0'} ) * uHell;`); };
+  mt.customProgramCacheKey = () => 'charred' + (leaf ? 1 : 0);
 }

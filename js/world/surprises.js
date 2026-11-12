@@ -66,7 +66,7 @@ export class Surprises {
     if (rain > 0.3) this.wet = true;
     else if (this.wet && rain < 0.04 && !this.hell) { this.wet = false; if (!(this.bow && this.bow.busy())) setTimeout(() => (this.bow ||= new Rainbow(this.w.scene)).start(), 4000); }
     this._wizLife(dt, cam, d);
-    this.fw.update(dt); this.fx.update(dt); this.smoke.update(dt, cam); this.bow?.update(dt, cam, this.f.at(Math.min(this.track.length - 1, d + 30)));
+    this.fw.setDay((this.w.sunY ?? 0) > 0.1 && !(this.w.hellK > 0.5)); this.fw.update(dt); this.fx.update(dt); this.smoke.update(dt, cam); this.bow?.update(dt, cam, this.f.at(Math.min(this.track.length - 1, d + 30)));
   }
 
   // ---- helpers ----
@@ -376,7 +376,7 @@ class Rainbow {
 // one pooled point cloud for every rocket and spark: a single draw call
 class Fireworks {
   constructor(scene, N = 1600, size = 2.2) {
-    this.N = N;
+    this.N = N; this.size0 = size;
     this.pos = new Float32Array(N * 3); this.col = new Float32Array(N * 3); this.vel = new Float32Array(N * 3); this.life = new Float32Array(N); this.i = 0;
     const g = new THREE.BufferGeometry();
     g.setAttribute('position', new THREE.BufferAttribute(this.pos, 3).setUsage(THREE.DynamicDrawUsage));
@@ -390,14 +390,17 @@ class Fireworks {
   _p(x, y, z, vx, vy, vz, r, g, b, life) { const i = this.i = (this.i + 1) % this.N, k = i * 3;
     this.pos[k] = x; this.pos[k + 1] = y; this.pos[k + 2] = z; this.vel[k] = vx; this.vel[k + 1] = vy; this.vel[k + 2] = vz;
     this.col[k] = r; this.col[k + 1] = g; this.col[k + 2] = b; this.life[i] = life; }
+  /** bright sky: additive sparks wash out to white glitter (Mac mini QA at the pass finish), so by day they are drawn opaque, bigger and in deep colours */
+  setDay(day) { if (day === this.day) return; this.day = day; const m = this.pts.material;
+    m.blending = day ? THREE.NormalBlending : THREE.AdditiveBlending; m.size = day ? 3.6 : this.size0; m.needsUpdate = true; }
   launch(x, y, z, h) { this.rockets.push({ x, y, z, vy: Math.sqrt(2 * 9.81 * h), t: 0 }); this.pts.visible = true; }
   update(dt) {
     if (!this.pts.visible) return;
     dt = Math.min(dt, 0.05);
     for (const r of this.rockets) { // rising rocket with a sparkling trail, bursts at the top
-      r.vy -= 9.81 * dt; r.y += r.vy * dt; this._p(r.x, r.y, r.z, (Math.random() - .5), -2, (Math.random() - .5), 1, .7, .3, 0.6);
+      r.vy -= 9.81 * dt; r.y += r.vy * dt; this._p(r.x, r.y, r.z, (Math.random() - .5), -2, (Math.random() - .5), 1, .7, .3, this.day ? 0.25 : 0.6); // by day a short trail, not a white streak
       if (r.vy <= 0) { r.dead = true;
-        const hue = Math.random(), c = new THREE.Color().setHSL(hue, 1, .6), c2 = new THREE.Color().setHSL((hue + .1) % 1, 1, .7);
+        const hue = Math.random(), L = this.day ? .45 : .6, c = new THREE.Color().setHSL(hue, 1, L), c2 = new THREE.Color().setHSL((hue + .1) % 1, 1, L + .1);
         for (let k = 0; k < 220; k++) { _v.randomDirection().multiplyScalar(14 + Math.random() * 6); const cc = k % 3 ? c : c2;
           this._p(r.x, r.y, r.z, _v.x, _v.y, _v.z, cc.r, cc.g, cc.b, 1.6 + Math.random() * 0.8); } }
     }
@@ -409,7 +412,7 @@ class Fireworks {
       if (l <= 0) { this.pos[k + 1] = -1e4; continue; }
       this.vel[k] *= 1 - 1.6 * dt; this.vel[k + 1] = this.vel[k + 1] * (1 - 1.6 * dt) - 4 * dt; this.vel[k + 2] *= 1 - 1.6 * dt;
       this.pos[k] += this.vel[k] * dt; this.pos[k + 1] += this.vel[k + 1] * dt; this.pos[k + 2] += this.vel[k + 2] * dt;
-      const fade = Math.min(1, l * 1.5); this.col[k] *= fade > .98 ? 1 : 0.985; this.col[k + 1] *= fade > .98 ? 1 : 0.98; this.col[k + 2] *= fade > .98 ? 1 : 0.985;
+      const fade = this.day ? 1 : Math.min(1, l * 1.5); this.col[k] *= fade > .98 ? 1 : 0.985; this.col[k + 1] *= fade > .98 ? 1 : 0.98; this.col[k + 2] *= fade > .98 ? 1 : 0.985;
     }
     this.pts.geometry.attributes.position.needsUpdate = true; this.pts.geometry.attributes.color.needsUpdate = true;
     if (!alive) this.pts.visible = false;
