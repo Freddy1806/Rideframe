@@ -1087,16 +1087,18 @@ export class WorldScene {
   }
   // static batching: every still prop is baked into one mesh per 500 m cell, size class and material (~1500 draw calls -> a few hundred)
   async _batch() {
-    // pass 1 only notes which mesh goes into which bucket (no copies yet); pass 2 builds one 250/500 m cell at a time, always the
-    // one nearest the camera, and swaps it in right away. `ready` waits only for the cells around the start (_batchNearP); the far
-    // rest follows while riding in 5 ms slices (all ~5,400 buckets took 51-67 s behind the loading card on a 4x slowed laptop).
-    const CELL = 500, NEAR = 1200, cells = new Map(), keep = [], still = [];
+    // Static batching, streamed around the rider (Mac mini 12.11.: baking every cell of the route held 2-3 GB of copies and
+    // their first GPU upload stalled frames for up to 2.7 s). Pass 1 only notes which mesh goes into which 250/500 m cell and
+    // bucket. A cell is baked when the camera comes within BUILD (always the nearest first, bucket by bucket in small time
+    // slices, so its upload is spread out too) and unbaked again beyond DROP: its originals come back, the copy is freed.
+    // `ready` waits only for the cells around the start (_batchNearP).
+    const CELL = 500, NEAR = 1200, BUILD = 2200, DROP = 3000, cells = [], byKey = new Map(), still = [];
     for (const o of this.props) {
-      if (!o.userData.still) { keep.push(o); continue; }
+      if (!o.userData.still) continue;
       still.push(o);
       const cls = o.userData.near ? 'near' : o.userData.far ? 'far' : o.userData.small ? 'small' : o.userData.mid ? 'mid' : 'big';
       const C = cls === 'small' || cls === 'near' || cls === 'far' ? CELL / 2 : CELL, cx = Math.floor(o.position.x / C), cz = Math.floor(o.position.z / C);
-      const ck = `${cx},${cz},${cls}`; let cell = cells.get(ck); if (!cell) cells.set(ck, cell = { x: (cx + 0.5) * C, z: (cz + 0.5) * C, objs: [], buckets: new Map() });
+      const ck = `${cx},${cz},${cls}`; let cell = byKey.get(ck); if (!cell) { byKey.set(ck, cell = { x: (cx + 0.5) * C, z: (cz + 0.5) * C, objs: [], buckets: new Map(), meshes: null }); cells.push(cell); }
       cell.objs.push(o);
       o.traverse(m => {
         if (!m.isMesh || m.isSkinnedMesh || Array.isArray(m.material)) return;
@@ -1106,33 +1108,43 @@ export class WorldScene {
         b.items.push([g, m.matrixWorld.clone()]); b.x += o.position.x; b.z += o.position.z;
       });
     }
-    let nearRes; this._batchNearP = new Promise(r => { nearRes = r; });
-    const left = [...cells.values()], added = [], cam = this.camera.position; let t0 = performance.now(), nb = 0; this._bt0 = t0;
-    while (left.length) {
-      if (this._disposed) return nearRes();
-      let bi = 0, bd = Infinity; for (let i = 0; i < left.length; i++) { const d = (left[i].x - cam.x) ** 2 + (left[i].z - cam.z) ** 2; if (d < bd) { bd = d; bi = i; } }
-      if (bd > NEAR * NEAR && nearRes && !this.loading) { /* !loading: the camera stands at the start and its tiles are built */ nearRes(); nearRes = null; console.info(`RIDEFRAME Batching Start fertig: ${Math.round(performance.now() - this._bt0)} ms, ${left.length} Zellen später`); }
-      const cell = left[bi]; left[bi] = left[left.length - 1]; left.pop();
+    const owned = new Set(still); this._batchCells = cells;
+    const relist = () => { const other = this.props.filter(o => !owned.has(o)); this.props = other.concat(...cells.map(c => c.meshes || c.objs)); }; // anything added to props meanwhile stays
+    let t0 = performance.now(); const slice = async () => { if (performance.now() - t0 > (this._rideOn ? 4 : 30)) { await new Promise(r => setTimeout(r, 0)); t0 = performance.now(); } };
+    const bakeCell = async cell => {
       const mine = [];
       for (const b of cell.buckets.values()) {
-        if (performance.now() - t0 > (this._rideOn ? 5 : 30)) { await new Promise(r => setTimeout(r, 0)); t0 = performance.now(); if (this._disposed) return nearRes?.(); } // behind the loading card in big slices, while riding only 5 ms per frame
-        const n = b.items.length, cx = b.x / n, cz = b.z / n; nb++;
-        const g = bake(b.items, cx, cz); b.items = null; if (!g) continue; g.computeBoundingSphere();
-        for (const k in g.attributes) g.attributes[k].onUpload(dropArray); g.index?.onUpload(dropArray); // once on the GPU the CPU copy goes: the baked copies were ~2 GB of JS heap (Küstenweg)
+        await slice(); if (this._disposed) return false;
+        const n = b.items.length, cx = b.x / n, cz = b.z / n;
+        const g = bake(b.items, cx, cz); if (!g) continue; g.computeBoundingSphere();
+        for (const k in g.attributes) g.attributes[k].onUpload(dropArray); g.index?.onUpload(dropArray); // once on the GPU the CPU copy goes
         const mesh = new THREE.Mesh(g, b.mat); mesh.position.set(cx, 0, cz); mesh.castShadow = b.cast; mesh.receiveShadow = b.recv;
         mesh.userData.small = b.cls === 'small'; mesh.userData.mid = b.cls !== 'big'; mesh.userData.rad = g.boundingSphere.radius;
         mesh.userData.near = b.cls === 'near'; mesh.userData.far = b.cls === 'far';
         if (b.cls !== 'big') noMirror(mesh);
         freeze(mesh); mine.push(mesh);
       }
-      // swap this cell in one go (never the props and their batched copies both drawn); the culling loop sees the new meshes at once
-      for (const o of cell.objs) this.scene.remove(o);
-      for (const m of mine) { this.scene.add(m); this.props.push(m); added.push(m); }
-      cell.objs = cell.buckets = null; // nothing of a finished cell stays referenced
+      for (const o of cell.objs) this.scene.remove(o); // swap in one go: never the props and their batched copies both drawn
+      for (const m of mine) { this.scene.add(m); owned.add(m); }
+      cell.meshes = mine; relist(); return true;
+    };
+    const unbakeCell = cell => {
+      for (const m of cell.meshes) { this.scene.remove(m); m.geometry.dispose(); owned.delete(m); }
+      for (const o of cell.objs) this.scene.add(o);
+      cell.meshes = null;
+    };
+    let nearRes; this._batchNearP = new Promise(r => { nearRes = r; });
+    const cam = this.camera.position, d2 = c => (c.x - cam.x) ** 2 + (c.z - cam.z) ** 2;
+    this._bt0 = performance.now(); let built = 0;
+    while (!this._disposed) {
+      let best = null, bd = Infinity; for (const c of cells) if (!c.meshes) { const d = d2(c); if (d < bd) { bd = d; best = c; } }
+      if (nearRes && !this.loading && bd > NEAR * NEAR) { nearRes(); nearRes = null; console.info(`RIDEFRAME Batching Start fertig: ${Math.round(performance.now() - this._bt0)} ms, ${built} Zellen`); }
+      if (best && bd <= BUILD * BUILD) { if (await bakeCell(best)) built++; continue; }
+      let drop = false; for (const c of cells) if (c.meshes && d2(c) > DROP * DROP) { unbakeCell(c); drop = true; }
+      if (drop) relist();
+      await new Promise(r => setTimeout(r, 400)); t0 = performance.now(); // idle: look again in a moment (the rider moves ~4 m)
     }
     nearRes?.();
-    console.info(`RIDEFRAME Batching fertig: ${nb} Gruppen, ${cells.size} Zellen, ${Math.round(performance.now() - this._bt0)} ms`);
-    const gone = new Set(still); this.props = this.props.filter(o => !gone.has(o)); // anything added to props meanwhile stays
   }
   // real routes: concrete bridges (deck slab, parapets, piers into the water) where the road crosses a sound
   _bridges() {
