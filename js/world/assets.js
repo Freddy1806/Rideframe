@@ -26,9 +26,9 @@ export async function loadAssets() {
     try {
       const g = await loader.loadAsync(new URL(e.file, base).href);
       const cast = !/^(festival|laundry)/.test(e.category || '') && Math.max(...(e.size || [9])) >= 1.2; /* bunting, stalls' cloth, washing and small bits threw ~950 shadow casters at the Stadtfest (shadow pass 1300 draw calls) */
-      g.scene.traverse(o => { if (o.isMesh) { o.castShadow = cast; o.receiveShadow = true; if (!o.isSkinnedMesh) floatify(o.geometry); } });
+      g.scene.traverse(o => { if (o.isMesh) { o.castShadow = cast; o.receiveShadow = true; floatify(o.geometry); } });
       let farScene = null; // optional low-poly LOD for trees ("far": file), drawn beyond ~260 m
-      if (e.far) try { farScene = (await loader.loadAsync(new URL(e.far, base).href)).scene; farScene.traverse(o => { if (o.isMesh) { o.castShadow = true; o.receiveShadow = true; if (!o.isSkinnedMesh) floatify(o.geometry); } }); } catch {}
+      if (e.far) try { farScene = (await loader.loadAsync(new URL(e.far, base).href)).scene; farScene.traverse(o => { if (o.isMesh) { o.castShadow = true; o.receiveShadow = true; floatify(o.geometry); } }); } catch {}
       return { ...e, scene: g.scene, farScene, clips: g.animations || [] };
     } catch { try { const g = await loader.loadAsync(new URL(e.file, base).href + '?r=1'); return { ...e, scene: g.scene, farScene: null, clips: g.animations || [] }; } catch { return null; } } /* one retry: a dropped connection should not cost the model */
   });
@@ -37,9 +37,10 @@ export async function loadAssets() {
 
 // meshopt packing quantizes positions/normals/UVs to 8/16-bit integers. The static batching bakes the world matrix into a copy
 // of every still mesh (applyMatrix4 + mergeGeometries): on integer attributes that clamps or refuses to merge.
-// So still meshes go back to plain floats once at load (GPU memory as before compression, the download stays small).
+// And on the Mac (Metal via ANGLE) 8/16-bit vertex formats cost ~4 fps at the Stadtfest even on figures.
+// So every mesh goes back to plain floats once at load (GPU memory as before compression, the download stays small).
 function floatify(g) {
-  for (const k in g.attributes) { const a = g.attributes[k];
+  for (const k in g.attributes) { const a = g.attributes[k]; if (k === 'skinIndex') continue; /* bone indices stay integers */
     if (!a.isInterleavedBufferAttribute && a.array instanceof Float32Array && !a.normalized) continue;
     const n = a.itemSize, f = new Float32Array(a.count * n), get = [a.getX, a.getY, a.getZ, a.getW];
     for (let i = 0; i < a.count; i++) for (let j = 0; j < n; j++) f[i * n + j] = get[j].call(a, i);
