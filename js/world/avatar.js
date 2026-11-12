@@ -3,13 +3,14 @@
 // to the others in a group ride. Legs pedal with a little two-bone IK so the feet stay on the pedals.
 import * as THREE from 'three';
 import { GLTFLoader } from '../../vendor/jsm/loaders/GLTFLoader.js';
+import { MeshoptDecoder } from '../../vendor/jsm/libs/meshopt_decoder.module.js';
 
 // Optional detailed parts from the Mac (assets/world/rider/bike.glb, hands.glb). Missing files: the simple built-in bike and hands stay.
 const KIT = { bike: null, hands: null };
 let kitLoad = null;
 export function loadRiderKit() {
   if (kitLoad) return kitLoad;
-  const base = new URL('../../assets/world/rider/', import.meta.url), loader = new GLTFLoader();
+  const base = new URL('../../assets/world/rider/', import.meta.url), loader = new GLTFLoader().setMeshoptDecoder(MeshoptDecoder);
   // only files the manifest lists (category "rider"), so a missing kit causes no 404s in the console
   const listed = fetch(new URL('../manifest.json', base)).then(r => (r.ok ? r.json() : [])).catch(() => []).then(l => new Set((Array.isArray(l) ? l : []).filter(e => e?.category === 'rider').map(e => e.file)));
   const one = async f => { if (!(await listed).has('rider/' + f)) return null; try { const sc = (await loader.loadAsync(new URL(f, base).href)).scene; sc.traverse(o => { if (o.isMesh) { o.userData.kit = true; for (const m of [o.material].flat()) { m.userData.kit = true; for (const k of ['map', 'normalMap', 'roughnessMap', 'metalnessMap', 'aoMap']) if (m[k]) m[k].userData.kit = true; } } }); return sc; } catch { return null; } };

@@ -1,12 +1,14 @@
 // Tiny static server without dependencies: node serve.mjs  ->  http://localhost:8765
 import { createServer } from 'node:http';
 import { readFile, stat } from 'node:fs/promises';
+import { gzipSync } from 'node:zlib';
 import { extname, join, normalize } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { stravaApi } from './tools/strava-api.mjs';
 import { accountsApi } from './tools/accounts-api.mjs';
 const root = fileURLToPath(new URL('.', import.meta.url));
 const port = +process.env.PORT || 8765;
+const GZ = new Map(); // gzip cache: file -> { etag, buf }
 const types = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript', '.css': 'text/css', '.svg': 'image/svg+xml', '.jpg': 'image/jpeg', '.png': 'image/png', '.woff2': 'font/woff2', '.json': 'application/json', '.webmanifest': 'application/manifest+json', '.mjs': 'text/javascript', '.wasm': 'application/wasm' };
 createServer(async (req, res) => {
   let p = normalize(decodeURIComponent(new URL(req.url, 'http://x').pathname)).replace(/^(\.\.[/\\])+/, '');
@@ -18,6 +20,10 @@ createServer(async (req, res) => {
     // validators, so a second visit only asks "changed?" and gets 304 instead of downloading every model again (friends over the home upload line)
     const etag = `"${st.size.toString(36)}-${Math.floor(st.mtimeMs).toString(36)}"`, head = { 'Content-Type': types[extname(file)] || 'application/octet-stream', 'Cache-Control': 'no-cache', ETag: etag, 'Last-Modified': st.mtime.toUTCString() };
     if (req.headers['if-none-match'] === etag) { res.writeHead(304, head); res.end(); return; }
+    // gzip for text and the terrain .bin files (dem 32 MB, compresses well); compressed once per file version and kept in memory. GLB/JPG are already packed.
+    if (/\.(bin|json|js|mjs|css|html|svg)$/.test(file) && /\bgzip\b/.test(req.headers['accept-encoding'] || '') && st.size > 1024) {
+      let z = GZ.get(file); if (!z || z.etag !== etag) { z = { etag, buf: gzipSync(await readFile(file), { level: 6 }) }; GZ.set(file, z); }
+      res.writeHead(200, { ...head, 'Content-Encoding': 'gzip', Vary: 'Accept-Encoding' }); res.end(z.buf); return; }
     res.writeHead(200, head);
     res.end(await readFile(file));
   } catch { res.writeHead(404); res.end('not found'); }

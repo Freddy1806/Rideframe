@@ -2,6 +2,7 @@
 // a model that is missing simply is not offered, the world then falls back to its simple built-in shapes.
 import * as THREE from 'three';
 import { GLTFLoader } from '../../vendor/jsm/loaders/GLTFLoader.js';
+import { MeshoptDecoder } from '../../vendor/jsm/libs/meshopt_decoder.module.js';
 import { clone as skClone } from '../../vendor/jsm/utils/SkeletonUtils.js';
 
 const base = new URL('../../assets/world/', import.meta.url);
@@ -11,7 +12,7 @@ export async function loadAssets() {
   try { list = await (await fetch(new URL('manifest.json', base))).json(); } catch { return new Assets([]); }
   if (typeof window === 'undefined') return new Assets([]);
   if (new URLSearchParams(location.search).has('fakeassets')) return new Assets(list.map(fake)); // layout test without the GLBs
-  const loader = new GLTFLoader();
+  const loader = new GLTFLoader().setMeshoptDecoder(MeshoptDecoder); /* the Mac mini packs GLBs with meshopt + WebP (several times smaller over the home upload line) */
   list = list.filter(e => e.category !== 'rider'); // bike/hands for the riders: loaded by avatar.js
   // variants from the Mac mini (thicker, thinner, other colours: "variant_of": base name) would triple the download:
   // each ride loads only a few of them at random (?variants=N per base, default 1), so every ride looks a little different
@@ -19,7 +20,9 @@ export async function loadAssets() {
   for (const e of list) if (e.variant_of) (groups[e.variant_of] ||= []).push(e);
   const keep = new Set(Object.values(groups).flatMap(g => g.sort(() => Math.random() - 0.5).slice(0, nv)));
   list = list.filter(e => !e.variant_of || keep.has(e));
-  const ok = await Promise.all(list.map(async e => {
+  // at most 6 downloads at once: hundreds in parallel made the public (Tailscale Funnel) path drop connections, and those models went missing
+  const pool = (items, n, fn) => { const out = new Array(items.length); let i = 0; return Promise.all(Array.from({ length: Math.min(n, items.length) }, async () => { while (i < items.length) { const k = i++; out[k] = await fn(items[k]); } })).then(() => out); };
+  const ok = await pool(list, location.hostname === 'localhost' || location.hostname === '127.0.0.1' ? 16 : 6, async e => {
     try {
       const g = await loader.loadAsync(new URL(e.file, base).href);
       const cast = !/^(festival|laundry)/.test(e.category || '') && Math.max(...(e.size || [9])) >= 1.2; /* bunting, stalls' cloth, washing and small bits threw ~950 shadow casters at the Stadtfest (shadow pass 1300 draw calls) */
@@ -27,8 +30,8 @@ export async function loadAssets() {
       let farScene = null; // optional low-poly LOD for trees ("far": file), drawn beyond ~260 m
       if (e.far) try { farScene = (await loader.loadAsync(new URL(e.far, base).href)).scene; farScene.traverse(o => { if (o.isMesh) { o.castShadow = true; o.receiveShadow = true; } }); } catch {}
       return { ...e, scene: g.scene, farScene, clips: g.animations || [] };
-    } catch { return null; }
-  }));
+    } catch { try { const g = await loader.loadAsync(new URL(e.file, base).href + '?r=1'); return { ...e, scene: g.scene, farScene: null, clips: g.animations || [] }; } catch { return null; } } /* one retry: a dropped connection should not cost the model */
+  });
   return new Assets(ok.filter(Boolean));
 }
 
