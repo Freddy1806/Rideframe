@@ -8,6 +8,7 @@ export const smooth = (a, b, x) => { const t = Math.max(0, Math.min(1, (x - a) /
 export const lerp = (a, b, t) => a + (b - a) * t;
 
 export const ROAD_W = 3.3;     // half width of the asphalt
+const QS_NOEDGE = typeof location !== 'undefined' && new URLSearchParams(location.search).has('noedge'); /* test without the sea edge */
 export const DS = 2.5;         // metres between dense centreline samples
 const SUB = STEP / DS;         // dense samples per track sample
 
@@ -67,7 +68,7 @@ export class Field {
       this.tx[j] = dx / l; this.tz[j] = dz / l;
     }
     // land parameters per dense sample, smoothed along the road so transitions are gentle
-    const sea = new Float32Array(m), cliff = new Float32Array(m), beach = new Float32Array(m), river = new Float32Array(m);
+    const sea = new Float32Array(m), cliff = new Float32Array(m), beach = new Float32Array(m), river = new Float32Array(m), edge = new Float32Array(m);
     const segs = track.segments || [];
     for (let j = 0; j < m; j++) {
       const d = j * DS, s = segs.find(s => d >= s.from && d < s.to) || segs[segs.length - 1] || {};
@@ -75,12 +76,15 @@ export class Field {
       river[j] = s.land === 'river' ? 1 : 0;
       cliff[j] = s.land === 'cliff' ? 1 : 0;
       beach[j] = s.beach ? 1 : 0;
+      /* Freddy 11.11.: now and then the sea right beside the road (rail, then straight down to the water) – stretches of ~600 m on open coast, never at beaches or villages */
+      const vf = (d - s.from) / Math.max(1, s.to - s.from), inVil = s.village && vf > s.village[0] - 0.08 && vf < s.village[1] + 0.08;
+      edge[j] = s.land === 'coast' && !s.beach && !inVil && !QS_NOEDGE && Math.sin(d / 520 + (s.from % 977)) > 0.45 ? 1 : 0;
     }
     const sm = (a, r) => { // moving average via prefix sums
       const P = new Float64Array(m + 1); for (let j = 0; j < m; j++) P[j + 1] = P[j] + a[j];
       const o = new Float32Array(m); for (let j = 0; j < m; j++) { const lo = Math.max(0, j - r), hi = Math.min(m, j + r + 1); o[j] = (P[hi] - P[lo]) / (hi - lo); }
       return o; };
-    this.sea = sm(sea, 120); this.cliff = sm(cliff, 120); this.beach = sm(beach, 120); this.river = sm(river, 120);
+    this.sea = sm(sea, 120); this.edge = sm(edge, 60); this.cliff = sm(cliff, 120); this.beach = sm(beach, 120); this.river = sm(river, 120);
     if (track.dem?.tunnels?.length) { this.covered = new Uint8Array(m); for (const [a, b] of track.dem.tunnels) for (let j = Math.max(0, Math.floor(a / DS)); j <= Math.min(m - 1, b / DS); j++) this.covered[j] = 1; } // tunnels and galleries: no view out
     if (track.dem?.tunnels?.length) { this.tunnel = new Uint8Array(m); track.dem.tunnels.forEach(([a, b], k) => { if (track.dem.tunnelKinds?.[k] === 'avalanche_protector') return;
       const set = (lo, hi, arr) => { for (let j = Math.max(0, Math.floor(lo / DS)); j <= Math.min(m - 1, hi / DS); j++) arr[j] = 1; };
@@ -123,10 +127,10 @@ export class Field {
     }
     if (best < 0) return null;
     // smooth averages over nearby road: the further away, the wider (no seams where the nearest sample flips)
-    const sig2 = 1600 + bd * 0.36; let ws = 0, we = 0, wsea = 0, wcl = 0, wbe = 0, wri = 0;
+    const sig2 = 1600 + bd * 0.36; let ws = 0, we = 0, wsea = 0, wcl = 0, wbe = 0, wri = 0, wed = 0;
     for (const i of list) {
       const dx = x - this.x[i], dz = z - this.z[i], q = (dx * dx + dz * dz - bd) / sig2; if (q > 9) continue; const w = Math.exp(-q);
-      ws += w; we += w * this.e[i]; wsea += w * this.sea[i]; wcl += w * this.cliff[i]; wbe += w * this.beach[i]; wri += w * this.river[i];
+      ws += w; we += w * this.e[i]; wsea += w * this.sea[i]; wcl += w * this.cliff[i]; wbe += w * this.beach[i]; wri += w * this.river[i]; wed += w * this.edge[i];
     }
     // refine on the dense samples around the hit, then project onto the segment
     const lo = Math.max(0, best - SUB * 2), hi = Math.min(this.n - 1, best + SUB * 2);
@@ -137,7 +141,7 @@ export class Field {
     const eHere = lerp(this.e[i], this.e[j], Math.abs(f));
     const near = smooth(30, 8, Math.abs(side)); // right at the road use the exact local values
     return { i, d: Math.abs(side), side, e: eHere, ew: we / ws,
-      sea: lerp(wsea / ws, this.sea[i], near), cliff: lerp(wcl / ws, this.cliff[i], near), beach: lerp(wbe / ws, this.beach[i], near), river: lerp(wri / ws, this.river[i], near) };
+      sea: lerp(wsea / ws, this.sea[i], near), cliff: lerp(wcl / ws, this.cliff[i], near), beach: lerp(wbe / ws, this.beach[i], near), river: lerp(wri / ws, this.river[i], near), edge: lerp(wed / ws, this.edge[i], near) };
   }
   /** The smoothed values (sigma >= 40 m) change slowly: they come bilinearly from a cached 12 m grid,
    *  only the nearest sample is refined exactly. Terrain tiles build several times faster. */
@@ -145,7 +149,7 @@ export class Field {
     const G = 12, gx = Math.floor(x / G), gz = Math.floor(z / G), u = x / G - gx, v = z / G - gz;
     const C = this._farC ||= new Map(); if (C.size > 400000) C.clear();
     const corner = (a, b) => { const k = (a + 1e6) * 4e6 + b + 1e6; let c = C.get(k);
-      if (c === undefined) { this._noFar = true; const r = this._road(a * G, b * G); this._noFar = false; c = r ? [r.i, r.ew, r.sea, r.cliff, r.beach, r.river] : null; C.set(k, c); } return c; };
+      if (c === undefined) { this._noFar = true; const r = this._road(a * G, b * G); this._noFar = false; c = r ? [r.i, r.ew, r.sea, r.cliff, r.beach, r.river, r.edge] : null; C.set(k, c); } return c; };
     const c00 = corner(gx, gz), c10 = corner(gx + 1, gz), c01 = corner(gx, gz + 1), c11 = corner(gx + 1, gz + 1);
     if (!c00 || !c10 || !c01 || !c11) { this._noFar = true; const r = this._road(x, z); this._noFar = false; return r; }
     const bl = k => (c00[k] * (1 - u) + c10[k] * u) * (1 - v) + (c01[k] * (1 - u) + c11[k] * u) * v;
@@ -158,7 +162,7 @@ export class Field {
     const f = Math.max(-1, Math.min(1, along / DS)), j = Math.max(0, Math.min(this.n - 1, i + Math.sign(f)));
     const near = smooth(30, 8, Math.abs(side)); // right at the road use the exact local values
     return { i, d: Math.abs(side), side, e: lerp(this.e[i], this.e[j], Math.abs(f)), ew: bl(1),
-      sea: lerp(bl(2), this.sea[i], near), cliff: lerp(bl(3), this.cliff[i], near), beach: lerp(bl(4), this.beach[i], near), river: lerp(bl(5), this.river[i], near) };
+      sea: lerp(bl(2), this.sea[i], near), cliff: lerp(bl(3), this.cliff[i], near), beach: lerp(bl(4), this.beach[i], near), river: lerp(bl(5), this.river[i], near), edge: lerp(bl(6), this.edge[i], near) };
   }
   /** Real elevation (m) at world x,z; mirrored beyond the edges so it never ends. */
   demH(x, z) {
@@ -202,8 +206,9 @@ export class Field {
     }
     const land = lerp(nearLand, target, smooth(60, 700, out));
     // sea side (left on coastal sections; always open sea far out on the left)
-    const shore = lerp(lerp(14, 45, r.beach), 4, r.cliff) + this.n2(x / 70, z / 70) * 8 * (1 - 0.8 * r.cliff); // cliffs: edge right behind the guard rail
-    const drop = lerp(lerp(28, 70, r.beach), 14 + r.e * 0.15, r.cliff);
+    const ed = (r.edge || 0) * (1 - r.cliff); /* sea right at the road: rail, a short rocky drop, water */
+    const shore = lerp(lerp(lerp(14, 45, r.beach), 5, ed), 4, r.cliff) + this.n2(x / 70, z / 70) * 8 * (1 - 0.8 * r.cliff) * (1 - 0.85 * ed); // cliffs: edge right behind the guard rail
+    const drop = lerp(lerp(lerp(28, 70, r.beach), 9, ed), 14 + r.e * 0.15, r.cliff);
     const seaH = lerp(base + detail * 0.4 * smooth(0, 10, out) - Math.max(0, out) * 0.05, -9, smooth(shore, shore + drop, out)) - 22 * smooth(shore + drop, shore + drop + 120, out)
       + this.ridged(x * 3, z * 3) * 10 * smooth(shore, shore + 20, out) * (1 - r.beach) * smooth(80, 30, out); // skerries
     // islands: only the highest real peaks of a shifted DEM rise out of the sea
