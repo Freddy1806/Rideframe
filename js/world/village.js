@@ -118,7 +118,7 @@ export function buildVillage(ctx, v = {}) {
     loose(go, gm, 0, 0, 0).userData.village.file = gate ? gate.file : 'gate'; // local x across the road
     const hedge = [any('etter_hecke'), any('etter_hecke_b')].filter(Boolean); // the village fence runs out from both gate posts
     if (hedge.length) for (const sd of [-1, 1]) for (let k = 0; k < 6; k++) put(hedge[k % hedge.length], gm, sd * (7.2 + k * 3.9), { face: 'along', overlap: true, radK: 0.5, gap: 0.5 });
-    house(any('fachwerkhaus_a', 'steinhaus'), 95, -(ROAD_W + 9), { face: 'road', gap: 2 }); // the messenger's house, left before the inn
+    house(any('dorfhaus_a', 'fachwerkhaus_a', 'steinhaus'), 95, -(ROAD_W + 9), { face: 'road', gap: 2 }); // the messenger's house, left before the inn
     put(any('holzstapel'), 88, -(ROAD_W + 4), { face: 'along', gap: 0.6 });
     put(any('misthaufen', 'heuhaufen'), 104, -(ROAD_W + 5), { gap: 0.8 });
     put(any('scheune'), 100, -(ROAD_W + 24), { face: 'road', gap: 2 });
@@ -133,7 +133,7 @@ export function buildVillage(ctx, v = {}) {
   }
   if (st >= 2) {
     [[140, 1], [160, -1], [185, 1], [210, -1]].forEach(([m, s], i) => {
-      house(any(i % 2 ? 'fachwerkhaus_b' : 'fachwerkhaus_a', 'steinhaus'), m, s * (ROAD_W + 10), { face: 'road', gap: 2 });
+      house(any('dorfhaus_' + 'bcdef'[i % 5], i % 2 ? 'fachwerkhaus_b' : 'fachwerkhaus_a', 'steinhaus'), m, s * (ROAD_W + 10), { face: 'road', gap: 2 });
       put(any(i % 2 ? 'holzstapel' : 'heuhaufen'), m - 7, s * (ROAD_W + 4.5), { gap: 0.6 });
       put(any('stall_klein'), m + 9, s * (ROAD_W + 17), { face: 'road', gap: 1.5 });
       put(any(['korb', 'sack', 'hackklotz', 'trog'][i]), m + 6, s * (ROAD_W + 4), { face: 'road', gap: 0.5, radK: 0.5 });
@@ -173,7 +173,7 @@ export function buildVillage(ctx, v = {}) {
   // ---- 5 The Farms: the row of farmsteads between gate and smithy ----
   if (st >= 5) for (let k = 0; k < 6; k++) {
     const m = 320 + k * 13, s = k % 2 ? -1 : 1;
-    house(any(k % 3 ? 'fachwerkhaus_a' : 'fachwerkhaus_b', 'steinhaus'), m, s * (ROAD_W + 9), { face: 'road', gap: 2 });
+    house(any('dorfhaus_' + 'abcdef'[(k + 2) % 6], k % 3 ? 'fachwerkhaus_a' : 'fachwerkhaus_b', 'steinhaus'), m, s * (ROAD_W + 9), { face: 'road', gap: 2 });
     put(any('scheune', 'heuhaufen'), m + 4, s * (ROAD_W + 22), { face: 'road', gap: 2 });
     if (k === 5) { put(any('huette_b', 'huette'), 395, ROAD_W + 10, { face: 'road', gap: 1.5 });
       const fence = any('stangenzaun'); if (fence) for (let j = 0; j < 10; j++) put(fence, 405 + j * 2.95, ROAD_W + 14, { face: 'road', overlap: true, radK: 0.3, gap: 1 }); } // the common pasture
