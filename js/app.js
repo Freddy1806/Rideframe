@@ -144,7 +144,7 @@ function library() {
         <h1 class="display" style="margin-top:14px">Deine<br>Strecken</h1>
         <div class="meta">${routes.length} ${routes.length === 1 ? 'Strecke' : 'Strecken'} · ${fmtKm(routes.reduce((s, r) => s + r.track.length, 0))} km · ${fmtNum(routes.reduce((s, r) => s + r.track.gain, 0))} Höhenmeter</div>
       </div>
-      <div style="display:flex;gap:10px"><button class="btn ghost" id="lookBtnLib">Mein Fahrer</button><button class="btn ghost" id="groupBtnLib">Zusammen fahren</button><button class="btn" id="uploadBtn">＋ Strecke hochladen</button></div>
+      <div style="display:flex;gap:10px;flex-wrap:wrap;justify-content:flex-end"><button class="btn ghost" id="wishBtnLib" hidden>Wunschliste</button><button class="btn ghost" id="lookBtnLib">Mein Fahrer</button><button class="btn ghost" id="groupBtnLib">Zusammen fahren</button><button class="btn" id="uploadBtn">＋ Strecke hochladen</button></div>
     </div>
     <div id="board" hidden></div>
     <div class="grid">
@@ -159,6 +159,7 @@ function library() {
   $('#uploadBtn').onclick = $('#addCard').onclick = () => $('#fileInput').click();
   $('#groupBtnLib').onclick = () => groupModal({ startRide });
   $('#lookBtnLib').onclick = () => import('./avatar-ui.js').then(x => x.avatarModal());
+  accountsAvailable().then(ok => { const b = $('#wishBtnLib'); if (!ok || !b) return; b.hidden = false; b.onclick = () => import('./wishes.js').then(x => x.wishModal(state, accountChanged)); }); /* wish list: only where RIDEFRAME is hosted with accounts */
   main.querySelectorAll('.card').forEach(c => c.addEventListener('click', () => go('detail', c.dataset.id)));
   showBoard();
 }

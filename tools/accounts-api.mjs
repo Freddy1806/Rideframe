@@ -89,6 +89,7 @@ export async function accountsApi(req, res, path) {
       const f = join(dir, 'story.json'), old = await readJSON(f, null), op0 = old?.week === wk ? old.pts || {} : {}, pts = {};
       for (const k of ['wizard', 'king', 'devil']) pts[k] = Math.max(+op0[k] || 0, Math.min(1e5, +b.pts?.[k] || 0));
       await writeJSON(f, { week: wk, pts, at: Date.now() }); boardCache = null; boardGen++; return send(res, 200, { ok: true }); }
+    if (op === 'wishes' || op.startsWith('wishes/')) return await wishes(req, res, op, u);
     if (op === 'rides') { const f = await readdir(join(dir, 'rides')).catch(() => []); return send(res, 200, { ids: f.filter(x => x.endsWith('.json')).map(x => x.slice(0, -5)) }); }
     const m = op.match(/^rides\/([\w-]{1,64})$/);
     if (m) {
@@ -99,4 +100,32 @@ export async function accountsApi(req, res, path) {
     }
     return send(res, 404, { error: 'unbekannt' });
   } catch (e) { return send(res, 500, { error: String(e.message || e) }); }
+}
+
+/* ---- wish list: every player writes wishes, everyone can +1 them; Freddy (RIDEFRAME_ADMIN, default "freddy") sets the status ---- */
+const WISH = join(DATA, 'wishes.json'), STATUS = ['neu', 'geplant', 'in Arbeit', 'umgesetzt', 'nicht geplant'];
+const ADMINS = new Set((process.env.RIDEFRAME_ADMIN || 'freddy').toLowerCase().split(',').map(x => x.trim()));
+let wlock = Promise.resolve();
+function withWishes(fn) { const run = wlock.then(async () => fn(await readJSON(WISH, { list: [] }))); wlock = run.catch(() => {}); return run; }
+async function wishes(req, res, op, u) {
+  const me = u.name.toLowerCase(), admin = ADMINS.has(me);
+  const view = w => ({ id: w.id, by: w.by, text: w.text, at: w.at, status: w.status || 'neu', note: w.note || '', votes: w.votes.length, voted: w.votes.includes(me), mine: w.key === me });
+  const out = l => send(res, 200, { admin, status: STATUS, list: l.map(view).sort((a, b) => (a.status === 'umgesetzt') - (b.status === 'umgesetzt') || b.votes - a.votes || b.at - a.at) });
+  if (op === 'wishes' && req.method === 'GET') return out((await readJSON(WISH, { list: [] })).list);
+  if (op === 'wishes' && req.method === 'POST') {
+    const b = await body(req, 1e4), text = String(b.text || '').trim().replace(/\s+/g, ' ').slice(0, 500);
+    if (text.length < 3) return send(res, 400, { error: 'Bitte einen Wunsch eintragen.' });
+    return withWishes(async W => { if (W.list.filter(w => w.key === me && Date.now() - w.at < 864e5).length >= 30) return send(res, 429, { error: 'Heute schon 30 Wünsche, morgen wieder.' });
+      W.list.push({ id: randomBytes(6).toString('hex'), key: me, by: u.name, text, at: Date.now(), votes: [me], status: 'neu' }); await writeJSON(WISH, W); return out(W.list); });
+  }
+  const m = op.match(/^wishes\/([0-9a-f]{12})(\/vote)?$/); if (!m) return send(res, 404, { error: 'unbekannt' });
+  return withWishes(async W => {
+    const w = W.list.find(x => x.id === m[1]); if (!w) return send(res, 404, { error: 'Wunsch nicht gefunden.' });
+    if (m[2] && req.method === 'POST') { const i = w.votes.indexOf(me); i < 0 ? w.votes.push(me) : w.votes.splice(i, 1); }
+    else if (req.method === 'DELETE') { if (w.key !== me && !admin) return send(res, 403, { error: 'Nur eigene Wünsche löschen.' }); W.list = W.list.filter(x => x !== w); }
+    else if (req.method === 'PUT') { if (!admin) return send(res, 403, { error: 'Nur Freddy setzt den Status.' }); const b = await body(req, 1e4);
+      if (STATUS.includes(b.status)) w.status = b.status; if (typeof b.note === 'string') w.note = b.note.trim().slice(0, 300); }
+    else return send(res, 405, { error: 'nicht erlaubt' });
+    await writeJSON(WISH, W); return out(W.list);
+  });
 }

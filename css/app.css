@@ -496,3 +496,22 @@ input[type=number]::-webkit-inner-spin-button, input[type=number]::-webkit-outer
   .hud-route .name { max-width: 180px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 }
 @media (max-width: 1150px) { .hud-route .sep, .hud-route .name { display: none; } }
+/* wish list */
+.modal.wishes .box{max-width:720px;width:calc(100vw - 32px);max-height:88vh;display:flex;flex-direction:column}
+.wish-new{display:flex;gap:10px;align-items:stretch;margin-top:14px}
+.wish-new textarea{flex:1;resize:vertical;min-height:52px;font:inherit;color:inherit;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.18);border-radius:10px;padding:10px 12px}
+.wish-list{overflow:auto;flex:1;margin-top:8px;display:flex;flex-direction:column;gap:8px;padding-right:4px}
+.wish{display:flex;gap:12px;align-items:flex-start;padding:10px 12px;border-radius:12px;background:rgba(255,255,255,.04)}
+.wish.done{opacity:.6}
+.wvote{display:flex;flex-direction:column;align-items:center;min-width:44px;padding:6px 0;border-radius:10px;border:1px solid rgba(255,255,255,.18);background:none;color:inherit;cursor:pointer;font-size:12px}
+.wvote b{font-size:16px}
+.wvote.on{border-color:var(--accent);color:var(--accent)}
+.wbody{flex:1;min-width:0}
+.wtext{white-space:pre-wrap;word-wrap:break-word}
+.wmeta{font-size:12px;opacity:.7;margin-top:4px;display:flex;gap:6px;align-items:center;flex-wrap:wrap}
+.wmeta select{font:inherit;color:inherit;background:rgba(255,255,255,.08);border:1px solid rgba(255,255,255,.2);border-radius:6px;padding:1px 4px}
+.wdel{background:none;border:0;color:inherit;text-decoration:underline;cursor:pointer;font:inherit;padding:0}
+.wnote{font-size:13px;margin-top:4px;opacity:.85}
+.wpill{padding:1px 8px;border-radius:99px;background:rgba(255,255,255,.1)}
+.wpill.s-geplant,.wpill.s-inArbeit{background:rgba(255,120,40,.25)}
+.wpill.s-umgesetzt{background:rgba(80,200,120,.25)}

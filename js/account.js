@@ -49,6 +49,15 @@ export async function pushStory(L) { if (acc && L?.week) await api('story', { me
 /** weekly leaderboard of all accounts on this host (null without an account) */
 export async function loadBoard() { return acc ? api('board').catch(() => null) : null; }
 
+/** wish list of all players on this host: list / add / +1 / delete / status (Freddy) */
+export const wishApi = {
+  list: () => api('wishes'),
+  add: text => api('wishes', { method: 'POST', body: JSON.stringify({ text }) }),
+  vote: id => api(`wishes/${id}/vote`, { method: 'POST' }),
+  del: id => api(`wishes/${id}`, { method: 'DELETE' }),
+  set: (id, status, note) => api(`wishes/${id}`, { method: 'PUT', body: JSON.stringify({ status, note }) }),
+};
+
 const esc = s => String(s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
 
 /** login / register / logout dialog; resolves when closed. onChange() after login or logout. */
