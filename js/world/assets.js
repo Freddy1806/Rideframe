@@ -100,16 +100,16 @@ export class Assets {
 const GLOW = new Set();
 
 /* ---- world modes (Freddy 12.11.): "Voll", "Ohne Menschen", "Ohne Menschen und Tiere", "Nur Landschaft" ---- */
-const PERSON = /figur|mensch|people|crowd|ritter|soldat|musiker|bauer|frau|mann|kind|oma|reiter|zuschauer|haendler|haendlerin|pfarrer|trauer|knecht|wirt|schmied|kaufmann|edeldame|waescherin|lehrling|hirte|jaeger|baecker|marktfrau|moench|nonne|koenig|king|knight|gaukler|bettler|wache|bogen|sarg/;
-const ANIMAL = /tiere\/|animal|kuh|schaf|pferd|pony|rentier|ziege|schwein|huhn|henne|gans|gaense|ente|ochse|buckelwal|wal_|orca|adler|moewe|moeve|papagei|wolf|reh|hase|vogel|fledermaus|fledermaeuse|hund|katze|drache|robbe|fisch/;
-const NATURE = /baum|tree|birke|kiefer|fichte|eiche|buche|weide|strauch|busch|bush|fels|cliff|rock|stein|stone|gras|grass|blume|flower|farn|moos|pflanze|plant|wasserfall|waterfall|treibholz|schilf|kraut|heide|beere/;
+// decided by category, not by words in the description: substrings hit "rOMAnisch", "wiKINGer", "dREHen", "ZIEGEl", "moosgrün", "TreBUCHEt" (Mac mini check of all 608 models)
+const WITH_PEOPLE = /^(reiter_ritter|personenkutsche|ruderboot|heissluftballon|zuschauer_tribuene)$/; // models outside figure_* with people on board
 export const WORLD_MODES = [['voll', 'Voll belebt'], ['ruhig', 'Ohne Menschen'], ['natur', 'Ohne Menschen und Tiere'], ['leer', 'Nur Landschaft']];
 export function worldView(A, mode) {
   if (!mode || mode === 'voll') return A;
-  const id = e => ((e.category || '') + ' ' + (e.file || '') + ' ' + (e.name || '')).toLowerCase();
-  const keepCat = e => /^(cockpit|rider|fx)/.test(e.category || '');
-  const person = e => /^figure/.test(e.category || '') || PERSON.test(id(e)), animal = e => /^(animal|bird)/.test(e.category || '') || ANIMAL.test(id(e));
+  const cat = e => e.category || '', base = e => (e.file || '').split('/').pop().replace(/\.[a-z0-9]+$/i, '').toLowerCase();
+  const keepCat = e => /^(cockpit|rider|fx)/.test(cat(e));
+  const person = e => /^figure/.test(cat(e)) || WITH_PEOPLE.test(base(e)), animal = e => /^(animal|bird)/.test(cat(e));
+  const nature = e => /^(tree|cliff|waterfall)/.test(cat(e)) || /^Fels:/.test(e.name || '');
   if (mode === 'ruhig') return A.only(e => keepCat(e) || !person(e));
   if (mode === 'natur') return A.only(e => keepCat(e) || (!person(e) && !animal(e)));
-  return A.only(e => keepCat(e) || (!person(e) && !animal(e) && (NATURE.test(id(e)) || /^Fels:/.test(e.name || ''))));
+  return A.only(e => keepCat(e) || (!person(e) && !animal(e) && nature(e)));
 }

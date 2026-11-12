@@ -1083,40 +1083,52 @@ export class WorldScene {
   }
   // static batching: every still prop is baked into one mesh per 500 m cell, size class and material (~1500 draw calls -> a few hundred)
   async _batch() {
-    // pass 1 only notes which mesh goes into which bucket (no copies yet); pass 2 builds one bucket at a time and frees its copies
-    // right away, yielding to the browser every ~30 ms. The old version copied every still mesh first (peak ~2 GB heap, one 10 s task).
-    const CELL = 500, buckets = new Map(), keep = [], still = [];
+    // pass 1 only notes which mesh goes into which bucket (no copies yet); pass 2 builds one 250/500 m cell at a time, always the
+    // one nearest the camera, and swaps it in right away. `ready` waits only for the cells around the start (_batchNearP); the far
+    // rest follows while riding in 5 ms slices (all ~5,400 buckets took 51-67 s behind the loading card on a 4x slowed laptop).
+    const CELL = 500, NEAR = 1200, cells = new Map(), keep = [], still = [];
     for (const o of this.props) {
       if (!o.userData.still) { keep.push(o); continue; }
       still.push(o);
       const cls = o.userData.near ? 'near' : o.userData.far ? 'far' : o.userData.small ? 'small' : o.userData.mid ? 'mid' : 'big';
       const C = cls === 'small' || cls === 'near' || cls === 'far' ? CELL / 2 : CELL, cx = Math.floor(o.position.x / C), cz = Math.floor(o.position.z / C);
+      const ck = `${cx},${cz},${cls}`; let cell = cells.get(ck); if (!cell) cells.set(ck, cell = { x: (cx + 0.5) * C, z: (cz + 0.5) * C, objs: [], buckets: new Map() });
+      cell.objs.push(o);
       o.traverse(m => {
         if (!m.isMesh || m.isSkinnedMesh || Array.isArray(m.material)) return;
         const g = m.geometry, sig = Object.keys(g.attributes).sort().join(',') + (g.index ? ':i' : ':n');
-        const key = `${cx},${cz},${cls},${m.material.uuid},${m.castShadow ? 1 : 0}${m.receiveShadow ? 1 : 0},${sig}`;
-        let b = buckets.get(key); if (!b) buckets.set(key, b = { cls, mat: m.material, cast: m.castShadow, recv: m.receiveShadow, items: [], x: 0, z: 0 });
+        const key = `${m.material.uuid},${m.castShadow ? 1 : 0}${m.receiveShadow ? 1 : 0},${sig}`;
+        let b = cell.buckets.get(key); if (!b) cell.buckets.set(key, b = { cls, mat: m.material, cast: m.castShadow, recv: m.receiveShadow, items: [], x: 0, z: 0 });
         b.items.push([g, m.matrixWorld.clone()]); b.x += o.position.x; b.z += o.position.z;
       });
     }
-    const added = []; let t0 = performance.now(); this._bt0 = t0;
-    for (const b of buckets.values()) {
-      if (this._disposed) return;
-      if (performance.now() - t0 > (this._rideOn ? 5 : 30)) { await new Promise(r => setTimeout(r, 0)); t0 = performance.now(); } // behind the loading card in big slices, while riding only 5 ms per frame
-      const list = b.items.map(([g, mw]) => { const c = g.clone(); c.boundingBox = c.boundingSphere = null; return c.applyMatrix4(mw); }); b.items = null; /* no bounds on the copies: applyMatrix4 would recompute them for every single copy (12 % of a frame on a slow laptop) */
-      const cx = b.x / list.length, cz = b.z / list.length;
-      const g = mergeGeometries(list, false); list.forEach(x => x.dispose()); if (!g) continue;
-      g.translate(-cx, 0, -cz); g.computeBoundingSphere();
-      const mesh = new THREE.Mesh(g, b.mat); mesh.position.set(cx, 0, cz); mesh.castShadow = b.cast; mesh.receiveShadow = b.recv;
-      mesh.userData.small = b.cls === 'small'; mesh.userData.mid = b.cls !== 'big'; mesh.userData.rad = g.boundingSphere.radius;
-      mesh.userData.near = b.cls === 'near'; mesh.userData.far = b.cls === 'far';
-      if (b.cls !== 'big') noMirror(mesh);
-      mesh.visible = false; this.scene.add(mesh); freeze(mesh); added.push(mesh);
+    let nearRes; this._batchNearP = new Promise(r => { nearRes = r; });
+    const left = [...cells.values()], added = [], cam = this.camera.position; let t0 = performance.now(), nb = 0; this._bt0 = t0;
+    while (left.length) {
+      if (this._disposed) return nearRes();
+      let bi = 0, bd = Infinity; for (let i = 0; i < left.length; i++) { const d = (left[i].x - cam.x) ** 2 + (left[i].z - cam.z) ** 2; if (d < bd) { bd = d; bi = i; } }
+      if (bd > NEAR * NEAR && nearRes && !this.loading) { /* !loading: the camera stands at the start and its tiles are built */ nearRes(); nearRes = null; console.info(`RIDEFRAME Batching Start fertig: ${Math.round(performance.now() - this._bt0)} ms, ${left.length} Zellen später`); }
+      const cell = left[bi]; left[bi] = left[left.length - 1]; left.pop();
+      const mine = [];
+      for (const b of cell.buckets.values()) {
+        if (performance.now() - t0 > (this._rideOn ? 5 : 30)) { await new Promise(r => setTimeout(r, 0)); t0 = performance.now(); if (this._disposed) return nearRes?.(); } // behind the loading card in big slices, while riding only 5 ms per frame
+        const list = b.items.map(([g, mw]) => { const c = g.clone(); c.boundingBox = c.boundingSphere = null; return c.applyMatrix4(mw); }); b.items = null; /* no bounds on the copies: applyMatrix4 would recompute them for every single copy (12 % of a frame on a slow laptop) */
+        const cx = b.x / list.length, cz = b.z / list.length; nb++;
+        const g = mergeGeometries(list, false); list.forEach(x => x.dispose()); if (!g) continue;
+        g.translate(-cx, 0, -cz); g.computeBoundingSphere();
+        const mesh = new THREE.Mesh(g, b.mat); mesh.position.set(cx, 0, cz); mesh.castShadow = b.cast; mesh.receiveShadow = b.recv;
+        mesh.userData.small = b.cls === 'small'; mesh.userData.mid = b.cls !== 'big'; mesh.userData.rad = g.boundingSphere.radius;
+        mesh.userData.near = b.cls === 'near'; mesh.userData.far = b.cls === 'far';
+        if (b.cls !== 'big') noMirror(mesh);
+        freeze(mesh); mine.push(mesh);
+      }
+      // swap this cell in one go (never the props and their batched copies both drawn); the culling loop sees the new meshes at once
+      for (const o of cell.objs) this.scene.remove(o);
+      for (const m of mine) { this.scene.add(m); this.props.push(m); added.push(m); }
     }
-    for (const o of still) this.scene.remove(o); // swap in one go: never the props and their batched copies both drawn
-    for (const m of added) m.visible = true;
-    console.info(`RIDEFRAME Batching fertig: ${buckets.size} Gruppen, ${Math.round(performance.now() - this._bt0)} ms`);
-    const known = new Set(keep.concat(still)); this.props = keep.concat(added, this.props.filter(o => !known.has(o))); // anything added to props meanwhile stays
+    nearRes?.();
+    console.info(`RIDEFRAME Batching fertig: ${nb} Gruppen, ${cells.size} Zellen, ${Math.round(performance.now() - this._bt0)} ms`);
+    const gone = new Set(still); this.props = this.props.filter(o => !gone.has(o)); // anything added to props meanwhile stays
   }
   // real routes: concrete bridges (deck slab, parapets, piers into the water) where the road crosses a sound
   _bridges() {
@@ -1237,7 +1249,7 @@ export class WorldScene {
     if (this.loading && hole >= 500) { this.loading = false; // compile every shader of the start area first: no stutter in the first seconds
       const warm = new THREE.Group(); // plus the flight and hell visitors (their first frame stalled 0.4 s), compiled while the loading screen still shows
       if (ASSETS.count) for (const n of ['vogelschwarm_hoch', 'fledermaeuse', 'drache', 'gluehende_kohle_haufen', 'feuerdaemon', 'lava_fels', 'feuersaeule']) { const e = ASSETS.find(n); if (e) { const o = ASSETS.make(e, null).obj; o.position.copy(this.camera.position); o.position.y -= 400; warm.add(o); } }
-      this.scene.add(warm); const done = () => { this.scene.remove(warm); Promise.resolve(this._batchP).catch(() => {}).then(() => { this._readyDone = true; this._readyRes(); }); if (QS.has('assetstats')) console.info('RIDEFRAME Modelle benutzt', ASSETS.used.size, 'von', ASSETS.count, JSON.stringify([...ASSETS.used])); };
+      this.scene.add(warm); const done = () => { this.scene.remove(warm); Promise.resolve(this._batchNearP || this._batchP).catch(() => {}).then(() => { this._readyDone = true; this._readyRes(); }); if (QS.has('assetstats')) console.info('RIDEFRAME Modelle benutzt', ASSETS.used.size, 'von', ASSETS.count, JSON.stringify([...ASSETS.used])); };
       (this.renderer.compileAsync ? this.renderer.compileAsync(this.scene, this.camera) : Promise.resolve()).then(done, done); }
   }
 
