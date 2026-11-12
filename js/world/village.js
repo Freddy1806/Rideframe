@@ -95,9 +95,9 @@ export function buildVillage(ctx, v = {}) {
     obj.userData.village = { m, file: 'procedural' }; obj.userData.live = true; scene.add(obj); props.push(obj); obj.traverse(c => { if (c.userData.flutter) anim.push(c); }); return obj; };
 
   // ---- stage 0: the inn of the three bettors at the finish, the lime tree and well before it, a wayside cross on the way in ----
-  const inn = any('wirtshaus') ? house(any('wirtshaus'), 40, -(ROAD_W + 9), { face: 'road', gap: 2 }, true)
+  const inn = any('wirtshaus') ? house(any('wirtshaus'), 40, -(ROAD_W + 12), { face: 'road', gap: 1.5, radK: 0.75 }, true) /* 17×13 m: deeper set back */
     : house(any('fachwerkhaus_b', 'fachwerkhaus_a', 'steinhaus'), 40, -(ROAD_W + 8), { face: 'road', gap: 2, scale: 1.25 }, true); /* left: the right half of the picture holds the grade readout and the finish arch */
-  if (inn) { const sign = any('wirtshausschild'); if (sign) put(sign, 50, -(ROAD_W + 2.2), { face: 'road', overlap: true, radK: 0.3, gap: 0.4 });
+  if (inn) { const sign = any('wirtshausschild'); if (sign) put(sign, 44, -(ROAD_W + 5.2), { face: 'road', overlap: true, radK: 0.3, gap: 0.4 });
     const lt = loose(lanterns(v.leader), 45, -(ROAD_W + 2.6), 3.6, Math.PI / 2); /* hung out towards the road before the inn, seen on the approach */ lt.traverse(c => { if (c.userData.lantern) anim.push(c); }); }
   // the other two bettors wait in front of their inn (the wizard stands at the finish arch); the week's leader cheers
   if (inn) { put(any('koenig_wette'), 34, -(ROAD_W + 4), { face: 'road', anim: v.leader === 'king' ? 'Jubeln' : 'Winken', radK: 0.4, gap: 0.6 });
@@ -114,7 +114,7 @@ export function buildVillage(ctx, v = {}) {
   if (st >= 1) {
     const gate = any('dorftor'), gm = [0, 120, 225, 285, 315, 400, 400, 400, 400][st]; // spans the road, so it bypasses place() (which keeps things off the asphalt)
     const go = gate && ctx.make ? ctx.make(gate) : gateMesh(); if (gate && ctx.make) go.scale.setScalar(Math.max(1, 9.4 / Math.max(gate.size[0], 0.1))); // posts clear the 6.6 m asphalt
-    loose(go, gm, 0, 0, 0); // local x across the road
+    loose(go, gm, 0, 0, 0).userData.village.file = gate ? gate.file : 'gate'; // local x across the road
     const hedge = [any('etter_hecke'), any('etter_hecke_b')].filter(Boolean); // the village fence runs out from both gate posts
     if (hedge.length) for (const sd of [-1, 1]) for (let k = 0; k < 6; k++) put(hedge[k % hedge.length], gm, sd * (7.2 + k * 3.9), { face: 'along', overlap: true, radK: 0.5, gap: 0.5 });
     house(any('fachwerkhaus_a', 'steinhaus'), 95, -(ROAD_W + 9), { face: 'road', gap: 2 }); // the messenger's house, left before the inn
@@ -136,6 +136,7 @@ export function buildVillage(ctx, v = {}) {
       put(any(i % 2 ? 'holzstapel' : 'heuhaufen'), m - 7, s * (ROAD_W + 4.5), { gap: 0.6 });
     });
     put(any('backhaus'), 75, -(ROAD_W + 18), { face: 'road', gap: 2 });
+    put(any('karren_heu', 'karren'), 172, -(ROAD_W + 4.5), { face: 'along', gap: 0.8 });
     put(any('magd_eimer'), 58, ROAD_W + 3.6, { face: 'road', anim: 'Stehen', radK: 0.4, gap: 0.4 });
     put(any('waescheleine'), 150, -(ROAD_W + 20), { face: 'along', gap: 2 });
     const trees = ['obstbaum', 'obstbaum_b', 'obstbaum_c'].map(any).filter(Boolean); // orchards behind the farms
