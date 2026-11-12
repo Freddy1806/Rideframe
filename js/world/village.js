@@ -27,6 +27,21 @@ function gateMesh() {
 }
 
 /** three warm lanterns in the inn's window colours; the week's leader burns brightest */
+/** a low-poly hen (no skeleton): body, tail, head, comb; animated in tickVillage (peck, hop, short runs) */
+const HEN = { body: null, mats: null };
+function hen(r) {
+  HEN.mats ||= [0xe8e0d0, 0x9a6a3a, 0x3d2b1f].map(c => new THREE.MeshStandardMaterial({ color: c, roughness: 0.9 }));
+  const g = new THREE.Group(), m = HEN.mats[r() < 0.6 ? 0 : r() < 0.7 ? 1 : 2], red = new THREE.MeshStandardMaterial({ color: 0xc0392b });
+  const body = new THREE.Mesh(new THREE.SphereGeometry(0.17, 6, 4), m); body.scale.set(1, 0.85, 1.35); body.position.y = 0.22; g.add(body);
+  const tail = new THREE.Mesh(new THREE.ConeGeometry(0.09, 0.2, 4), m); tail.position.set(0, 0.34, -0.2); tail.rotation.x = -0.7; g.add(tail);
+  const head = new THREE.Group(); head.position.set(0, 0.36, 0.18); g.add(head);
+  head.add(new THREE.Mesh(new THREE.SphereGeometry(0.075, 5, 4), m));
+  const comb = new THREE.Mesh(new THREE.BoxGeometry(0.03, 0.06, 0.08), red); comb.position.y = 0.07; head.add(comb);
+  const beak = new THREE.Mesh(new THREE.ConeGeometry(0.025, 0.06, 4), new THREE.MeshStandardMaterial({ color: 0xd9a03a })); beak.rotation.x = Math.PI / 2; beak.position.z = 0.08; head.add(beak);
+  g.userData.hen = { head, ph: r() * 10, x0: 0, z0: 0, tx: 0, tz: 0, next: 0 };
+  return g;
+}
+
 function lanterns(leader) {
   const g = new THREE.Group();
   ['wizard', 'king', 'devil'].forEach((who, i) => {
@@ -104,6 +119,11 @@ export function buildVillage(ctx, v = {}) {
       for (let k = 0; k * l < 22; k++) put(fl, 84 + k * l, -(ROAD_W + 3), { face: 'along', rot: t, overlap: true, radK: 0.3, gap: 0.6 }); }
   }
   // ---- 2 The Green: four farms round the green, bake house, a maid at the well ----
+  // hens scratching round the messenger's farm (from stage 1) and the green: no skeletons, a few triangles each
+  if (st >= 1) for (let k = 0; k < (st >= 2 ? 10 : 5); k++) {
+    const m = (k < 5 ? 92 : 135) + ctx.r() * 14, off = -(ROAD_W + 4 + ctx.r() * 5), h = loose(hen(ctx.r), m, off, 0, ctx.r() * 6.28);
+    Object.assign(h.userData.hen, { x0: h.position.x, z0: h.position.z, tx: h.position.x, tz: h.position.z, ground: f, ry: h.rotation.y }); anim.push(h);
+  }
   if (st >= 2) {
     [[140, 1], [160, -1], [185, 1], [210, -1]].forEach(([m, s], i) => {
       house(any(i % 2 ? 'fachwerkhaus_b' : 'fachwerkhaus_a', 'steinhaus'), m, s * (ROAD_W + 10), { face: 'road', gap: 2 });
@@ -151,6 +171,11 @@ export function tickVillage(anim, t) {
   for (const c of anim) {
     if (c.userData.lantern) c.scale.setScalar(1 + Math.sin(t * 7 + c.userData.lantern.ph) * 0.05 + Math.sin(t * 17 + c.userData.lantern.ph) * 0.03);
     else if (c.userData.flutter) c.rotation.y = Math.sin(t * 3 + c.id) * 0.35;
+    else if (c.userData.hen) { const H = c.userData.hen, a = (t + H.ph) % 6; // pecks, then now and then a short run to a new spot
+      if (t > H.next) { H.next = t + 3 + (H.ph * 7.3 % 5); const ang = (t * 1.7 + H.ph) % 6.28; H.tx = H.x0 + Math.cos(ang) * 1.6; H.tz = H.z0 + Math.sin(ang) * 1.6; }
+      const dx = H.tx - c.position.x, dz = H.tz - c.position.z, dist = Math.hypot(dx, dz);
+      if (dist > 0.05) { c.position.x += dx * 0.06; c.position.z += dz * 0.06; c.rotation.y = Math.atan2(dx, dz); c.position.y = H.ground.height(c.position.x, c.position.z) + Math.abs(Math.sin(t * 18)) * 0.05; H.head.rotation.x = 0; }
+      else H.head.rotation.x = a < 2 ? Math.max(0, Math.sin(t * 9 + H.ph)) * 1.1 : 0; }
     else if (c.userData.smoke) { const S = c.userData.smoke, a = (t * 0.12 + S.ph) % 1; // one puff's life: rise, widen, drift downwind, fade
       c.position.set(a * a * 4 * S.k, a * S.rise, a * 1.5); c.scale.setScalar((1 + a * 4) * S.k); c.material.opacity = Math.sin(a * Math.PI) * 0.55; }
   }
