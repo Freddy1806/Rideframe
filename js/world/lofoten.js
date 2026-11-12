@@ -733,7 +733,7 @@ export class WorldScene {
           place(byName('buehne_verstaerker'), mid + 62, ROAD_W + 12, { face: 'road', gap: 3 });
           for (let k = 0; k < 8; k++) place(byName(k % 2 ? 'metal_fan_2' : 'metal_fan'), mid + 56 + (k % 4) * 3.2, ROAD_W + 4 + Math.floor(k / 4) * 2, { face: 'away', anim: k % 3 ? 'Headbangen' : 'Jubeln', radK: 0.35, gap: 0.5 });
         } else if (theme === 'beerdigung') { // a slow procession along the roadside: the coffin, then the mourners
-          const proc = [byName('sarg_traeger'), ...[0, 1, 2, 3, 4].map(k => byName(k % 2 ? 'trauernde_2' : 'trauernde'))];
+          const proc = [byName('pfarrer'), byName('sarg_traeger'), ...[0, 1, 2, 3, 4].map(k => byName(['trauernde', 'trauernder', 'trauernde_2', 'baeuerin_alt', 'trauernder'][k]) || byName('trauernde'))]; /* the priest leads; the MacBook's faced mourners join (Mac mini saw no procession) */
           proc.forEach((e, k) => { if (!e) return; const dd = mid - 30 - k * 2.6, off = ROAD_W + 2 + (k ? (k % 2) * 0.8 : 0.4);
             const o = place(e, dd, off, { anim: 'Gehen', overlap: true, gap: 0.5, radK: 0.3 }); if (o) o.userData.walk = { d: dd, off, v: 0.55, a, b }; });
         }
@@ -773,14 +773,15 @@ export class WorldScene {
         const watchers = ['zuschauer_jubelnd', 'junge', 'maedchen', 'kind', 'alte_frau', 'moench', 'bogenschuetze', 'jaeger', 'baeckerin', 'frau_brot', 'magd', 'fischerin', 'haendler', 'dorf_frau', 'knecht', 'alter_mann', 'marktfrau', 'pfarrer', 'bauer_kapuze', 'waescherin', 'lehrling', 'wirt', 'schmied_neu', 'trauernder', 'kaufmann', 'baeuerin_alt', 'edeldame'].map(byName).filter(Boolean)
           .sort(() => r() - 0.5);
         if (r() < 0.25 && byName('bauer_sense')) watchers.push(byName('bauer_sense'));
-        for (let k = 0; watchers.length && k < 8; k++) place(watchers[k % watchers.length], a + (k + 0.5) * (b - a) / 8, (k % 2 ? 1 : -1) * (ROAD_W + 1.5 + r() * 0.6), { face: 'road', anim: r() < 0.6 ? 'Winken' : 'Stehen', gap: 0.5, radK: 0.35 });
+        const mast = dd => { if (s !== festSeg) return dd; const m = (dd - a - 15) % 22; return m > -2.5 && m < 2.5 ? dd + 3 - m : m > 19.5 ? dd + 25 - m : dd; }; /* keep figures off the bunting masts (Mac mini: a Wirt with a mast through him) */
+        for (let k = 0; watchers.length && k < 8; k++) place(watchers[k % watchers.length], mast(a + (k + 0.5) * (b - a) / 8), (k % 2 ? 1 : -1) * (ROAD_W + 1.5 + r() * 0.6), { face: 'road', anim: r() < 0.6 ? 'Winken' : 'Stehen', gap: 0.5, radK: 0.35 });
         // the biggest village holds a street festival: garlands over the road, tents, jugglers, a second band, crowd
         if (s === festSeg) {
           const gar = byName('girlande'), tents = ['zelt', 'buehne', 'maibaum', 'tisch', 'fackel'].map(byName).filter(Boolean);
           const crowd = ['gaukler', 'junge', 'maedchen', 'haendler', 'fischerin', 'moench', 'marktfrau', 'kaufmann', 'edeldame', 'lehrling', 'wirt', 'dorf_frau'].map(byName).filter(Boolean);
           for (let d = a + 15; gar && d < b - 15; d += 22) place(gar, d, 0.01, { face: 'along', overlap: true, gap: -99, radK: 0.01 });
           for (let k = 0; tents.length && k < 8; k++) place(tents[k % tents.length], mid - 60 + k * 15, (k % 2 ? 1 : -1) * (ROAD_W + 8 + r() * 4), { face: 'road', gap: 2 });
-          for (let k = 0; crowd.length && k < 18; k++) place(crowd[k % crowd.length], a + r() * (b - a), (r() < .5 ? 1 : -1) * (ROAD_W + 2 + r() * 5), { face: 'road', anim: ['Jonglieren', 'Winken', 'Jubeln', 'Stehen'][k % 4], gap: 0.6, radK: 0.35 });
+          for (let k = 0; crowd.length && k < 18; k++) place(crowd[k % crowd.length], mast(a + r() * (b - a)), (r() < .5 ? 1 : -1) * (ROAD_W + 2 + r() * 5), { face: 'road', anim: ['Jonglieren', 'Winken', 'Jubeln', 'Stehen'][k % 4], gap: 0.6, radK: 0.35 });
           mus.forEach((e, k) => place(e, mid + 40 + k * 2.3, -(ROAD_W + 6 + (k % 2) * 0.8), { radK: 0.45, anim: 'Spielen', gap: 2 }));
         }
         place(byName('hjell'), a + 25, ROAD_W + 12, { face: 'along' });

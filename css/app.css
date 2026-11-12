@@ -486,3 +486,13 @@ input[type=number]::-webkit-inner-spin-button, input[type=number]::-webkit-outer
 .chcard.wizcard .label { white-space: normal; line-height: 1.25; }
 .chcard.wizcard .chbig { font-size: 34px; }
 .chcard.wizcard .chsub { font-size: 13px; }
+/* narrow screens (1280 wide, Mac mini QA 12.11.): the top HUD row overflowed, PAUSE was cut off and the minimap sat on the buttons */
+@media (max-width: 1500px) {
+  .hud-right { gap: 8px; }
+  .hud-right .chip { min-width: 96px; padding: 10px 14px; }
+  .hud-right .camchip { min-width: 0; padding: 10px 11px; }
+  .hud-right .camchip .label { font-size: 9px; letter-spacing: .04em; }
+  .hud-right .camchip .v { font-size: 22px; }
+  .hud-route .name { max-width: 180px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+}
+@media (max-width: 1150px) { .hud-route .sep, .hud-route .name { display: none; } }
