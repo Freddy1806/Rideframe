@@ -33,7 +33,7 @@ function lanterns(leader) {
     const on = leader === who, m = new THREE.Mesh(new THREE.BoxGeometry(0.42, 0.6, 0.42),
       new THREE.MeshBasicMaterial({ color: new THREE.Color(WHO_COL[i]).multiplyScalar(on ? 1.6 : 0.85) }));
     m.position.set((i - 1) * 1.3, 0, 0); m.userData.lantern = { base: on ? 1.6 : 0.85, ph: i * 2.1 }; g.add(m);
-    const halo = new THREE.Sprite(new THREE.SpriteMaterial({ color: WHO_COL[i], transparent: true, opacity: on ? 0.55 : 0.28, depthWrite: false, blending: THREE.AdditiveBlending }));
+    const halo = new THREE.Sprite(new THREE.SpriteMaterial({ map: smokeTex(), color: WHO_COL[i], transparent: true, opacity: on ? 0.55 : 0.28, depthWrite: false, blending: THREE.AdditiveBlending }));
     halo.scale.setScalar(on ? 2.4 : 1.6); halo.position.copy(m.position); g.add(halo);
   });
   return g;
@@ -57,14 +57,15 @@ function smoke(strong) {
 }
 
 /**
- * Build the village into the world. ctx: { place, byName, make, spot, f, scene, props, anim, len }; v: { km, hm, leader }.
+ * Build the village into the world. ctx: { place, byName, make, mirror, spot, f, scene, props, anim, len }; v: { km, hm, leader }.
  * Positions are metres before the finish (end = track length). Returns a summary for the HUD/result screen.
  */
 export function buildVillage(ctx, v = {}) {
   const { place, byName, spot, f, scene, props, len } = ctx;
   const km = v.km || 0, st = stageOf(km), end = len;
   const at = m => end - m; // m metres before the finish
-  const any = (...names) => { for (const n of names) { const e = n && byName(n); if (e) return e; } return null; };
+  const exact = n => { const e = byName(n); return e && e.file.split('/').pop().replace(/\.glb$/, '').replace(/_v\d+$/, '') === n ? e : null; }; // no substring hits: 'wirtshaus' must not find the sign
+  const any = (...names) => { for (const n of names) { const e = n && exact(n); if (e) return e; } return null; };
   const built = [], anim = ctx.anim || [];
   const put = (e, m, off, o = {}) => { const obj = place(e, at(m), off, o); if (obj) built.push(e.file); return obj; };
   const house = (e, m, off, o = {}, strong = false) => { // a lived-in building: smoke from the roof (thatched farmhouses had no chimney, it seeps out at the ridge)
@@ -72,14 +73,15 @@ export function buildVillage(ctx, v = {}) {
     const sm = smoke(strong); sm.position.set(obj.position.x, obj.position.y + e.size[1] * (o.scale || 1) * 0.95, obj.position.z);
     scene.add(sm); props.push(sm); sm.children.forEach(c => anim.push(c)); return obj; };
   const loose = (obj, m, off, y = 0, face = 0) => { // a procedural piece, set straight onto the ground beside the road
+    if (ctx.mirror?.(at(m))) off = -off; // sea on the right: the whole layout mirrors, like place()
     const q = spot(at(m), off); obj.position.set(q.x, f.height(q.x, q.z) + y, q.z); obj.rotation.y = Math.atan2(q.tx, q.tz) + face;
     scene.add(obj); props.push(obj); obj.traverse(c => { if (c.userData.flutter) anim.push(c); }); return obj; };
 
   // ---- stage 0: the inn of the three bettors at the finish, the lime tree and well before it, a wayside cross on the way in ----
-  const inn = any('wirtshaus') ? house(byName('wirtshaus'), 14, ROAD_W + 9, { face: 'road', gap: 2 }, true)
+  const inn = any('wirtshaus') ? house(any('wirtshaus'), 14, ROAD_W + 9, { face: 'road', gap: 2 }, true)
     : house(any('fachwerkhaus_b', 'fachwerkhaus_a', 'steinhaus'), 14, ROAD_W + 8, { face: 'road', gap: 2, scale: 1.25 }, true);
-  if (inn) { const sign = byName('wirtshausschild'); if (sign) put(sign, 24, ROAD_W + 2.2, { face: 'road', overlap: true, radK: 0.3, gap: 0.4 });
-    const lt = loose(lanterns(v.leader), 14, ROAD_W + 3.2, 2.6); lt.traverse(c => { if (c.userData.lantern) anim.push(c); }); }
+  if (inn) { const sign = any('wirtshausschild'); if (sign) put(sign, 24, ROAD_W + 2.2, { face: 'road', overlap: true, radK: 0.3, gap: 0.4 });
+    const lt = loose(lanterns(v.leader), 14, ROAD_W + 3.2, 2.6, Math.PI / 2); lt.traverse(c => { if (c.userData.lantern) anim.push(c); }); }
   put(any('pferd'), 30, ROAD_W + 4.5, { face: 'along', anim: 'Stehen', gap: 0.8 });
   put(any('viehtraenke', 'fass'), 36, ROAD_W + 3.5, { face: 'along', gap: 0.6, radK: 0.5 });
   put(any('faesser_kisten', 'fass'), 6, ROAD_W + 3.2, { gap: 0.5 });
@@ -90,12 +92,13 @@ export function buildVillage(ctx, v = {}) {
 
   // ---- 1 Home Gate: the messenger's own farm and the gate in the village fence ----
   if (st >= 1) {
-    const gate = byName('dorftor'), gm = st >= 5 ? 400 : 120; // spans the road, so it bypasses place() (which keeps things off the asphalt)
-    loose(gate && ctx.make ? ctx.make(gate) : gateMesh(), gm, 0, 0, 0); // local x across the road
+    const gate = any('dorftor'), gm = [0, 120, 225, 285, 315, 400, 400, 400, 400][st]; // spans the road, so it bypasses place() (which keeps things off the asphalt)
+    const go = gate && ctx.make ? ctx.make(gate) : gateMesh(); if (gate && ctx.make) go.scale.setScalar(Math.max(1, 9.4 / Math.max(gate.size[0], 0.1))); // posts clear the 6.6 m asphalt
+    loose(go, gm, 0, 0, 0); // local x across the road
     house(any('fachwerkhaus_a', 'steinhaus'), 95, -(ROAD_W + 9), { face: 'road', gap: 2 }); // the messenger's house, left before the inn
     put(any('holzstapel'), 88, -(ROAD_W + 4), { face: 'along', gap: 0.6 });
     put(any('misthaufen', 'heuhaufen'), 104, -(ROAD_W + 5), { gap: 0.8 });
-    const fl = byName('flechtzaun'); if (fl) { const l = Math.max(fl.size[0], fl.size[2]) * 0.97, t = fl.size[0] > fl.size[2] ? Math.PI / 2 : 0;
+    const fl = any('flechtzaun'); if (fl) { const l = Math.max(fl.size[0], fl.size[2]) * 0.97, t = fl.size[0] > fl.size[2] ? Math.PI / 2 : 0;
       for (let k = 0; k * l < 22; k++) put(fl, 84 + k * l, -(ROAD_W + 3), { face: 'along', rot: t, overlap: true, radK: 0.3, gap: 0.6 }); }
   }
   // ---- 2 The Green: four farms round the green, bake house, a maid at the well ----
@@ -113,7 +116,7 @@ export function buildVillage(ctx, v = {}) {
     const smith = house(any('schmiede'), 250, ROAD_W + 8, { face: 'road', gap: 1.5 }, true);
     if (smith) put(any('schmied'), 247, ROAD_W + 3.2, { face: 'road', anim: 'Haemmern', radK: 0.4, gap: 0.6 });
     put(any('stellmacherei', 'fachwerkhaus_a'), 268, ROAD_W + 9, { face: 'road', gap: 1.5 });
-    const wheel = byName('wagenrad'); if (wheel) for (let k = 0; k < 3; k++) put(wheel, 262 + k * 1.3, ROAD_W + 3.4, { face: 'road', overlap: true, radK: 0.3, gap: 0.4 });
+    const wheel = any('wagenrad'); if (wheel) for (let k = 0; k < 3; k++) put(wheel, 262 + k * 1.3, ROAD_W + 3.4, { face: 'road', overlap: true, radK: 0.3, gap: 0.4 });
     put(any('karren', 'leiterwagen', 'schubkarre'), 240, ROAD_W + 4.2, { face: 'along', gap: 0.8 });
   }
   // ---- 4 The Church: on the outside of the green, the tallest thing in the picture; climbing earns the spire (plan 3.2) ----
@@ -127,15 +130,16 @@ export function buildVillage(ctx, v = {}) {
   // ---- 6 Market Square: market cross, stalls and a trader between the green and the inn ----
   if (st >= 6) {
     put(any('marktkreuz', 'wegkreuz'), 45, -(ROAD_W + 5), { face: 'road', gap: 0.8 });
-    for (let k = 0; k < 3; k++) put(any('marktstand_obst'), 38 + k * 7, -(ROAD_W + 4.4), { face: 'road', gap: 0.6 });
+    for (let k = 0; k < 3; k++) put(any('marktstand_obst'), [33, 40, 54][k], -(ROAD_W + 4.4), { face: 'road', gap: 0.6 });
     put(any('haendler'), 42, -(ROAD_W + 2.6), { face: 'road', anim: 'Rufen', radK: 0.4, gap: 0.4 });
   }
   // ---- 7 The Mill (on the way out would be past the finish, so it stands by the brook on the way in) ----
   if (st >= 7) put(any('wassermuehle'), 470, -(ROAD_W + 30), { face: 'road', gap: 4 });
   // the next building as a bare timber frame: the preview of what the next kilometres will build
   const nx = nextStage(km);
-  if (nx) { const site = byName('baustelle'); const where = { 1: 95, 2: 160, 3: 260, 4: 300, 5: 340, 6: 45, 7: 470, 8: 400 }[STAGES.indexOf(nx)];
-    if (site && where) put(site, where, ROAD_W + 12, { face: 'road', gap: 2 }); }
+  if (nx) { const site = any('baustelle'); const where = { 1: 95, 2: 160, 3: 260, 4: 300, 5: 340, 6: 45, 7: 470, 8: 400 }[STAGES.indexOf(nx)];
+    const left = { 1: 1, 4: 1, 6: 1, 7: 1 }[STAGES.indexOf(nx)] ? -1 : 1;
+    if (site && where) put(site, where, left * (ROAD_W + 12), { face: 'road', gap: 2 }); }
   return { stage: st, name: STAGES[st].name, next: nx, built: built.length };
 }
 

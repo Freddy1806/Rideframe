@@ -94,7 +94,7 @@ export class StoryRide {
       this.km += k; this.hm += h;
       if (power >= 0.9 * this.ftp) { this.hiT += dt; if (this.wizMin < WIZ_MIN_CAP && this.hiT >= 60 * (this.wizMin + 1)) { this.wizMin++; this._add('wizard', 1); } }
       if (power >= 0.9 * this.ftp) this.hiRun = (this.hiRun || 0) + dt; else this.hiRun = 0;
-    }
+    } else this.hiRun = 0;
     // points as you go (king: 1/km; devil: 10 per 100 Hm)
     while (this.km >= (this._kmPaid || 0) + 1) { this._kmPaid = (this._kmPaid || 0) + 1; this._add('king', 1); }
     while (this.hm >= (this._hmPaid || 0) + 100) { this._hmPaid = (this._hmPaid || 0) + 100; this._add('devil', 10); }
@@ -109,15 +109,16 @@ export class StoryRide {
     }
     if (this.hellT != null) { this.hellT += dt; if (this.hellT > 150 && !this.said.has('hellMid')) { this.said.add('hellMid'); this._line('devil', 'hellMid'); } }
     // hand out queued lines, but never into a sprint
-    if (this.queue.length && power < 1.05 * this.ftp) { const q = this.queue.shift(); if (this.t < q.until) this.say?.(q.who, q.text); }
+    if (this.queue.length && power < 1.05 * this.ftp && this.t >= (this.quietUntil || 0)) { const q = this.queue.shift(); if (this.t < q.until) { this.say?.(q.who, q.text); this.quietUntil = this.t + 4.5; } }
   }
   // ---- events from the ride ----
   trialPass() { this.L.life.trials++; this._add('wizard', 20); this._line('wizard', 'pass'); }
   hellIn() { this.hellT = 0; this._line('devil', 'hellIn'); }
   hellOut() { if (this.hellT == null) return; this.hellT = null; this.L.life.hells++; this._add('devil', 15); this._line('devil', 'hellOut'); }
   challenge(id, type) { const who = OWNER[id]; if (!who) return;
-    if (type === 'accept' && this.duels < DUELS_CAP) { this.duels++; this._accepted = (this._accepted || new Set()).add(id + this.duels); this._add(who, 2); }
-    else if (type === 'win' && this.duels <= DUELS_CAP) this._add(who, 3); }
+    this._paid ||= new Set();
+    if (type === 'accept' && this.duels < DUELS_CAP) { this.duels++; this._paid.add(id); this._add(who, 2); }
+    else if (type === 'win' && this._paid.delete(id)) this._add(who, 3); }
   /** ride over: book the points, return the summary for the result screen; minutes = ride time */
   finish(minutes) {
     const L = this.L;

@@ -676,7 +676,7 @@ export class WorldScene {
 
     // the messenger's own village on the last metres before the finish, first, so it gets the ground (story stage 2)
     if (t.__village && t.length > 1500) try {
-      this.village = buildVillage({ place, byName, make: e => A.make(e, null, r).obj, spot, f, scene: this.scene, props: this.props, anim: this.villageAnim, len: t.length }, t.__village);
+      this.village = buildVillage({ place, byName, make: e => A.make(e, null, r).obj, mirror: d => segAt(d).seaSide === 1, spot, f, scene: this.scene, props: this.props, anim: this.villageAnim, len: t.length }, t.__village);
     } catch (e) { console.warn('village', e); }
     for (const s of segs) {
       const L = s.to - s.from;

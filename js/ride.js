@@ -125,7 +125,7 @@ export class RideSession {
       if (this.track.world) {
         try { const { WorldScene, prepareWorld } = await import('./world/lofoten.js'); await prepareWorld(this.track);
           { const L = await loadLedger().catch(() => null), q = new URLSearchParams(location.search).get('village'); // your village grows with your lifetime km
-            if (L || q != null) this.track.__village = { km: q != null ? +q : L.life.km, hm: L?.life.hm || 0, leader: L ? (L.colour || leaderOf(L.pts)) : null }; }
+            if (L || q != null) this.track.__village = { km: q != null ? +q : L.life.km, hm: L?.life.hm || 0, leader: L ? (leaderOf(L.pts) || L.colour) : null }; }
           this.player = new WorldScene(c, this.track); window.__world = this.player; }
         catch (e) { console.warn('3D world failed, using 2D scene', e); }
       }
@@ -307,7 +307,7 @@ export class RideSession {
       this.d = Math.min(this.track.length, this.d + this.v * dt);
       this.elapsed += dt;
       const e = eleAt(this.track, this.d); if (e > this.lastEle) this.gainAcc += e - this.lastEle; this.lastEle = e;
-      this.story?.tick(dt, { dd: this.d - d0, dh: this.gainAcc - g0, power: this.power, cadence: this.source === 'trainer' ? this.cadence : null, moving: this.wiz?.state !== 'fly' });
+      this.story?.tick(dt, { dd: this.d - d0, dh: this.gainAcc - g0, power: this.power, cadence: this.source === 'trainer' && (this._cadSeen ||= this.cadence > 0) ? this.cadence : null, moving: this.wiz?.state !== 'fly' });
       this._workout(dt);
       this._chTick(dt);
       this._cgTick();
@@ -557,11 +557,11 @@ export class RideSession {
   _wizTick(dt) {
     const sp0 = this.player?.events?.surprises;
     // the wizard always waits at the finish line of a free ride and has the last word (Freddy)
-    if (sp0?.wizard && !this.workout && !this.group && !this.autopilot && this.track.length - this.d < 400 && !this._goalWiz) this._goalWiz = sp0.wizard(this.track.length + 6);
+    if (sp0?.wizard && this.state.settings.wizard !== false && !this.workout && !this.group && !this.autopilot && this.track.length - this.d < 400 && !this._goalWiz) this._goalWiz = sp0.wizard(this.track.length + 6);
     if (this._goalWiz && !this._goalSaid && this.track.length - this.d < 70) { this._goalSaid = true; this.story?._line('wizard', 'goal'); }
     const z = this.wiz; if (!z || this.workout) return;
     if (z.exitH && this.d > z.exitH.d - 12) { sp0?.poof?.(z.exitH); z.exitH = null; } // he sends you on (up) and is gone in a puff
-    if (z.state === 'hell' && !z.exitH && z.t >= WIZ.hell - 25) z.exitH = sp0?.wizard?.(this.d + Math.max(90, this.v * 25)); // he waits where hell ends
+    if (z.state === 'hell' && !z.exitH && !z.exitDone && z.t >= WIZ.hell - 25) { z.exitDone = true; z.exitH = sp0?.wizard?.(this.d + Math.max(90, this.v * 25 + 15)); } // he waits where hell ends
     if (this.ch?.active && (z.state === 'wait' || z.state === 'ann')) return; // a race is on: the wizard waits his turn
     const sp = this.player?.events?.surprises, P = this.player, fx = this.q('#hWizFx');
     const flashFx = k => { if (!fx) return; fx.className = 'wizfx'; void fx.offsetWidth; fx.classList.add(k); };
@@ -574,7 +574,7 @@ export class RideSession {
         this.story?._line('wizard', 'fail'); this.story?.hellIn(); this.player?.events?.sfx?.('quake', 1, 0); P?.hell?.(true); if (sp) sp.hell = true; if (P) P.shakeImpulse = Math.max(P.shakeImpulse || 0, 1.6);
         this.q('#hHell')?.classList.add('hell'); flashFx('quake');
       } else if (e === 'end') {
-        if (z.was !== 'fly') { this.story?._line('wizard', 'hellExit'); this.story?.hellOut(); } else { z.exitH = sp?.wizard?.(this.d + 70); this.story?._line('wizard', 'land'); }
+        z.exitDone = false; if (z.was !== 'fly') { this.story?._line('wizard', 'hellExit'); this.story?.hellOut(); } else { z.exitH = sp?.wizard?.(this.d + 70); this.story?._line('wizard', 'land'); }
         P?.hell?.(false); P?.land?.(); if (sp) { sp.hell = false; sp.hold = false; }
         this.q('#hHell')?.classList.remove('hell'); flashFx('land');
       }
@@ -613,6 +613,10 @@ export class RideSession {
     else if (c.kind === 'count') h = `<div class="label">vs. ${esc(c.name)}</div><div class="chw num">${c.W}<small>W</small></div>`
       + (c.n ? `<div class="chcount num">${c.n}</div>` : `<div class="chleft num">${D(c.left)}</div><div class="label">bis zum Start</div>`);
     else if (c.kind === 'race') { const p = this.power || 0, r = p / c.W, fill = Math.max(0, Math.min(1, r - 0.5)), ok = r >= 0.98;
+      const bar = el.classList.contains('race') && el.querySelector('.chvbar'); // racing: move the bar in place so its height animates
+      if (bar && this._chRaceKey === c.name + c.W) { bar.className = 'chvbar ' + (ok ? 'ok' : 'low'); bar.firstElementChild.style.height = (fill * 100).toFixed(0) + '%';
+        bar.querySelector('span').textContent = Math.round(p); el.querySelector('.chleft').innerHTML = D(c.left); return; }
+      this._chRaceKey = c.name + c.W;
       h = `<div class="label">vs. ${esc(c.name)}</div><div class="chw num">${c.W}<small>W</small></div>
         <div class="chvbar ${ok ? 'ok' : 'low'}"><i style="height:${(fill * 100).toFixed(0)}%"></i><b></b><span class="num">${Math.round(p)}</span></div>
         <div class="chleft num">${D(c.left)}</div><div class="label">bis zum Ziel</div>`; }
