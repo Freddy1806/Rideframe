@@ -88,11 +88,11 @@ export function buildVillage(ctx, v = {}) {
   const house = (e, m, off, o = {}, strong = false) => { // a lived-in building: smoke from the roof (thatched farmhouses had no chimney, it seeps out at the ridge)
     const obj = put(e, m, off, o); if (!obj) return obj;
     const sm = smoke(strong); sm.position.set(obj.position.x, obj.position.y + e.size[1] * (o.scale || 1) * 0.95, obj.position.z);
-    scene.add(sm); props.push(sm); sm.children.forEach(c => anim.push(c)); return obj; };
+    sm.userData.live = true; scene.add(sm); props.push(sm); sm.children.forEach(c => anim.push(c)); return obj; };
   const loose = (obj, m, off, y = 0, face = 0) => { // a procedural piece, set straight onto the ground beside the road
     if (ctx.mirror?.(at(m))) off = -off; // sea on the right: the whole layout mirrors, like place()
     const q = spot(at(m), off); obj.position.set(q.x, f.height(q.x, q.z) + y, q.z); obj.rotation.y = Math.atan2(q.tx, q.tz) + face;
-    obj.userData.village = { m, file: 'procedural' }; scene.add(obj); props.push(obj); obj.traverse(c => { if (c.userData.flutter) anim.push(c); }); return obj; };
+    obj.userData.village = { m, file: 'procedural' }; obj.userData.live = true; scene.add(obj); props.push(obj); obj.traverse(c => { if (c.userData.flutter) anim.push(c); }); return obj; };
 
   // ---- stage 0: the inn of the three bettors at the finish, the lime tree and well before it, a wayside cross on the way in ----
   const inn = any('wirtshaus') ? house(any('wirtshaus'), 40, -(ROAD_W + 9), { face: 'road', gap: 2 }, true)

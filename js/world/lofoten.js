@@ -1042,7 +1042,7 @@ export class WorldScene {
     this._placeLegacyTops(segs);
     // everything that never moves: matrices once, then skipped by three's per-frame scene-graph update (was ~30 % CPU)
     const moving = new Set([...this.mixers.map(m => m.obj), ...this.birds, ...this.whales.map(w => w.obj), ...this.animated]);
-    for (const o of this.props) if (!moving.has(o) && !o.userData.walk && !o.userData.circle) { let wheel = false; o.traverse(c => { if (c.userData.millWheel) wheel = true; }); if (!wheel) { freeze(o); o.userData.still = true; } }
+    for (const o of this.props) if (!moving.has(o) && !o.userData.walk && !o.userData.circle && !o.userData.live) { /* live: village lanterns, smoke, hens, pennants animate in tickVillage */ let wheel = false; o.traverse(c => { if (c.userData.millWheel) wheel = true; }); if (!wheel) { freeze(o); o.userData.still = true; } }
     this.scene.updateMatrixWorld(true); // every prop's matrix once: far ones skip the per-frame update and would otherwise sit at the world origin = the start (the mill in the Hafenrunde start view, Mac mini QA)
     const ck = A.by.cockpit?.[0]; // handlebar, hoods and forearms in the rider's view, hung on the camera
     if (ck) { const { obj, mixer } = A.make(ck, 'Treten'); obj.traverse(c => { c.castShadow = false; c.layers.set(1); c.frustumCulled = false; });
