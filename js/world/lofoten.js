@@ -1102,8 +1102,8 @@ export class WorldScene {
     const added = []; let t0 = performance.now();
     for (const b of buckets.values()) {
       if (this._disposed) return;
-      if (performance.now() - t0 > 30) { await new Promise(r => setTimeout(r, 0)); t0 = performance.now(); }
-      const list = b.items.map(([g, mw]) => g.clone().applyMatrix4(mw)); b.items = null;
+      if (performance.now() - t0 > (this._rideOn ? 5 : 30)) { await new Promise(r => setTimeout(r, 0)); t0 = performance.now(); } // behind the loading card in big slices, while riding only 5 ms per frame
+      const list = b.items.map(([g, mw]) => { const c = g.clone(); c.boundingBox = c.boundingSphere = null; return c.applyMatrix4(mw); }); b.items = null; /* no bounds on the copies: applyMatrix4 would recompute them for every single copy (12 % of a frame on a slow laptop) */
       const cx = b.x / list.length, cz = b.z / list.length;
       const g = mergeGeometries(list, false); list.forEach(x => x.dispose()); if (!g) continue;
       g.translate(-cx, 0, -cz); g.computeBoundingSphere();
@@ -1236,7 +1236,7 @@ export class WorldScene {
     if (this.loading && hole >= 500) { this.loading = false; // compile every shader of the start area first: no stutter in the first seconds
       const warm = new THREE.Group(); // plus the flight and hell visitors (their first frame stalled 0.4 s), compiled while the loading screen still shows
       if (ASSETS.count) for (const n of ['vogelschwarm_hoch', 'fledermaeuse', 'drache', 'gluehende_kohle_haufen', 'feuerdaemon', 'lava_fels', 'feuersaeule']) { const e = ASSETS.find(n); if (e) { const o = ASSETS.make(e, null).obj; o.position.copy(this.camera.position); o.position.y -= 400; warm.add(o); } }
-      this.scene.add(warm); const done = () => { this.scene.remove(warm); Promise.resolve(this._batchP).catch(() => {}).then(() => this._readyRes()); if (QS.has('assetstats')) console.info('RIDEFRAME Modelle benutzt', ASSETS.used.size, 'von', ASSETS.count, JSON.stringify([...ASSETS.used])); };
+      this.scene.add(warm); const done = () => { this.scene.remove(warm); Promise.resolve(this._batchP).catch(() => {}).then(() => { this._readyDone = true; this._readyRes(); }); if (QS.has('assetstats')) console.info('RIDEFRAME Modelle benutzt', ASSETS.used.size, 'von', ASSETS.count, JSON.stringify([...ASSETS.used])); };
       (this.renderer.compileAsync ? this.renderer.compileAsync(this.scene, this.camera) : Promise.resolve()).then(done, done); }
   }
 

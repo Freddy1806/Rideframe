@@ -140,7 +140,7 @@ export class RideSession {
       this.player._placeCockpit?.();
       if (this.player.ready) { // 3D world: show a loading card instead of a black screen until the ground around the start stands
         const ld = document.createElement('div'); ld.className = 'countdown loading'; ld.textContent = 'Welt wird geladen …'; el.append(ld);
-        await Promise.race([this.player.ready, new Promise(r => setTimeout(r, 30000))]); ld.remove();
+        await Promise.race([this.player.ready, new Promise(r => setTimeout(r, 90000))]); ld.remove(); this.player._rideOn = true; /* slow laptops: rather a longer loading card than a stuttering start */
       }
     }
     this.profile = el.querySelector('#hudProfile');
