@@ -537,8 +537,7 @@ export class RideSession {
   _storySay(who, text) {
     const w = WHO[who]; if (!w) return;
     console.log('[story]', who, text);
-    this.player?.events?.sound?.speak?.(text, 1, 'call'); // ElevenLabs recording when the manifest has it
-    this._flash(`${w.icon} ${w.name}: “${text}”`);
+    this.player?.events?.sound?.speak?.(text, 1, 'call'); // ElevenLabs recording only: no text in the middle of the picture (Freddy)
   }
   _storyEnd() { if (!this.story || this._storySum) return this._storySum; this._storySum = this.story.finish(this.elapsed / 60); return this._storySum; }
 
