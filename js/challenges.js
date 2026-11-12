@@ -17,7 +17,7 @@ export const CHALLENGERS = [
   { id: 'kid', name: 'Das Kind', models: ['kind_fahrrad'], k: 1.32, kind: 'run', // never on foot: a child running 37 km/h looked wrong (Freddy); comes back on its bike
     ask: 'Bet you can\'t beat me! Go go go!', win: 'Nooo! Again! Again!', lose: 'I won! I won!' },
 ];
-const DIST = [[600, 0.1], [1000, 0], [1500, -0.06]]; // distance and how much harder (shorter) or easier (longer)
+const DIST = [[600, 0.1], [1000, 0], [1500, -0.06]], GAP = 3200; // min metres between two dares (Freddy: never too many in a row) // distance and how much harder (shorter) or easier (longer)
 const OFFER_S = 14, LEAD = 150;
 
 /** speed (m/s) that power W gives on grade g: steady state, by bisection */
@@ -30,13 +30,13 @@ export class Challenges {
     this.list = []; this.stats = { offered: 0, accepted: 0, won: 0 };
     const who = CHALLENGERS.filter(c => has(c.models)), from = startD + Math.max(1200, length * 0.06), to = length - 1800;
     if (!who.length || n <= 0 || to - from < 2500) return;
-    n = Math.min(n, Math.floor((to - from) / 1900)); if (n <= 0) return; // room for a race between two dares
+    n = Math.min(n, Math.floor((to - from) / GAP)); if (n <= 0) return; // room for a race between two dares
     const span = (to - from) / n;
     const deck = [...who].sort(() => rng() - 0.5); // every challenger once before anyone comes twice
     for (let i = 0; i < n; i++) {
       const c = deck[i % deck.length], [D, dk] = DIST[Math.floor(rng() * DIST.length)];
       const W = Math.round(ftp * (c.k + dk) / 5) * 5;
-      this.list.push({ c, at: from + span * i + Math.min(span - 1700, span * 0.6) * rng() + 100, D, W, state: 'wait' });
+      this.list.push({ c, at: from + span * i + Math.max(0, span - GAP + 600) * rng() + 100, D, W, state: 'wait' });
     }
   }
   get active() { return this.list.find(x => x.state === 'offer' || x.state === 'count' || x.state === 'race'); }
@@ -72,13 +72,17 @@ export class Challenges {
     return ev;
   }
   /** the line for the HUD card */
+  /** everything about challenges lives in ONE panel at the left edge, mirrored to the grade on the right (Freddy 12.11.):
+   *  the next one coming, the dare, the countdown, the race (target watts + your watts as a bar + metres to go) */
   card(d) {
-    const x = this.active; if (!x) return null;
-    if (x.state === 'offer') return { title: `${x.c.name} fordert dich heraus`, big: `${x.W} W`, sub: `${fmtD(x.D)} · antreten zum Annehmen (oder K)`, bar: 1 - x.t / OFFER_S, hold: Math.min(1, x.hold / 1.5) };
-    if (x.state === 'count') return x.t0 == null ? { title: `gegen ${x.c.name}`, big: fmtD(Math.max(0, x.spot - d)), sub: `bis zur Startlinie · dann ${x.W} W · ${fmtD(x.D)}` }
-      : { title: `gegen ${x.c.name}`, big: String(Math.max(1, 3 - Math.floor(x.t - x.t0))), sub: `${x.W} W · ${fmtD(x.D)}` };
-    const gap = d - x.opp;
-    return { title: `gegen ${x.c.name} · Ziel ${x.W} W`, big: `${gap >= 0 ? '+' : '−'}${Math.round(Math.abs(gap))} m`, sub: `noch ${fmtD(Math.max(0, x.finish - d))} · Ø ${Math.round(x.avg || 0)} W`, lead: gap >= 0, bar: Math.min(1, (d - x.start) / (x.finish - x.start)) };
+    const x = this.active;
+    if (!x) { const n = this.list.find(y => y.state === 'wait' && y.at > d); if (!n || n.at - d > 5000) return null;
+      return { kind: 'next', name: n.c.name, left: n.at - LEAD - d }; }
+    if (x.state === 'offer') return { kind: 'offer', name: x.c.name, W: x.W, D: x.D, t: 1 - x.t / OFFER_S, hold: Math.min(1, x.hold / 1.5) };
+    if (x.state === 'count') return x.t0 == null ? { kind: 'count', name: x.c.name, W: x.W, D: x.D, left: Math.max(0, x.spot - d) }
+      : { kind: 'count', name: x.c.name, W: x.W, D: x.D, n: Math.max(1, 3 - Math.floor(x.t - x.t0)) };
+    // the race: the gap itself you see on the road (the challenger is drawn where it really is)
+    return { kind: 'race', name: x.c.name, W: x.W, left: Math.max(0, x.finish - d), lead: d - x.opp >= 0 };
   }
 }
 const fmtD = m => m >= 1000 ? (m / 1000).toFixed(m % 1000 ? 1 : 0).replace('.', ',') + ' km' : Math.round(m) + ' m';

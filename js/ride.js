@@ -497,7 +497,7 @@ export class RideSession {
     this.ch = new Challenges({ length: this.track.length, startD: this.d, n, ftp: this.ftp, params: this.params, gradeAt: d => gradeAt(this.track, d),
       has: models => !sp || models.some(m => sp.A.find(m)) });
     if (!this.ch.list.length) { this.ch = null; return; }
-    if (new URLSearchParams(location.search).has('challenge')) this.ch.list[0].at = this.d + 600; // test: the first dare comes after 600 m
+    if (new URLSearchParams(location.search).has('challenge')) { this.ch.list[0].at = this.d + 600; window.__ride = this; } // test: the first dare comes after 600 m
     const c = document.createElement('div'); c.className = 'chcard glass'; c.id = 'hCh'; c.hidden = true; this.el.querySelector('.hud').append(c);
   }
   _chTick(dt) {
@@ -506,14 +506,13 @@ export class RideSession {
     const sp = this.player?.events?.surprises, evs = ch.tick(dt, this.d, this.power, this._chKey, this.v); this._chKey = false;
     for (const { type, ch: x } of evs) {
       if (type === 'offer') { x.h = sp?.challenger(x.c, x.spot); x.h?.say(x.c.ask, 3.2); if (sp) sp.hold = true; this.coach?.say('challenge', 0); }
-      else if (type === 'accept') { this.story?.challenge(x.c.id, 'accept'); this._flash(`Angenommen! ${x.W} W · ${x.D >= 1000 ? fmtNum(x.D / 1000, x.D % 1000 ? 1 : 0) + ' km' : x.D + ' m'}`); }
-      else if (type === 'go') { if (x.h) { x.h.d = x.opp; x.h.go(); } x.flags = sp?.finishFlags(x.finish); this._flash('LOS!'); }
-      else if (type === 'expire') { this._flash(`${x.c.name} zieht weiter`); this._chEnd(x, sp, 600); }
+      else if (type === 'accept') this.story?.challenge(x.c.id, 'accept');
+      else if (type === 'go') { if (x.h) { x.h.d = x.opp; x.h.go(); } x.flags = sp?.finishFlags(x.finish); }
+      else if (type === 'expire') this._chEnd(x, sp, 600);
       else if (type === 'win' || type === 'lose') {
         if (type === 'win') this.story?.challenge(x.c.id, 'win');
-        this._flash(type === 'win' ? `Gewonnen gegen ${x.c.name}!` : `${x.c.name} war schneller`);
         x.h?.say(type === 'win' ? x.c.win : x.c.lose, 3); this._chEnd(x, sp, 4000);
-        this._chRes = { until: performance.now() + 6000, card: { title: `gegen ${x.c.name} · ${x.W} W`, big: type === 'win' ? 'Gewonnen!' : 'Verloren', sub: `Ø ${Math.round(x.avg || 0)} W · ${Math.round(Math.abs(this.d - x.opp))} m ${type === 'win' ? 'vor' : 'hinter'} ${x.c.name}`, lead: type === 'win' } }; // the result stays up a moment
+        this._chRes = { until: performance.now() + 6000, card: { kind: 'result', name: x.c.name, won: type === 'win', avg: Math.round(x.avg || 0), gap: Math.round(Math.abs(this.d - x.opp)) } }; // the result stays up a moment
       }
     }
     if (this._chFlags) this._chFlags = this._chFlags.filter(o => this.d > o.at + 30 ? (o.f.remove(), false) : true);
@@ -522,7 +521,7 @@ export class RideSession {
       x.h.d = x.opp;
       if (x.opp < this.d - 6 && x.opp > this.d - 45 && performance.now() > (this._lbNext || 0)) { this._lbNext = performance.now() + 14000; this.player?.lookBack?.(x.h.side > 0 ? -1 : 1); }
     }
-    const el = this.q('#hCh'); if (el) this._card(el, ch.card(this.d) || (this._chRes && performance.now() < this._chRes.until ? this._chRes.card : null), '_chHtml');
+    const el = this.q('#hCh'); if (el) this._chPanel(el, (this._chRes && performance.now() < this._chRes.until ? this._chRes.card : null) || ch.card(this.d));
   }
 
   // ---------- the story "The Bet" (js/story.js): points for the weekly wager, short English lines ----------
@@ -558,16 +557,16 @@ export class RideSession {
     const sp = this.player?.events?.surprises, P = this.player, fx = this.q('#hWizFx');
     const flashFx = k => { if (!fx) return; fx.className = 'wizfx'; void fx.offsetWidth; fx.classList.add(k); };
     for (const e of z.tick(dt, this.d, this.power)) {
-      if (e === 'ann') { this._flash('Ein Zauberer erwartet dich · 1 km'); this.coach?.say('wizard', 0); }
-      else if (e === 'near') { z.h = sp?.wizard?.(z.at); if (sp) sp.hold = true; this._flash(`Zauberer in 200 m · gleich ${z.W} W`); }
-      else if (e === 'cast') { sp?.poof?.(z.h); flashFx('cast'); this._flash(`${z.W} W · 60 s · JETZT!`); }
-      else if (e === 'pass') { this.story?.trialPass(); flashFx('rise'); P?.fly?.(WIZ.fly); this._flash('Bestanden! Du fliegst!'); }
+      if (e === 'ann') this.coach?.say('wizard', 0); // the card says it: no extra text in the middle
+      else if (e === 'near') { z.h = sp?.wizard?.(z.at); if (sp) sp.hold = true; }
+      else if (e === 'cast') { sp?.poof?.(z.h); flashFx('cast'); }
+      else if (e === 'pass') { this.story?.trialPass(); flashFx('rise'); P?.fly?.(WIZ.fly); }
       else if (e === 'fail') {
         this.story?.hellIn(); P?.hell?.(true); if (sp) sp.hell = true; if (P) P.shakeImpulse = Math.max(P.shakeImpulse || 0, 1.6);
-        this.q('#hHell')?.classList.add('hell'); flashFx('quake'); this._flash('Durchgefallen · die Erde reißt auf');
+        this.q('#hHell')?.classList.add('hell'); flashFx('quake');
       } else if (e === 'end') {
         if (z.was !== 'fly') this.story?.hellOut(); P?.hell?.(false); P?.land?.(); if (sp) { sp.hell = false; sp.hold = false; }
-        this.q('#hHell')?.classList.remove('hell'); flashFx('land'); this._flash(z.was === 'fly' ? 'Sanft gelandet' : 'Du hast dich aus der Hölle gefahren!');
+        this.q('#hHell')?.classList.remove('hell'); flashFx('land');
       }
     }
     const el = this.q('#hWiz'); if (el) { el.classList.toggle('hellcard', z.state === 'hell'); this._card(el, z.card(this.d), '_wizHtml'); }
@@ -593,6 +592,23 @@ export class RideSession {
     el.classList.toggle('lead', !!card.lead); el.classList.toggle('trail', card.lead === false);
     const html = `<div class="label">${esc(card.title)}</div><div class="chbig num">${esc(card.big)}</div><div class="chsub">${esc(card.sub)}</div>${card.bar != null ? `<div class="chbar"><i style="width:${Math.round(card.bar * 100)}%"></i>${card.hold ? `<b style="width:${Math.round(card.hold * 100)}%"></b>` : ''}</div>` : ''}`;
     if (html !== this[key]) { this[key] = html; el.innerHTML = html; }
+  }
+  _chPanel(el, c) { // the challenge panel at the left edge (all challenge info, nowhere else)
+    el.hidden = !c; if (!c) return;
+    const D = m => m >= 1000 ? fmtNum(m / 1000, m >= 10000 ? 0 : 1) + '<small>km</small>' : Math.round(m) + '<small>m</small>';
+    let h;
+    if (c.kind === 'next') h = `<div class="label">Nächste Challenge</div><div class="chleft num">${D(Math.max(0, c.left))}</div><div class="chsub">${esc(c.name)}</div>`;
+    else if (c.kind === 'offer') h = `<div class="label">${esc(c.name)} fordert dich</div><div class="chw num">${c.W}<small>W</small></div><div class="chsub">${D(c.D)}</div>
+      <div class="chsub strong">Antreten = annehmen</div><div class="chbar"><i style="width:${Math.round(c.t * 100)}%"></i><b style="width:${Math.round(c.hold * 100)}%"></b></div>`;
+    else if (c.kind === 'count') h = `<div class="label">vs. ${esc(c.name)}</div><div class="chw num">${c.W}<small>W</small></div>`
+      + (c.n ? `<div class="chcount num">${c.n}</div>` : `<div class="chleft num">${D(c.left)}</div><div class="label">bis zum Start</div>`);
+    else if (c.kind === 'race') { const p = this.power || 0, r = p / c.W, fill = Math.max(0, Math.min(1, r - 0.5)), ok = r >= 0.98;
+      h = `<div class="label">vs. ${esc(c.name)}</div><div class="chw num">${c.W}<small>W</small></div>
+        <div class="chvbar ${ok ? 'ok' : 'low'}"><i style="height:${(fill * 100).toFixed(0)}%"></i><b></b><span class="num">${Math.round(p)}</span></div>
+        <div class="chleft num">${D(c.left)}</div><div class="label">bis zum Ziel</div>`; }
+    else h = `<div class="label">vs. ${esc(c.name)}</div><div class="chres ${c.won ? 'won' : 'lost'}">${c.won ? 'Gewonnen' : 'Verloren'}</div><div class="chsub">Ø ${c.avg} W · ${c.gap} m ${c.won ? 'vorn' : 'zurück'}</div>`;
+    el.className = 'chcard glass side ' + c.kind;
+    if (h !== this._chHtml) { this._chHtml = h; el.innerHTML = h; }
   }
   _chEnd(x, sp, ms) { // the challenger stays until out of sight, the flags until you have passed them
     if (sp) sp.hold = false;

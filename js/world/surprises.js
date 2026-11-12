@@ -117,10 +117,16 @@ export class Surprises {
     const h = { d: spotD, race: false, done: false, side };
     let gone = 0;
     const e = this._run(name, fly ? [['Gleiten', 1], ['Fliegen', 1]] : [['Winken', 1], ['Jubeln', 1], ['Stehen', 1], ['Schritt', 1]], (t, v, dt) => {
-      if (h.done && fly) { gone += dt; if (gone > 6) return null; h.d += (v + 8) * dt; // a bird never hangs in the air: it climbs away ahead
+      if (h.done && fly) { gone += dt; if (gone > 6) return null; if (h.sm) { h.d = this.w.d + h.sm.rel; h.sm = null; } h.d += (v + 8) * dt; // a bird never hangs in the air: it climbs away ahead
         return { d: h.d, off: side * (2.5 + gone * 6), fly: 3.2 + gone * gone * 2.5 }; }
       if (h.done) return null;
-      if (fly) return { d: h.d + (h.race ? 14 : 0), off: side * (h.race ? 1.6 : ROAD_W + 4), fly: h.race ? 2.6 + Math.sin((this.clock || 0) * 2) * 0.4 : 6 + Math.sin((this.clock || 0) * 1.3) * 0.8 }; // racing birds fly a little ahead and low, so they are always in view (the card shows the real gap)
+      if (fly) { // waiting: hovering at the roadside of its start line. Racing: low over the road where it really is (a few metres
+        // drawn ahead while level, so it stays in view; clearly behind once you are faster). Everything glides there, never jumps (Freddy).
+        const gap = h.d - this.w.d, rel = !h.race ? gap : gap >= 0 ? 8 + gap : gap > -3 ? 8 + gap * 8 / 3 : gap + 3;
+        const off = side * (h.race ? 1.6 : ROAD_W + 4), y = h.race ? 2.6 + Math.sin((this.clock || 0) * 2) * 0.4 : 6 + Math.sin((this.clock || 0) * 1.3) * 0.8;
+        if (h.sm == null) h.sm = { rel, off, y };
+        const k = Math.min(1, dt * 1.8); h.sm.rel += (rel - h.sm.rel) * k; h.sm.off += (off - h.sm.off) * k; h.sm.y += (y - h.sm.y) * k;
+        return { d: this.w.d + h.sm.rel, off: h.sm.off, fly: h.sm.y }; }
       if (bike && h.race && e?.mixer) e.mixer.timeScale = Math.max(0.2, v / bike); // pedal in step with the road (MacBook: metres per loop / loop time)
       if (bike && h.race) { // on a bike the rival races in the left lane, drawn a few metres ahead while it is level with you or ahead,
         // so it stays in the picture instead of hiding beside the camera (the card shows the real gap)

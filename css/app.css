@@ -400,7 +400,27 @@ input[type=number]::-webkit-inner-spin-button, input[type=number]::-webkit-outer
 .chcard.wizcard.hellcard .label, .chcard.wizcard.hellcard .chbig { color: #ff8a4a; }
 .chcard.wizcard.hellcard .chbar i { background: #ff5a2a; }
 .wizfx { position: absolute; inset: 0; pointer-events: none; z-index: 0; opacity: 0; } /* under the HUD (same level, earlier in the page) */
-.hud:has(.chcard:not([hidden])) ~ .flash { top: 34%; } /* a big card is up: the flash text moves below it */
+.hud:has(.chcard:not([hidden]):not(.side)) ~ .flash { top: 34%; }
+/* the race card sits at the left edge, mirrored to the grade on the right (Freddy) */
+.chcard.side { left: 28px; top: 50%; transform: translateY(-50%); min-width: 0; width: 132px; padding: 12px 12px 14px; display: flex; flex-direction: column; align-items: center; gap: 6px; }
+.chcard.side .chw { font-size: 40px; font-weight: 900; font-stretch: 112%; line-height: 1; }
+.chcard.side .chw small, .chcard.side .chleft small { font-size: 15px; margin-left: 3px; opacity: .7; }
+.chcard.side .chvbar { position: relative; width: 34px; height: 150px; border-radius: 6px; background: rgba(255,255,255,.12); overflow: visible; margin: 4px 0; }
+.chcard.side .chvbar i { position: absolute; left: 0; right: 0; bottom: 0; border-radius: 6px; background: #ff7a59; transition: height .25s; }
+.chcard.side .chvbar.ok i { background: #5fd38a; }
+.chcard.side .chvbar b { position: absolute; left: -8px; right: -8px; top: 50%; height: 3px; margin-top: -1.5px; background: #fff; border-radius: 2px; }
+.chcard.side .chvbar span { position: absolute; left: calc(100% + 12px); bottom: 0; font-size: 14px; font-weight: 800; opacity: .85; }
+.chcard.side .chleft { font-size: 30px; font-weight: 900; font-stretch: 112%; line-height: 1; margin-top: 4px; }
+.chcard.side .chsub { font-size: 13px; margin: 0; text-align: center; }
+.chcard.side .chsub.strong { font-weight: 800; color: var(--accent); }
+.chcard.side .chbar { width: 100%; }
+.chcard.side .chcount { font-size: 64px; font-weight: 900; line-height: 1; color: var(--accent); }
+.chcard.side .chres { font-size: 24px; font-weight: 900; text-transform: uppercase; }
+.chcard.side .chres.won { color: #5fd38a; } .chcard.side .chres.lost { color: #ff7a59; }
+.chcard.side.next { opacity: .8; padding: 10px; }
+.chcard.side.next .chleft { font-size: 24px; }
+.chcard.side.offer { border: 1px solid var(--accent); box-shadow: 0 0 24px color-mix(in srgb, var(--accent) 45%, transparent); animation: chpulse 1.2s ease-in-out infinite; }
+@keyframes chpulse { 50% { box-shadow: 0 0 6px color-mix(in srgb, var(--accent) 25%, transparent); } } /* a big card is up: the flash text moves below it */
 .wizfx.cast { animation: wizCast 1.4s ease-out; background: radial-gradient(circle at 50% 55%, rgba(220,190,255,.9), rgba(130,60,255,.55) 35%, rgba(40,0,90,0) 75%); }
 .wizfx.rise { animation: wizRise 2.2s ease-out; background: linear-gradient(to top, rgba(255,255,255,0), rgba(200,230,255,.75)); }
 .wizfx.land { animation: wizLand 1.1s ease-out; background: #fff; }
