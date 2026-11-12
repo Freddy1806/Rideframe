@@ -1429,7 +1429,7 @@ export class WorldScene {
     this.scene.fog.density = 0.00042 * (1 + 2.2 * rain);
     this.rain.visible = rain > 0.02 && !(this.tunnelK > 0.5); this.rain.material.uniforms.uRain.value = rain;
     this.light.intensity *= 1 - 0.35 * rain; this.hemi.color.lerp(H_GREY, rain * 0.5);
-    const wk = WEEK_TINT[this.track.__village?.colour]; /* week colouring: the leader of the bet tints the light a little */
+    const wk = QS.has('week') ? WEEK_TINT[this.track.__village?.colour] : null; /* Freddy 12.11.: no week colours, the world stays in its own (orange) light; only ?week= for tests */ /* week colouring: the leader of the bet tints the light a little */
     if (wk) { this.light.color.lerp(wk.l, 0.55); this.hemi.color.lerp(wk.h, 0.45); this.scene.fog.color.lerp(wk.f, 0.38); }
     const hk = this.hellK || 0; HELL.value = hk;
     if (hk > 0.002) { // the wizard's hell: red-brown haze closing in, ember light, lava instead of sea, clouds like smoke
@@ -1570,7 +1570,7 @@ export class WorldScene {
         const dist = Math.hypot(o.position.x - cam.x, o.position.z - cam.z);
         const near = dist - (o.userData.rad || 0) * 0.7; // tree LODs: near and far batch share cell and centre, so exactly one of them shows
         o.visible = !o.userData.hidden && !o.userData.hellHidden && (o.userData.near ? dist < 330 : o.userData.far ? dist >= 330 && near < 1400
-          : near < (o.userData.circle ? 900 : o.userData.small ? 450 : o.userData.mid ? 900 : 1600)); // people, animals, barrels: only near
+          : near < (o.userData.circle ? 900 : o.userData.small ? 280 : o.userData.mid ? 650 : 1600)); // people, animals, barrels: only near (280 m: a person is ~8 px there; the Dorfplan props pushed Stadtfest to 300+ draw calls, 39 fps)
         // moving things (skeletons!) update their matrices only while they can actually move: visible and animated (< 180 m)
         if (o.matrixAutoUpdate !== false) o.matrixWorldAutoUpdate = o.visible && (dist < 180 || !!o.userData.circle || !!o.userData.walk || !!o.userData.whale);
       }
