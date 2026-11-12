@@ -18,14 +18,22 @@ async function loadPeer() {
   return peerLib;
 }
 
+// rejoin (Freddy 12.11.): the same rider id in this browser, and where you last were in which group, survive a reload
+const LS = { get(k) { try { return JSON.parse(localStorage.getItem(k)); } catch { return null; } }, set(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); } catch {} } };
+function riderId() { // per tab (two tabs in one browser stay two riders), kept over a reload of that tab
+  let id = null; try { id = sessionStorage.getItem('rf_rider_id'); if (!id) sessionStorage.setItem('rf_rider_id', id = Math.random().toString(36).slice(2, 10)); } catch {} return id || Math.random().toString(36).slice(2, 10); }
+/** the group you last rode in (4 h): { code, host, routeId, d, t } */
+export function lastGroup() { const l = LS.get('rf_group_last'); return l && typeof l.code === 'string' && Date.now() - l.t < 4 * 3600e3 ? l : null; }
+/** where to (re)start on this route in this group: your own last spot first, else what the host suggests */
+export function rejoinAt(code, routeId, suggested = 0) { const l = lastGroup(); return l && l.code === code && l.routeId === routeId && l.d > 0 ? l.d : suggested; }
 export const newCode = () => Array.from({ length: 5 }, () => ALPHA[Math.floor(Math.random() * ALPHA.length)]).join('');
 
 export class Group {
   /** opts: { name, code (join) or none (host), onChange(group), onStart({ routeId, at }), onError(msg) } */
   constructor(opts) {
     Object.assign(this, opts);
-    this.host = !opts.code; this.code = opts.code || newCode();
-    this.me = { id: Math.random().toString(36).slice(2, 10), name: opts.name || 'Ich', look: opts.look ? cleanLook(opts.look) : null, d: 0, v: 0, w: 0, hr: 0, riding: false };
+    this.host = !opts.code; this.code = opts.code || opts.hostCode || newCode(); this.lastD = new Map(); // host: rider id -> last distance (for rejoins)
+    this.me = { id: riderId(), name: opts.name || 'Ich', look: opts.look ? cleanLook(opts.look) : null, d: 0, v: 0, w: 0, hr: 0, riding: false };
     this.riders = new Map(); // id -> state of the others
     this.conns = []; this.open = false; this.routeId = null;
   }
@@ -61,16 +69,21 @@ export class Group {
 
   _wire(c) {
     this.conns.push(c);
-    c.on('open', () => { c.send({ t: 'hello', r: this.me }); if (this.host && this.routeId) c.send({ t: 'route', routeId: this.routeId });
-      // late joiner (Freddy 12.11.: the code stays visible while riding): the host is already out there, so the newcomer starts at once next to him
-      if (this.host && this.routeId && this.rolling) c.send({ t: 'start', routeId: this.routeId, at: Date.now() + 1500, d: Math.max(0, (this.me.d || 0) - 20) }); });
+    c.on('open', () => { c.send({ t: 'hello', r: this.me }); if (this.host && this.routeId) c.send({ t: 'route', routeId: this.routeId }); });
     c.on('data', m => this._recv(m, c));
     c.on('close', () => {
       this.conns = this.conns.filter(x => x !== c);
       if (c._rid) { this.riders.delete(c._rid); this._relayAll(); }
-      if (!this.host) this.onError?.('Verbindung zur Gruppe getrennt.');
+      if (!this.host && !this._closed) { this.onError?.('Verbindung zur Gruppe getrennt · verbinde neu …'); this._retry(); } // the host reloads: same code, back in a few seconds
       this.onChange?.(this);
     });
+  }
+
+  _retry(n = 0) {
+    if (this._closed || n > 60 || this.conns.some(c => c.open)) return;
+    setTimeout(() => { if (this._closed || this.conns.some(c => c.open)) return;
+      try { const c = this.peer.connect(PREFIX + this.code, { reliable: true }); c.on('open', () => this.onError?.('Wieder mit der Gruppe verbunden')); this._wire(c);
+        setTimeout(() => { if (!c.open) { this.conns = this.conns.filter(x => x !== c); this._retry(n + 1); } }, 8000); } catch { this._retry(n + 1); } }, 4000);
   }
 
   _recv(m, c) {
@@ -78,7 +91,10 @@ export class Group {
     if (m.t === 'hello' || m.t === 'state') {
       const r = this._clean(m.r); if (!r || r.id === this.me.id) return;
       c._rid ||= r.id; r.seen = performance.now(); this.riders.set(r.id, r);
-      if (this.host && m.t === 'hello') this._relayAll();
+      if (this.host && r.d > 0) this.lastD.set(r.id, r.d);
+      if (this.host && m.t === 'hello') { this._relayAll();
+        // late joiner or rejoin: the host is already out there, so the newcomer starts at once, at his own last spot or next to the host
+        if (this.routeId && this.rolling && !(r.d > 0)) c.send({ t: 'start', routeId: this.routeId, at: Date.now() + 1500, d: this.lastD.get(r.id) ?? Math.max(0, (this.me.d || 0) - 20) }); }
       this.onChange?.(this);
     } else if (m.t === 'all' && !this.host) { // host's list of everyone
       const now = performance.now();
@@ -86,7 +102,7 @@ export class Group {
       const ids = new Set((m.list || []).map(x => x.id)); for (const id of this.riders.keys()) if (!ids.has(id)) this.riders.delete(id);
       this.onChange?.(this);
     } else if (m.t === 'route' && !this.host) { this.routeId = String(m.routeId); this.onChange?.(this); }
-    else if (m.t === 'start' && !this.host) this.onStart?.({ routeId: String(m.routeId), at: Number(m.at) || 0, d: Math.max(0, Number(m.d) || 0) });
+    else if (m.t === 'start' && !this.host && !(this.me.d > 0 && !this.me.done)) this.onStart?.({ routeId: String(m.routeId), at: Number(m.at) || 0, d: Math.max(0, Number(m.d) || 0) });
   }
 
   _clean(r) { // never trust what comes over the wire
@@ -122,6 +138,7 @@ export class Group {
     const { look, ...rest } = s; Object.assign(this.me, rest); if (this.me.riding) this.rolling = true;
     if (look && look !== this._lookSrc) { this._lookSrc = look; this.me.look = cleanLook(look); }
     const now = performance.now(); if (now - (this._sent || 0) < 500) return; this._sent = now;
+    if (this.routeId && this.me.d > 0) LS.set('rf_group_last', { code: this.code, host: this.host, routeId: this.routeId, d: Math.round(this.me.d), t: Date.now() });
     if (this.host) this._relayAll();
     else for (const c of this.conns) if (c.open) c.send({ t: 'state', r: this.me });
   }
@@ -130,5 +147,5 @@ export class Group {
 
   get link() { return `${location.origin}${location.pathname}?join=${this.code}`; }
 
-  close() { this.voice?.stop(); this.voice = null; clearInterval(this._relayT); try { for (const c of this.conns) c.close(); this.peer?.destroy(); } catch {} this.open = false; }
+  close() { this._closed = true; this.voice?.stop(); this.voice = null; clearInterval(this._relayT); try { for (const c of this.conns) c.close(); this.peer?.destroy(); } catch {} this.open = false; }
 }

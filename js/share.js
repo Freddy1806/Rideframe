@@ -2,7 +2,7 @@
 // (2) group ride live with a 5-letter code (js/group.js).
 import { db, uid } from './db.js';
 import { state, toast, routeById, saveSettings, allRoutes } from './app.js';
-import { Group } from './group.js';
+import { Group, lastGroup, rejoinAt } from './group.js';
 import { Voice, voiceStatus, MIC_SVG, SPK_SVG } from './voice.js';
 import { cleanLook } from './look.js';
 import { esc, fmtTime, fmtKm } from './util.js';
@@ -105,11 +105,14 @@ export function groupModal({ routeId = null, code = null, startRide }) {
         name = nn || state.settings.riderName || 'Fahrer';
         m.querySelector('#gMsg').textContent = 'Verbinde …';
         const g2 = new Group({ name, look: state.settings.look, ...opts, onChange: () => render(), onError: msg => { const el = m.querySelector('#gMsg'); if (el) el.textContent = msg; else toast(msg, 5000); },
-          onStart: ({ routeId: rid, at, d }) => { const r = routeById(rid); if (!r) return toast('Diese Strecke hast du nicht.'); close(); setTimeout(() => startRide(rid, { group: g2, ...(d ? { at: d } : {}) }), Math.max(0, at - Date.now())); toast('Gleich geht es los!', 3000); } });
-        try { await g2.connect(); group = g2; if (g2.host && routeId) g2.setRoute(routeId); render(); }
+          onStart: ({ routeId: rid, at, d }) => { const r = routeById(rid); if (!r) return toast('Diese Strecke hast du nicht.'); close(); const dd = rejoinAt(g2.code, rid, d); setTimeout(() => startRide(rid, { group: g2, ...(dd ? { at: dd } : {}) }), Math.max(0, at - Date.now())); toast('Gleich geht es los!', 3000); } });
+        try { await g2.connect(); group = g2; const lr = opts.hostCode && lastGroup()?.routeId; if (g2.host && (routeId || lr)) g2.setRoute(routeId || lr); render(); }
         catch (e) { g2.close(); m.querySelector('#gMsg').textContent = e.message; }
       };
-      m.querySelector('#gHost').onclick = () => go({});
+      const lg = lastGroup(); // you hosted a group in the last hours (page reloaded): the same code again, your friends reconnect by themselves
+      m.querySelector('#gHost').onclick = () => go(lg?.host ? { hostCode: lg.code } : {});
+      if (lg?.host) m.querySelector('#gHost').textContent = 'Gruppe ' + lg.code + ' wieder öffnen';
+      else if (lg && !code) m.querySelector('#gCode').value = lg.code;
       m.querySelector('#gJoin').onclick = () => { const c = m.querySelector('#gCode').value.trim().toLowerCase(); if (c.length === 5) go({ code: c }); else m.querySelector('#gMsg').textContent = 'Der Code hat 5 Zeichen.'; };
       if (code) m.querySelector('#gJoin').click();
       return;
@@ -138,8 +141,8 @@ export function groupModal({ routeId = null, code = null, startRide }) {
     m.querySelector('#gLeave').onclick = () => { group?.close(); group = null; close(); toast('Gruppe verlassen'); };
     m.querySelector('#gCopy')?.addEventListener('click', () => navigator.clipboard?.writeText(g.code).then(() => toast('Code kopiert')));
     m.querySelector('#gLink')?.addEventListener('click', () => navigator.clipboard?.writeText(g.link).then(() => toast('Link kopiert. Klappt, wenn dein Freund RIDEFRAME auch unter dieser Adresse laufen hat.', 5000)));
-    m.querySelector('#gStart')?.addEventListener('click', () => { const at = g.start(g.routeId); close(); toast('Start in 5 Sekunden für alle', 3000); setTimeout(() => startRide(g.routeId, { group: g }), Math.max(0, at - Date.now())); });
-    m.querySelector('#gSolo')?.addEventListener('click', () => { close(); startRide(g.routeId, { group: g }); });
+    m.querySelector('#gStart')?.addEventListener('click', () => { const at = g.start(g.routeId); close(); toast('Start in 5 Sekunden für alle', 3000); const ra = rejoinAt(g.code, g.routeId); setTimeout(() => startRide(g.routeId, { group: g, ...(ra ? { at: ra } : {}) }), Math.max(0, at - Date.now())); });
+    m.querySelector('#gSolo')?.addEventListener('click', () => { close(); const ra = rejoinAt(g.code, g.routeId); startRide(g.routeId, { group: g, ...(ra ? { at: ra } : {}) }); });
   };
   if (group?.open) { if (group.host && routeId && routeId !== group.routeId) group.setRoute(routeId); group.onChange = () => render(); }
   render();
