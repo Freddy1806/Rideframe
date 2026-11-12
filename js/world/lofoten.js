@@ -735,8 +735,16 @@ export class WorldScene {
         mus.forEach((e, k) => place(e, mid - 8 + k * 2.3, ROAD_W + 9 + (k % 2) * 0.8, { radK: 0.45, anim: 'Spielen', gap: 3 }));
         place(byName('fahne_dorf'), mid - 30, ROAD_W + 4.4, { gap: 0.5 }); /* clear of the roadside walkers and the funeral procession (priest inside the mast) */
         place(byName('fahne_wimpel'), mid + 30, ROAD_W + 4.4, { gap: 0.5 });
+        place(byName('pranger'), mid + 14, ROAD_W + 9, { face: 'road', gap: 1, radK: 0.6 }); /* market square: pillory and the town scales (MacBook Dorfplan) */
+        place(byName('waage'), mid - 14, ROAD_W + 6.5, { face: 'road', gap: 0.6, radK: 0.5 });
+        { const pond = byName('dorfteich'); /* the village pond behind the houses: ducks on it, pollard willows and a jetty at its edge, geese on the bank */
+          if (pond && s !== festSeg && r() < 0.7) { const dp = a + 45 + r() * 30, op = ROAD_W + 26, pd = place(pond, dp, op, { face: 'along', gap: 2, ground: 'centre' });
+            if (pd) { for (let k = 0; k < 3; k++) { const du = place(byName('ente'), dp - 6 + k * 4.5, op + (k % 2 ? 2 : -2), { face: r() * 6.28, overlap: true, gap: -99, radK: 0.2 }); if (du) { du.position.y = pd.position.y + 0.05; du.userData.paddle = { y: du.position.y, r: du.rotation.y }; this.animated.push(du); } }
+              place(byName('holzsteg'), dp + 13, op - 4, { face: 'road', overlap: true, gap: -99, radK: 0.3 });
+              for (const [x, z] of [[-15, -6], [-11, 8], [14, 8]]) place(byName(r() < 0.5 ? 'kopfweide' : 'kopfweide_b'), dp + x, op + z, { face: r() * 6.28, gap: 1.5, radK: 0.4 });
+              for (let k = 0; k < 4; k++) { const g = place(byName('gans'), dp - 12 + k * 2.2, op - 9 + r() * 2, { face: r() * 6.28, gap: 0.3, radK: 0.2 }); if (g) { g.userData.peck = { y: g.position.y, r: g.rotation.y, t: r() * 9 }; this.animated.push(g); } } } } }
         // shops around the square (the MacBook's bakery, smithy, inn, butcher; signs swing), the smith hammering outside
-        ['baeckerei', 'schmiede', 'gasthaus', 'metzgerei'].map(byName).forEach((e, k) => { if (!e) return;
+        ['baeckerei', 'schmiede', 'gasthaus', 'metzgerei', 'kraemerhaus', 'rathauslaube'].map(n => A.list.find(x => x.file.split('/').pop().replace(/\.glb$/, '').replace(/_v\d+$/, '') === n) || (n.length > 10 ? null : byName(n))).forEach((e, k) => { if (!e) return; /* + the MacBook's Krämerhaus (sign swings) and town-hall arcade */
           const dd = mid + (k % 2 ? 1 : -1) * (58 + Math.floor(k / 2) * 24), h = place(e, dd, ROAD_W + 6 + Math.max(...e.size) / 2, { face: 'road', anim: 'Schwingen', gap: 3 });
           if (h && /schmiede/.test(e.file)) place(byName('schmied'), dd + 3, ROAD_W + 3.2, { face: 'road', anim: 'Haemmern', radK: 0.4, gap: 0.8 }); });
         // houses on the land side, facing the road
@@ -812,6 +820,11 @@ export class WorldScene {
             if (r() < 0.5) place(byName('schubkarre'), d + 5, back - 1, { face: r() * 6.28, gap: 1.5, radK: 0.4 });
             if (r() < 0.6) place(byName('holzstapel'), d + 10, back + 4, { face: 'along', gap: 1.5, radK: 0.5 }); // new MacBook models (placed once they exist)
             if (r() < 0.5) place(byName('viehtraenke'), d - 26, back + 10, { face: r() * 6.28, gap: 2, radK: 0.5 });
+            if (r() < 0.35) place(byName('zehntscheune'), d + 26, back + 12, { face: 'road', gap: 3 }); /* MacBook Dorfplan: tithe barn, dovecote, plough, scarecrow, poultry that pecks and hops */
+            if (r() < 0.35) place(byName('taubenschlag'), d - 8, back + 9, { face: 'road', gap: 1.5, radK: 0.5 });
+            if (r() < 0.4) place(byName('pflug'), d + 18, back - 4, { face: 'along', gap: 1, radK: 0.5 });
+            if (r() < 0.45) place(byName('vogelscheuche'), d - 40, back + 4 + r() * 10, { face: 'road', gap: 1, radK: 0.4 });
+            for (let k = 0, n = r() < 0.6 ? 3 + Math.floor(r() * 3) : 0; k < n; k++) { const bird = place(byName(k % 3 === 2 ? 'gans' : 'huhn'), d + 2 + r() * 8, back - 3.5 + r() * 2.5, { face: r() * 6.28, gap: 0.25, radK: 0.2 }); if (bird) { bird.userData.peck = { y: bird.position.y, r: bird.rotation.y, t: r() * 9 }; this.animated.push(bird); } }
             const fl = byName('flechtzaun'); if (fl) { const len = Math.max(fl.size[0], fl.size[2]) * 0.97, turn = fl.size[0] > fl.size[2] ? Math.PI / 2 : 0;
               for (let k = 0; k * len < 30; k++) place(fl, d - 15 + k * len, ROAD_W + 6, { face: 'along', rot: turn, gap: 1, radK: 0.3, overlap: true }); }
             const idle = A.by.figure_idle || []; if (idle.length && r() < 0.8) place(idle[Math.floor(r() * idle.length)], d + 8, back - 3, { face: 'road', gap: 1, radK: 0.5, anim: 'Stehen' });
@@ -840,6 +853,8 @@ export class WorldScene {
           const side = s.land === 'coast' || s.land === 'river' ? 1 : (r() < 0.5 ? -1 : 1), base = 16 + r() * 30, n = 4 + Math.floor(r() * 5);
           const animal = s.land === 'serp' || (s.land === 'valley' && r() < 0.4) ? byName('rentier') : r() < 0.15 ? byName('pferd') : byName('schaf');
           for (let k = 0; k < n; k++) place(animal, d + (r() - .5) * 26, side * (base + r() * 14), { face: r() * 6.28, anim: r() < 0.7 ? 'Grasen' : 'Stehen', radK: 0.6, gap: 3 });
+          if (animal && /schaf/.test(animal.file) && r() < 0.5) place(byName('hirte'), d + 16, side * (base + 4), { face: 'road', anim: r() < 0.5 ? 'Winken' : 'Stehen', gap: 1, radK: 0.4 }); /* a shepherd with the flock */
+          if (s.land === 'valley' && r() < 0.3) place(byName('ochse'), d - 30, side * (base + 6), { face: r() * 6.28, gap: 3, radK: 0.6 });
           if (s.land === 'valley' && r() < 0.6) for (let k = 0; k < 6; k++) place(byName('garbenhocke'), d + 40 + k * 3.5, side * -(10 + (k % 2) * 3), { gap: 2 });
           if (r() < 0.35) place(byName('heuhaufen'), d + 70, side * (12 + r() * 10), { gap: 2 });
         }
@@ -1402,7 +1417,7 @@ export class WorldScene {
     // image-based light from the sky, re-baked only when the sun has moved noticeably (~0.2°)
     const hb = (this.hellK || 0) > 0.5; if (hb !== !!this._envHell) { this._envHell = hb; this.envSun = null; } // hell in, hell out: re-bake the sky light
     if (hb !== !!this._herdHell) { this._herdHell = hb; // no grazing cows in hell (Mac mini QA): farm animals leave while the screen burns red, and come back after
-      const herd = this.props.filter(o => /kuh|schaf|pferd|rentier|ziege|schwein|huhn|gans|pony/.test(o.userData.asset || ''));
+      const herd = this.props.filter(o => /kuh|schaf|pferd|rentier|ziege|schwein|huhn|gans|pony|ente|ochse|hirte/.test(o.userData.asset || ''));
       if (hb) { this._herdBack = null; for (const o of herd) { o.userData.hellHidden = true; o.visible = false; } }
       else { const c = this.camera.position; this._herdBack = herd.sort((p, q) => p.position.distanceToSquared(c) - q.position.distanceToSquared(c)); } }
     if (this._herdBack?.length) for (let k = 0; k < 2 && this._herdBack.length; k++) this._herdBack.shift().userData.hellHidden = false; // back two per frame: all ~15 skinned animals in one frame stalled it 0.7 s (Mac mini QA)
@@ -1520,6 +1535,10 @@ export class WorldScene {
     for (const o of this.animated) {
       if (o.userData.spin) o.rotation.z = time * 0.6;
       else if (o.userData.flag) o.rotation.y = Math.sin(time * 2.3 + o.id) * 0.25;
+      else if (o.userData.peck) { const p = o.userData.peck, k = (time + p.t) % 6; /* static Higgsfield poultry: pecks, turns, now and then a little hop */
+        o.rotation.x = k < 2 ? Math.max(0, Math.sin(k * Math.PI * 2)) * 0.45 : 0; o.rotation.y = p.r + Math.sin((time + p.t) * 0.4) * 0.9;
+        o.position.y = p.y + (k > 4.6 && k < 4.9 ? Math.sin((k - 4.6) / 0.3 * Math.PI) * 0.18 : 0); }
+      else if (o.userData.paddle) { const p = o.userData.paddle; o.rotation.y = p.r + time * 0.12 + Math.sin(time * 0.5 + o.id) * 0.3; o.position.y = p.y + Math.sin(time * 1.7 + o.id) * 0.02; }
       else if (o.userData.bob) { o.position.y = Math.sin(time * 0.9 + o.id) * 0.15 - 0.4; o.rotation.z = Math.sin(time * 0.7 + o.id) * 0.04; }
     }
     this._life(time, dt, cam);
