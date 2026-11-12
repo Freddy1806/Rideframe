@@ -1003,7 +1003,8 @@ export class WorldScene {
       for (const [n, dd, off] of [['katapult', -55, 16], ['tribok', 50, 18], ['leiter', 5, 26], ['rammbock', -12, 24], ['zelt', -70, -12], ['palisade', -80, -10], ['banner', -40, 8], ['banner', 40, 8]]) {
         const e = byName(n); if (e) place(e, d0 + dd, off, { face: face(d0 + dd, off), gap: 1 }); }
     }
-    { const bn = byName('rideframe_banner'); if (bn) for (const sd of [1, -1]) place(bn, sd > 0 ? 26 : 22, sd * (ROAD_W + 1.5), { face: 'road', rotT: Math.PI + 0.87, anim: 'Wehen', gap: 0.3, radK: 0.2, overlap: true }); } // RIDEFRAME beach flags just past the start arch, the print turned ~50° towards the oncoming rider (side-mirrored via rotT)
+    { const bn = byName('rideframe_banner'), c = f.at(0), flip = QS.has('bannerflip') ? Math.PI : 0; if (bn) for (const sd of [1, -1]) { const o = place(bn, sd > 0 ? 26 : 22, sd * (ROAD_W + 1.5), { face: 'road', anim: 'Wehen', gap: 0.3, radK: 0.2, overlap: true });
+      if (o) o.rotation.y = Math.atan2(c.x - o.position.x, c.z - o.position.z) + flip; } } // RIDEFRAME beach flags past the start arch, the print side (+Z) turned straight at the start position
     { // the MacBook's ride furniture (each only once its model exists): feed stations on the tops, a grandstand at the finish, hot-air balloons over the land, signposts at the turn-offs
       const L = t.length, vs = byName('verpflegungsstand'), tb = byName('zuschauer_tribuene'), hb = byName('heissluftballon'), ws = byName('wegweiser');
       for (const s of segs) {
