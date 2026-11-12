@@ -1347,7 +1347,10 @@ export class WorldScene {
     // image-based light from the sky, re-baked only when the sun has moved noticeably (~0.2°)
     const hb = (this.hellK || 0) > 0.5; if (hb !== !!this._envHell) { this._envHell = hb; this.envSun = null; } // hell in, hell out: re-bake the sky light
     if (hb !== !!this._herdHell) { this._herdHell = hb; // no grazing cows in hell (Mac mini QA): farm animals leave while the screen burns red, and come back after
-      for (const o of this.props) if (/kuh|schaf|pferd|rentier|ziege|schwein|huhn|gans|pony/.test(o.userData.asset || '')) { o.userData.hellHidden = hb; o.visible = !hb; } }
+      const herd = this.props.filter(o => /kuh|schaf|pferd|rentier|ziege|schwein|huhn|gans|pony/.test(o.userData.asset || ''));
+      if (hb) { this._herdBack = null; for (const o of herd) { o.userData.hellHidden = true; o.visible = false; } }
+      else { const c = this.camera.position; this._herdBack = herd.sort((p, q) => p.position.distanceToSquared(c) - q.position.distanceToSquared(c)); } }
+    if (this._herdBack?.length) for (let k = 0; k < 2 && this._herdBack.length; k++) this._herdBack.shift().userData.hellHidden = false; // back two per frame: all ~15 skinned animals in one frame stalled it 0.7 s (Mac mini QA)
     if (!this.envSun || this.envSun.distanceToSquared(s) > 1.2e-5) {
       (this.envSun ||= new THREE.Vector3()).copy(s);
       const rt = this.pmrem.fromScene(this.envScene, 0, 0.1, 9000);
