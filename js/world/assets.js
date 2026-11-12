@@ -76,9 +76,9 @@ export class Assets {
       const obj = e.scene.clone(true); obj.userData.asset = e.file; obj.userData.off = true; return { obj, mixer: null }; };
     return v; }
   has(cat) { return !!this.by[cat]?.length; }
-  find(part) { // exact name first ('ritter' is not 'reiter_ritter'); a base name may hand out one of its loaded variants
+  find(part, r = Math.random) { // exact name first ('ritter' is not 'reiter_ritter'); a base name may hand out one of its loaded variants (r: the caller's dice)
     const base = this.list.find(e => e.file.split('/').pop().replace(/\.glb$/, '') === part && !e.variant_of);
-    if (base) { const v = this.list.filter(e => e.variant_of === part); return v.length && Math.random() < v.length / (v.length + 1) ? v[Math.floor(Math.random() * v.length)] : base; }
+    if (base) { const v = this.list.filter(e => e.variant_of === part); return v.length && r() < v.length / (v.length + 1) ? v[Math.floor(r() * v.length)] : base; }
     return this.list.find(e => e.file.split('/').pop().replace(/\.glb$/, '') === part) || this.list.find(e => e.file.includes(part) && !e.variant_of) || this.list.find(e => e.file.includes(part)); }
   pick(cat, r) { const l = this.by[cat]; return l?.length ? l[Math.floor(r() * l.length) % l.length] : null; }
   /** A placed copy. Returns { obj, mixer|null }; animations start at a random phase. */

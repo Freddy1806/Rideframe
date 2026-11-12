@@ -661,7 +661,7 @@ export class WorldScene {
       obj.traverse(c => { if (c.userData.millWheel) this.wheels.push(c); });
       return obj;
     };
-    const pick = (cat) => A.pick(cat, r), byName = part => A.find(part);
+    const pick = (cat) => A.pick(cat, r), byName = part => A.find(part, r); // the placement dice, never Math.random: same village every load and in every world mode
     /** a group template at d, centre offset off (local x along the road, local +z towards the road); members whose variant
      *  is not loaded this ride fall back to their base model. Returns how many members stood. */
     const placeGroup = (g, d, off) => {
@@ -669,7 +669,7 @@ export class WorldScene {
       const c = spot(d, segAt(d).seaSide === 1 ? -off : off); if (!free(c.x, c.z, R)) return 0; // the whole group needs free ground (no house, stall, fence)
       for (const m of g.members || []) {
         const stem = m.file.split('/').pop().replace(/\.glb$/, '');
-        const e = A.list.find(x => x.file.endsWith(m.file)) || A.find(stem.replace(/_v\d+$/, '')); if (!e) continue;
+        const e = A.list.find(x => x.file.endsWith(m.file)) || A.find(stem.replace(/_v\d+$/, ''), r); if (!e) continue;
         if (place(e, d + m.x, off - side * m.z, { rotT: m.rot, anim: m.anim, overlap: true, radK: Math.max(...e.size) > 2 ? 0.85 : 0.3, gap: 1 })) n++;
       }
       if (n) taken.push([c.x, c.z, R]); return n;
