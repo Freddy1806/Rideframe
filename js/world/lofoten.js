@@ -666,7 +666,7 @@ export class WorldScene {
       if (s.village) {
         const a = s.from + L * s.village[0], b = s.from + L * s.village[1], mid = (a + b) / 2;
         // market square in the middle of the village (land side)
-        const stalls = A.by.stall || [];
+        const stalls = (A.by.stall || []).filter(e => !/verpflegungsstand/.test(e.file)); // the feed station belongs on the tops, not in the market
         for (let k = 0; k < Math.min(5, stalls.length); k++) {
           const d = mid - 18 + k * 8;
           if (place(stalls[(k + Math.floor(r() * 9)) % stalls.length], d, ROAD_W + 4.2, { gap: 0.6 })) {
