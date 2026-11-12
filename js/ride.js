@@ -793,7 +793,7 @@ export class RideSession {
   }
   _lens(dir, wrap = false) { // [ wider, ] narrower (5° steps); the HUD button steps wider and wraps back to normal
     if (!this.player.setFov) return;
-    const s = this.state.settings, cur = fovOf(s), STEPS = [45, FOV_DEFAULT, 80, 95, 110, 120, FOV_MAX];
+    const s = this.state.settings, cur = fovOf(s), STEPS = [45, 62, FOV_DEFAULT, 95, 110, 120, FOV_MAX];
     const f = wrap ? (STEPS.find(x => x > cur + 1) ?? STEPS[0]) : cur - dir * 5; // button: 45 → 62 → 80 → 95 → 110 → 120 → 130 → 45
     s.fov = Math.max(FOV_MIN, Math.min(FOV_MAX, f)); s.lensMm = 0; this.player.setFov(s.fov);
     this._flash(`Sichtfeld ${s.fov}°`); import('./app.js').then(m => m.saveSettings());

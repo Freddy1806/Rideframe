@@ -785,8 +785,9 @@ export class WorldScene {
       }
       // ---- long open stretches (real routes: kilometres between hamlets): a lone farm every ~1 km, fishers at the shore,
       // now and then a whale offshore and a sea eagle, so the coast road never runs empty ----
-      if (!s.village && s.to - s.from > 1200) {
+      if (s.to - s.from > 1200) {
         for (let d = s.from + 450; d < s.to - 300; d += 800 + r() * 600) {
+          if (s.village) { const vf = (d - s.from) / (s.to - s.from); if (vf > s.village[0] - 0.06 && vf < s.village[1] + 0.06) continue; } /* open parts of village segments get farms too (Mac-mini check: empty coast at km 4) */
           const kind = r();
           if (kind < 0.55) { // farm on the land side: house, fence, washing line, hay, someone at work
             const hs = [byName('steinhaus'), byName('rorbu_ocker'), byName('rorbu_rot')].filter(Boolean), he = hs[Math.floor(r() * hs.length)];
@@ -1260,9 +1261,9 @@ export class WorldScene {
     if (!this._blurEl) {
       if (!k || !this.c.parentElement) return;
       const el = this._blurEl = document.createElement('div');
-      Object.assign(el.style, { position: 'absolute', inset: '0', pointerEvents: 'none', zIndex: 0, opacity: 0, backdropFilter: 'blur(6px)', webkitBackdropFilter: 'blur(6px)',
-        maskImage: 'radial-gradient(ellipse 62% 52% at 50% 42%, transparent 55%, rgba(0,0,0,.55) 78%, #000 100%)',
-        webkitMaskImage: 'radial-gradient(ellipse 62% 52% at 50% 42%, transparent 55%, rgba(0,0,0,.55) 78%, #000 100%)' });
+      Object.assign(el.style, { position: 'absolute', inset: '0', pointerEvents: 'none', zIndex: 0, opacity: 0, backdropFilter: 'blur(11px)', webkitBackdropFilter: 'blur(11px)',
+        maskImage: 'radial-gradient(ellipse 60% 50% at 50% 42%, transparent 46%, rgba(0,0,0,.7) 72%, #000 100%)',
+        webkitMaskImage: 'radial-gradient(ellipse 60% 50% at 50% 42%, transparent 46%, rgba(0,0,0,.7) 72%, #000 100%)' });
       this.c.after(el); // right above the 3D view, below the HUD
     }
     const o = Math.round(k * 20) / 20; if (o !== this._blurO) { this._blurO = o; this._blurEl.style.opacity = o; this._blurEl.style.display = o ? '' : 'none'; }
@@ -1494,7 +1495,7 @@ export class WorldScene {
     this.light.target.position.set(cam.x - this.sunDir.x * 40, cam.y, cam.z - this.sunDir.z * 40);
     this.sky.position.copy(this.camera.position);
     this.roadBlur.value = Math.max(0, Math.min(1, ((this.speed || 0) * 3.6 - 12) / 50));
-    this._speedBlur(Math.max(0, Math.min(1, ((this.speed || 0) * 3.6 - 24) / 30)));
+    this._speedBlur(Math.max(0, Math.min(1, ((this.speed || 0) * 3.6 - 20) / 22))); /* visible from ~25 km/h, full at 42 */
     this.streaks.position.copy(this.camera.position); this.streaks.quaternion.copy(this.camera.quaternion); this.streaks.userData.tick(dt, this.speed || 0, this.view === 2 || this._shot ? 0 : this.fast || 0);
     this.water.position.x = Math.round(cam.x / 100) * 100; this.water.position.z = Math.round(cam.z / 100) * 100;
     this.water.material.uniforms.time.value = time * 0.6; this.grassTime.value = time; TIME.value = time;

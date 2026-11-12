@@ -1,6 +1,6 @@
 // Field of view like in Minecraft: one slider in degrees (vertical angle). 62° is the old "normal" view,
 // 110° a very wide "Quake pro" look, 30° zoomed in. Older settings stored a lens in mm; it is converted once.
-export const FOV_MIN = 30, FOV_MAX = 130, FOV_DEFAULT = 62;
+export const FOV_MIN = 30, FOV_MAX = 130, FOV_DEFAULT = 80; /* Freddy 11.11.: wider by default (was 62°) */
 export function fovOf(s) {
   if (s.fov) return s.fov;
   if (!s.lensMm) return FOV_DEFAULT;
