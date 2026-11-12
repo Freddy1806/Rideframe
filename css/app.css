@@ -443,3 +443,15 @@ input[type=number]::-webkit-inner-spin-button, input[type=number]::-webkit-outer
 .modal input::placeholder { color: var(--muted); font-weight: 600; }
 .field input#chainrings { text-align: right; }
 @media (max-width: 1500px) { .topbar { gap: 14px; } .topbar .pill { letter-spacing: .04em; } .tabs { gap: 2px; } }
+/* UI round 2: browser autofill keeps the dark field, action rows share one height, login fields fill the row */
+.modal input:-webkit-autofill, .modal input:-webkit-autofill:hover, .modal input:-webkit-autofill:focus { -webkit-text-fill-color: var(--paper); caret-color: var(--paper); -webkit-box-shadow: 0 0 0 1000px var(--ink) inset; box-shadow: 0 0 0 1000px var(--ink) inset; transition: background-color 9999s; }
+.modal .actions { align-items: center; margin-top: 18px; }
+.modal .actions .btn, .modal .actions .btn.small { height: 48px; font-size: 13px; padding: 0 20px; }
+.modal .form .field input[type=text], .modal .form .field input[type=password] { flex: 1; min-width: 0; }
+.modal textarea { background: var(--ink); border: 1px solid var(--line-2); border-radius: var(--radius); padding: 10px 12px; font-weight: 600; color: var(--paper); }
+.modal select { appearance: none; padding-right: 30px; background-image: linear-gradient(45deg, transparent 50%, var(--muted) 50%), linear-gradient(135deg, var(--muted) 50%, transparent 50%); background-position: calc(100% - 16px) 50%, calc(100% - 11px) 50%; background-size: 5px 5px; background-repeat: no-repeat; }
+.tgl { display: inline-flex; gap: 10px; align-items: center; margin-right: 22px; font-weight: 700; cursor: pointer; }
+/* play button: big and centred over the picture on hover */
+.card .go { top: 50%; left: 50%; right: auto; width: 72px; height: 72px; transform: translate(-50%, -50%) scale(.8); box-shadow: 0 8px 30px rgba(0,0,0,.45); }
+.card:hover .go { transform: translate(-50%, -50%) scale(1); }
+.card .thumb .go svg { width: 28px; height: 28px; margin-left: 5px; }

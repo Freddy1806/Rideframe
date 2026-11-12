@@ -74,7 +74,7 @@ export function helperModal() {
 }
 
 
-const IN = 'background:#ffffff12;color:inherit;border:1px solid #ffffff30;border-radius:6px;padding:5px 7px;font:inherit';
+const IN = 'background:var(--ink);color:var(--paper);border:1px solid var(--line-2);border-radius:var(--radius);height:40px;padding:0 10px;font:inherit;font-weight:700';
 const fmtMin = sec => { const m = Math.floor(sec / 60), s = Math.round(sec % 60); return s ? `${m}:${String(s).padStart(2, '0')} min` : `${m} min`; };
 
 /** Pro-Modus: build your own interval workout. Resolves with the saved definition (or null). */
@@ -101,8 +101,8 @@ export function editorModal(def0, ftp) {
       m.innerHTML = `<div class="box" style="width:min(860px,94vw)"><div class="label">Pro-Modus · eigenes Workout</div>
         <h2 class="display" style="font-size:28px;margin:8px 0 12px"><input type="text" id="eName" value="${esc(def.name)}" style="font:inherit;width:100%;background:transparent;border:0;border-bottom:1px solid #fff3;color:inherit"></h2>
         <p class="hint" style="margin:0 0 8px">Der Trainer hält im ERG-Modus die Watt, die Strecke bestimmt nur das Bild. % beziehen sich auf deine FTP (${ftp} W).</p>
-        <label style="display:inline-flex;gap:6px;margin-right:16px"><input type="checkbox" id="eWarm" ${def.warm !== false ? 'checked' : ''}> 10 min Einfahren</label>
-        <label style="display:inline-flex;gap:6px"><input type="checkbox" id="eCool" ${def.cool !== false ? 'checked' : ''}> 5 min Ausfahren</label>
+        <label class="tgl"><input type="checkbox" class="toggle" id="eWarm" ${def.warm !== false ? 'checked' : ''}> 10 min Einfahren</label>
+        <label class="tgl"><input type="checkbox" class="toggle" id="eCool" ${def.cool !== false ? 'checked' : ''}> 5 min Ausfahren</label>
         <div id="eRows" style="margin:10px 0">${def.rows.map(row).join('') || '<p class="hint">Noch leer: füge Blöcke oder Intervalle hinzu.</p>'}</div>
         <div style="display:flex;gap:8px;margin-bottom:10px"><button class="btn ghost small" id="eAddB">+ Block</button><button class="btn ghost small" id="eAddI">+ Intervalle</button></div>
         <div class="label">${fmtMin(sec)} gesamt</div>${workoutSVG(w)}

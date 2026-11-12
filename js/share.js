@@ -91,7 +91,7 @@ export function groupModal({ routeId = null, code = null, startRide }) {
         <label class="field"><div style="min-width:110px;white-space:nowrap">Dein Name</div><input type="text" id="gName" maxlength="20" placeholder="Name" value="${esc(state.settings.riderName || '')}"></label>
         <div class="actions" style="justify-content:flex-start;gap:10px;flex-wrap:wrap">
           <button class="btn" id="gHost">Gruppe erstellen</button>
-          <input type="text" id="gCode" placeholder="Code" maxlength="5" style="width:120px;height:56px;text-transform:lowercase;text-align:center;letter-spacing:.15em" value="${esc(code || '')}">
+          <input type="text" id="gCode" placeholder="Code" maxlength="5" style="width:120px;height:48px;text-transform:lowercase;text-align:center;letter-spacing:.15em" value="${esc(code || '')}">
           <button class="btn ghost" id="gJoin">Beitreten</button>
           <button class="btn ghost small" id="gLook2">Aussehen</button>
           <button class="btn ghost small" id="gClose" style="margin-left:auto">Schließen</button>
@@ -119,7 +119,7 @@ export function groupModal({ routeId = null, code = null, startRide }) {
       <p>${g.host ? 'Schick diesen Code deinen Freunden. Sie öffnen RIDEFRAME, klicken „Zusammen fahren“ und geben ihn ein.' : 'Warte, bis der Gastgeber startet. Der Start kommt bei allen gleichzeitig.'}</p>
       ${g.host ? `<div class="actions" style="justify-content:flex-start;gap:8px"><button class="btn ghost small" id="gCopy">Code kopieren</button><button class="btn ghost small" id="gLink">Link kopieren</button></div>` : ''}
       <div class="label" style="margin-top:18px">Strecke</div>
-      ${g.host ? `<select id="gRoute" style="width:100%;height:42px;margin-bottom:12px;background:var(--ink);border:1px solid var(--line-2);border-radius:6px;padding:0 10px">${g.routeId ? '' : '<option value="">Strecke wählen …</option>'}${allRoutes().map(r => `<option value="${esc(r.id)}" ${r.id === g.routeId ? 'selected' : ''}>${esc(r.name)} · ${fmtKm(r.track.length)} km</option>`).join('')}</select>`
+      ${g.host ? `<select id="gRoute" style="width:100%;margin-bottom:12px">${g.routeId ? '' : '<option value="">Strecke wählen …</option>'}${allRoutes().map(r => `<option value="${esc(r.id)}" ${r.id === g.routeId ? 'selected' : ''}>${esc(r.name)} · ${fmtKm(r.track.length)} km</option>`).join('')}</select>`
         : `<p style="color:var(--paper);font-weight:700">${route ? esc(route.name) + ' · ' + fmtKm(route.track.length) + ' km' : g.routeId ? 'Strecke „' + esc(g.routeId) + '“ fehlt bei dir' : 'Gastgeber wählt …'}</p>`}
       <div class="label">Fahrer (${others.length + 1})</div>
       <div class="group-list"><div data-pid="${esc(me.pid || '')}"><span><i class="spk">${SPK_SVG}</i>${esc(me.name)} (du)</span><span>${g.host ? 'Gastgeber' : ''}</span></div>${others.map(r => `<div data-pid="${esc(r.pid || '')}"><span><i class="spk">${SPK_SVG}</i>${esc(r.name)}</span><span>${r.vo ? 'Sprachchat · ' : ''}${r.riding ? 'fährt · ' + fmtKm(r.d) + ' km' : 'bereit'}</span></div>`).join('')}</div>
