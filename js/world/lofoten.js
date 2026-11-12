@@ -1003,8 +1003,7 @@ export class WorldScene {
       for (const [n, dd, off] of [['katapult', -55, 16], ['tribok', 50, 18], ['leiter', 5, 26], ['rammbock', -12, 24], ['zelt', -70, -12], ['palisade', -80, -10], ['banner', -40, 8], ['banner', 40, 8]]) {
         const e = byName(n); if (e) place(e, d0 + dd, off, { face: face(d0 + dd, off), gap: 1 }); }
     }
-    { const bn = byName('rideframe_banner'); if (bn) { let rotY = null; for (const sd of [1, -1]) { const o = place(bn, sd > 0 ? 16 : 12, sd * (ROAD_W + 3.2), { face: 'road', rot: Math.PI, anim: 'Wehen', gap: 0.5, radK: 0.3, overlap: true });
-      if (o) { if (rotY == null) rotY = o.rotation.y; else o.rotation.y = rotY; } } } } // RIDEFRAME banners at the start, both with the print towards the camera (the mirrored one showed its edge)
+    { const bn = byName('rideframe_banner'); if (bn) for (const sd of [1, -1]) place(bn, sd > 0 ? 26 : 22, sd * (ROAD_W + 1.5), { face: 'road', rotT: Math.PI + 0.87, anim: 'Wehen', gap: 0.3, radK: 0.2, overlap: true }); } // RIDEFRAME beach flags just past the start arch, the print turned ~50° towards the oncoming rider (side-mirrored via rotT)
     this._placeLegacyTops(segs);
     // everything that never moves: matrices once, then skipped by three's per-frame scene-graph update (was ~30 % CPU)
     const moving = new Set([...this.mixers.map(m => m.obj), ...this.birds, ...this.whales.map(w => w.obj), ...this.animated]);
