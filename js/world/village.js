@@ -18,11 +18,11 @@ const WHO_COL = [0x6fb6ff, 0xf2c14e, 0xff5a3c]; // wizard, king, devil (js/story
 /** a plain wooden gate with two posts, a beam and a pennant: the Home Gate until the MacBook's `dorftor` exists */
 function gateMesh() {
   const g = new THREE.Group(), wood = new THREE.MeshStandardMaterial({ color: 0x3d2b1f, roughness: 0.9 });
-  const post = new THREE.BoxGeometry(0.35, 4.2, 0.35);
-  for (const x of [-4.6, 4.6]) { const p = new THREE.Mesh(post, wood); p.position.set(x, 2.1, 0); p.castShadow = true; g.add(p); }
-  const beam = new THREE.Mesh(new THREE.BoxGeometry(9.8, 0.4, 0.4), wood); beam.position.y = 4.0; beam.castShadow = true; g.add(beam);
+  const post = new THREE.BoxGeometry(0.55, 5.2, 0.55);
+  for (const x of [-4.6, 4.6]) { const p = new THREE.Mesh(post, wood); p.position.set(x, 2.6, 0); p.castShadow = true; g.add(p); }
+  const beam = new THREE.Mesh(new THREE.BoxGeometry(10.2, 0.6, 0.6), wood); beam.position.y = 5.0; beam.castShadow = true; g.add(beam);
   const flag = new THREE.Mesh(new THREE.PlaneGeometry(1.1, 0.7), new THREE.MeshStandardMaterial({ color: 0x9b3a2a, side: THREE.DoubleSide }));
-  flag.position.set(4.6 + 0.55, 3.5, 0); flag.userData.flutter = true; g.add(flag);
+  flag.position.set(4.6 + 0.55, 4.3, 0); flag.userData.flutter = true; g.add(flag);
   return g;
 }
 
@@ -95,14 +95,14 @@ export function buildVillage(ctx, v = {}) {
     obj.userData.village = { m, file: 'procedural' }; scene.add(obj); props.push(obj); obj.traverse(c => { if (c.userData.flutter) anim.push(c); }); return obj; };
 
   // ---- stage 0: the inn of the three bettors at the finish, the lime tree and well before it, a wayside cross on the way in ----
-  const inn = any('wirtshaus') ? house(any('wirtshaus'), 14, ROAD_W + 9, { face: 'road', gap: 2 }, true)
-    : house(any('fachwerkhaus_b', 'fachwerkhaus_a', 'steinhaus'), 14, ROAD_W + 8, { face: 'road', gap: 2, scale: 1.25 }, true);
-  if (inn) { const sign = any('wirtshausschild'); if (sign) put(sign, 24, ROAD_W + 2.2, { face: 'road', overlap: true, radK: 0.3, gap: 0.4 });
-    const lt = loose(lanterns(v.leader), 19, ROAD_W + 2.6, 3.4, Math.PI / 2); /* hung out towards the road before the inn, seen on the approach */ lt.traverse(c => { if (c.userData.lantern) anim.push(c); }); }
+  const inn = any('wirtshaus') ? house(any('wirtshaus'), 40, -(ROAD_W + 9), { face: 'road', gap: 2 }, true)
+    : house(any('fachwerkhaus_b', 'fachwerkhaus_a', 'steinhaus'), 40, -(ROAD_W + 8), { face: 'road', gap: 2, scale: 1.25 }, true); /* left: the right half of the picture holds the grade readout and the finish arch */
+  if (inn) { const sign = any('wirtshausschild'); if (sign) put(sign, 50, -(ROAD_W + 2.2), { face: 'road', overlap: true, radK: 0.3, gap: 0.4 });
+    const lt = loose(lanterns(v.leader), 45, -(ROAD_W + 2.6), 3.6, Math.PI / 2); /* hung out towards the road before the inn, seen on the approach */ lt.traverse(c => { if (c.userData.lantern) anim.push(c); }); }
   put(any('pferd'), 30, ROAD_W + 4.5, { face: 'along', anim: 'Stehen', gap: 0.8 });
   put(any('viehtraenke', 'fass'), 36, ROAD_W + 3.5, { face: 'along', gap: 0.6, radK: 0.5 });
   put(any('faesser_kisten', 'fass'), 6, ROAD_W + 3.2, { gap: 0.5 });
-  put(any('dorflinde'), 70, -(ROAD_W + 10), { face: 'road', gap: 3 });
+  put(any('dorflinde'), 75, -(ROAD_W + 10), { face: 'road', gap: 3 });
   put(any('dorfbrunnen', 'brunnen'), 62, ROAD_W + 6, { face: 'road', anim: 'Fliessen', gap: 0.8 });
   put(any('wegkreuz'), 430, ROAD_W + 4, { face: 'road', gap: 0.8 });
   put(any('wegweiser'), 434, -(ROAD_W + 3.5), { face: 'road', gap: 0.6 });
@@ -151,16 +151,16 @@ export function buildVillage(ctx, v = {}) {
   }
   // ---- 6 Market Square: market cross, stalls and a trader between the green and the inn ----
   if (st >= 6) {
-    put(any('marktkreuz', 'wegkreuz'), 45, -(ROAD_W + 5), { face: 'road', gap: 0.8 });
-    for (let k = 0; k < 3; k++) put(any('marktstand_obst'), [33, 40, 54][k], -(ROAD_W + 4.4), { face: 'road', gap: 0.6 });
-    put(any('haendler'), 42, -(ROAD_W + 2.6), { face: 'road', anim: 'Rufen', radK: 0.4, gap: 0.4 });
+    put(any('marktkreuz', 'wegkreuz'), 45, ROAD_W + 9, { face: 'road', gap: 0.8 });
+    for (let k = 0; k < 3; k++) put(any('marktstand_obst'), [33, 40, 54][k], ROAD_W + 4.4, { face: 'road', gap: 0.6 });
+    put(any('haendler'), 42, ROAD_W + 2.6, { face: 'road', anim: 'Rufen', radK: 0.4, gap: 0.4 });
   }
   // ---- 7 The Mill (on the way out would be past the finish, so it stands by the brook on the way in) ----
   if (st >= 7) put(any('wassermuehle'), 470, -(ROAD_W + 30), { face: 'road', gap: 4, ground: 'centre' });
   // the next building as a bare timber frame: the preview of what the next kilometres will build
   const nx = nextStage(km);
   if (nx) { const site = any('baustelle'); const where = { 1: 95, 2: 160, 3: 260, 4: 300, 5: 340, 6: 45, 7: 470, 8: 400 }[STAGES.indexOf(nx)];
-    const left = { 1: 1, 4: 1, 6: 1, 7: 1 }[STAGES.indexOf(nx)] ? -1 : 1;
+    const left = { 1: 1, 4: 1, 7: 1 }[STAGES.indexOf(nx)] ? -1 : 1;
     if (site && where) put(site, where, left * (ROAD_W + 12), { face: 'road', gap: 2 }); }
   console.log('[village]', `stage ${st} ${STAGES[st].name}`, `km ${Math.round(km)}`, `built ${built.length}`, missed.length ? `refused ${missed.join(', ')}` : '');
   return { stage: st, name: STAGES[st].name, next: nx, built: built.length, missed };
