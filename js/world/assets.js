@@ -22,7 +22,10 @@ export async function loadAssets() {
   list = list.filter(e => !e.variant_of || keep.has(e));
   // at most 6 downloads at once: hundreds in parallel made the public (Tailscale Funnel) path drop connections, and those models went missing
   const pool = (items, n, fn) => { const out = new Array(items.length); let i = 0; return Promise.all(Array.from({ length: Math.min(n, items.length) }, async () => { while (i < items.length) { const k = i++; out[k] = await fn(items[k]); } })).then(() => out); };
+  const prog = globalThis.__rfLoad = { done: 0, total: list.length }; // the loading card in the ride shows "Welt wird geladen … 120 / 709"
   const ok = await pool(list, location.hostname === 'localhost' || location.hostname === '127.0.0.1' ? 16 : 6, async e => {
+    try { return await one(e); } finally { prog.done++; } });
+  async function one(e) {
     try {
       const g = await loader.loadAsync(new URL(e.file, base).href);
       const cast = !/^(festival|laundry)/.test(e.category || '') && Math.max(...(e.size || [9])) >= 1.2; /* bunting, stalls' cloth, washing and small bits threw ~950 shadow casters at the Stadtfest (shadow pass 1300 draw calls) */
@@ -31,7 +34,7 @@ export async function loadAssets() {
       if (e.far) try { farScene = (await loader.loadAsync(new URL(e.far, base).href)).scene; farScene.traverse(o => { if (o.isMesh) { o.castShadow = true; o.receiveShadow = true; floatify(o.geometry); } }); } catch {}
       return { ...e, scene: g.scene, farScene, clips: g.animations || [] };
     } catch { try { const g = await loader.loadAsync(new URL(e.file, base).href + '?r=1'); return { ...e, scene: g.scene, farScene: null, clips: g.animations || [] }; } catch { return null; } } /* one retry: a dropped connection should not cost the model */
-  });
+  }
   return new Assets(ok.filter(Boolean));
 }
 

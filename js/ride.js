@@ -123,11 +123,15 @@ export class RideSession {
     } else {
       const c = document.createElement('canvas'); c.className = 'scene'; el.prepend(c);
       if (this.track.world) {
-        try { const { WorldScene, prepareWorld } = await import('./world/lofoten.js'); await prepareWorld(this.track);
+        /* the card shows right away: the first ride after an update downloads all models (minutes over a friend's line), never a silent black screen */
+        const ld0 = document.createElement('div'); ld0.className = 'countdown loading'; ld0.textContent = 'Welt wird geladen …'; el.append(ld0);
+        const tk = setInterval(() => { const p = globalThis.__rfLoad; if (p?.total) ld0.textContent = `Welt wird geladen … ${Math.round(p.done / p.total * 100)} %`; }, 300);
+        try { const { WorldScene, prepareWorld } = await import('./world/lofoten.js'); clearInterval(tk); ld0.remove(); await prepareWorld(this.track);
           { const L = await loadLedger().catch(() => null), q = new URLSearchParams(location.search).get('village'); // your village grows with your lifetime km
             if (L || q != null) this.track.__village = { km: q != null ? +q : L.life.km, hm: L?.life.hm || 0, leader: L ? (leaderOf(L.pts) || L.colour) : null, colour: new URLSearchParams(location.search).get('week') || L?.colour || null }; }
           this.player = new WorldScene(c, this.track); window.__world = this.player; }
         catch (e) { console.warn('3D world failed, using 2D scene', e); }
+        clearInterval(tk); ld0.remove();
       }
       if (!this.player) this.player = new DemoScene(c, this.track);
       this.player.currentTime = timeAt(this.track, this.d);
