@@ -14,6 +14,7 @@ import { MiniMap } from './minimap.js';
 import { fovOf, FOV_MIN, FOV_MAX, FOV_DEFAULT } from './fov.js';
 import { workoutAt, workoutSVG } from './workouts.js';
 import { Challenges } from './challenges.js';
+import { findSegments, segmentBests, SEG_KIND } from './segments.js';
 import { Wizard, WIZ } from './wizard.js';
 import { Music, Coach } from './music.js';
 import { MIC_SVG, SPK_SVG, voiceStatus } from './voice.js';
@@ -93,6 +94,8 @@ export class RideSession {
     this.powerHist = []; this.samples = []; this.lastSample = 0; this.gainAcc = 0; this.lastEle = eleAt(this.track, this.d);
     this.running = false; this.paused = false; this.finished = false;
     this.climbs = this.track.intervals || findClimbs(this.track);
+    this.segs = findSegments(this.track); this.segDone = []; this.segBest = {}; // Strava-like segments: climbs, descents, flats, sprints
+    db.ridesFor(this.route.id).then(rs => { this.segBest = segmentBests(rs); }).catch(() => {});
     const st = state.settings;
     this.gears = gearsFrom(st); this.virtual = st.shiftMode === 'virtual'; this.auto = this.virtual && !!st.autoShift; this.berg = !this.virtual && !!st.bergWatt; this.realGear = parseGear(st.realGear);
     this.wheel = (st.wheel || 2105) / 1000;
@@ -318,6 +321,7 @@ export class RideSession {
       this.story?.tick(dt, { dd: this.d - d0, dh: this.gainAcc - g0, power: this.power, cadence: this.source === 'trainer' && (this._cadSeen ||= this.cadence > 0) ? this.cadence : null, moving: this.wiz?.state !== 'fly' });
       this._workout(dt);
       this._chTick(dt);
+      this._segTick(d0, dt);
       this._cgTick();
       this._wizTick(dt);
       if ((this._moodT = (this._moodT || 0) + dt) > 1) { this._moodT = 0; this._mood(); }
@@ -883,7 +887,7 @@ export class RideSession {
     const pw = this.samples.map(s => s[2]);
     return {
       id: uid(), routeId: this.route.id, date: Date.now(), complete,
-      duration: Math.round(this.elapsed), distance: Math.round(this._ridden()), laps: this.laps > 1 ? this._lapRows() : undefined, gain: Math.round(this.gainAcc), startD: Math.round(this.startD), workout: this.workout?.name || this._wName || undefined,
+      duration: Math.round(this.elapsed), distance: Math.round(this._ridden()), laps: this.laps > 1 ? this._lapRows() : undefined, segs: this.segDone.length ? this.segDone.map(({ id, t, w }) => ({ id, t, w })) : undefined, gain: Math.round(this.gainAcc), startD: Math.round(this.startD), workout: this.workout?.name || this._wName || undefined,
       avgPower: pw.length ? Math.round(pw.reduce((a, b) => a + b, 0) / pw.length) : 0,
       maxPower: Math.max(0, ...pw), best5: bestAvg(pw, 300), best20: bestAvg(pw, 1200),
       samples: this.samples, challenges: this.ch?.stats.offered ? { ...this.ch.stats } : undefined, wizard: this.wiz?.was || (this.wiz?.state === 'hell' ? 'hell' : this.wiz?.state === 'fly' ? 'fly' : undefined),
@@ -901,6 +905,45 @@ export class RideSession {
   }
 
   /** End screen; prev = completed rides to rank against (null: not ranked, note says why). */
+  /** segments: start when the line is crossed (never mid-segment), a card on the left with the running time against your best */
+  _segTick(d0, dt) {
+    const act = this._segs ||= []; // several at once: a sprint runs inside its flat stretch
+    for (const s of [...act]) {
+      s.t += dt; s.e += this.power * dt;
+      if (this.d < s.seg.to) continue;
+      const over = this.v > 0.1 ? Math.min(dt, (this.d - s.seg.to) / this.v) : 0, t = Math.max(1, s.t - over), w = Math.round(s.e / s.t), id = s.seg.id; // time to the exact line
+      const best = this.segBest[id], pr = !best || t < best.t, k = SEG_KIND[s.seg.kind];
+      this.segDone.push({ id, name: s.seg.name, kind: s.seg.kind, t, w, len: s.seg.len, pr, prev: best?.t });
+      if (pr) this.segBest[id] = { t, w, date: Date.now() };
+      act.splice(act.indexOf(s), 1); this._segShow = { seg: s.seg, done: true, t, w, pr, prev: best?.t, until: performance.now() + 6000 };
+      this._flash(`${k.icon} ${s.seg.name}: ${fmtTime(t)}${best ? (pr ? ` · neue Bestzeit, ${fmtTime(best.t - t)} schneller` : ` · ${fmtTime(t - best.t)} hinter deiner Bestzeit`) : ' · erste Zeit'}`);
+    }
+    for (const seg of this.segs) if (d0 <= seg.from && this.d > seg.from && !act.some(s => s.seg === seg)) { // crossed a start line (never joined mid-segment)
+      act.push({ seg, t: Math.max(0, (this.d - seg.from) / Math.max(0.1, this.v)), e: 0 }); if (seg.kind === 'sprint') this._flash(`⚡ ${seg.name}: 300 m Vollgas!`); }
+    // the card: a result for a few seconds, else the shortest running segment (the sprint over its flat)
+    const run = act.reduce((m, s) => !m || s.seg.len < m.seg.len ? s : m, null);
+    if (this._segShow && performance.now() < this._segShow.until && !(run && run.seg.kind === 'sprint' && this._segShow.seg !== run.seg)) this._segCard(this._segShow);
+    else this._segCard(run ? { seg: run.seg, t: run.t } : null);
+  }
+  _segCard(st) {
+    let el = this.q?.('#hSeg');
+    if (!st) { if (el) el.hidden = true; return; }
+    if (!el) { const hud = this.el.querySelector('.hud'); if (!hud) return; el = document.createElement('div'); el.id = 'hSeg'; el.className = 'segcard glass'; hud.append(el); }
+    const { seg } = st, k = SEG_KIND[seg.kind], best = this.segBest[seg.id], left = Math.max(0, seg.to - this.d);
+    // pace against your best: where your best effort would be after this time (even pace), ahead in green, behind in red
+    let pace = '';
+    if (!st.done && best) { const dBest = seg.len * Math.min(1, st.t / best.t), dMe = Math.max(0, this.d - seg.from), gap = (dMe - dBest) / Math.max(1, this.v || seg.len / best.t);
+      pace = `<div class="segpace ${gap >= 0 ? 'ahead' : 'behind'}">${gap >= 0 ? '−' : '+'}${fmtTime(Math.abs(gap))}</div>`; }
+    el.className = `segcard glass ${seg.kind}${st.done ? ' done' : ''}${st.done && st.pr ? ' pr' : ''}`; el.hidden = false;
+    el.innerHTML = `<div class="label">${k.icon} ${k.label}</div><div class="segname">${esc(seg.name)}</div>
+      <div class="segtime num">${fmtTime(st.t)}</div>${pace}
+      <div class="segsub">${st.done ? (st.pr ? (st.prev ? 'Neue Bestzeit!' : 'Erste Zeit') : `Bestzeit ${fmtTime(best.t)}`) + ` · ${st.w} W` : `noch ${left >= 1000 ? fmtKm(left) + ' km' : Math.round(left) + ' m'}${best ? ` · Bestzeit ${fmtTime(best.t)}` : ''}`}</div>
+      ${st.done ? '' : `<div class="chbar"><b style="width:${Math.min(100, (this.d - seg.from) / seg.len * 100).toFixed(1)}%"></b></div>`}`;
+  }
+  _segSummary() {
+    if (!this.segDone.length) return '';
+    return `<div class="segsum"><div class="label">Segmente</div>${this.segDone.map(s => `<div class="${s.pr ? 'pr' : ''}"><span>${SEG_KIND[s.kind].icon} ${esc(s.name)}</span><span class="num">${fmtTime(s.t)}</span><span class="num">${s.w} W</span><b>${s.pr ? (s.prev ? 'Bestzeit' : 'erste Zeit') : '+' + fmtTime(s.t - s.prev)}</b></div>`).join('')}</div>`;
+  }
   _ridden() { return this.lapOff + this.d - this._lapBase; } // metres ridden in this session, over all laps
   _distSub() { return this.laps > 1 ? `Runde ${this.lap}/${this.laps} · von ${fmtKm(this.track.length * this.laps - this.startD)} km` : `von ${fmtKm(this.track.length)} km`; }
   _lapRows() { return [...this.lapList, { t: Math.round(this.elapsed - this._lapT0), d: Math.round(this.d - this._lapBase) }]; }
@@ -909,7 +952,7 @@ export class RideSession {
     const L = this.track.length;
     this.lapList.push({ t: Math.round(this.elapsed - this._lapT0), d: Math.round(L - this._lapBase) });
     this.lapOff += L - this._lapBase; this._lapBase = 0; this._lapT0 = this.elapsed; this.lap++;
-    this.d = 0; this.lastEle = eleAt(this.track, 0);
+    this.d = 0; this.lastEle = eleAt(this.track, 0); this._segs = []; this._segShow = null; this._segCard(null);
     const sp = this.player?.events?.surprises; // dares and the wizard start over with the lap
     if (this.ch?.active) this._chEnd(this.ch.active, sp, 0);
     if (this._goalWiz) { sp?.poof?.(this._goalWiz); this._goalWiz = null; this._goalSaid = false; }
@@ -938,6 +981,7 @@ export class RideSession {
         <div><div class="label">Höhenmeter</div><div class="v">${fmtNum(rec.gain)}<small>hm</small></div></div>
         <div><div class="label">Arbeit</div><div class="v">${fmtNum(rec.avgPower * rec.duration / 1000)}<small>kJ</small></div></div>
       </div>
+      ${this._segSummary()}
       ${rec.challenges ? `<div class="chsum">⚔ ${rec.challenges.offered} Challenges · ${rec.challenges.accepted} angenommen · ${rec.challenges.won} gewonnen</div>` : ''}
       ${storyHTML(this._storyEnd())}
       ${rec.wizard ? `<div class="chsum">🧙 ${rec.wizard === 'fly' ? 'Prüfung des Zauberers bestanden · über die Insel geflogen' : 'Beim Zauberer durchgefallen · durch die Hölle gefahren'}</div>` : ''}

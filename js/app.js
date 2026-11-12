@@ -9,6 +9,7 @@ import { makeCoastTrack, loadRealTrack, makeBuiltinTrack, DESIGNED } from './rou
 import { gearsFrom, CASSETTES, parseRings } from './gears.js';
 import { profileSVG, drawDetailProfile } from './profile.js';
 import { RideSession, simulateRide } from './ride.js';
+import { findSegments, segmentBests, SEG_KIND } from './segments.js';
 import { gameVersion } from './uebridge.js';
 import { fovOf, FOV_MIN, FOV_MAX } from './fov.js';
 import { fmtTime, fmtKm, fmtNum, esc, bestAvg } from './util.js';
@@ -271,6 +272,7 @@ function detail(id) {
           </div>
         </div>
         ${t.intervals?.length ? intervalPlan(t) : ''}
+        ${segmentTable(t, ridesFor(r.id))}
         <h2 class="section" style="margin-top:44px">Deine Zeiten</h2>
         ${ranked.length ? `<table class="table">
           <tr><th class="label">#</th><th class="label">Datum</th><th class="label">Zeit</th><th class="label">Ø Watt</th><th class="label">Ø km/h</th><th class="label"></th></tr>
@@ -690,3 +692,14 @@ async function seedDemoRides() {
 }
 
 boot();
+
+/** route page: the segments of this route with your best time on each (Strava-like) */
+function segmentTable(t, rides) {
+  const segs = findSegments(t); if (!segs.length) return '';
+  const best = segmentBests(rides);
+  return `<h2 class="section" style="margin-top:44px">Segmente</h2>
+    <table class="table segtable"><tr><th class="label"></th><th class="label">Segment</th><th class="label">Ab km</th><th class="label">Länge</th><th class="label">Ø</th><th class="label">Deine Bestzeit</th></tr>
+    ${segs.map(s => { const b = best[s.id], k = SEG_KIND[s.kind];
+      return `<tr><td class="segk ${s.kind}" title="${k.label}">${k.icon}</td><td>${esc(s.name)}</td><td>${fmtKm(s.from)}</td><td>${s.len >= 1000 ? fmtKm(s.len) + ' km' : Math.round(s.len) + ' m'}</td><td>${fmtNum(s.avg, 1)} %</td><td>${b ? `${fmtTime(b.t)} · ${b.w} W` : '–'}</td></tr>`; }).join('')}
+    </table>`;
+}
