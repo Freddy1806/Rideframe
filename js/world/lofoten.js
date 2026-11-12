@@ -839,7 +839,12 @@ export class WorldScene {
         if (s.temple) {
           const a = s.from + L * s.temple[0], b = s.from + L * s.temple[1], mid = (a + b) / 2;
           const lk = byName('laternen_kette');
-          if (lk) for (let d = a; d < b; d += 28) for (const side of [-1, 1]) if (!land || side > 0 || d % 56 < 28) place(lk, d, side * (ROAD_W + 2.2), { face: 'along', gap: 0.3, radK: 0.25, overlap: true });
+          if (lk) for (let d = a; d < b; d += 28) { // the chain spans the road, its posts stand beside it (Mac mini QA: a post stood in the lane)
+            const p = f.at(d), l = Math.hypot(p.tx, p.tz) || 1, { obj, mixer } = A.make(lk, null, r);
+            const wide = Math.max(lk.size[0], lk.size[2]); if (wide < ROAD_W * 2 + 1) { obj.scale.setScalar((ROAD_W * 2 + 2) / wide); }
+            obj.position.set(p.x, p.e, p.z); obj.rotation.y = Math.atan2(p.tx / l, p.tz / l) + (lk.size[0] >= lk.size[2] ? 0 : Math.PI / 2);
+            obj.updateMatrixWorld(true); const bb = new THREE.Box3().setFromObject(obj); obj.position.x += p.x - (bb.min.x + bb.max.x) / 2; obj.position.z += p.z - (bb.min.z + bb.max.z) / 2; // centred over the road whatever the model's origin
+            this.scene.add(obj); this.props.push(obj); if (mixer) { mixer.obj = obj; this.mixers.push(mixer); } }
           place(byName('pagode'), mid, ROAD_W + 26, { face: 'road', gap: 6 });
           const monk = byName('kampfmoench');
           if (monk) for (let k = 0; k < 7; k++) place(monk, mid - 18 + (k % 4) * 3.2, ROAD_W + 8 + Math.floor(k / 4) * 3.2, { face: 'road', anim: ['Kaempfen', 'Trainieren', 'Stehen'][k % 3], gap: 1, radK: 0.4 });
@@ -1384,7 +1389,9 @@ export class WorldScene {
     this.hellK = (this.hellK || 0) + ((this._hellTo || 0) - (this.hellK || 0)) * Math.min(1, dt * 0.7);
     this._weather(this.d, time);
     const cam = this._camera(this.d, dt);
-    { const wu = this.water.material.uniforms, hk = smooth(15, 120, this.camera.position.y); // from high up (wizard flight) the sea is opaque and its sun glare calmer
+    const above = this._fly ? this.camera.position.y - this.field.at(this.d).e : 0; // height over the road (the pass route runs at 1800 m: absolute height says nothing)
+    this.light.shadow.intensity = 1 - smooth(25, 60, above); // in flight no shadows: the ±110 m shadow box showed as a bright trapezoid on the sea (Mac mini QA)
+    { const wu = this.water.material.uniforms, hk = smooth(15, 120, above); // from high up (wizard flight) the sea is opaque and its sun glare calmer
       if (wu.alpha) wu.alpha.value = Math.max(lerp(0.86, 1, this.hellK || 0), lerp(0.86, 1, hk)); wu.uHigh.value = hk; if (hk > 0) wu.sunColor.value.multiplyScalar(1 - 0.6 * hk); }
     this._far(cam.x, cam.z); this.farCam.value.set(cam.x, cam.z);
     this._ensure(cam.x, cam.z);

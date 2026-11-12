@@ -120,7 +120,11 @@ export class Surprises {
       if (h.done) return null;
       if (fly) return { d: h.d + (h.race ? 14 : 0), off: side * (h.race ? 1.6 : ROAD_W + 4), fly: h.race ? 2.6 + Math.sin((this.clock || 0) * 2) * 0.4 : 6 + Math.sin((this.clock || 0) * 1.3) * 0.8 }; // racing birds fly a little ahead and low, so they are always in view (the card shows the real gap)
       if (bike && h.race && e?.mixer) e.mixer.timeScale = Math.max(0.2, v / bike); // pedal in step with the road (MacBook: metres per loop / loop time)
-      return { d: h.d, off: side * (bike && h.race ? 1.9 : ROAD_W + (h.race ? 1.2 : 2.2)), doff: h.race ? 0 : -side * 3 }; // on a bike the rival races in the other lane, in view just ahead of you
+      if (bike && h.race) { // on a bike the rival races in the left lane, drawn a few metres ahead while it is level with you or ahead,
+        // so it stays in the picture instead of hiding beside the camera (the card shows the real gap)
+        const gap = h.d - this.w.d, shown = gap >= 0 ? 7 + gap : gap > -2 ? 7 + 3.5 * gap : gap;
+        return { d: this.w.d + shown, off: -1.9 }; }
+      return { d: h.d, off: side * (ROAD_W + (h.race ? 1.2 : 2.2)), doff: h.race ? 0 : -side * 3 };
     }, { idle: ['Jubeln', 'Winken', 'Stehen'] });
     if (!e) return null;
     h.e = e; h.obj = e.obj;
@@ -198,7 +202,7 @@ export class Surprises {
     const e = this._run('drache', [['Fliegen', 1], ['Gleiten', 1]], (t, v) => { if (t > 11) return null;
       const dd = d0 - (34 + v) * t, rel = dd - this.w.d;
       if (!fired && rel < 90) { fired = true; this._play(e, ['Feuer']); setTimeout(() => e.mixer && this._play(e, ['Fliegen', 'Gleiten']), 2000); }
-      return { d: dd, off: side * (6 + Math.max(0, -rel) * 0.3), fly: 14 + Math.max(0, 60 - Math.abs(rel)) * 0.05 + Math.max(0, -rel) * 0.4, back: true }; });
+      return { d: dd, off: side * (6 + Math.max(0, -rel) * 0.3), fly: 11 + Math.max(0, 60 - Math.abs(rel)) * 0.04 + Math.max(0, -rel) * 0.4, back: true }; }, { scale: 2.6 }); // big and low: a dragon, not an eagle (Mac mini QA)
     if (e) this.w.shakeImpulse = Math.max(this.w.shakeImpulse || 0, 0.4);
   }
   _play(e, names) { if (!e.mixer) return; const c = names.map(n => this.A.clip(e.e, n)).find(Boolean); if (!c) return; e.mixer.stopAllAction(); e.mixer.timeScale = 1; e.mixer.clipAction(c).play(); }

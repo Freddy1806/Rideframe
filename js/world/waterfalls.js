@@ -663,12 +663,14 @@ void main() {
   float h = fract(sin(dot(floor(vW * 5. + vec3(0., uTime * 6., 0.)), vec3(12.9898, 78.233, 37.719))) * 43758.5453);
   col += sun * step(.993, h) * pow(max(dot(N, H), 0.), 6.) * .8 * (1. - smoothstep(60., 160., dist));
   if (vM > 1.5 && vM < 2.5) col = vec3(.1, .105, .1) * (uAmb + sun * dl) / 3.14159;
+  float farK = smoothstep(250., 900., dist); // from afar (Mac mini QA: the white sheet at 700-950 m): grey-blue and see-through, like real spray in the haze
+  if (vM < .5 || big > .5) { col = mix(col, col * vec3(.66, .72, .76), .55 * farK); a *= mix(1., .45, farK); }
   gl_FragColor = vec4(col, clamp(a, 0., 1.));
   #include <tonemapping_fragment>
   #include <colorspace_fragment>
   vec3 clear = gl_FragColor.rgb;
   #include <fog_fragment>
-  gl_FragColor.rgb = mix(gl_FragColor.rgb, clear, big * .45 * foam); // white water shows through the haze
+  gl_FragColor.rgb = mix(gl_FragColor.rgb, clear, big * .45 * foam * (1. - .8 * farK)); // white water shows through the haze (near; far it melts into it)
 }`,
   });
 }
