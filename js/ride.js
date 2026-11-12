@@ -677,7 +677,7 @@ export class RideSession {
       if (this.d >= x.c.to - 5) { const dur = this.elapsed - x.t, diff = dur - x.best.dur;
         this._flash(diff < 0 ? `👻 Neue Bestzeit am ${x.c.name}! ${fmtTime(dur)} (−${fmtTime(-diff)})` : `👻 ${x.c.name}: ${fmtTime(dur)} · ${fmtTime(diff)} hinter deinem Besten`); }
     }
-    if (!c || this._cg || this._cgDone?.has(c) || this.d > c.from + 40) { if (this._cg) { const x = this._cg; this._cgD = distAtTime(x.best.samples, x.best.t0 + (this.elapsed - x.t)); } return; }
+    if (!c || this._cg || this._cgDone?.has(c) || this.d > c.from + 40) { if (this._cg) { const x = this._cg; this._cgD = x.best.off + distAtTime(x.best.samples, x.best.t0 + (this.elapsed - x.t)); } return; }
     (this._cgDone ||= new Set()).add(c);
     this._cgRides ||= (this.state.rides || []).filter(r => r.routeId === this.route.id && r.samples?.length);
     const best = bestClimb(this._cgRides, c); if (!best) return;

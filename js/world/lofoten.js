@@ -1390,7 +1390,7 @@ export class WorldScene {
     this._weather(this.d, time);
     const cam = this._camera(this.d, dt);
     const above = this._fly ? this.camera.position.y - this.field.at(this.d).e : 0; // height over the road (the pass route runs at 1800 m: absolute height says nothing)
-    { const cs = above < 40 && !QS.has('noshadow'); if (this.light.castShadow !== cs) this.light.castShadow = cs; } // in flight no shadows at all: the ±110 m shadow box showed as a trapezoid on the sea (Mac mini QA; intensity alone did not hide it)
+    { const cs = above < 40 && !QS.has('noshadow'); if (this.light.castShadow !== cs) { this.light.castShadow = cs; this.renderer.shadowMap.enabled = cs; this.scene.traverse(o => { if (o.material) for (const m of [].concat(o.material)) m.needsUpdate = true; }); } } // in flight no shadows at all: the ±110 m shadow box showed as a trapezoid on the sea (Mac mini QA; intensity alone did not hide it)
     { const wu = this.water.material.uniforms, hk = smooth(15, 120, above); // from high up (wizard flight) the sea is opaque and its sun glare calmer
       if (wu.alpha) wu.alpha.value = Math.max(lerp(0.86, 1, this.hellK || 0), lerp(0.86, 1, hk)); wu.uHigh.value = hk; if (hk > 0) wu.sunColor.value.multiplyScalar(1 - 0.6 * hk); }
     this._far(cam.x, cam.z); this.farCam.value.set(cam.x, cam.z);

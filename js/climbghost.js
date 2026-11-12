@@ -17,13 +17,14 @@ export function distAtTime(s, t) {
   while (hi - lo > 1) { const m = (lo + hi) >> 1; if (s[m][0] < t) lo = m; else hi = m; }
   const a = s[lo], b = s[hi]; return a[1] + (b[1] - a[1]) * ((t - a[0]) / ((b[0] - a[0]) || 1));
 }
-/** your fastest time over climb c among rides: { samples, t0, dur, date } or null */
+/** your fastest time over climb c among rides: { samples, t0, dur, date, off } or null (off: add to sample distances) */
 export function bestClimb(rides, c) {
   let best = null;
   for (const r of rides || []) {
-    const t0 = timeAtDist(r.samples, c.from), t1 = timeAtDist(r.samples, c.to);
+    const off = r.startD || 0; // samples count from where that ride started (a ride begun at km 5.6 has d = 0 there)
+    const t0 = timeAtDist(r.samples, c.from - off), t1 = timeAtDist(r.samples, c.to - off);
     if (t0 == null || t1 == null || t1 - t0 < 20) continue; // too short: a resumed or broken ride
-    if (!best || t1 - t0 < best.dur) best = { samples: r.samples, t0, dur: t1 - t0, date: r.date };
+    if (!best || t1 - t0 < best.dur) best = { samples: r.samples, t0, dur: t1 - t0, date: r.date, off };
   }
   return best;
 }
