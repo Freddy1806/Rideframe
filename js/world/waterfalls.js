@@ -399,7 +399,7 @@ export function placeWaterfalls(world, A, taken = []) {
     obj.traverse(c => {
       c.layers.set(1);
       let wet = null; for (let o = c; o && o !== obj.parent && !wet; o = o.parent) wet = /(wasserfall_wasser|gerinne_wasser|wasserfall_gischt|bach_wasser)/.exec(o.name); // the mesh is often a child of the named node
-      if (c.isMesh && (wet || /water|wasser/i.test(c.material?.name || ''))) { // the model's own water material rendered nothing on the Mac: unlit, see-through, its texture kept and scrolled
+      if (c.isMesh && (wet || /^(water|wasser|wasserfall|gischt)$/i.test(c.material?.name || ''))) { // the model's own water material rendered nothing on the Mac: unlit, see-through, its texture kept and scrolled
         c.castShadow = false; c.receiveShadow = false; nWet++;
         const fast = /(wasserfall_wasser|gerinne_wasser)/.test(wet?.[1] || c.material?.name || '');
         c.material = [].concat(c.material || []).map(m0 => { const map = m0?.map || null; if (map) { map.colorSpace = THREE.SRGBColorSpace; map.wrapT = map.wrapS = THREE.RepeatWrapping; scroll.set(map, fast ? 2.0 : 0.5); }
