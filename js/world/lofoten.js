@@ -1118,6 +1118,7 @@ export class WorldScene {
         if (performance.now() - t0 > (this._rideOn ? 5 : 30)) { await new Promise(r => setTimeout(r, 0)); t0 = performance.now(); if (this._disposed) return nearRes?.(); } // behind the loading card in big slices, while riding only 5 ms per frame
         const n = b.items.length, cx = b.x / n, cz = b.z / n; nb++;
         const g = bake(b.items, cx, cz); b.items = null; if (!g) continue; g.computeBoundingSphere();
+        for (const k in g.attributes) g.attributes[k].onUpload(dropArray); g.index?.onUpload(dropArray); // once on the GPU the CPU copy goes: the baked copies were ~2 GB of JS heap (Küstenweg)
         const mesh = new THREE.Mesh(g, b.mat); mesh.position.set(cx, 0, cz); mesh.castShadow = b.cast; mesh.receiveShadow = b.recv;
         mesh.userData.small = b.cls === 'small'; mesh.userData.mid = b.cls !== 'big'; mesh.userData.rad = g.boundingSphere.radius;
         mesh.userData.near = b.cls === 'near'; mesh.userData.far = b.cls === 'far';
@@ -1963,6 +1964,7 @@ function legacyBake(items, ox, oz) {
   const list = items.map(([g, mw]) => { const c = g.clone(); c.boundingBox = c.boundingSphere = null; return c.applyMatrix4(mw); });
   const g = mergeGeometries(list, false); list.forEach(x => x.dispose()); if (g) g.translate(-ox, 0, -oz); return g;
 }
+function dropArray() { this.array = null; } // three's documented way to free an attribute after its upload (bounds are computed before)
 function freeze(o) { o.updateMatrixWorld(true); o.traverse(c => { c.matrixAutoUpdate = false; }); o.matrixWorldAutoUpdate = false; }
 
 // ---- rain: one or two showers per ride at random spots, 4-9 km long (~10-20 min), heavier in the middle ----
