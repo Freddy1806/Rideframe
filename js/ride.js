@@ -1,5 +1,6 @@
 // Ride mode: physics, video speed sync, trainer control, HUD, ghost and saving.
 import { db, uid } from './db.js';
+import { loadLedger, StoryRide, storyHTML, WHO } from './story.js';
 import { STEP, eleAt, gradeAt, timeAt, videoSpeedAt } from './track.js';
 import { defaultParams, step as physStep } from './physics.js';
 import { DemoScene } from './demo.js';
@@ -155,6 +156,7 @@ export class RideSession {
     if (this.group) this._wireVoice();
     this._initChallenges();
     this._initWizard();
+    this._initStory();
     if (!this.group) this.player?.events?.surprises?.startArch?.(this.d + 14); // ride off under the START arch
     this.running = true; this.last = performance.now();
     this._updateHUD(true);
@@ -298,9 +300,11 @@ export class RideSession {
       this._togK = (this._togK || 0) + ((this._togetherTo || 0) - (this._togK || 0)) * Math.min(1, dt * 0.5);
       const pk = this._postureK(); this._dragK = pk * (1 - this._draftK) * (1 - this._togK); // posture by webcam (aero / standing) and the slipstream
       this.v = physStep(this.v, this.power, g, dt, Math.abs(this._dragK - 1) > 0.005 ? { ...this.params, cda: this.params.cda * this._dragK } : this.params);
+      const d0 = this.d, g0 = this.gainAcc;
       this.d = Math.min(this.track.length, this.d + this.v * dt);
       this.elapsed += dt;
       const e = eleAt(this.track, this.d); if (e > this.lastEle) this.gainAcc += e - this.lastEle; this.lastEle = e;
+      this.story?.tick(dt, { dd: this.d - d0, dh: this.gainAcc - g0, power: this.power, cadence: this.source === 'trainer' ? this.cadence : null, moving: this.wiz?.state !== 'fly' });
       this._workout(dt);
       this._chTick(dt);
       this._cgTick();
@@ -502,10 +506,11 @@ export class RideSession {
     const sp = this.player?.events?.surprises, evs = ch.tick(dt, this.d, this.power, this._chKey, this.v); this._chKey = false;
     for (const { type, ch: x } of evs) {
       if (type === 'offer') { x.h = sp?.challenger(x.c, x.spot); x.h?.say(x.c.ask, 3.2); if (sp) sp.hold = true; this.coach?.say('challenge', 0); }
-      else if (type === 'accept') { this._flash(`Angenommen! ${x.W} W · ${x.D >= 1000 ? fmtNum(x.D / 1000, x.D % 1000 ? 1 : 0) + ' km' : x.D + ' m'}`); }
+      else if (type === 'accept') { this.story?.challenge(x.c.id, 'accept'); this._flash(`Angenommen! ${x.W} W · ${x.D >= 1000 ? fmtNum(x.D / 1000, x.D % 1000 ? 1 : 0) + ' km' : x.D + ' m'}`); }
       else if (type === 'go') { if (x.h) { x.h.d = x.opp; x.h.go(); } x.flags = sp?.finishFlags(x.finish); this._flash('LOS!'); }
       else if (type === 'expire') { this._flash(`${x.c.name} zieht weiter`); this._chEnd(x, sp, 600); }
       else if (type === 'win' || type === 'lose') {
+        if (type === 'win') this.story?.challenge(x.c.id, 'win');
         this._flash(type === 'win' ? `Gewonnen gegen ${x.c.name}!` : `${x.c.name} war schneller`);
         x.h?.say(type === 'win' ? x.c.win : x.c.lose, 3); this._chEnd(x, sp, 4000);
         this._chRes = { until: performance.now() + 6000, card: { title: `gegen ${x.c.name} · ${x.W} W`, big: type === 'win' ? 'Gewonnen!' : 'Verloren', sub: `Ø ${Math.round(x.avg || 0)} W · ${Math.round(Math.abs(this.d - x.opp))} m ${type === 'win' ? 'vor' : 'hinter'} ${x.c.name}`, lead: type === 'win' } }; // the result stays up a moment
@@ -519,6 +524,21 @@ export class RideSession {
     }
     const el = this.q('#hCh'); if (el) this._card(el, ch.card(this.d) || (this._chRes && performance.now() < this._chRes.until ? this._chRes.card : null), '_chHtml');
   }
+
+  // ---------- the story "The Bet" (js/story.js): points for the weekly wager, short English lines ----------
+  _initStory() {
+    const qs = new URLSearchParams(location.search);
+    if ((this.autopilot && !qs.has('story')) || qs.has('nostory')) return; // the autopilot (demo, tests) books nothing unless ?story
+    loadLedger().then(L => { if (this._closed) return;
+      this.story = new StoryRide({ L, ftp: this.ftp, training: !!this.workout || !!this.group, routeId: this.route.id, say: (who, text) => this._storySay(who, text) }); }).catch(() => {});
+  }
+  _storySay(who, text) {
+    const w = WHO[who]; if (!w) return;
+    console.log('[story]', who, text);
+    this.player?.events?.sound?.speak?.(text, 1, 'call'); // ElevenLabs recording when the manifest has it
+    this._flash(`${w.icon} ${w.name}: “${text}”`);
+  }
+  _storyEnd() { if (!this.story || this._storySum) return this._storySum; this._storySum = this.story.finish(this.elapsed / 60); return this._storySum; }
 
   // ---------- the wizard (rare, free rides only): a 60 s trial; pass = 30 s flight, fail = 5 min hell ----------
   _initWizard() {
@@ -541,12 +561,12 @@ export class RideSession {
       if (e === 'ann') { this._flash('Ein Zauberer erwartet dich · 1 km'); this.coach?.say('wizard', 0); }
       else if (e === 'near') { z.h = sp?.wizard?.(z.at); if (sp) sp.hold = true; this._flash(`Zauberer in 200 m · gleich ${z.W} W`); }
       else if (e === 'cast') { sp?.poof?.(z.h); flashFx('cast'); this._flash(`${z.W} W · 60 s · JETZT!`); }
-      else if (e === 'pass') { flashFx('rise'); P?.fly?.(WIZ.fly); this._flash('Bestanden! Du fliegst!'); }
+      else if (e === 'pass') { this.story?.trialPass(); flashFx('rise'); P?.fly?.(WIZ.fly); this._flash('Bestanden! Du fliegst!'); }
       else if (e === 'fail') {
-        P?.hell?.(true); if (sp) sp.hell = true; if (P) P.shakeImpulse = Math.max(P.shakeImpulse || 0, 1.6);
+        this.story?.hellIn(); P?.hell?.(true); if (sp) sp.hell = true; if (P) P.shakeImpulse = Math.max(P.shakeImpulse || 0, 1.6);
         this.q('#hHell')?.classList.add('hell'); flashFx('quake'); this._flash('Durchgefallen · die Erde reißt auf');
       } else if (e === 'end') {
-        P?.hell?.(false); P?.land?.(); if (sp) { sp.hell = false; sp.hold = false; }
+        if (z.was !== 'fly') this.story?.hellOut(); P?.hell?.(false); P?.land?.(); if (sp) { sp.hell = false; sp.hold = false; }
         this.q('#hHell')?.classList.remove('hell'); flashFx('land'); this._flash(z.was === 'fly' ? 'Sanft gelandet' : 'Du hast dich aus der Hölle gefahren!');
       }
     }
@@ -859,6 +879,7 @@ export class RideSession {
         <div><div class="label">Arbeit</div><div class="v">${fmtNum(rec.avgPower * rec.duration / 1000)}<small>kJ</small></div></div>
       </div>
       ${rec.challenges ? `<div class="chsum">⚔ ${rec.challenges.offered} Challenges · ${rec.challenges.accepted} angenommen · ${rec.challenges.won} gewonnen</div>` : ''}
+      ${storyHTML(this._storyEnd())}
       ${rec.wizard ? `<div class="chsum">🧙 ${rec.wizard === 'fly' ? 'Prüfung des Zauberers bestanden · über die Insel geflogen' : 'Beim Zauberer durchgefallen · durch die Hölle gefahren'}</div>` : ''}
       <div class="row-actions"><button class="btn ghost" id="fShare">Bild zum Teilen</button><button class="btn ghost" id="fStrava">Auf Strava hochladen</button><button class="btn" id="fDone">Fertig</button></div></div>`;
     this.el.append(o);
