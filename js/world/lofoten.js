@@ -1099,7 +1099,7 @@ export class WorldScene {
         b.items.push([g, m.matrixWorld.clone()]); b.x += o.position.x; b.z += o.position.z;
       });
     }
-    const added = []; let t0 = performance.now();
+    const added = []; let t0 = performance.now(); this._bt0 = t0;
     for (const b of buckets.values()) {
       if (this._disposed) return;
       if (performance.now() - t0 > (this._rideOn ? 5 : 30)) { await new Promise(r => setTimeout(r, 0)); t0 = performance.now(); } // behind the loading card in big slices, while riding only 5 ms per frame
@@ -1115,6 +1115,7 @@ export class WorldScene {
     }
     for (const o of still) this.scene.remove(o); // swap in one go: never the props and their batched copies both drawn
     for (const m of added) m.visible = true;
+    console.info(`RIDEFRAME Batching fertig: ${buckets.size} Gruppen, ${Math.round(performance.now() - this._bt0)} ms`);
     const known = new Set(keep.concat(still)); this.props = keep.concat(added, this.props.filter(o => !known.has(o))); // anything added to props meanwhile stays
   }
   // real routes: concrete bridges (deck slab, parapets, piers into the water) where the road crosses a sound
@@ -1586,7 +1587,14 @@ export class WorldScene {
         if (o.matrixAutoUpdate !== false) o.matrixWorldAutoUpdate = o.visible && (dist < 180 || !!o.userData.circle || !!o.userData.walk || !!o.userData.whale);
       }
     }
-    for (const m of this.mixers) if (m.obj.visible && (m.obj.userData.whale || Math.hypot(m.obj.position.x - cam.x, m.obj.position.z - cam.z) < 180)) m.update(Math.min(dt, 0.1));
+    /* animation LOD: close figures every frame, 50-100 m every 2nd, 100-180 m every 3rd (with the skipped time), and their
+       skeleton matrices only on the frames they move: 170+ animated figures at the Stadtfest were a quarter of a slow laptop's frame */
+    this._fN = (this._fN || 0) + 1;
+    for (const m of this.mixers) { const o = m.obj; if (!o.visible) continue;
+      const dist = o.userData.whale ? 0 : Math.hypot(o.position.x - cam.x, o.position.z - cam.z); if (dist >= 180) continue;
+      const every = dist < 50 ? 1 : dist < 100 ? 2 : 3; m._acc = (m._acc || 0) + dt; m._ph ??= Math.floor(Math.random() * 3);
+      const go = (this._fN + m._ph) % every === 0; if (go) { m.update(Math.min(m._acc, 0.2)); m._acc = 0; }
+      if (o.matrixAutoUpdate !== false && !o.userData.walk && !o.userData.circle) o.matrixWorldAutoUpdate = go; }
     for (const w of this.wheels) w.rotation.x = time * 0.35;
     if (this.villageAnim.length) tickVillage(this.villageAnim, time);
     for (const o of this.props) { const w = o.userData.walk; if (!w || !o.visible) continue; // walk along the road, turn round at the village ends
