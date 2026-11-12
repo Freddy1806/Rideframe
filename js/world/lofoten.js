@@ -843,7 +843,7 @@ export class WorldScene {
           i += 12;
         }
       }
-      if (s.top === 'pass') { place(byName('passschild'), s.to + 25, ROAD_W + 3, { face: 'road', gap: 1, radK: 0.4 }); place(byName('passschild'), s.to + 40, -(ROAD_W + 3), { face: 'road', gap: 1, radK: 0.4 }); }
+      if (s.top === 'pass') { place(byName('passschild'), s.to + 25, ROAD_W + 3.6, { face: 'road', gap: 1, radK: 0.4, scale: 1.5 }); place(byName('passschild'), s.to + 40, -(ROAD_W + 3.6), { face: 'road', gap: 1, radK: 0.4, scale: 1.5 }); }
       // ---- East Asian style (original): bamboo groves, lantern chains, monks training, pagodas on the tops ----
       if (s.style === 'asia') {
         const land = s.land === 'river' ? 1 : 0;
