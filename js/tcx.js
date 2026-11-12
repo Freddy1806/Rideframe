@@ -10,16 +10,23 @@ export function toTCX(rec, name, eleAt = null) {
   const pts = rec.samples.map(([t, d, w, kmh, cad, hr]) => `<Trackpoint><Time>${iso(t)}</Time>`
     + (eleAt ? `<AltitudeMeters>${eleAt(d0 + d).toFixed(1)}</AltitudeMeters>` : '') + `<DistanceMeters>${d}</DistanceMeters>`
     + (hr ? `<HeartRateBpm><Value>${hr}</Value></HeartRateBpm>` : '') + (cad ? `<Cadence>${Math.min(254, cad)}</Cadence>` : '')
-    + `<Extensions><TPX xmlns="http://www.garmin.com/xmlschemas/ActivityExtension/v2"><Speed>${(kmh / 3.6).toFixed(2)}</Speed><Watts>${w}</Watts></TPX></Extensions></Trackpoint>`).join('');
-  const hrs = rec.samples.map(s => s[5]).filter(Boolean);
+    + `<Extensions><TPX xmlns="http://www.garmin.com/xmlschemas/ActivityExtension/v2"><Speed>${(kmh / 3.6).toFixed(2)}</Speed><Watts>${w}</Watts></TPX></Extensions></Trackpoint>`);
+  // laps (Freddy 12.11.: every climb counts as its own lap, like the lap button on a bike computer): split at rec.lapMarks (seconds)
+  const marks = [...new Set((rec.lapMarks || []).map(Math.round))].filter(t => t > 0 && t < rec.duration).sort((a, b) => a - b), cuts = [0, ...marks, Infinity];
+  const laps = [];
+  for (let k = 0; k < cuts.length - 1; k++) {
+    const idx = []; rec.samples.forEach((s, i) => { if (s[0] > cuts[k] - (k ? 0 : 1) && s[0] <= cuts[k + 1]) idx.push(i); }); if (!idx.length) continue;
+    const ss = idx.map(i => rec.samples[i]), t0 = k ? cuts[k] : 0, t1 = Math.min(rec.duration, ss[ss.length - 1][0]), prevD = idx[0] > 0 ? rec.samples[idx[0] - 1][1] : 0;
+    const w = ss.reduce((a, s) => a + s[2], 0) / ss.length, hrs = ss.map(s => s[5]).filter(Boolean);
+    laps.push(`<Lap StartTime="${iso(t0)}"><TotalTimeSeconds>${Math.max(1, t1 - t0)}</TotalTimeSeconds><DistanceMeters>${Math.max(0, ss[ss.length - 1][1] - prevD)}</DistanceMeters>
+<Calories>${Math.round(w * (t1 - t0) / 1000 * 1.1)}</Calories>`
+      + (hrs.length ? `<AverageHeartRateBpm><Value>${Math.round(hrs.reduce((a, b) => a + b, 0) / hrs.length)}</Value></AverageHeartRateBpm><MaximumHeartRateBpm><Value>${Math.max(...hrs)}</Value></MaximumHeartRateBpm>` : '')
+      + `<Intensity>Active</Intensity><TriggerMethod>Manual</TriggerMethod><Track>${idx.map(i => pts[i]).join('')}</Track></Lap>`);
+  }
   return `<?xml version="1.0" encoding="UTF-8"?>
 <TrainingCenterDatabase xmlns="http://www.garmin.com/xmlschemas/TrainingCenterDatabase/v2">
 <Activities><Activity Sport="Biking"><Id>${start.toISOString()}</Id>
-<Lap StartTime="${start.toISOString()}"><TotalTimeSeconds>${rec.duration}</TotalTimeSeconds><DistanceMeters>${rec.distance}</DistanceMeters>
-<Calories>${Math.round(rec.avgPower * rec.duration / 1000 * 1.1)}</Calories>`
-  + (hrs.length ? `<AverageHeartRateBpm><Value>${Math.round(hrs.reduce((a, b) => a + b, 0) / hrs.length)}</Value></AverageHeartRateBpm><MaximumHeartRateBpm><Value>${Math.max(...hrs)}</Value></MaximumHeartRateBpm>` : '')
-  + `<Intensity>Active</Intensity><TriggerMethod>Manual</TriggerMethod><Track>${pts}</Track>
-<Notes>RIDEFRAME · ${name}</Notes></Lap><Notes>RIDEFRAME · ${name}</Notes></Activity></Activities></TrainingCenterDatabase>`;
+${laps.join('\n')}<Notes>RIDEFRAME · ${name}</Notes></Activity></Activities></TrainingCenterDatabase>`;
 }
 
 /** Saves the .tcx and opens Strava's upload page next to it. */

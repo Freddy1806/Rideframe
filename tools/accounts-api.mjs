@@ -35,8 +35,25 @@ const weekKey = () => { const d = monday(); return `${d.getFullYear()}-${String(
 let boardCache = null, boardGen = 0; // { at, week, rows } – rebuilt at most every 30 s; boardGen counts changes so a slow rebuild never caches stale rows
 const sums = new Map(); /* file -> { m: mtime, date, km, hm } so a rebuild never re-parses big ride files */
 /** what the leaderboard and profiles need of a ride (never the samples) */
-const summary = (m, r) => ({ m, id: r?.id, date: +r?.date || 0, km: (+r?.distance || 0) / 1000, hm: +r?.gain || 0, demo: r?.routeId === 'demo', routeId: r?.routeId || '', routeName: r?.routeName || '', workout: r?.workout || '', dur: +r?.duration || 0, pw: +r?.avgPower || 0, complete: !!r?.complete });
+const summary = (m, r) => ({ ...summary0(m, r), segs: Array.isArray(r?.segs) ? r.segs.slice(0, 300).map(e => ({ id: String(e?.id || '').slice(0, 40), t: +e?.t || 0, w: Math.round(+e?.w || 0) })).filter(e => e.id && e.t > 0) : undefined });
+const summary0 = (m, r) => ({ m, id: r?.id, date: +r?.date || 0, km: (+r?.distance || 0) / 1000, hm: +r?.gain || 0, demo: r?.routeId === 'demo', routeId: r?.routeId || '', routeName: r?.routeName || '', workout: r?.workout || '', dur: +r?.duration || 0, pw: +r?.avgPower || 0, complete: !!r?.complete });
 /** a player's profile for everyone on this host: look, totals, the last 40 rides */
+/** segment times of everyone on this host for one route: { segId: [{ name, t, w }] } best per player, fastest first */
+async function segBoard(a, routeId) {
+  const out = {};
+  for (const u of Object.values(a.users)) {
+    const rd = join(userDir(u.id), 'rides'), best = {};
+    for (const f of (await readdir(rd).catch(() => [])).filter(x => x.endsWith('.json'))) {
+      const fp = join(rd, f), st = await stat(fp).catch(() => null); if (!st) continue;
+      let c = sums.get(fp); if (!c || c.m !== st.mtimeMs) { c = summary(st.mtimeMs, await readJSON(fp, null)); sums.set(fp, c); }
+      if (c.routeId !== routeId || !c.segs) continue;
+      for (const e of c.segs) if (!best[e.id] || e.t < best[e.id].t) best[e.id] = e;
+    }
+    for (const [id, e] of Object.entries(best)) (out[id] ||= []).push({ name: u.name, t: Math.round(e.t * 10) / 10, w: e.w });
+  }
+  for (const id in out) out[id].sort((x, y) => x.t - y.t);
+  return out;
+}
 async function profile(u) {
   const rd = join(userDir(u.id), 'rides'), rides = [];
   for (const f of (await readdir(rd).catch(() => [])).filter(x => x.endsWith('.json'))) {
@@ -48,7 +65,7 @@ async function profile(u) {
   const look = (await readJSON(join(userDir(u.id), 'settings.json'), null))?.settings?.look || null;
   const tot = rides.reduce((t, r) => ({ km: t.km + r.km, hm: t.hm + r.hm, dur: t.dur + r.dur }), { km: 0, hm: 0, dur: 0 });
   return { name: u.name, since: u.created || 0, look, count: rides.length, km: Math.round(tot.km * 10) / 10, hm: Math.round(tot.hm), dur: Math.round(tot.dur),
-    rides: rides.slice(0, 40).map(({ m, demo, ...r }) => ({ ...r, km: Math.round(r.km * 10) / 10, hm: Math.round(r.hm) })) };
+    rides: rides.slice(0, 40).map(({ m, demo, segs, ...r }) => ({ ...r, km: Math.round(r.km * 10) / 10, hm: Math.round(r.hm) })) };
 }
 
 /** weekly leaderboard of every account on this host: km, Hm, minutes, ride days and the story points of the wager */
@@ -106,6 +123,8 @@ export async function accountsApi(req, res, path) {
       const f = join(dir, 'story.json'), old = await readJSON(f, null), op0 = old?.week === wk ? old.pts || {} : {}, pts = {};
       for (const k of ['wizard', 'king', 'devil']) pts[k] = Math.max(+op0[k] || 0, Math.min(1e5, +b.pts?.[k] || 0));
       await writeJSON(f, { week: wk, pts, at: Date.now() }); boardCache = null; boardGen++; return send(res, 200, { ok: true }); }
+    const sm = op.match(/^segs\/(.{1,80})$/);
+    if (sm) return send(res, 200, { segs: await segBoard(a, decodeURIComponent(sm[1])), me: u.name });
     const pm = op.match(/^profile\/(.{1,40})$/);
     if (pm) { const v = a.users[decodeURIComponent(pm[1]).toLowerCase()]; return v ? send(res, 200, await profile(v)) : send(res, 404, { error: 'Unbekannter Fahrer.' }); }
     if (op === 'delete' && req.method === 'POST') { /* the whole account: login, settings, all rides, the wager points (wishes stay, they belong to everyone) */

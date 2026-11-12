@@ -47,6 +47,13 @@ export function findSegments(track) {
   return out;
 }
 
+/** your most recent time per segment id: { id: { t, w, date } } */
+export function segmentLast(rides) {
+  const last = {};
+  for (const r of rides || []) for (const e of r.segs || []) if (!last[e.id] || r.date > last[e.id].date) last[e.id] = { t: e.t, w: e.w, date: r.date };
+  return last;
+}
+
 /** best time per segment id from saved rides: { id: { t, w, date } } */
 export function segmentBests(rides) {
   const best = {};

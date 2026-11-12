@@ -50,6 +50,8 @@ export async function pushStory(L) { if (acc && L?.week) await api('story', { me
 export async function loadBoard() { return acc ? api('board').catch(() => null) : null; }
 
 /** another player's profile (look, totals, last rides) */
+/** everyone's best segment times on a route: { segs: { id: [{ name, t, w }] }, me } */
+export async function loadSegBoard(routeId) { return acc ? api('segs/' + encodeURIComponent(routeId)).catch(() => null) : null; }
 export const loadProfile = key => api('profile/' + encodeURIComponent(key));
 /** delete one of my rides on the host too (otherwise the next sync brings it back) */
 export async function deleteRideRemote(id) { if (acc) await api('rides/' + id, { method: 'DELETE' }); }

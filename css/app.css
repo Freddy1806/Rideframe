@@ -567,3 +567,9 @@ img.face.big{width:96px;height:96px}
 .segsum>div.pr b{color:#5fd38a}.segsum b{text-align:right;font-weight:700}
 .chcard.side ~ .segcard, .hud:has(.chcard.side:not([hidden])) .segcard{display:none}
 .segtable .segk{font-size:15px;width:24px}.segtable .segk.climb{color:#ff7a59}.segtable .segk.descent{color:#5fb8ff}.segtable .segk.sprint{color:var(--accent)}
+
+.segcard .segcmp{margin-top:6px;font-size:12px;display:grid;gap:2px}
+.segcard .segcmp>div{display:flex;justify-content:space-between;gap:8px}.segcard .segcmp span{opacity:.8;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.segcard .segcmp b.ahead{color:#5fd38a}.segcard .segcmp b.behind{color:#ff7a59}.segcard .segcmp .rank{font-weight:800;color:var(--accent)}
+.segbanner{position:absolute;left:50%;top:22%;transform:translateX(-50%);text-align:center;padding:14px 26px;border-radius:10px;background:rgba(11,11,11,.55);border:1px solid #ff7a59;z-index:13;transition:opacity .8s;pointer-events:none}
+.segbanner.out{opacity:0}.segbanner .label{color:#ff7a59}.segbanner .n{font-size:40px;font-weight:900;font-stretch:112%;text-transform:uppercase;line-height:1.05}.segbanner .s{font-size:15px;opacity:.85;margin-top:4px}

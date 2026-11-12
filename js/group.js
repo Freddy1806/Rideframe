@@ -108,7 +108,7 @@ export class Group {
   _clean(r) { // never trust what comes over the wire
     if (!r || typeof r.id !== 'string') return null;
     const n = v => (Number.isFinite(+v) ? +v : 0);
-    return { id: r.id.slice(0, 16), name: String(r.name || 'Fahrer').slice(0, 20), d: n(r.d), v: n(r.v), w: Math.round(n(r.w)), hr: Math.round(n(r.hr)), riding: !!r.riding, done: !!r.done, pid: typeof r.pid === 'string' ? r.pid.slice(0, 64) : '', vo: !!r.vo, look: r.look && typeof r.look === 'object' ? cleanLook(r.look) : null };
+    return { id: r.id.slice(0, 16), name: String(r.name || 'Fahrer').slice(0, 20), d: n(r.d), v: n(r.v), w: Math.round(n(r.w)), hr: Math.round(n(r.hr)), riding: !!r.riding, done: !!r.done, pid: typeof r.pid === 'string' ? r.pid.slice(0, 64) : '', vo: !!r.vo, sg: Array.isArray(r.sg) ? r.sg.slice(-6).filter(x => Array.isArray(x) && typeof x[0] === 'string').map(x => [x[0].slice(0, 40), n(x[1])]) : [], look: r.look && typeof r.look === 'object' ? cleanLook(r.look) : null };
   }
 
   _relayAll() {
