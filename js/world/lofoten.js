@@ -281,7 +281,7 @@ export class WorldScene {
     // real water reflects ~4 % straight down (not 30 %): the sea is no longer a white mirror, the teal body and the
     // turquoise sand under the shallows show through; grazing angles still mirror the mountains
     this.water.material.fragmentShader = this.water.material.fragmentShader
-      .replace('vec3 reflectionSample = vec3( texture2D( mirrorSampler, mirrorCoord.xy / mirrorCoord.w + distortion ) );', 'vec2 rUv = mirrorCoord.xy / mirrorCoord.w + distortion; vec3 reflectionSample = texture2D( mirrorSampler, clamp( rUv, 0.002, 0.998 ) ).rgb; float rOut = max( max( -rUv.x, rUv.x - 1.0 ), max( -rUv.y, rUv.y - 1.0 ) ); reflectionSample = mix( reflectionSample, vec3( 0.32, 0.38, 0.44 ), smoothstep( -0.04, 0.02, rOut ) );') // outside the mirror image: a neutral sky tone, no stretched edge
+      .replace('vec3 reflectionSample = vec3( texture2D( mirrorSampler, mirrorCoord.xy / mirrorCoord.w + distortion ) );', 'vec2 rUv = mirrorCoord.xy / mirrorCoord.w + distortion; vec3 reflectionSample = texture2D( mirrorSampler, clamp( rUv, 0.002, 0.998 ) ).rgb; float rOut = max( max( -rUv.x, rUv.x - 1.0 ), max( -rUv.y, rUv.y - 1.0 ) ); reflectionSample = mix( reflectionSample, vec3( 0.32, 0.38, 0.44 ), smoothstep( -0.04, 0.02, rOut ) ); reflectionSample = mix( reflectionSample, vec3( 0.32, 0.38, 0.44 ), uHigh );') // outside the mirror image: a neutral sky tone, no stretched edge
       .replace('float rf0 = 0.3;', 'float rf0 = 0.04;')
       // sharper, brighter sun glitter: a glittering path on the sea towards the low sun
       .replace('sunLight( surfaceNormal, eyeDirection, 100.0, 2.0, 0.5, diffuseLight, specularLight );', 'sunLight( surfaceNormal, eyeDirection, 260.0, 5.0, 0.5, diffuseLight, specularLight );')
@@ -292,6 +292,7 @@ export class WorldScene {
     this.water.material.uniforms.uHigh = { value: 0 };
     this.water.material.transparent = true;
     this.water.rotation.x = -Math.PI / 2; this.water.position.y = 0; scene.add(this.water);
+    { const wr0 = this.water.onBeforeRender; this.water.onBeforeRender = (...x) => { if (this.water.material.uniforms.uHigh.value < 0.999) wr0.apply(this.water, x); }; } // high in the flight the planar mirror no longer fits the perspective (a sharp bright wedge with an upside-down ridge): no mirror at all up there, and one render pass saved
     if (QS.has('noreflect')) { const wr = this.water.onBeforeRender; let k = 0; this.water.onBeforeRender = (...x) => { if (k++ < 30) wr.apply(this.water, x); }; } // mirror frozen after the first frames
 
 
@@ -1394,7 +1395,7 @@ export class WorldScene {
     const cam = this._camera(this.d, dt);
     const above = this._fly ? this.camera.position.y - this.field.at(this.d).e : 0; // height over the road (the pass route runs at 1800 m: absolute height says nothing)
     if (!QS.has('noshadow')) { const sk = 1 - smooth(25, 60, above); this.light.shadow.intensity = sk; const on = sk > 0.001; if (this.renderer.shadowMap.autoUpdate !== on) { this.renderer.shadowMap.autoUpdate = on; if (!on) this._blankShadow(); } } // in flight: fade shadows out via intensity (no shader recompile: toggling castShadow/shadowMap.enabled froze ~0.9 s on the Mac mini), and stop re-rendering the shadow map
-    { const wu = this.water.material.uniforms, hk = smooth(15, 120, above); // from high up (wizard flight) the sea is opaque and its sun glare calmer
+    { const wu = this.water.material.uniforms, hk = smooth(20, 60, above); // from high up (wizard flight) the sea is opaque and its sun glare calmer
       if (wu.alpha) wu.alpha.value = Math.max(lerp(0.86, 1, this.hellK || 0), lerp(0.86, 1, hk)); wu.uHigh.value = hk; if (hk > 0) wu.sunColor.value.multiplyScalar(1 - 0.6 * hk); }
     this._far(cam.x, cam.z); this.farCam.value.set(cam.x, cam.z);
     this._ensure(cam.x, cam.z);
