@@ -164,7 +164,7 @@ export class RideSession {
     this.music = new Music(this.group ? 'race' : this.workout ? 'workout' : 'world', st.musicVol ?? 0.45);
     this.coach = new Coach(st.coachVol ?? 0.9);
     this.el.querySelector('#hMusic')?.addEventListener('click', () => this._toggleMusic());
-    if (this.group) this._wireVoice();
+    if (this.group) { this._wireVoice(); this.el.querySelector('#hGCode')?.addEventListener('click', e => { e.stopPropagation(); navigator.clipboard?.writeText(this.group.link).then(() => this._flash('Einladungslink kopiert · Code ' + this.group.code), () => this._flash('Code für Freunde: ' + this.group.code)); }); }
     this._initChallenges();
     this._initWizard();
     this._initStory();
@@ -177,7 +177,7 @@ export class RideSession {
   }
 
   _hudHTML() {
-    const ghostChip = (this.group ? '<div class="chip glass groupchip" id="hGroup"><div class="label">Gruppe</div><div class="glist">wartet …</div></div>' : '') + (this.ghost ? `<div class="chip gap glass"><div class="label">vs. ${this.ghostName ? esc(this.ghostName) : this.state.settings.ghost === 'last' ? 'letzte Fahrt' : 'Bestzeit'}</div><div class="v num" id="hGap">0:00</div></div>` : '');
+    const ghostChip = (this.group ? `<div class="chip glass groupchip" id="hGroup"><div class="label">Gruppe <button class="gcode" id="hGCode" title="Code für Freunde: klicken kopiert den Einladungslink">${esc(this.group.code)}</button></div><div class="glist">wartet …</div></div>` : '') + (this.ghost ? `<div class="chip gap glass"><div class="label">vs. ${this.ghostName ? esc(this.ghostName) : this.state.settings.ghost === 'last' ? 'letzte Fahrt' : 'Bestzeit'}</div><div class="v num" id="hGap">0:00</div></div>` : '');
     return `<div class="hud">
       <div class="hud-top">
         <div class="hud-route glass"><div class="wordmark"><svg class="mark" viewBox="0 0 32 32"><rect width="32" height="32" rx="6" fill="var(--accent)"/><path d="M6 24 L14 12 L19 18 L23 10 L27 24 Z" fill="#0b0b0b"/></svg>RIDEFRAME</div><span class="sep"></span><span class="name">${esc(this.route.name)}</span></div>

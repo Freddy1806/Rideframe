@@ -105,7 +105,7 @@ export function groupModal({ routeId = null, code = null, startRide }) {
         name = nn || state.settings.riderName || 'Fahrer';
         m.querySelector('#gMsg').textContent = 'Verbinde …';
         const g2 = new Group({ name, look: state.settings.look, ...opts, onChange: () => render(), onError: msg => { const el = m.querySelector('#gMsg'); if (el) el.textContent = msg; else toast(msg, 5000); },
-          onStart: ({ routeId: rid, at }) => { const r = routeById(rid); if (!r) return toast('Diese Strecke hast du nicht.'); close(); setTimeout(() => startRide(rid, { group: g2 }), Math.max(0, at - Date.now())); toast('Gleich geht es los!', 3000); } });
+          onStart: ({ routeId: rid, at, d }) => { const r = routeById(rid); if (!r) return toast('Diese Strecke hast du nicht.'); close(); setTimeout(() => startRide(rid, { group: g2, ...(d ? { at: d } : {}) }), Math.max(0, at - Date.now())); toast('Gleich geht es los!', 3000); } });
         try { await g2.connect(); group = g2; if (g2.host && routeId) g2.setRoute(routeId); render(); }
         catch (e) { g2.close(); m.querySelector('#gMsg').textContent = e.message; }
       };

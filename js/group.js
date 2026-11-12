@@ -61,7 +61,9 @@ export class Group {
 
   _wire(c) {
     this.conns.push(c);
-    c.on('open', () => { c.send({ t: 'hello', r: this.me }); if (this.host && this.routeId) c.send({ t: 'route', routeId: this.routeId }); });
+    c.on('open', () => { c.send({ t: 'hello', r: this.me }); if (this.host && this.routeId) c.send({ t: 'route', routeId: this.routeId });
+      // late joiner (Freddy 12.11.: the code stays visible while riding): the host is already out there, so the newcomer starts at once next to him
+      if (this.host && this.routeId && this.rolling) c.send({ t: 'start', routeId: this.routeId, at: Date.now() + 1500, d: Math.max(0, (this.me.d || 0) - 20) }); });
     c.on('data', m => this._recv(m, c));
     c.on('close', () => {
       this.conns = this.conns.filter(x => x !== c);
@@ -84,7 +86,7 @@ export class Group {
       const ids = new Set((m.list || []).map(x => x.id)); for (const id of this.riders.keys()) if (!ids.has(id)) this.riders.delete(id);
       this.onChange?.(this);
     } else if (m.t === 'route' && !this.host) { this.routeId = String(m.routeId); this.onChange?.(this); }
-    else if (m.t === 'start' && !this.host) this.onStart?.({ routeId: String(m.routeId), at: Number(m.at) || 0 });
+    else if (m.t === 'start' && !this.host) this.onStart?.({ routeId: String(m.routeId), at: Number(m.at) || 0, d: Math.max(0, Number(m.d) || 0) });
   }
 
   _clean(r) { // never trust what comes over the wire
@@ -117,7 +119,7 @@ export class Group {
 
   /** own position, called from the ride loop (sent at most twice a second) */
   update(s) {
-    const { look, ...rest } = s; Object.assign(this.me, rest);
+    const { look, ...rest } = s; Object.assign(this.me, rest); if (this.me.riding) this.rolling = true;
     if (look && look !== this._lookSrc) { this._lookSrc = look; this.me.look = cleanLook(look); }
     const now = performance.now(); if (now - (this._sent || 0) < 500) return; this._sent = now;
     if (this.host) this._relayAll();
