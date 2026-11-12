@@ -39,6 +39,23 @@ function lanterns(leader) {
   return g;
 }
 
+// chimney smoke: a few soft sprites per house that rise, drift with the wind and fade; one shared texture and material set
+let SMOKE_TEX = null;
+function smokeTex() {
+  if (SMOKE_TEX) return SMOKE_TEX;
+  const c = document.createElement('canvas'); c.width = c.height = 64; const g = c.getContext('2d'), gr = g.createRadialGradient(32, 32, 2, 32, 32, 31);
+  gr.addColorStop(0, 'rgba(235,230,222,0.55)'); gr.addColorStop(0.5, 'rgba(210,205,198,0.22)'); gr.addColorStop(1, 'rgba(200,195,190,0)');
+  g.fillStyle = gr; g.fillRect(0, 0, 64, 64); SMOKE_TEX = new THREE.CanvasTexture(c); return SMOKE_TEX;
+}
+function smoke(strong) {
+  const g = new THREE.Group(), n = strong ? 10 : 6;
+  for (let i = 0; i < n; i++) {
+    const sp = new THREE.Sprite(new THREE.SpriteMaterial({ map: smokeTex(), transparent: true, depthWrite: false, opacity: 0, fog: true }));
+    sp.userData.smoke = { ph: i / n, k: strong ? 1.6 : 1, rise: strong ? 9 : 6 }; g.add(sp);
+  }
+  return g;
+}
+
 /**
  * Build the village into the world. ctx: { place, byName, make, spot, f, scene, props, anim, len }; v: { km, hm, leader }.
  * Positions are metres before the finish (end = track length). Returns a summary for the HUD/result screen.
@@ -50,13 +67,17 @@ export function buildVillage(ctx, v = {}) {
   const any = (...names) => { for (const n of names) { const e = n && byName(n); if (e) return e; } return null; };
   const built = [], anim = ctx.anim || [];
   const put = (e, m, off, o = {}) => { const obj = place(e, at(m), off, o); if (obj) built.push(e.file); return obj; };
+  const house = (e, m, off, o = {}, strong = false) => { // a lived-in building: smoke from the roof (thatched farmhouses had no chimney, it seeps out at the ridge)
+    const obj = put(e, m, off, o); if (!obj) return obj;
+    const sm = smoke(strong); sm.position.set(obj.position.x, obj.position.y + e.size[1] * (o.scale || 1) * 0.95, obj.position.z);
+    scene.add(sm); props.push(sm); sm.children.forEach(c => anim.push(c)); return obj; };
   const loose = (obj, m, off, y = 0, face = 0) => { // a procedural piece, set straight onto the ground beside the road
     const q = spot(at(m), off); obj.position.set(q.x, f.height(q.x, q.z) + y, q.z); obj.rotation.y = Math.atan2(q.tx, q.tz) + face;
     scene.add(obj); props.push(obj); obj.traverse(c => { if (c.userData.flutter) anim.push(c); }); return obj; };
 
   // ---- stage 0: the inn of the three bettors at the finish, the lime tree and well before it, a wayside cross on the way in ----
-  const inn = any('wirtshaus') ? put(byName('wirtshaus'), 14, ROAD_W + 9, { face: 'road', gap: 2 })
-    : put(any('fachwerkhaus_b', 'fachwerkhaus_a', 'steinhaus'), 14, ROAD_W + 8, { face: 'road', gap: 2, scale: 1.25 });
+  const inn = any('wirtshaus') ? house(byName('wirtshaus'), 14, ROAD_W + 9, { face: 'road', gap: 2 }, true)
+    : house(any('fachwerkhaus_b', 'fachwerkhaus_a', 'steinhaus'), 14, ROAD_W + 8, { face: 'road', gap: 2, scale: 1.25 }, true);
   if (inn) { const sign = byName('wirtshausschild'); if (sign) put(sign, 24, ROAD_W + 2.2, { face: 'road', overlap: true, radK: 0.3, gap: 0.4 });
     const lt = loose(lanterns(v.leader), 14, ROAD_W + 3.2, 2.6); lt.traverse(c => { if (c.userData.lantern) anim.push(c); }); }
   put(any('pferd'), 30, ROAD_W + 4.5, { face: 'along', anim: 'Stehen', gap: 0.8 });
@@ -70,8 +91,8 @@ export function buildVillage(ctx, v = {}) {
   // ---- 1 Home Gate: the messenger's own farm and the gate in the village fence ----
   if (st >= 1) {
     const gate = byName('dorftor'), gm = st >= 5 ? 400 : 120; // spans the road, so it bypasses place() (which keeps things off the asphalt)
-    loose(gate && ctx.make ? ctx.make(gate) : gateMesh(), gm, 0, 0, Math.PI / 2);
-    put(any('fachwerkhaus_a', 'steinhaus'), 95, -(ROAD_W + 9), { face: 'road', gap: 2 }); // the messenger's house, left before the inn
+    loose(gate && ctx.make ? ctx.make(gate) : gateMesh(), gm, 0, 0, 0); // local x across the road
+    house(any('fachwerkhaus_a', 'steinhaus'), 95, -(ROAD_W + 9), { face: 'road', gap: 2 }); // the messenger's house, left before the inn
     put(any('holzstapel'), 88, -(ROAD_W + 4), { face: 'along', gap: 0.6 });
     put(any('misthaufen', 'heuhaufen'), 104, -(ROAD_W + 5), { gap: 0.8 });
     const fl = byName('flechtzaun'); if (fl) { const l = Math.max(fl.size[0], fl.size[2]) * 0.97, t = fl.size[0] > fl.size[2] ? Math.PI / 2 : 0;
@@ -80,7 +101,7 @@ export function buildVillage(ctx, v = {}) {
   // ---- 2 The Green: four farms round the green, bake house, a maid at the well ----
   if (st >= 2) {
     [[140, 1], [160, -1], [185, 1], [210, -1]].forEach(([m, s], i) => {
-      put(any(i % 2 ? 'fachwerkhaus_b' : 'fachwerkhaus_a', 'steinhaus'), m, s * (ROAD_W + 10), { face: 'road', gap: 2 });
+      house(any(i % 2 ? 'fachwerkhaus_b' : 'fachwerkhaus_a', 'steinhaus'), m, s * (ROAD_W + 10), { face: 'road', gap: 2 });
       put(any(i % 2 ? 'holzstapel' : 'heuhaufen'), m - 7, s * (ROAD_W + 4.5), { gap: 0.6 });
     });
     put(any('backhaus'), 75, -(ROAD_W + 18), { face: 'road', gap: 2 });
@@ -89,7 +110,7 @@ export function buildVillage(ctx, v = {}) {
   }
   // ---- 3 Wheelwright: smithy and wheelwright share a yard on the right, a cart on the verge ----
   if (st >= 3) {
-    const smith = put(any('schmiede'), 250, ROAD_W + 8, { face: 'road', gap: 1.5 });
+    const smith = house(any('schmiede'), 250, ROAD_W + 8, { face: 'road', gap: 1.5 }, true);
     if (smith) put(any('schmied'), 247, ROAD_W + 3.2, { face: 'road', anim: 'Haemmern', radK: 0.4, gap: 0.6 });
     put(any('stellmacherei', 'fachwerkhaus_a'), 268, ROAD_W + 9, { face: 'road', gap: 1.5 });
     const wheel = byName('wagenrad'); if (wheel) for (let k = 0; k < 3; k++) put(wheel, 262 + k * 1.3, ROAD_W + 3.4, { face: 'road', overlap: true, radK: 0.3, gap: 0.4 });
@@ -100,7 +121,7 @@ export function buildVillage(ctx, v = {}) {
   // ---- 5 The Farms: the row of farmsteads between gate and smithy ----
   if (st >= 5) for (let k = 0; k < 6; k++) {
     const m = 320 + k * 13, s = k % 2 ? -1 : 1;
-    put(any(k % 3 ? 'fachwerkhaus_a' : 'fachwerkhaus_b', 'steinhaus'), m, s * (ROAD_W + 9), { face: 'road', gap: 2 });
+    house(any(k % 3 ? 'fachwerkhaus_a' : 'fachwerkhaus_b', 'steinhaus'), m, s * (ROAD_W + 9), { face: 'road', gap: 2 });
     put(any('scheune', 'heuhaufen'), m + 4, s * (ROAD_W + 22), { face: 'road', gap: 2 });
   }
   // ---- 6 Market Square: market cross, stalls and a trader between the green and the inn ----
@@ -123,5 +144,7 @@ export function tickVillage(anim, t) {
   for (const c of anim) {
     if (c.userData.lantern) c.scale.setScalar(1 + Math.sin(t * 7 + c.userData.lantern.ph) * 0.05 + Math.sin(t * 17 + c.userData.lantern.ph) * 0.03);
     else if (c.userData.flutter) c.rotation.y = Math.sin(t * 3 + c.id) * 0.35;
+    else if (c.userData.smoke) { const S = c.userData.smoke, a = (t * 0.12 + S.ph) % 1; // one puff's life: rise, widen, drift downwind, fade
+      c.position.set(a * a * 4 * S.k, a * S.rise, a * 1.5); c.scale.setScalar((1 + a * 4) * S.k); c.material.opacity = Math.sin(a * Math.PI) * 0.55; }
   }
 }
