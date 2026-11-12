@@ -15,6 +15,7 @@ import { fovOf, FOV_MIN, FOV_MAX, FOV_DEFAULT } from './fov.js';
 import { workoutAt, workoutSVG } from './workouts.js';
 import { Challenges } from './challenges.js';
 import { findSegments, segmentBests, segmentLast, SEG_KIND } from './segments.js';
+import { testResult } from './stats.js';
 import { Wizard, WIZ } from './wizard.js';
 import { Music, Coach } from './music.js';
 import { MIC_SVG, SPK_SVG, voiceStatus } from './voice.js';
@@ -84,15 +85,15 @@ export function simulateRide(track, power, settings) {
 
 export class RideSession {
   constructor({ route, ghost, state, onExit, autopilot = false, at = 0, group = null, ghostName = '', workout = null, catchUp = false, elapsed0 = 0 }) {
-    Object.assign(this, { route, ghost, state, onExit, autopilot, group, ghostName, workout });
+    Object.assign(this, { route, ghost, state, onExit, autopilot, group, ghostName, workout }); this._wId = workout?.id;
     this.erg = state.settings.erg !== false; this.ftp = state.settings.ftp || 200;
     this.track = route.track;
     this.params = defaultParams(state.settings);
     this.d = Math.min(at, this.track.length - 1); this.v = 0; this.elapsed = 0;
     if (elapsed0 > 0) this.elapsed = elapsed0; // rejoin: the ride clock goes on where it stopped
     // late joiner: while his world loaded the others rode on; once it stands he jumps to just behind the leader (Mac mini 12.11.: ~400 m behind)
-    this._catchUpNow = catchUp && group ? () => { const os = group.others().filter(r => r.riding && !r.done), lead = os.reduce((m, r) => Math.max(m, r.d), 0);
-      if (lead - 20 > this.d + 30 && lead < this.track.length - 50) { this.d = lead - 20; this.startD = this._lapBase = this.d; this.lastEle = eleAt(this.track, this.d); } this._catchUpNow = null; } : null;
+    this._catchUpNow = catchUp && group ? () => { const os = group.others().filter(r => r.riding && !r.done), lead = os.reduce((m, r) => Math.max(m, r.d), 0), lv = os.find(r => r.d === lead)?.v || 0;
+      if (lead - 20 > this.d + 30 && lead < this.track.length - 50) { this.d = lead - 20; this.startD = this._lapBase = this.d; this.lastEle = eleAt(this.track, this.d); if (lv > 0 && lv < 30) this.v = lv; /* roll in at the leader's speed (Mac mini: else 85 m gap at once) */ } this._catchUpNow = null; } : null;
     this.startD = this.d; // a ride started mid-route counts its own distance and never sets a best time
     // laps (Freddy 12.11.): at the finish the route starts over until all laps are done; never in a group ride (all ride the same d)
     if (/[?&]laptest/.test(location.search)) window.__ride = this; // test handle
@@ -485,7 +486,7 @@ export class RideSession {
   _workout(dt = 0.016) {
     if (!this.workout) return;
     const w = this.wNow = workoutAt(this.workout, this.elapsed, this.ftp);
-    if (this.erg) this.state.trainer.setPower(w.done ? null : w.target);
+    if (this.erg) this.state.trainer.setPower(w.done || w.step?.free ? null : w.target); // a test block is ridden freely
         if (w.done && !this.wDone) { this.wDone = true; this._flash?.('Training geschafft!'); this.coach?.say('done', 0); }
     this._coachTick(w, dt);
   }
@@ -900,7 +901,7 @@ export class RideSession {
     const pw = this.samples.map(s => s[2]);
     return {
       id: uid(), routeId: this.route.id, date: Date.now(), complete,
-      duration: Math.round(this.elapsed), distance: Math.round(this._ridden()), laps: this.laps > 1 ? this._lapRows() : undefined, segs: this.segDone.length ? this.segDone.map(({ id, t, w }) => ({ id, t, w })) : undefined, lapMarks: this._marks(), ivs: this._intervals(), gain: Math.round(this.gainAcc), startD: Math.round(this.startD), workout: this.workout?.name || this._wName || undefined,
+      duration: Math.round(this.elapsed), distance: Math.round(this._ridden()), laps: this.laps > 1 ? this._lapRows() : undefined, segs: this.segDone.length ? this.segDone.map(({ id, t, w }) => ({ id, t, w })) : undefined, lapMarks: this._marks(), ivs: this._intervals(), gain: Math.round(this.gainAcc), startD: Math.round(this.startD), workout: this.workout?.name || this._wName || undefined, workoutId: this._wId || undefined,
       avgPower: pw.length ? Math.round(pw.reduce((a, b) => a + b, 0) / pw.length) : 0,
       maxPower: Math.max(0, ...pw), best5: bestAvg(pw, 300), best20: bestAvg(pw, 1200),
       samples: this.samples, challenges: this.ch?.stats.offered ? { ...this.ch.stats } : undefined, wizard: this.wiz?.was || (this.wiz?.state === 'hell' ? 'hell' : this.wiz?.state === 'fly' ? 'fly' : undefined),
@@ -984,7 +985,7 @@ export class RideSession {
     if (w) { let s = 0, n = 0;
       for (const st of w.steps) { const a = s, b = Math.min(s + st.dur, this.elapsed); s += st.dur;
         if (st.pct < 88 || b - a < 5) continue; const ps = smp.filter(x => x[0] > a && x[0] <= b).map(x => x[2]); if (!ps.length) continue;
-        out.push({ name: `${st.name || 'Intervall'} ${++n}`, t: Math.round(b - a), w: Math.round(ps.reduce((x, y) => x + y, 0) / ps.length), target: Math.round(st.pct / 100 * (this.ftp || 0)) || undefined }); }
+        out.push({ name: `${st.label || st.name || 'Intervall'} ${++n}`, t: Math.round(b - a), w: Math.round(ps.reduce((x, y) => x + y, 0) / ps.length), target: Math.round(st.pct / 100 * (this.ftp || 0)) || undefined }); }
     } else for (const s of this.segDone) if (s.kind === 'climb') out.push({ name: s.name, t: Math.round(s.t), w: s.w });
     return out.length ? out : undefined;
   }
@@ -1015,6 +1016,16 @@ export class RideSession {
     const f = document.createElement('div'); f.className = 'lapfade'; f.innerHTML = `<div>Runde ${this.lap}<small>von ${this.laps}</small></div>`; this.el.append(f);
     setTimeout(() => f.classList.add('out'), 1300); setTimeout(() => f.remove(), 2200);
   }
+  /** after a fitness test: the result and a button to take it as the new FTP */
+  _testHTML(rec) {
+    if (rec.workoutId !== 'ramp' && rec.workoutId !== 'ftp20') return '';
+    const w = testResult(rec.workoutId, rec.samples), old = this.state.settings.ftp || 0;
+    if (!w) return `<div class="chsum">Fitnesstest: zu kurz für ein Ergebnis${rec.workoutId === 'ftp20' ? ' (es braucht 20 Minuten am Stück)' : ''}</div>`;
+    return `<div class="ftptest"><div><div class="label">Fitnesstest · ${rec.workoutId === 'ramp' ? '75 % deiner besten Minute' : '95 % deiner besten 20 Minuten'}</div>
+      <div class="v">${w}<small>W</small></div><div class="dim">bisher ${old || '–'} W${old ? ` · ${w >= old ? '+' : '−'}${Math.abs(w - old)} W` : ''}</div></div>
+      ${rec.unsaved ? '' : `<button class="btn" id="fFtp" data-w="${w}">Als neue FTP übernehmen</button>`}</div>`;
+  }
+
   _summary(rec, prev, note) {
     const pb = prev && (!prev.length || rec.duration < prev[0].duration);
     const rank = prev ? prev.filter(r => r.duration < rec.duration).length + 1 : 0;
@@ -1032,12 +1043,20 @@ export class RideSession {
         <div><div class="label">Arbeit</div><div class="v">${fmtNum(rec.avgPower * rec.duration / 1000)}<small>kJ</small></div></div>
       </div>
       ${this._segSummary()}
+      ${this._testHTML(rec)}
       ${rec.challenges ? `<div class="chsum">⚔ ${rec.challenges.offered} Challenges · ${rec.challenges.accepted} angenommen · ${rec.challenges.won} gewonnen</div>` : ''}
       ${storyHTML(this._storyEnd())}
       ${rec.wizard ? `<div class="chsum">🧙 ${rec.wizard === 'fly' ? 'Prüfung des Zauberers bestanden · über die Insel geflogen' : 'Beim Zauberer durchgefallen · durch die Hölle gefahren'}</div>` : ''}
       <div class="row-actions"><button class="btn ghost" id="fShare">Bild zum Teilen</button><button class="btn ghost" id="fStrava">Auf Strava hochladen</button><button class="btn" id="fDone">Fertig</button></div></div>`;
     this.el.append(o);
     o.querySelector('#fDone').onclick = () => this._close(true);
+    o.querySelector('#fFtp')?.addEventListener('click', async e => { // fitness test: take the new FTP, the ride remembers it as a test
+      const b = e.currentTarget, w = +b.dataset.w; b.disabled = true;
+      this.state.settings.ftp = w; rec.ftpTest = w;
+      const app = await import('./app.js'); await app.saveSettings();
+      if (!rec.unsaved) { await db.put('rides', rec); import('./account.js').then(a => a.pushRide(rec)); }
+      b.textContent = `FTP jetzt ${w} W ✓`; app.ridesChanged?.();
+    });
     const shareOpts = async () => ({ rec, route: this.route, track: this.track, photo: await this.bestPhoto(), pose: this.player?.field?.pose ? d => this.player.field.pose(d) : null, pb: !!(prev && (!prev.length || rec.duration < prev[0].duration)) });
     o.querySelector('#fShare').onclick = async e => {
       const b = e.currentTarget, t = b.textContent; b.disabled = true; b.textContent = 'Bild wird gemacht …';

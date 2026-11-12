@@ -34,6 +34,9 @@ export const WORKOUTS = [
     steps: [W(10, 55, 'Einfahren'), W(20, 66, 'Grundlage'), W(5, 80, 'Tempo'), W(20, 66, 'Grundlage'), W(5, 80, 'Tempo'), W(15, 66, 'Grundlage'), W(5, 80, 'Tempo'), W(10, 50, 'Ausfahren')] },
   { id: 'ramp', name: 'Ramp-Test (FTP)', what: 'Jede Minute +6 % FTP bis nichts mehr geht. Neue FTP ≈ 75 % der besten Minute. Mit Leertaste beenden.',
     steps: [W(5, 50, 'Einfahren'), ...Array.from({ length: 25 }, (_, i) => W(1, 60 + i * 6, `Stufe ${i + 1}`)), ...cool] },
+  // classic 20-min test (Freddy 12.11. "fitnesstest"): the 20 minutes are ridden freely (no ERG), new FTP = 95 % of their average
+  { id: 'ftp20', name: '20-min-Test (FTP)', what: 'Einfahren, 5 min Vorbelastung, dann 20 min so hart du gleichmäßig kannst. Ohne ERG, du bestimmst das Tempo. Neue FTP = 95 % davon.',
+    steps: [W(10, 55, 'Einfahren'), W(5, 75, 'Einfahren'), W(5, 105, 'Vorbelastung'), W(10, 55, 'Locker'), { ...W(20, 100, 'Test 20 min'), free: true }, W(10, 50, 'Ausfahren')] },
 ];
 
 // ---- own workouts (Pro-Modus): built in the Training tab, stored in settings.myWorkouts as plain rows ----

@@ -10,6 +10,7 @@ import { gearsFrom, CASSETTES, parseRings } from './gears.js';
 import { profileSVG, drawDetailProfile } from './profile.js';
 import { RideSession, simulateRide } from './ride.js';
 import { findSegments, segmentBests, SEG_KIND } from './segments.js';
+import { dashboardHTML, wireDashboard } from './dashboard.js';
 import { gameVersion } from './uebridge.js';
 import { fovOf, FOV_MIN, FOV_MAX } from './fov.js';
 import { fmtTime, fmtKm, fmtNum, esc, bestAvg } from './util.js';
@@ -108,6 +109,9 @@ async function reload() {
   state.rides = (await db.all('rides')).sort((a, b) => b.date - a.date);
 }
 
+/** rides were deleted or changed elsewhere (profile, end screen): reload and redraw the history tab */
+export async function ridesChanged() { await reload(); if (state.view === 'history') history(); }
+
 export async function saveSettings() { await db.kvSet('settings', state.settings); settingsChanged(state.settings); }
 function updateAccPill() { const a = account(), p = $('#accPill'); p.classList.toggle('on', !!a); p.querySelector('.t').textContent = a ? a.name : 'Anmelden'; }
 async function accountChanged() { updateAccPill(); applyAccent(); await reload(); go(state.view); }
@@ -193,7 +197,7 @@ function card(r) {
   const t = r.track;
   return `<div class="card" data-id="${r.id}">
     <div class="thumb" style="background-image:url('${r.thumb || ''}')">
-      ${best ? `<span class="badge">PB ${fmtTime(best.duration)}</span>` : r.track.intervals ? '<span class="badge">Intervalle</span>' : r.source === 'demo' ? '<span class="badge">Demo</span>' : ''}
+      ${best ? `<span class="badge">PB ${fmtTime(best.duration)}</span>` : r.source === 'demo' ? '<span class="badge">Demo</span>' : ''}
       <span class="go"><svg width="18" height="18" viewBox="0 0 24 24"><path d="M7 4l12 8-12 8z" fill="currentColor"/></svg></span>
       ${profileSVG(t)}
     </div>
@@ -299,6 +303,11 @@ function detail(id) {
   $('#wmSel').value = state.settings.worldMode || 'voll';
   $('#wmSel').onchange = e => { state.settings.worldMode = e.target.value; saveSettings(); };
   $('#chSel').onchange = e => { state.settings.challenges = +e.target.value; saveSettings(); };
+  wireDashboard(main, { state, saveSettings, toast, rerender: history,
+    startTest: id => { state.settings.workout = id; saveSettings(); startRide(routeById('kueste60') ? 'kueste60' : 'demo'); },
+    deleteRides: async list => { const { deleteRideRemote } = await import('./account.js'); let n = 0;
+      for (const x of list) { try { await deleteRideRemote(x.id); await db.del('rides', x.id); n++; } catch (e) { toast('Server: ' + e.message); break; } }
+      await reload(); toast(`${n} ${n === 1 ? 'Fahrt' : 'Fahrten'} gelöscht`); } });
   main.querySelectorAll('.share').forEach(b => b.onclick = () => shareRide(rides.find(r => r.id === b.dataset.id)));
   $('#ghostSel').onchange = e => { state.settings.ghost = e.target.value; saveSettings(); };
   $('#rideBtn').onclick = () => startRide(id);
@@ -329,6 +338,9 @@ function history() {
   main.innerHTML = `
   <section class="view">
     <div class="view-head"><div><div class="label">Verlauf</div><h1 class="display" style="margin-top:14px">Fahrten &amp;<br>Rekorde</h1></div></div>
+    <h2 class="section">Training</h2>
+    ${dashboardHTML(rides, state.settings)}
+    <h2 class="section">Rekorde</h2>
     <div class="records">
       <div class="record"><div class="label">Beste 20 Minuten</div><div class="v">${best20 || '–'}<small>W</small></div><div class="s">${best20Ride ? esc(routeName(best20Ride.routeId) || '') + ' · ' + new Date(best20Ride.date).toLocaleDateString('de-DE') : 'Fahre mind. 20 Minuten'}</div></div>
       <div class="record"><div class="label">Gesamt</div><div class="v">${fmtKm(totalKm)}<small>km</small></div><div class="s">${rides.length} ${rides.length === 1 ? 'Fahrt' : 'Fahrten'} · ${(t => t >= 3600 ? `${Math.floor(t / 3600)} h ${Math.round(t % 3600 / 60)} min` : `${Math.round(t / 60)} min`)(rides.reduce((s, r) => s + r.duration, 0))}</div></div>
@@ -341,6 +353,11 @@ function history() {
       ${rides.map(x => { const pb = x.routeId !== 'pure' && bestRide(x.routeId)?.id === x.id; return `<tr class="${pb ? 'pb' : ''}"><td>${new Date(x.date).toLocaleString('de-DE', { dateStyle: 'short', timeStyle: 'short' })}</td><td>${esc((routeName(x.routeId) || 'Gelöschte Strecke') + (x.routeId === 'pure' && x.workout ? ' · ' + x.workout : ''))}</td><td>${fmtTime(x.duration)}</td><td>${fmtKm(x.distance)} km</td><td>${fmtNum(x.gain)} hm</td><td>${x.avgPower} W</td><td>${fmtNum(x.distance / x.duration * 3.6, 1)}</td><td>${pb ? 'BESTZEIT' : x.complete ? '' : '<span style="color:var(--muted)">abgebrochen</span>'}</td><td style="white-space:nowrap"><button class="btn ghost small strava" data-id="${x.id}">Strava</button> <button class="btn ghost small share" data-id="${x.id}">Teilen</button> <button class="btn ghost small rdel" data-id="${x.id}" title="Fahrt löschen">✕</button></td></tr>`; }).join('')}
     </table>` : '<div class="empty">Noch keine Fahrten. Wähle eine Strecke und fahr los.</div>'}
   </section>`;
+  wireDashboard(main, { state, saveSettings, toast, rerender: history,
+    startTest: id => { state.settings.workout = id; saveSettings(); startRide(routeById('kueste60') ? 'kueste60' : 'demo'); },
+    deleteRides: async list => { const { deleteRideRemote } = await import('./account.js'); let n = 0;
+      for (const x of list) { try { await deleteRideRemote(x.id); await db.del('rides', x.id); n++; } catch (e) { toast('Server: ' + e.message); break; } }
+      await reload(); toast(`${n} ${n === 1 ? 'Fahrt' : 'Fahrten'} gelöscht`); } });
   main.querySelectorAll('.share').forEach(b => b.onclick = () => shareRide(rides.find(r => r.id === b.dataset.id)));
   main.querySelectorAll('.rdel').forEach(b => b.onclick = async () => { const x = rides.find(r => r.id === b.dataset.id); if (!x) return;
     if (!confirm(`Fahrt vom ${new Date(x.date).toLocaleString('de-DE', { dateStyle: 'short', timeStyle: 'short' })} (${fmtKm(x.distance)} km) endgültig löschen?`)) return;

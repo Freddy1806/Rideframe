@@ -8,7 +8,7 @@ const META = {
   rec30: { goal: 'erholung', hard: 1 }, z2_60: { goal: 'grundlage', hard: 2 }, z2_90: { goal: 'grundlage', hard: 2 },
   tempo2x15: { goal: 'grundlage', hard: 3 }, ss2x12: { goal: 'ftp', hard: 3 }, ss3x10: { goal: 'ftp', hard: 3 },
   thr2x20: { goal: 'ftp', hard: 4 }, over_under: { goal: 'ftp', hard: 4 }, vo2_4x4: { goal: 'berg', hard: 5 },
-  vo2_5x3: { goal: 'berg', hard: 5 }, pyramid: { goal: 'berg', hard: 4 }, sprints: { goal: 'sprint', hard: 4 }, ramp: { goal: 'test', hard: 5 },
+  vo2_5x3: { goal: 'berg', hard: 5 }, pyramid: { goal: 'berg', hard: 4 }, sprints: { goal: 'sprint', hard: 4 }, ramp: { goal: 'test', hard: 5 }, ftp20: { goal: 'test', hard: 5 },
 };
 const HARD = ['', 'locker', 'ruhig', 'mittel', 'hart', 'sehr hart'];
 

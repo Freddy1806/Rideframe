@@ -102,7 +102,7 @@ export class Group {
       const ids = new Set((m.list || []).map(x => x.id)); for (const id of this.riders.keys()) if (!ids.has(id)) this.riders.delete(id);
       this.onChange?.(this);
     } else if (m.t === 'route' && !this.host) { this.routeId = String(m.routeId); this.onChange?.(this); }
-    else if (m.t === 'start' && !this.host && !(this.me.d > 0 && !this.me.done)) this.onStart?.({ routeId: String(m.routeId), at: Number(m.at) || 0, d: Math.max(0, Number(m.d) || 0) });
+    else if (m.t === 'start' && !this.host && !(this.me.d > 0 && !this.me.done) && !(this._started && !this.me.done)) this._started = true, this.onStart?.({ routeId: String(m.routeId), at: Number(m.at) || 0, d: Math.max(0, Number(m.d) || 0) });
   }
 
   _clean(r) { // never trust what comes over the wire
