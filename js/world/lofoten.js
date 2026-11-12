@@ -691,32 +691,7 @@ export class WorldScene {
       if (s.village && vb - (s.from + L * s.village[0]) >= 250) {
         const a = s.from + L * s.village[0], b = vb;
         const mid = (a + b) / 2;
-        // market square in the middle of the village (land side)
-        const stalls = (A.by.stall || []).filter(e => !/verpflegungsstand/.test(e.file)); // the feed station belongs on the tops, not in the market
-        for (let k = 0; k < Math.min(5, stalls.length); k++) {
-          const d = mid - 18 + k * 8;
-          if (place(stalls[(k + Math.floor(r() * 9)) % stalls.length], d, ROAD_W + 4.2, { gap: 0.6 })) {
-            place(k % 2 ? byName('haendler') : byName('fischerin'), d + 1.2, ROAD_W + 2.4, { gap: 0.4, radK: 0.5, anim: k % 2 ? 'Rufen' : 'Stehen' });
-          }
-        }
-        const well = A.list.find(e => /marktbrunnen/.test(e.file)) || byName('brunnen');
-        if (place(well, mid + 26, ROAD_W + 6, { face: 'road', anim: 'Fliessen' })) place(byName('magd_eimer'), mid + 22.5, ROAD_W + 3.4, { gap: 0.4, radK: 0.4, anim: 'Stehen', face: 'road' }); // at the well a maid with her bucket
-        if (s === festSeg || r() < 0.4) place(byName(r() < 0.5 ? 'koenigsstandbild' : 'reiterstandbild') || byName('reiterstandbild'), mid + 46, ROAD_W + 7.5, { face: 'road' }); // the market square's statue: the king or the knight
-        place(byName('faesser_kisten'), mid - 25, ROAD_W + 4, { face: 'road' });
-        place(byName('marktstand_obst'), mid - 34, ROAD_W + 4.2, { face: 'road', gap: 0.6 }); // the MacBook's fruit stall
-        { const dw = byName('dorfbrunnen'); if (dw) for (let k = 0; k < 8 && !place(dw, a + 30 + k * 23, (k % 2 ? -1 : 1) * (ROAD_W + 4.5), { face: 'road', gap: 0.8, radK: 0.5 }); k++); } // a small pump well near the village edge: first free spot
-        for (let k = 0, cat = byName('katze'); cat && k < 2; k++) place(cat, a + (b - a) * (0.25 + 0.5 * r()), ROAD_W + 1.1, { face: r() * 6.28, anim: 'Schlafen', gap: 0.3, radK: 0.3 }); // cats asleep right at the kerb (further back they vanished in the grass)
-        place(byName('kutsche'), mid + 34, ROAD_W + 7.5, { face: 'along' }); // a little back from the asphalt: it filled the picture
-        place(byName('pferd'), mid + 41, ROAD_W + 7.5, { face: 'along', anim: 'Stehen' });
-        // musicians in a half circle behind the market
-        const mus = A.by.figure_music || [];
-        mus.forEach((e, k) => place(e, mid - 8 + k * 2.3, ROAD_W + 9 + (k % 2) * 0.8, { radK: 0.45, anim: 'Spielen', gap: 3 }));
-        place(byName('fahne_dorf'), mid - 30, ROAD_W + 3, { gap: 0.5 });
-        place(byName('fahne_wimpel'), mid + 30, ROAD_W + 3, { gap: 0.5 });
-        // shops around the square (the MacBook's bakery, smithy, inn, butcher; signs swing), the smith hammering outside
-        ['baeckerei', 'schmiede', 'gasthaus', 'metzgerei'].map(byName).forEach((e, k) => { if (!e) return;
-          const dd = mid + (k % 2 ? 1 : -1) * (58 + Math.floor(k / 2) * 24), h = place(e, dd, ROAD_W + 6 + Math.max(...e.size) / 2, { face: 'road', anim: 'Schwingen', gap: 3 });
-          if (h && /schmiede/.test(e.file)) place(byName('schmied'), dd + 3, ROAD_W + 3.2, { face: 'road', anim: 'Haemmern', radK: 0.4, gap: 0.8 }); });
+        /* theme first, then the shared market: the market shops at mid±58/82 had taken the gothic church's and the stage's spots (Mac mini: refused in every Kirchenfest) */
         // the village's theme (Freddy: town fair, wedding, a dark church fest, a funeral, a plain market), its music changes there
         const theme = s === festSeg ? 'stadtfest' : (villageNo === 0 && THEMES.includes(QS.get('theme')) ? QS.get('theme') : THEMES[(villageNo + themeOff) % 4]); villageNo++; /* each route starts the rotation elsewhere, so funeral and market appear too (max 3 villages per route); ?theme= forces the first */
         this.villageThemes.push({ a, b, theme });
@@ -737,6 +712,33 @@ export class WorldScene {
           proc.forEach((e, k) => { if (!e) return; const dd = mid - 30 - k * 2.6, off = ROAD_W + 2 + (k ? (k % 2) * 0.8 : 0.4);
             const o = place(e, dd, off, { anim: 'Gehen', overlap: true, gap: 0.5, radK: 0.3 }); if (o) o.userData.walk = { d: dd, off, v: 0.55, a, b }; });
         }
+        if (s === segs[0]) place(byName('dorfkirche'), b - 40, ROAD_W + 16, { face: Math.PI / 2 }); /* before the market too: it was refused as "besetzt" */
+        // market square in the middle of the village (land side)
+        const stalls = (A.by.stall || []).filter(e => !/verpflegungsstand/.test(e.file)); // the feed station belongs on the tops, not in the market
+        for (let k = 0; k < Math.min(5, stalls.length); k++) {
+          const d = mid - 18 + k * 8;
+          if (place(stalls[(k + Math.floor(r() * 9)) % stalls.length], d, ROAD_W + 4.2, { gap: 0.6 })) {
+            place(k % 2 ? byName('haendler') : byName('fischerin'), d + 1.2, ROAD_W + 2.4, { gap: 0.4, radK: 0.5, anim: k % 2 ? 'Rufen' : 'Stehen' });
+          }
+        }
+        const well = A.list.find(e => /marktbrunnen/.test(e.file)) || byName('brunnen');
+        if (place(well, mid + 26, ROAD_W + 6, { face: 'road', anim: 'Fliessen' })) place(byName('magd_eimer'), mid + 22.5, ROAD_W + 3.4, { gap: 0.4, radK: 0.4, anim: 'Stehen', face: 'road' }); // at the well a maid with her bucket
+        if (s === festSeg || r() < 0.4) place(byName(r() < 0.5 ? 'koenigsstandbild' : 'reiterstandbild') || byName('reiterstandbild'), mid + 46, ROAD_W + 7.5, { face: 'road' }); // the market square's statue: the king or the knight
+        place(byName('faesser_kisten'), mid - 25, ROAD_W + 4, { face: 'road' });
+        place(byName('marktstand_obst'), mid - 34, ROAD_W + 4.2, { face: 'road', gap: 0.6 }); // the MacBook's fruit stall
+        { const dw = byName('dorfbrunnen'); if (dw) for (let k = 0; k < 8 && !place(dw, a + 30 + k * 23, (k % 2 ? -1 : 1) * (ROAD_W + 4.5), { face: 'road', gap: 0.8, radK: 0.5 }); k++); } // a small pump well near the village edge: first free spot
+        for (let k = 0, cat = byName('katze'); cat && k < 2; k++) place(cat, a + (b - a) * (0.25 + 0.5 * r()), ROAD_W + 1.1, { face: r() * 6.28, anim: 'Schlafen', gap: 0.3, radK: 0.3 }); // cats asleep right at the kerb (further back they vanished in the grass)
+        place(byName('kutsche'), mid + 34, ROAD_W + 7.5, { face: 'along' }); // a little back from the asphalt: it filled the picture
+        place(byName('pferd'), mid + 41, ROAD_W + 7.5, { face: 'along', anim: 'Stehen' });
+        // musicians in a half circle behind the market
+        const mus = A.by.figure_music || [];
+        mus.forEach((e, k) => place(e, mid - 8 + k * 2.3, ROAD_W + 9 + (k % 2) * 0.8, { radK: 0.45, anim: 'Spielen', gap: 3 }));
+        place(byName('fahne_dorf'), mid - 30, ROAD_W + 4.4, { gap: 0.5 }); /* clear of the roadside walkers and the funeral procession (priest inside the mast) */
+        place(byName('fahne_wimpel'), mid + 30, ROAD_W + 4.4, { gap: 0.5 });
+        // shops around the square (the MacBook's bakery, smithy, inn, butcher; signs swing), the smith hammering outside
+        ['baeckerei', 'schmiede', 'gasthaus', 'metzgerei'].map(byName).forEach((e, k) => { if (!e) return;
+          const dd = mid + (k % 2 ? 1 : -1) * (58 + Math.floor(k / 2) * 24), h = place(e, dd, ROAD_W + 6 + Math.max(...e.size) / 2, { face: 'road', anim: 'Schwingen', gap: 3 });
+          if (h && /schmiede/.test(e.file)) place(byName('schmied'), dd + 3, ROAD_W + 3.2, { face: 'road', anim: 'Haemmern', radK: 0.4, gap: 0.8 }); });
         // houses on the land side, facing the road
         for (let d = a; d < b; d += 18 + r() * 22) {
           if (Math.abs(d - mid) < 22 || r() < 0.2) continue;
@@ -785,7 +787,6 @@ export class WorldScene {
           mus.forEach((e, k) => place(e, mid + 40 + k * 2.3, -(ROAD_W + 6 + (k % 2) * 0.8), { radK: 0.45, anim: 'Spielen', gap: 2 }));
         }
         place(byName('hjell'), a + 25, ROAD_W + 12, { face: 'along' });
-        if (s === segs[0]) place(byName('dorfkirche'), b - 40, ROAD_W + 16, { face: Math.PI / 2 });
       }
       // ---- open coast: a lone rorbu with pier, drying racks, sheep, puffins ----
       if (s.land === 'coast' && !s.village) {
@@ -1497,7 +1498,7 @@ export class WorldScene {
     this._weather(this.d, time);
     const cam = this._camera(this.d, dt);
     const above = this._fly ? this.camera.position.y - this.field.at(this.d).e : 0; // height over the road (the pass route runs at 1800 m: absolute height says nothing)
-    if (!QS.has('noshadow')) { const sk = 1 - smooth(25, 60, above); this.light.shadow.intensity = sk; const on = sk > 0.001; if (this.renderer.shadowMap.autoUpdate !== on) { this.renderer.shadowMap.autoUpdate = on; if (!on) this._blankShadow(); } } // in flight: fade shadows out via intensity (no shader recompile: toggling castShadow/shadowMap.enabled froze ~0.9 s on the Mac mini), and stop re-rendering the shadow map
+    if (!QS.has('noshadow')) { const sk = 1 - smooth(25, 60, above); this.light.shadow.intensity = sk; const on = sk > 0.001, sm = this.renderer.shadowMap; sm.autoUpdate = false; if (on !== this._shOn) { this._shOn = on; if (!on) this._blankShadow(); } if (on && (this.instant || this._shot || (this._shF = (this._shF || 0) + 1) % (this.quality >= 3 ? 1 : this.quality >= 1 ? 2 : 3) === 0)) sm.needsUpdate = true; } /* shadow map every 2nd frame (3rd on level 0): at midday shadows + mirror were the fill-rate cost (Mac mini: shadows off 38 -> 46-50 fps on pass/Stadtfest) */ // in flight: fade shadows out via intensity (no shader recompile: toggling castShadow/shadowMap.enabled froze ~0.9 s on the Mac mini), and stop re-rendering the shadow map
     { const wu = this.water.material.uniforms, hk = smooth(20, 60, above); // from high up (wizard flight) the sea is opaque and its sun glare calmer
       if (wu.alpha) wu.alpha.value = Math.max(lerp(0.86, 1, this.hellK || 0), lerp(0.86, 1, hk)); wu.uHigh.value = hk; if (hk > 0) wu.sunColor.value.multiplyScalar(1 - 0.6 * hk); }
     this._far(cam.x, cam.z); this.farCam.value.set(cam.x, cam.z);
