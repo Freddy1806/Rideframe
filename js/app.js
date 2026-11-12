@@ -306,7 +306,7 @@ function detail(id) {
   wireDashboard(main, { state, saveSettings, toast, rerender: history,
     startTest: id => { state.settings.workout = id; saveSettings(); startRide(routeById('kueste60') ? 'kueste60' : 'demo'); },
     deleteRides: async list => { const { deleteRideRemote } = await import('./account.js'); let n = 0;
-      for (const x of list) { try { await deleteRideRemote(x.id); await db.del('rides', x.id); n++; } catch (e) { toast('Server: ' + e.message); break; } }
+      for (const x of list) { try { await deleteRideRemote(x.id); await db.del('rides', x.id); db.kvDel('photo:' + x.id).catch(() => {}); n++; } catch (e) { toast('Server: ' + e.message); break; } }
       await reload(); toast(`${n} ${n === 1 ? 'Fahrt' : 'Fahrten'} gelöscht`); } });
   main.querySelectorAll('.share').forEach(b => b.onclick = () => shareRide(rides.find(r => r.id === b.dataset.id)));
   $('#ghostSel').onchange = e => { state.settings.ghost = e.target.value; saveSettings(); };
@@ -350,19 +350,26 @@ function history() {
     <h2 class="section">Alle Fahrten</h2>
     ${rides.length ? `<table class="table">
       <tr><th class="label">Datum</th><th class="label">Strecke</th><th class="label">Zeit</th><th class="label">Distanz</th><th class="label">Höhenmeter</th><th class="label">Ø Watt</th><th class="label">Ø km/h</th><th class="label"></th><th class="label"></th></tr>
-      ${rides.map(x => { const pb = x.routeId !== 'pure' && bestRide(x.routeId)?.id === x.id; return `<tr class="${pb ? 'pb' : ''}"><td>${new Date(x.date).toLocaleString('de-DE', { dateStyle: 'short', timeStyle: 'short' })}</td><td>${esc((routeName(x.routeId) || 'Gelöschte Strecke') + (x.routeId === 'pure' && x.workout ? ' · ' + x.workout : ''))}</td><td>${fmtTime(x.duration)}</td><td>${fmtKm(x.distance)} km</td><td>${fmtNum(x.gain)} hm</td><td>${x.avgPower} W</td><td>${fmtNum(x.distance / x.duration * 3.6, 1)}</td><td>${pb ? 'BESTZEIT' : x.complete ? '' : '<span style="color:var(--muted)">abgebrochen</span>'}</td><td style="white-space:nowrap"><button class="btn ghost small strava" data-id="${x.id}">Strava</button> <button class="btn ghost small share" data-id="${x.id}">Teilen</button> <button class="btn ghost small rdel" data-id="${x.id}" title="Fahrt löschen">✕</button></td></tr>`; }).join('')}
+      ${rides.map(x => { const pb = x.routeId !== 'pure' && bestRide(x.routeId)?.id === x.id; return `<tr class="${pb ? 'pb' : ''}"><td>${new Date(x.date).toLocaleString('de-DE', { dateStyle: 'short', timeStyle: 'short' })}</td><td>${esc((routeName(x.routeId) || 'Gelöschte Strecke') + (x.routeId === 'pure' && x.workout ? ' · ' + x.workout : ''))}</td><td>${fmtTime(x.duration)}</td><td>${fmtKm(x.distance)} km</td><td>${fmtNum(x.gain)} hm</td><td>${x.avgPower} W</td><td>${fmtNum(x.distance / x.duration * 3.6, 1)}</td><td>${pb ? 'BESTZEIT' : x.complete ? '' : '<span style="color:var(--muted)">abgebrochen</span>'}</td><td style="white-space:nowrap"><button class="btn ghost small strava" data-id="${x.id}">Strava</button> <button class="btn ghost small share" data-id="${x.id}">Teilen</button> <button class="btn ghost small rimg" data-id="${x.id}" title="Bild zur Fahrt machen">Bild</button> <button class="btn ghost small rdel" data-id="${x.id}" title="Fahrt löschen">✕</button></td></tr>`; }).join('')}
     </table>` : '<div class="empty">Noch keine Fahrten. Wähle eine Strecke und fahr los.</div>'}
   </section>`;
   wireDashboard(main, { state, saveSettings, toast, rerender: history,
     startTest: id => { state.settings.workout = id; saveSettings(); startRide(routeById('kueste60') ? 'kueste60' : 'demo'); },
     deleteRides: async list => { const { deleteRideRemote } = await import('./account.js'); let n = 0;
-      for (const x of list) { try { await deleteRideRemote(x.id); await db.del('rides', x.id); n++; } catch (e) { toast('Server: ' + e.message); break; } }
+      for (const x of list) { try { await deleteRideRemote(x.id); await db.del('rides', x.id); db.kvDel('photo:' + x.id).catch(() => {}); n++; } catch (e) { toast('Server: ' + e.message); break; } }
       await reload(); toast(`${n} ${n === 1 ? 'Fahrt' : 'Fahrten'} gelöscht`); } });
   main.querySelectorAll('.share').forEach(b => b.onclick = () => shareRide(rides.find(r => r.id === b.dataset.id)));
   main.querySelectorAll('.rdel').forEach(b => b.onclick = async () => { const x = rides.find(r => r.id === b.dataset.id); if (!x) return;
     if (!confirm(`Fahrt vom ${new Date(x.date).toLocaleString('de-DE', { dateStyle: 'short', timeStyle: 'short' })} (${fmtKm(x.distance)} km) endgültig löschen?`)) return;
     try { const { deleteRideRemote } = await import('./account.js'); await deleteRideRemote(x.id); } catch (e) { toast('Server: ' + e.message); return; }
-    await db.del('rides', x.id); await reload(); history(); toast('Fahrt gelöscht'); });
+    await db.del('rides', x.id); db.kvDel('photo:' + x.id).catch(() => {}); await reload(); history(); toast('Fahrt gelöscht'); });
+  main.querySelectorAll('.rimg').forEach(b => b.onclick = async () => { // share image later, also for older rides (then without photo: sky + route name)
+    const x = rides.find(r => r.id === b.dataset.id), r = x && routeById(x.routeId); if (!r?.track) return toast('Die Strecke dieser Fahrt gibt es nicht mehr.');
+    const t = b.textContent; b.disabled = true; b.textContent = '…';
+    try { const photo = await db.kvGet('photo:' + x.id).catch(() => null), { shareModal } = await import('./shareimg.js');
+      await shareModal({ rec: x, route: r, track: r.track, photo: photo || null, pose: null, pb: x.routeId !== 'pure' && bestRide(x.routeId)?.id === x.id }); }
+    catch (e) { toast('Bild ging nicht: ' + (e.message || e), 5000); }
+    b.disabled = false; b.textContent = t; });
   main.querySelectorAll('.strava').forEach(b => b.onclick = () => { const x = rides.find(r => r.id === b.dataset.id); if (x?.samples?.length) { const r = routeById(x.routeId), t = r?.track; stravaButton(b, x, routeName(x.routeId) || 'Fahrt', t?.ele ? d => eleAt(t, d) : null); } else toast('Diese Fahrt hat keine Messwerte.'); });
 }
 

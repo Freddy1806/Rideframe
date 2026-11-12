@@ -700,6 +700,8 @@ export class RideSession {
       if (this.photos.length > 6) this.photos.splice(this.photos.reduce((m, p, i, a) => p.y < a[m].y ? i : m, 0), 1);
     } catch {} finally { this._shotArm = 0; this._shooting = false; this.player._shot = null; }
   }
+  /** the ride's best photo stays on this device, so the share image can be made later from Fahrten & Rekorde (Freddy 12.11.) */
+  _keepPhoto(rec) { this.bestPhoto().then(u => u && db.kvSet('photo:' + rec.id, u)).catch(() => {}); }
   /** best photo for the share image (highest spot); takes one now when the ride had none */
   async bestPhoto() {
     if (!this.photos?.length && this.player?.snapshot) await this._takePhoto();
@@ -914,7 +916,7 @@ export class RideSession {
     const rec = this._rideRecord(full);
     if (this.keyPower) { rec.unsaved = true; return this._summary(rec, null, 'Mit den Pfeiltasten gefahren: nicht gespeichert'); }
     const prev = (await db.ridesFor(this.route.id)).filter(r => r.complete).sort((a, b) => a.duration - b.duration);
-    await db.put('rides', rec); import('./account.js').then(a => a.pushRide(rec));
+    await db.put('rides', rec); import('./account.js').then(a => a.pushRide(rec)); this._keepPhoto(rec);
     this._summary(rec, full ? prev : null, full ? '' : this.laps > 1 ? `${this.laps} Runden: ` + rec.laps.map((l, i) => `${i + 1}. ${fmtTime(l.t)}`).join(' · ') : 'Ab km ' + fmtKm(this.startD) + ' gestartet, zählt nicht als Bestzeit');
   }
 
@@ -1075,7 +1077,7 @@ export class RideSession {
     if (!save) return this._close(false);
     if (this.elapsed <= 30) { import('./app.js').then(m => m.toast('Unter 30 Sekunden, nicht gespeichert', 3500)); return this._close(false); }
     if (this.keyPower) { import('./app.js').then(m => m.toast('Mit den Pfeiltasten gefahren, nicht gespeichert', 3500)); return this._close(false); }
-    const rec = this._rideRecord(false); await db.put('rides', rec); import('./account.js').then(a => a.pushRide(rec));
+    const rec = this._rideRecord(false); await db.put('rides', rec); import('./account.js').then(a => a.pushRide(rec)); this._keepPhoto(rec);
     this.finished = true; this.q('#pauseOverlay')?.remove();
     this._summary(rec, null, 'Vorzeitig beendet, gespeichert');
   }

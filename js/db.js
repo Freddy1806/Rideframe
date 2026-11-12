@@ -47,6 +47,7 @@ export const db = {
   },
   async kvGet(key) { return tx('kv', 'readonly', s => req2p(s.get(key))); },
   async kvSet(key, value) { return tx('kv', 'readwrite', s => req2p(s.put(value, key))); },
+  async kvDel(key) { return tx('kv', 'readwrite', s => req2p(s.delete(key))); },
   async deleteRoute(id) {
     const route = await this.get('routes', id);
     if (route) for (const p of route.parts) await this.del('videos', p.videoId);
