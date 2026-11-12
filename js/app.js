@@ -114,7 +114,7 @@ function applyAccent() {
   document.documentElement.style.setProperty('--accent', ACCENTS[state.settings.accent] || ACCENTS.orange);
 }
 
-export function allRoutes() { return [...state.routes, ...Object.keys(BUILTIN).map(getBuiltin)]; }
+export function allRoutes() { return [...state.routes, ...Object.keys(BUILTIN).filter(id => id !== 'demo' || new URLSearchParams(location.search).has('demo')).map(getBuiltin)]; } /* Passo Demo hidden from the list (Freddy 12.11.); it stays as an internal fallback (routeById, ?view=ride default, ?demo shows it) */
 const routeName = id => id === 'pure' ? 'Pure (Handy)' : routeById(id)?.name;
 export function routeById(id) { return BUILTIN[id] ? getBuiltin(id) : state.routes.find(r => r.id === id); }
 export function ridesFor(id) { return state.rides.filter(r => r.routeId === id); }
