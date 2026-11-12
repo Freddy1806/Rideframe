@@ -168,7 +168,7 @@ function library() {
 const BOARD_SORT = { km: ['km', 'km'], hm: ['Hm', 'Höhenmeter'], pts: ['Punkte', 'Wette'] };
 async function showBoard() {
   if (!account()) return;
-  const { loadBoard } = await import('./account.js'), b = await loadBoard(), el = $('#board');
+  const { loadBoard } = await import('./account.js'), { faceImg, fillFaces, profileModal } = await import('./profiles.js'), b = await loadBoard(), el = $('#board');
   if (!b?.rows?.length || !el || !el.isConnected) return;
   const tot = r => r.pts ? r.pts.wizard + r.pts.king + r.pts.devil : 0;
   const draw = () => {
@@ -177,10 +177,12 @@ async function showBoard() {
     el.innerHTML = `<div class="board">
       <div class="board-head"><div class="label">Rangliste diese Woche</div>
         <div class="board-tabs">${Object.entries(BOARD_SORT).map(([id, [t]]) => `<button class="${id === k ? 'on' : ''}" data-k="${id}">${t}</button>`).join('')}</div></div>
-      <table><tbody>${rows.map((r, i) => `<tr class="${r.me ? 'me' : ''}"><td class="rank">${i + 1}</td><td class="nm">${esc(r.name)}</td>
+      <table><tbody>${rows.map((r, i) => `<tr class="${r.me ? 'me' : ''}" data-key="${esc(r.key || '')}" title="Profil ansehen"><td class="rank">${i + 1}</td><td class="nm"><span class="who">${faceImg(r.look)}${esc(r.name)}</span></td>
         <td>${fmtNum(r.km, 1)} km</td><td>${fmtNum(r.hm)} Hm</td><td class="dim">${r.days} ${r.days === 1 ? 'Tag' : 'Tage'}</td>
         <td class="pts">${r.pts ? `<span class="wz">${r.pts.wizard}</span><span class="kg">${r.pts.king}</span><span class="dv">${r.pts.devil}</span>` : '<span class="dim">–</span>'}</td></tr>`).join('')}</tbody></table></div>`;
     el.querySelectorAll('.board-tabs button').forEach(x => x.onclick = () => { state.settings.boardSort = x.dataset.k; saveSettings(); draw(); });
+    el.querySelectorAll('tr[data-key]').forEach(tr => tr.onclick = () => tr.dataset.key && profileModal(tr.dataset.key, routeName));
+    fillFaces(el);
   };
   el.hidden = false; draw();
 }
@@ -322,10 +324,14 @@ function history() {
     <h2 class="section">Alle Fahrten</h2>
     ${rides.length ? `<table class="table">
       <tr><th class="label">Datum</th><th class="label">Strecke</th><th class="label">Zeit</th><th class="label">Distanz</th><th class="label">Höhenmeter</th><th class="label">Ø Watt</th><th class="label">Ø km/h</th><th class="label"></th><th class="label"></th></tr>
-      ${rides.map(x => { const pb = x.routeId !== 'pure' && bestRide(x.routeId)?.id === x.id; return `<tr class="${pb ? 'pb' : ''}"><td>${new Date(x.date).toLocaleString('de-DE', { dateStyle: 'short', timeStyle: 'short' })}</td><td>${esc((routeName(x.routeId) || 'Gelöschte Strecke') + (x.routeId === 'pure' && x.workout ? ' · ' + x.workout : ''))}</td><td>${fmtTime(x.duration)}</td><td>${fmtKm(x.distance)} km</td><td>${fmtNum(x.gain)} hm</td><td>${x.avgPower} W</td><td>${fmtNum(x.distance / x.duration * 3.6, 1)}</td><td>${pb ? 'BESTZEIT' : x.complete ? '' : '<span style="color:var(--muted)">abgebrochen</span>'}</td><td style="white-space:nowrap"><button class="btn ghost small strava" data-id="${x.id}">Strava</button> <button class="btn ghost small share" data-id="${x.id}">Teilen</button></td></tr>`; }).join('')}
+      ${rides.map(x => { const pb = x.routeId !== 'pure' && bestRide(x.routeId)?.id === x.id; return `<tr class="${pb ? 'pb' : ''}"><td>${new Date(x.date).toLocaleString('de-DE', { dateStyle: 'short', timeStyle: 'short' })}</td><td>${esc((routeName(x.routeId) || 'Gelöschte Strecke') + (x.routeId === 'pure' && x.workout ? ' · ' + x.workout : ''))}</td><td>${fmtTime(x.duration)}</td><td>${fmtKm(x.distance)} km</td><td>${fmtNum(x.gain)} hm</td><td>${x.avgPower} W</td><td>${fmtNum(x.distance / x.duration * 3.6, 1)}</td><td>${pb ? 'BESTZEIT' : x.complete ? '' : '<span style="color:var(--muted)">abgebrochen</span>'}</td><td style="white-space:nowrap"><button class="btn ghost small strava" data-id="${x.id}">Strava</button> <button class="btn ghost small share" data-id="${x.id}">Teilen</button> <button class="btn ghost small rdel" data-id="${x.id}" title="Fahrt löschen">✕</button></td></tr>`; }).join('')}
     </table>` : '<div class="empty">Noch keine Fahrten. Wähle eine Strecke und fahr los.</div>'}
   </section>`;
   main.querySelectorAll('.share').forEach(b => b.onclick = () => shareRide(rides.find(r => r.id === b.dataset.id)));
+  main.querySelectorAll('.rdel').forEach(b => b.onclick = async () => { const x = rides.find(r => r.id === b.dataset.id); if (!x) return;
+    if (!confirm(`Fahrt vom ${new Date(x.date).toLocaleString('de-DE', { dateStyle: 'short', timeStyle: 'short' })} (${fmtKm(x.distance)} km) endgültig löschen?`)) return;
+    try { const { deleteRideRemote } = await import('./account.js'); await deleteRideRemote(x.id); } catch (e) { toast('Server: ' + e.message); return; }
+    await db.del('rides', x.id); await reload(); history(); toast('Fahrt gelöscht'); });
   main.querySelectorAll('.strava').forEach(b => b.onclick = () => { const x = rides.find(r => r.id === b.dataset.id); if (x?.samples?.length) { const r = routeById(x.routeId), t = r?.track; stravaButton(b, x, routeName(x.routeId) || 'Fahrt', t?.ele ? d => eleAt(t, d) : null); } else toast('Diese Fahrt hat keine Messwerte.'); });
 }
 

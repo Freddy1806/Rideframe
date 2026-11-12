@@ -1,7 +1,7 @@
 // Simple player accounts, served by serve.mjs under /api/account/* (only where RIDEFRAME is hosted, e.g. the Mac mini).
 // Name + password only (Freddy's wish: no email, no security standards beyond a hashed password). Names are unique (case-insensitive).
 // Stored in <data>/accounts.json; each account's rides in <data>/users/<id>/rides/<rideId>.json, settings (incl. the chosen rider) in settings.json.
-import { readFile, writeFile, mkdir, readdir, unlink, stat } from 'node:fs/promises';
+import { readFile, writeFile, mkdir, readdir, unlink, stat, rm } from 'node:fs/promises';
 import { randomBytes, scryptSync, timingSafeEqual } from 'node:crypto';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
@@ -34,6 +34,23 @@ const monday = (t = Date.now()) => { const d = new Date(t); d.setHours(0, 0, 0, 
 const weekKey = () => { const d = monday(); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`; };
 let boardCache = null, boardGen = 0; // { at, week, rows } – rebuilt at most every 30 s; boardGen counts changes so a slow rebuild never caches stale rows
 const sums = new Map(); /* file -> { m: mtime, date, km, hm } so a rebuild never re-parses big ride files */
+/** what the leaderboard and profiles need of a ride (never the samples) */
+const summary = (m, r) => ({ m, id: r?.id, date: +r?.date || 0, km: (+r?.distance || 0) / 1000, hm: +r?.gain || 0, demo: r?.routeId === 'demo', routeId: r?.routeId || '', routeName: r?.routeName || '', workout: r?.workout || '', dur: +r?.duration || 0, pw: +r?.avgPower || 0, complete: !!r?.complete });
+/** a player's profile for everyone on this host: look, totals, the last 40 rides */
+async function profile(u) {
+  const rd = join(userDir(u.id), 'rides'), rides = [];
+  for (const f of (await readdir(rd).catch(() => [])).filter(x => x.endsWith('.json'))) {
+    const fp = join(rd, f), st = await stat(fp).catch(() => null); if (!st) continue;
+    let c = sums.get(fp); if (!c || c.m !== st.mtimeMs) { c = summary(st.mtimeMs, await readJSON(fp, null)); sums.set(fp, c); }
+    if (!c.demo && c.date) rides.push(c);
+  }
+  rides.sort((a, b) => b.date - a.date);
+  const look = (await readJSON(join(userDir(u.id), 'settings.json'), null))?.settings?.look || null;
+  const tot = rides.reduce((t, r) => ({ km: t.km + r.km, hm: t.hm + r.hm, dur: t.dur + r.dur }), { km: 0, hm: 0, dur: 0 });
+  return { name: u.name, since: u.created || 0, look, count: rides.length, km: Math.round(tot.km * 10) / 10, hm: Math.round(tot.hm), dur: Math.round(tot.dur),
+    rides: rides.slice(0, 40).map(({ m, demo, ...r }) => ({ ...r, km: Math.round(r.km * 10) / 10, hm: Math.round(r.hm) })) };
+}
+
 /** weekly leaderboard of every account on this host: km, Hm, minutes, ride days and the story points of the wager */
 async function board(a) {
   const wk = weekKey();
@@ -44,12 +61,12 @@ async function board(a) {
     for (const f of (await readdir(rd).catch(() => [])).filter(x => x.endsWith('.json'))) {
       const fp = join(rd, f), st = await stat(fp).catch(() => null); if (!st || st.mtimeMs < since) continue; /* old files are never this week's rides */
       let c = sums.get(fp);
-      if (!c || c.m !== st.mtimeMs) { const r = await readJSON(fp, null); c = { m: st.mtimeMs, date: +r?.date || 0, km: (+r?.distance || 0) / 1000, hm: +r?.gain || 0, demo: r?.routeId === 'demo' }; sums.set(fp, c); }
+      if (!c || c.m !== st.mtimeMs) { const r = await readJSON(fp, null); c = summary(st.mtimeMs, r); sums.set(fp, c); }
       if (!(c.date >= since) || c.demo) continue;
       km += c.km; hm += c.hm; days.add(new Date(c.date).toDateString());
     }
-    const s = await readJSON(join(dir, 'story.json'), null), pts = s && s.week === wk ? s.pts : null;
-    rows.push({ name: u.name, key: u.name.toLowerCase(), km: Math.round(km * 10) / 10, hm: Math.round(hm), days: days.size, pts: pts ? { wizard: +pts.wizard || 0, king: +pts.king || 0, devil: +pts.devil || 0 } : null });
+    const s = await readJSON(join(dir, 'story.json'), null), pts = s && s.week === wk ? s.pts : null, look = (await readJSON(join(dir, 'settings.json'), null))?.settings?.look || null;
+    rows.push({ name: u.name, key: u.name.toLowerCase(), look, km: Math.round(km * 10) / 10, hm: Math.round(hm), days: days.size, pts: pts ? { wizard: +pts.wizard || 0, king: +pts.king || 0, devil: +pts.devil || 0 } : null });
   }
   rows.sort((x, y) => y.km - x.km || y.hm - x.hm);
   if (gen === boardGen) boardCache = { at: Date.now(), week: wk, rows }; return rows;
@@ -83,12 +100,19 @@ export async function accountsApi(req, res, path) {
     if (op === 'logout' && req.method === 'POST') return await withAcc(async a => { delete a.tokens[token]; await writeJSON(ACC, a); return send(res, 200, { ok: true }); });
     if (op === 'me') { const s = await readJSON(join(dir, 'settings.json'), null); return send(res, 200, { name: u.name, settings: s?.settings || null, settingsAt: s?.at || 0 }); }
     if (op === 'settings' && req.method === 'PUT') { const b = await body(req, 1e6); await writeJSON(join(dir, 'settings.json'), { settings: b.settings || {}, at: +b.at || Date.now() }); return send(res, 200, { ok: true }); }
-    if (op === 'board') { const rows = await board(a); return send(res, 200, { week: weekKey(), rows: rows.map(({ key, ...r }) => ({ ...r, me: key === t.key })) }); }
+    if (op === 'board') { const rows = await board(a); return send(res, 200, { week: weekKey(), rows: rows.map(r => ({ ...r, me: r.key === t.key })) }); }
     if (op === 'story' && req.method === 'PUT') { /* only this week; per figure the higher value wins, so a second device with an empty ledger never wipes the points */
       const b = await body(req, 1e4), wk = weekKey(); if (b.week !== wk) return send(res, 200, { ok: true, ignored: true });
       const f = join(dir, 'story.json'), old = await readJSON(f, null), op0 = old?.week === wk ? old.pts || {} : {}, pts = {};
       for (const k of ['wizard', 'king', 'devil']) pts[k] = Math.max(+op0[k] || 0, Math.min(1e5, +b.pts?.[k] || 0));
       await writeJSON(f, { week: wk, pts, at: Date.now() }); boardCache = null; boardGen++; return send(res, 200, { ok: true }); }
+    const pm = op.match(/^profile\/(.{1,40})$/);
+    if (pm) { const v = a.users[decodeURIComponent(pm[1]).toLowerCase()]; return v ? send(res, 200, await profile(v)) : send(res, 404, { error: 'Unbekannter Fahrer.' }); }
+    if (op === 'delete' && req.method === 'POST') { /* the whole account: login, settings, all rides, the wager points (wishes stay, they belong to everyone) */
+      const b = await body(req, 1e4);
+      if (!timingSafeEqual(Buffer.from(hash(String(b.password || ''), u.salt), 'hex'), Buffer.from(u.hash, 'hex'))) return send(res, 401, { error: 'Passwort stimmt nicht.', keep: true });
+      return await withAcc(async a => { delete a.users[t.key]; for (const [k, v] of Object.entries(a.tokens)) if (v.key === t.key) delete a.tokens[k];
+        await writeJSON(ACC, a); await rm(dir, { recursive: true, force: true }); boardCache = null; boardGen++; return send(res, 200, { ok: true }); }); }
     if (op === 'wishes' || op.startsWith('wishes/')) return await wishes(req, res, op, u);
     if (op === 'rides') { const f = await readdir(join(dir, 'rides')).catch(() => []); return send(res, 200, { ids: f.filter(x => x.endsWith('.json')).map(x => x.slice(0, -5)) }); }
     const m = op.match(/^rides\/([\w-]{1,64})$/);

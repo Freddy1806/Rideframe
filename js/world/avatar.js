@@ -210,3 +210,23 @@ export class AvatarPreview {
   }
   destroy() { this.dead = true; this.r.dispose(); }
 }
+
+/** small face portrait of a look (for the leaderboard and profiles): one shared offscreen renderer, cached per look */
+let PR = null; const PCACHE = new Map();
+export async function portrait(look, size = 128) {
+  const key = JSON.stringify(cleanLook(look || DEFAULT_LOOK)) + size; if (PCACHE.has(key)) return PCACHE.get(key);
+  const job = (async () => {
+    await loadRiderKit().catch(() => false);
+    if (!PR) { const c = document.createElement('canvas'); c.width = c.height = size;
+      const r = new THREE.WebGLRenderer({ canvas: c, antialias: true, alpha: true, preserveDrawingBuffer: true }); r.outputColorSpace = THREE.SRGBColorSpace;
+      const scene = new THREE.Scene(); scene.add(new THREE.HemisphereLight(0xffffff, 0x445566, 1.7)); const sun = new THREE.DirectionalLight(0xffffff, 2.2); sun.position.set(2, 3, 4); scene.add(sun);
+      PR = { c, r, scene, cam: new THREE.PerspectiveCamera(26, 1, 0.05, 20) }; }
+    PR.r.setSize(size, size, false);
+    const obj = makeRider(look); obj.userData.pedal?.(0); PR.scene.add(obj); obj.updateMatrixWorld(true);
+    const head = new THREE.Vector3(0, 1.6, 0.33).applyMatrix4(obj.matrixWorld); // the head sits at (0, 1.58, 0.33), the rider looks along +Z
+    PR.cam.position.copy(head).add(new THREE.Vector3(0.2, 0.05, 1.0)); PR.cam.lookAt(head.x, head.y - 0.02, head.z); PR.cam.updateProjectionMatrix();
+    PR.r.render(PR.scene, PR.cam); const url = PR.c.toDataURL('image/png'); PR.scene.remove(obj);
+    return url;
+  })().catch(() => null);
+  PCACHE.set(key, job); return job;
+}

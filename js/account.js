@@ -11,7 +11,7 @@ export const account = () => acc;
 async function api(path, opt = {}) {
   const r = await fetch('/api/account/' + path, { cache: 'no-store', ...opt, headers: { 'Content-Type': 'application/json', 'X-RF-Token': acc?.token || '', ...(opt.headers || {}) } });
   const j = await r.json().catch(() => ({}));
-  if (r.status === 401 && acc && path !== 'login') { acc = null; store(null); }
+  if (r.status === 401 && acc && path !== 'login' && !j.keep) { acc = null; store(null); }
   if (!r.ok) throw new Error(j.error || 'Server antwortet nicht');
   return j;
 }
@@ -49,6 +49,11 @@ export async function pushStory(L) { if (acc && L?.week) await api('story', { me
 /** weekly leaderboard of all accounts on this host (null without an account) */
 export async function loadBoard() { return acc ? api('board').catch(() => null) : null; }
 
+/** another player's profile (look, totals, last rides) */
+export const loadProfile = key => api('profile/' + encodeURIComponent(key));
+/** delete one of my rides on the host too (otherwise the next sync brings it back) */
+export async function deleteRideRemote(id) { if (acc) await api('rides/' + id, { method: 'DELETE' }); }
+
 /** wish list of all players on this host: list / add / +1 / delete / status (Freddy) */
 export const wishApi = {
   list: () => api('wishes'),
@@ -68,9 +73,19 @@ export function accountModal(state, onChange, { first = false } = {}) {
     if (acc) {
       m.innerHTML = `<div class="box"><div class="label">Konto</div><h2 class="display">${esc(acc.name)}</h2>
         <p>Deine Fahrten, Einstellungen und dein Fahrer werden auf dem Server gespeichert. Auf einem anderen Gerät einfach mit Name und Passwort anmelden.</p>
-        <div class="actions"><button class="btn ghost" id="aOut">Abmelden</button><button class="btn" id="aOk">Fertig</button></div></div>`;
+        <div id="aDelBox" hidden style="margin-top:12px"><p>Konto, alle Fahrten, Einstellungen und Wett-Punkte werden endgültig gelöscht, auf dem Server und auf diesem Gerät. Zur Sicherheit dein Passwort:</p>
+          <div class="field"><div style="min-width:90px">Passwort</div><input type="password" id="aDelPw" autocomplete="current-password"></div>
+          <p id="aErr" style="color:var(--accent);min-height:20px;margin-top:8px"></p></div>
+        <div class="actions"><button class="btn ghost" id="aDel" style="margin-right:auto">Konto löschen</button><button class="btn ghost" id="aOut">Abmelden</button><button class="btn" id="aOk">Fertig</button></div></div>`;
       document.body.append(m);
       m.querySelector('#aOk').onclick = close;
+      m.querySelector('#aDel').onclick = async () => {
+        const box = m.querySelector('#aDelBox'); if (box.hidden) { box.hidden = false; m.querySelector('#aDel').textContent = 'Endgültig löschen'; m.querySelector('#aDelPw').focus(); return; }
+        try { await api('delete', { method: 'POST', body: JSON.stringify({ password: m.querySelector('#aDelPw').value }) }); }
+        catch (e) { m.querySelector('#aErr').textContent = e.message; return; }
+        for (const r of await db.all('rides').catch(() => [])) await db.del('rides', r.id).catch(() => {});
+        await db.kvSet('story', null).catch(() => {}); acc = null; store(null); onChange?.(); close();
+      };
       m.querySelector('#aOut').onclick = async () => { await api('logout', { method: 'POST' }).catch(() => {}); acc = null; store(null); onChange?.(); close(); };
       return;
     }

@@ -515,3 +515,17 @@ input[type=number]::-webkit-inner-spin-button, input[type=number]::-webkit-outer
 .wpill{padding:1px 8px;border-radius:99px;background:rgba(255,255,255,.1)}
 .wpill.s-geplant,.wpill.s-inArbeit{background:rgba(255,120,40,.25)}
 .wpill.s-umgesetzt{background:rgba(80,200,120,.25)}
+/* faces on the leaderboard and in profiles */
+.board tr[data-key]{cursor:pointer}
+.board tr[data-key]:hover td{background:rgba(255,255,255,.05)}
+.who{display:inline-flex;align-items:center;gap:10px}
+img.face{width:34px;height:34px;border-radius:50%;background:rgba(255,255,255,.08);object-fit:cover;flex:none;opacity:0;transition:opacity .3s}
+img.face.on{opacity:1}
+img.face.big{width:96px;height:96px}
+.modal.profile .box{max-width:760px;width:calc(100vw - 32px);max-height:88vh;display:flex;flex-direction:column}
+.phead{display:flex;gap:18px;align-items:center}
+.pstats{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin:16px 0}
+.pstats div{background:rgba(255,255,255,.05);border-radius:12px;padding:10px 12px;display:flex;flex-direction:column}
+.pstats b{font-size:22px}.pstats span{font-size:12px;opacity:.7}
+.plist{overflow:auto;flex:1}
+@media (max-width:600px){.pstats{grid-template-columns:repeat(2,1fr)}}

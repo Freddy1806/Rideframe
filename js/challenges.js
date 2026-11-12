@@ -76,8 +76,7 @@ export class Challenges {
    *  the next one coming, the dare, the countdown, the race (target watts + your watts as a bar + metres to go) */
   card(d) {
     const x = this.active;
-    if (!x) { const n = this.list.find(y => y.state === 'wait' && y.at > d); if (!n || n.at - d > 5000) return null;
-      return { kind: 'next', name: n.c.name, left: n.at - LEAD - d }; }
+    if (!x) return null; /* no "next challenge in 3 km": who comes and when is always a surprise (Freddy 12.11.) */
     if (x.state === 'offer') return { kind: 'offer', name: x.c.name, W: x.W, D: x.D, t: 1 - x.t / OFFER_S, hold: Math.min(1, x.hold / 1.5) };
     if (x.state === 'count') return x.t0 == null ? { kind: 'count', name: x.c.name, W: x.W, D: x.D, left: Math.max(0, x.spot - d) }
       : { kind: 'count', name: x.c.name, W: x.W, D: x.D, n: Math.max(1, 3 - Math.floor(x.t - x.t0)) };

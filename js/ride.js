@@ -764,6 +764,7 @@ export class RideSession {
   }
   _key(e) {
     if (!this.running && !e.key.startsWith('Arrow')) return; // still loading / counting down: only the power keys
+    if (e.key === 'ArrowUp' || e.key === 'ArrowDown') this.keyPower = true; /* watts from the keyboard: fine for trying things out, never a saved ride (Freddy 12.11.) */
     if (e.key === 'ArrowUp') { this.manualPower = Math.min(1500, this.manualPower + (e.shiftKey ? 50 : 10)); e.preventDefault(); }
     else if (e.key === 'ArrowDown') { this.manualPower = Math.max(0, this.manualPower - (e.shiftKey ? 50 : 10)); e.preventDefault(); }
     else if (e.key === 'g' || e.key === 'G') this.toggleShift();
@@ -885,6 +886,7 @@ export class RideSession {
     this.finished = true; this.player.pause();
     const full = this.startD < 50; // only a ride from the start line is a time on this route
     const rec = this._rideRecord(full);
+    if (this.keyPower) { rec.unsaved = true; return this._summary(rec, null, 'Mit den Pfeiltasten gefahren: nicht gespeichert'); }
     const prev = (await db.ridesFor(this.route.id)).filter(r => r.complete).sort((a, b) => a.duration - b.duration);
     await db.put('rides', rec); import('./account.js').then(a => a.pushRide(rec));
     this._summary(rec, full ? prev : null, full ? '' : 'Ab km ' + fmtKm(this.startD) + ' gestartet, zählt nicht als Bestzeit');
@@ -920,7 +922,8 @@ export class RideSession {
       catch (err) { import('./app.js').then(m => m.toast('Bild ging nicht: ' + (err.message || err), 5000)); }
       b.disabled = false; b.textContent = t;
     };
-    o.querySelector('#fStrava').onclick = e => stravaButton(e.currentTarget, rec, this.route.name, d => eleAt(this.track, d), async () => {
+    if (rec.unsaved) o.querySelector('#fStrava')?.remove(); /* nothing to upload: the watts were typed, not ridden */
+    else o.querySelector('#fStrava').onclick = e => stravaButton(e.currentTarget, rec, this.route.name, d => eleAt(this.track, d), async () => {
       const [{ makeShareImage }, { account }] = await Promise.all([import('./shareimg.js'), import('./account.js')]);
       return makeShareImage({ ...(await shareOpts()), who: account()?.name || '' });
     });
@@ -929,6 +932,7 @@ export class RideSession {
   async _end(save) {
     if (!save) return this._close(false);
     if (this.elapsed <= 30) { import('./app.js').then(m => m.toast('Unter 30 Sekunden, nicht gespeichert', 3500)); return this._close(false); }
+    if (this.keyPower) { import('./app.js').then(m => m.toast('Mit den Pfeiltasten gefahren, nicht gespeichert', 3500)); return this._close(false); }
     const rec = this._rideRecord(false); await db.put('rides', rec); import('./account.js').then(a => a.pushRide(rec));
     this.finished = true; this.q('#pauseOverlay')?.remove();
     this._summary(rec, null, 'Vorzeitig beendet, gespeichert');
