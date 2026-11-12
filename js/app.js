@@ -149,7 +149,7 @@ function library() {
         <h1 class="display" style="margin-top:14px">Deine<br>Strecken</h1>
         <div class="meta">${routes.length} ${routes.length === 1 ? 'Strecke' : 'Strecken'} · ${fmtKm(routes.reduce((s, r) => s + r.track.length, 0))} km · ${fmtNum(routes.reduce((s, r) => s + r.track.gain, 0))} Höhenmeter</div>
       </div>
-      <div style="display:flex;gap:10px;flex-wrap:wrap;justify-content:flex-end"><button class="btn ghost" id="wishBtnLib" hidden>Wunschliste</button><button class="btn ghost" id="lookBtnLib">Mein Fahrer</button><button class="btn ghost" id="groupBtnLib">Zusammen fahren</button><button class="btn" id="uploadBtn">＋ Strecke hochladen</button></div>
+      <div class="libacts"><button class="btn ghost" id="wishBtnLib" hidden>Wunschliste</button><button class="btn ghost" id="lookBtnLib">Mein Fahrer</button><button class="btn ghost" id="groupBtnLib">Zusammen fahren</button><button class="btn" id="uploadBtn">＋ Strecke hochladen</button></div>
     </div>
     <div id="board" hidden></div>
     <div class="grid">
@@ -197,7 +197,7 @@ function card(r) {
   const t = r.track;
   return `<div class="card" data-id="${r.id}">
     <div class="thumb" style="background-image:url('${r.thumb || ''}')">
-      ${best ? `<span class="badge">PB ${fmtTime(best.duration)}</span>` : r.source === 'demo' ? '<span class="badge">Demo</span>' : ''}
+      ${best ? `<span class="badge">PB ${fmtTime(best.duration)}</span>` : ''}
       <span class="go"><svg width="18" height="18" viewBox="0 0 24 24"><path d="M7 4l12 8-12 8z" fill="currentColor"/></svg></span>
       ${profileSVG(t)}
     </div>

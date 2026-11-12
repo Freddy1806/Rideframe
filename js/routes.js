@@ -115,7 +115,7 @@ export const DESIGNED = {
   kurz: { name: 'Hafenrunde', place: 'Kurze Runde · 2 kurze Anstiege · Hafen und Dörfer', segs: SHORT_SEGMENTS, seed: 31 },
   fluss: { name: 'Flusstal', place: 'Am Fluss entlang · Ruderboote und Angler · 2 Anstiege', segs: RIVER_SEGMENTS, seed: 37 },
   pass: { name: 'Himmelsleiter', place: 'Königsetappe · 4 Serpentinen-Anstiege · Bergankunft am Pass', segs: PASS_SEGMENTS, seed: 41 },
-  lang: { name: 'Küstenklassiker', place: '100 km an der Küste · fast flach, fünf kurze Wellen · Strände, Fjord, Dörfer', segs: LONG_SEGMENTS, seed: 47 },
+  lang: { name: 'Küstenklassiker', place: 'Lange Küstenrunde · fast flach, fünf kurze Wellen · Strände, Fjord, Dörfer', segs: LONG_SEGMENTS, seed: 47 },
   kloster: { name: 'Nebelkloster', place: 'Bambus, Pagoden, Laternen · Mönche trainieren am Weg', segs: TEMPLE_SEGMENTS, seed: 43 },
 };
 export function makeBuiltinTrack(id) { const D = DESIGNED[id]; if (!D) return null; return { ...makeDesignedTrack(D.segs, { seed: D.seed, hairpin: 10 }), name: D.name }; } // wider hairpins: the legs stay ~64 m apart, no terrain between them pokes through

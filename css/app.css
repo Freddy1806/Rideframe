@@ -617,3 +617,11 @@ img.face.big{width:96px;height:96px}
 .ftptest .v small { font-size: 15px; color: var(--muted); margin-left: 4px; }
 .ftptest .dim { color: var(--muted); font-size: 13px; }
 @media (max-width: 900px) { .dgrid { grid-template-columns: 1fr; } }
+
+/* library head: the action buttons as an even 2 x 2 block, not ragged rows (design pass 12.11.) */
+.libacts { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; min-width: min(100%, 580px); }
+.libacts .btn { width: 100%; justify-content: center; white-space: nowrap; }
+.libacts .btn[hidden] { display: none; }
+@media (max-width: 700px) { .libacts { grid-template-columns: 1fr; } }
+/* long segmented choices (Wetter in Unreal: 7 options) wrap inside the card instead of running out of it */
+#ueWeather.seg, .seg.wrap { display: flex; flex-wrap: wrap; border-radius: 18px; flex-shrink: 1; max-width: 100%; }
