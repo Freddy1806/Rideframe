@@ -615,7 +615,7 @@ export class WorldScene {
 
   // ---- Blender assets along the route: villages with market, harbour life, animals, birds, whales, rock walls ----
   _placeAssets() {
-    const f = this.field, t = this.track, r = rng(9001), segs = t.segments || [], A = worldView(ASSETS, t.__mode ||= QS.get('mode') || 'voll'); /* world mode: without people / animals / villages */
+    const f = this.field, t = this.track, r = rng(9001), segs = t.segments || [], A = worldView(ASSETS, t.__mode ||= QS.get('mode') || 'voll', true); /* world mode: without people / animals / villages; placed as in the full world, then left out (below) */
     const taken = []; // footprint circles, so nothing overlaps
     const free = (x, z, rad) => taken.every(c => Math.hypot(c[0] - x, c[1] - z) > c[2] + rad);
     // world position at track distance d, lateral offset off (+ right, - left / sea side)
@@ -1076,7 +1076,11 @@ export class WorldScene {
     const ck = A.by.cockpit?.[0]; // handlebar, hoods and forearms in the rider's view, hung on the camera
     if (ck) { const { obj, mixer } = A.make(ck, 'Treten'); obj.traverse(c => { c.castShadow = false; c.layers.set(1); c.frustumCulled = false; });
       this.camera.add(obj); this.scene.add(this.camera); this.cockpit = obj; this.cockpitMixer = mixer; this._placeCockpit(); }
-    this.events = new Events(this, A); // villagers calling out, birds, carts: before batching, which drops the props list
+    if (A !== ASSETS) { // world mode: drop the copies of switched-off models (placed only so everything else stands where it does in the full world)
+      const off = o => o?.userData.off, gone = []; this.scene.traverse(o => { if (off(o)) gone.push(o); }); for (const o of gone) o.parent?.remove(o);
+      this.props = this.props.filter(o => !off(o)); this.birds = this.birds.filter(o => !off(o)); this.whales = this.whales.filter(w => !off(w.obj));
+      this.animated = this.animated.filter(o => !off(o)); this.mixers = this.mixers.filter(m => !off(m.obj)); }
+    this.events = new Events(this, worldView(ASSETS, t.__mode)); // villagers calling out, birds, carts: before batching, which drops the props list
     if (!/[?&]nobatch/.test(location.search)) this._batchP = this._batch(); // async in slices: one 10-25 s block froze weaker laptops ("Seite reagiert nicht")
     // the sea mirror renders the scene a second time (was the biggest GPU cost): only terrain, road and big buildings go in
     for (const o of this.props) if (o.userData.small || o.userData.mid || o.userData.walk || o.userData.circle || o.userData.whale || moving.has(o)) noMirror(o);

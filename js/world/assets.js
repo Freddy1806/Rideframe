@@ -68,6 +68,13 @@ export class Assets {
   get count() { return this.list.length; }
   /** the same models minus what a world mode switches off (see worldView) */
   only(pred) { const v = new Assets(this.list.filter(pred)); v.used = this.used; return v; }
+  /** the same models, but copies of the switched-off ones come out flagged `off` (no animation) and are dropped after placing:
+   *  every random draw and footprint stays as in the full world, so a mode only takes things away (Mac mini 12.11.: the village moved) */
+  hide(keep) { const v = Object.create(this), make = this.make.bind(this);
+    v.make = (e, anim, r = Math.random) => { if (keep(e)) return make(e, anim, r);
+      if (e.clips.length) for (let i = 0, n = e.category === 'laundry' ? e.clips.length : 1; i < n; i++) r(); // the same draws as make()
+      const obj = e.scene.clone(true); obj.userData.asset = e.file; obj.userData.off = true; return { obj, mixer: null }; };
+    return v; }
   has(cat) { return !!this.by[cat]?.length; }
   find(part) { // exact name first ('ritter' is not 'reiter_ritter'); a base name may hand out one of its loaded variants
     const base = this.list.find(e => e.file.split('/').pop().replace(/\.glb$/, '') === part && !e.variant_of);
@@ -103,13 +110,12 @@ const GLOW = new Set();
 // decided by category, not by words in the description: substrings hit "rOMAnisch", "wiKINGer", "dREHen", "ZIEGEl", "moosgrün", "TreBUCHEt" (Mac mini check of all 608 models)
 const WITH_PEOPLE = /^(reiter_ritter|personenkutsche|ruderboot|heissluftballon|zuschauer_tribuene)$/; // models outside figure_* with people on board
 export const WORLD_MODES = [['voll', 'Voll belebt'], ['ruhig', 'Ohne Menschen'], ['natur', 'Ohne Menschen und Tiere'], ['leer', 'Nur Landschaft']];
-export function worldView(A, mode) {
+export function worldView(A, mode, stable = false) { // stable: placement (see hide)
   if (!mode || mode === 'voll') return A;
   const cat = e => e.category || '', base = e => (e.file || '').split('/').pop().replace(/\.[a-z0-9]+$/i, '').toLowerCase();
   const keepCat = e => /^(cockpit|rider|fx)/.test(cat(e));
   const person = e => /^figure/.test(cat(e)) || WITH_PEOPLE.test(base(e)), animal = e => /^(animal|bird)/.test(cat(e));
   const nature = e => /^(tree|cliff|waterfall)/.test(cat(e)) || /^Fels:/.test(e.name || '');
-  if (mode === 'ruhig') return A.only(e => keepCat(e) || !person(e));
-  if (mode === 'natur') return A.only(e => keepCat(e) || (!person(e) && !animal(e)));
-  return A.only(e => keepCat(e) || (!person(e) && !animal(e) && nature(e)));
+  const keep = mode === 'ruhig' ? e => keepCat(e) || !person(e) : mode === 'natur' ? e => keepCat(e) || (!person(e) && !animal(e)) : e => keepCat(e) || (!person(e) && !animal(e) && nature(e));
+  return stable ? A.hide(keep) : A.only(keep);
 }
