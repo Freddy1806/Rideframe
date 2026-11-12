@@ -1113,10 +1113,10 @@ export class WorldScene {
     let t0 = performance.now(); const slice = async () => { if (performance.now() - t0 > (this._rideOn ? 4 : 30)) { await new Promise(r => setTimeout(r, 0)); t0 = performance.now(); } };
     const bakeCell = async cell => {
       const mine = [];
-      for (const b of cell.buckets.values()) {
+      for (const b of cell.buckets.values()) for (const part of chunks(b.items)) { // big buckets (cliffs, tree rows) in pieces: no single long bake or GPU upload (Küstenweg: one 1.5 s frame)
         await slice(); if (this._disposed) return false;
         const n = b.items.length, cx = b.x / n, cz = b.z / n;
-        const g = bake(b.items, cx, cz); if (!g) continue; g.computeBoundingSphere();
+        const g = bake(part, cx, cz); if (!g) continue; g.computeBoundingSphere();
         for (const k in g.attributes) g.attributes[k].onUpload(dropArray); g.index?.onUpload(dropArray); // once on the GPU the CPU copy goes
         const mesh = new THREE.Mesh(g, b.mat); mesh.position.set(cx, 0, cz); mesh.castShadow = b.cast; mesh.receiveShadow = b.recv;
         mesh.userData.small = b.cls === 'small'; mesh.userData.mid = b.cls !== 'big'; mesh.userData.rad = g.boundingSphere.radius;
@@ -1975,6 +1975,11 @@ function bake(items, ox, oz) {
 function legacyBake(items, ox, oz) {
   const list = items.map(([g, mw]) => { const c = g.clone(); c.boundingBox = c.boundingSphere = null; return c.applyMatrix4(mw); });
   const g = mergeGeometries(list, false); list.forEach(x => x.dispose()); if (g) g.translate(-ox, 0, -oz); return g;
+}
+function chunks(items, max = 60000) { // split a bucket's copies into groups of at most `max` vertices
+  const out = []; let cur = [], nv = 0;
+  for (const it of items) { const v = it[0].attributes.position.count; if (cur.length && nv + v > max) { out.push(cur); cur = []; nv = 0; } cur.push(it); nv += v; }
+  if (cur.length) out.push(cur); return out;
 }
 function dropArray() { this.array = null; } // three's documented way to free an attribute after its upload (bounds are computed before)
 function freeze(o) { o.updateMatrixWorld(true); o.traverse(c => { c.matrixAutoUpdate = false; }); o.matrixWorldAutoUpdate = false; }
