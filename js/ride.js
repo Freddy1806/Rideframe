@@ -675,6 +675,7 @@ export class RideSession {
     if (this._cg && (c !== this._cg.c || this.d >= this._cg.c.to)) { // over the top (or off the climb): the verdict
       const x = this._cg; this._cg = null; this._cgD = null;
       if (this.d >= x.c.to - 5) { const dur = this.elapsed - x.t, diff = dur - x.best.dur;
+        console.info("[ghost] verdict", x.c.name, dur.toFixed(1), diff.toFixed(1));
         this._flash(diff < 0 ? `👻 Neue Bestzeit am ${x.c.name}! ${fmtTime(dur)} (−${fmtTime(-diff)})` : `👻 ${x.c.name}: ${fmtTime(dur)} · ${fmtTime(diff)} hinter deinem Besten`); }
     }
     if (!c || this._cg || this._cgDone?.has(c) || this.d > c.from + 40) { if (this._cg) { const x = this._cg; this._cgD = x.best.off + distAtTime(x.best.samples, x.best.t0 + (this.elapsed - x.t)); } return; }
@@ -682,6 +683,7 @@ export class RideSession {
     this._cgRides ||= (this.state.rides || []).filter(r => r.routeId === this.route.id && r.samples?.length);
     const best = bestClimb(this._cgRides, c); if (!best) return;
     this._cg = { c, best, t: this.elapsed - Math.max(0, (this.d - c.from) / Math.max(1, this.v)) }; this._cgD = c.from;
+    console.info("[ghost] start", c.name, best.dur.toFixed(1));
     this._flash(`👻 Dein Bestes am ${c.name}: ${fmtTime(best.dur)} · schlag dich selbst!`);
   }
   _postureK() { // aero tuck: less drag; standing: more. Shown once per change.
