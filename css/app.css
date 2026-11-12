@@ -115,7 +115,7 @@ main { overflow-y: auto; min-width: 0; }
 .empty { color: var(--muted); padding: 22px 0; font-size: 14px; }
 
 /* ---------- forms / settings ---------- */
-.settings { display: grid; grid-template-columns: repeat(auto-fill, minmax(340px, 1fr)); gap: 20px; }
+.settings { display: grid; grid-template-columns: repeat(auto-fill, minmax(340px, 1fr)); gap: 20px; align-items: start; } /* cards keep their own height: stretched rows showed big empty boxes (Mac mini QA) */
 .panel { background: var(--ink-2); border: 1px solid var(--line); border-radius: var(--radius); padding: 24px; }
 .panel h3 { font-size: 18px; font-weight: 900; font-stretch: 118%; text-transform: uppercase; margin-bottom: 18px; }
 .field { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 12px 0; border-top: 1px solid var(--line); font-size: 14px; }
