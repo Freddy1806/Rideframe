@@ -1010,7 +1010,7 @@ export class WorldScene {
     { // the MacBook's ride furniture (each only once its model exists): feed stations on the tops, a grandstand at the finish, hot-air balloons over the land, signposts at the turn-offs
       const L = t.length, vs = byName('verpflegungsstand'), tb = byName('zuschauer_tribuene'), hb = byName('heissluftballon'), ws = byName('wegweiser');
       for (const s of segs) {
-        if ((s.interval || s.top) && vs) place(vs, s.to + 70, ROAD_W + 4 + Math.max(...vs.size) / 2, { face: 'road', gap: 1.5 });
+        if ((s.interval || s.top) && vs) place(vs, s.to + 110, -(ROAD_W + 2.5 + Math.min(vs.size[0], vs.size[2]) / 2), { face: 'road', gap: 1 }); // opposite the church/mill on the top, close to the asphalt so you see it
         if ((s.interval || s.top) && tb && r() < 0.5) place(tb, s.to - 120, -(ROAD_W + 5 + Math.min(tb.size[0], tb.size[2]) / 2), { face: 'road', gap: 2 });
         if (ws && s.from > 50) { const o = place(ws, s.from + 15, ROAD_W + 2.2, { face: 'road', gap: 0.5, radK: 0.3 });
           if (o) { const keep = 1 + Math.floor(r() * 3); o.traverse(c => { const m = /^pfeil_(\d)$/.exec(c.name); if (m) c.visible = +m[1] === keep || r() < 0.4; }); } }
