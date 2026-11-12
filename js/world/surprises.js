@@ -45,6 +45,9 @@ export class Surprises {
 
   update(_, dt, cam, d) {
     const time = this.clock = (this.clock || 0) + Math.min(dt, 0.1); // own clock: the preview's world time jumps when scrubbing
+    if (!this._warm) { this._warm = true; try { // shaders of the flight and hell visitors compiled up front: the bird flock's first frame took 0.4 s (Mac mini QA)
+      const tmp = new THREE.Scene(); for (const n of ['vogelschwarm_hoch', 'fledermaeuse', 'drache', 'gluehende_kohle_haufen', 'feuerdaemon', 'lava_fels', 'feuersaeule']) { const e = this.A.find(n); if (e) tmp.add(this.A.make(e, null).obj); }
+      if (tmp.children.length) this.w.renderer.compile(tmp, this.w.camera, this.w.scene); } catch (err) { console.warn('warm-up', err); } }
     const v = Math.max(2, this.w.speed || 6);
     if (time > this.next && this.f.tunnelNear?.(d, 20, 220)) this.next = time + 3; // nothing starts right before or inside a tunnel
     if (time > this.next && this.hold) this.next = time + 3; // a challenge is on: no other surprise steals the show
@@ -201,14 +204,15 @@ export class Surprises {
   }
   _bats() { // a swarm comes low out of the red haze ahead, flits over your head and is gone behind you
     const d0 = this.w.d + 120 + Math.random() * 60, side = Math.random() < 0.5 ? -1 : 1, wob = Math.random() * 6;
-    this._run('fledermaeuse', [['Fliegen', 1.3]], (t, v) => { if (t > 9) return null; const dd = d0 - (14 + v) * t;
-      return { d: dd, off: side * (2 + 6 * Math.sin(t * 1.3 + wob)), fly: 4.5 + 2.5 * Math.sin(t * 2.1 + wob), back: true }; }, { scale: 1 });
+    const e = this._run('fledermaeuse', [['Fliegen', 1.3]], (t, v) => { if (t > 9) return null; const dd = d0 - (14 + v) * t;
+      return { d: dd, off: side * (2 + 6 * Math.sin(t * 1.3 + wob)), fly: 4.5 + 2.5 * Math.sin(t * 2.1 + wob), back: true }; }, { scale: 1.3 });
+    if (e) e.obj.traverse(c => { if (c.isMesh && c.material && !Array.isArray(c.material) && !c.material.userData?.glow) { c.material = c.material.clone(); c.material.emissive?.setRGB(0.35, 0.06, 0.02); c.material.userData.glow = 1; } }); // a faint ember glow: black bats vanished against the dark red sky
   }
   _flock() { // wizard flight: a flock of birds keeps you company up there for a while, a little below and to the side
     const side = Math.random() < 0.5 ? -1 : 1, lag = 40 + Math.random() * 40;
     this._run('vogelschwarm_hoch', [['Fliegen', 1]], (t, v) => { if (t > 14 || !this.w._fly) return null;
       const dd = (this.w._fly.d ?? this.w.d) + lag - t * 6, above = this.w.camera.position.y - this.f.at(dd).e;
-      return { d: dd, off: side * (25 + 10 * Math.sin(t * 0.4)), fly: Math.max(20, above - 18 + 4 * Math.sin(t * 0.7)), back: true }; }, { scale: 2 });
+      return { d: dd, off: side * (25 + 10 * Math.sin(t * 0.4)), fly: Math.max(20, above - 18 + 4 * Math.sin(t * 0.7)) }; }, { scale: 2.6 }); // flies with you: faces ahead (back:true turned it round)
   }
   _dragon() { // comes head-on from far ahead, low over the road, fire in the middle of the pass, then climbs away behind you
     const d0 = this.w.d + 320, side = Math.random() < 0.5 ? -1 : 1; let fired = false;
