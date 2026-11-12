@@ -1112,10 +1112,8 @@ export class WorldScene {
       const mine = [];
       for (const b of cell.buckets.values()) {
         if (performance.now() - t0 > (this._rideOn ? 5 : 30)) { await new Promise(r => setTimeout(r, 0)); t0 = performance.now(); if (this._disposed) return nearRes?.(); } // behind the loading card in big slices, while riding only 5 ms per frame
-        const list = b.items.map(([g, mw]) => { const c = g.clone(); c.boundingBox = c.boundingSphere = null; return c.applyMatrix4(mw); }); b.items = null; /* no bounds on the copies: applyMatrix4 would recompute them for every single copy (12 % of a frame on a slow laptop) */
-        const cx = b.x / list.length, cz = b.z / list.length; nb++;
-        const g = mergeGeometries(list, false); list.forEach(x => x.dispose()); if (!g) continue;
-        g.translate(-cx, 0, -cz); g.computeBoundingSphere();
+        const n = b.items.length, cx = b.x / n, cz = b.z / n; nb++;
+        const g = bake(b.items, cx, cz); b.items = null; if (!g) continue; g.computeBoundingSphere();
         const mesh = new THREE.Mesh(g, b.mat); mesh.position.set(cx, 0, cz); mesh.castShadow = b.cast; mesh.receiveShadow = b.recv;
         mesh.userData.small = b.cls === 'small'; mesh.userData.mid = b.cls !== 'big'; mesh.userData.rad = g.boundingSphere.radius;
         mesh.userData.near = b.cls === 'near'; mesh.userData.far = b.cls === 'far';
@@ -1125,6 +1123,7 @@ export class WorldScene {
       // swap this cell in one go (never the props and their batched copies both drawn); the culling loop sees the new meshes at once
       for (const o of cell.objs) this.scene.remove(o);
       for (const m of mine) { this.scene.add(m); this.props.push(m); added.push(m); }
+      cell.objs = cell.buckets = null; // nothing of a finished cell stays referenced
     }
     nearRes?.();
     console.info(`RIDEFRAME Batching fertig: ${nb} Gruppen, ${cells.size} Zellen, ${Math.round(performance.now() - this._bt0)} ms`);
@@ -1926,6 +1925,40 @@ function windStreaks(n = 90) {
   return o;
 }
 function noMirror(o) { o.traverse(c => c.layers.set(1)); }
+// one merged geometry straight into its final arrays: no clone per copy and no second copy in mergeGeometries (the old way
+// made ~3x the bucket's size in garbage; with batching running while riding that pushed the heap to 2-2.7 GB and gave 300 ms GC stalls)
+const _m3 = new THREE.Matrix3(), _bv = new THREE.Vector3();
+function bake(items, ox, oz) {
+  const g0 = items[0][0];
+  if (Object.keys(g0.morphAttributes).length) return null;
+  for (const [g] of items) for (const k in g.attributes) { const a = g.attributes[k]; if (a.isInterleavedBufferAttribute || !ArrayBuffer.isView(a.array)) return legacyBake(items, ox, oz); }
+  let nv = 0, ni = 0; for (const [g] of items) { nv += g.attributes.position.count; if (g.index) ni += g.index.count; }
+  const out = new THREE.BufferGeometry();
+  for (const k in g0.attributes) {
+    const a0 = g0.attributes[k], sz = a0.itemSize, arr = new a0.array.constructor(nv * sz); let o = 0;
+    const kind = k === 'position' ? 1 : k === 'normal' ? 2 : k === 'tangent' ? 3 : 0;
+    for (const [g, mw] of items) {
+      const a = g.attributes[k], c = a.count, src = a.array;
+      if (!kind || a.normalized || !(src instanceof Float32Array)) { arr.set(src.subarray(0, c * sz), o); o += c * sz; continue; }
+      const e = mw.elements; if (kind !== 1) _m3.getNormalMatrix(mw);
+      for (let i = 0; i < c; i++, o += sz) {
+        const j = i * sz, x = src[j], y = src[j + 1], z = src[j + 2];
+        if (kind === 1) { arr[o] = e[0] * x + e[4] * y + e[8] * z + e[12] - ox; arr[o + 1] = e[1] * x + e[5] * y + e[9] * z + e[13]; arr[o + 2] = e[2] * x + e[6] * y + e[10] * z + e[14] - oz; }
+        else { _bv.set(x, y, z); if (kind === 2) _bv.applyMatrix3(_m3).normalize(); else _bv.transformDirection(mw); arr[o] = _bv.x; arr[o + 1] = _bv.y; arr[o + 2] = _bv.z; }
+        for (let t = 3; t < sz; t++) arr[o + t] = src[j + t]; // tangent w, position w
+      }
+    }
+    out.setAttribute(k, new THREE.BufferAttribute(arr, sz, a0.normalized));
+  }
+  if (g0.index) { const idx = nv > 65535 ? new Uint32Array(ni) : new Uint16Array(ni); let o = 0, base = 0;
+    for (const [g] of items) { const s = g.index.array, c = g.index.count; for (let i = 0; i < c; i++) idx[o++] = s[i] + base; base += g.attributes.position.count; }
+    out.setIndex(new THREE.BufferAttribute(idx, 1)); }
+  return out;
+}
+function legacyBake(items, ox, oz) {
+  const list = items.map(([g, mw]) => { const c = g.clone(); c.boundingBox = c.boundingSphere = null; return c.applyMatrix4(mw); });
+  const g = mergeGeometries(list, false); list.forEach(x => x.dispose()); if (g) g.translate(-ox, 0, -oz); return g;
+}
 function freeze(o) { o.updateMatrixWorld(true); o.traverse(c => { c.matrixAutoUpdate = false; }); o.matrixWorldAutoUpdate = false; }
 
 // ---- rain: one or two showers per ride at random spots, 4-9 km long (~10-20 min), heavier in the middle ----
