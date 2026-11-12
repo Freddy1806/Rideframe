@@ -644,6 +644,7 @@ export class WorldScene {
       else { // lowest ground under the footprint, so nothing floats
         const y0 = f.height(q.x, q.z), k = Math.max(rad * 0.6, 0.8); let lo = y0, hi = y0;
         for (const [a, b] of [[k, 0], [-k, 0], [0, k], [0, -k]]) { const h = f.height(q.x + a, q.z + b); lo = Math.min(lo, h); hi = Math.max(hi, h); }
+        if (rad > 4) for (const [a, b] of [[1, 1], [1, -1], [-1, 1], [-1, -1], [1.3, 0], [-1.3, 0], [0, 1.3], [0, -1.3]]) { const h = f.height(q.x + a * rad * 0.62, q.z + b * rad * 0.62); lo = Math.min(lo, h); hi = Math.max(hi, h); } /* big buildings: corners too (Freddy: church floating) */
         // farm animals, hay and yard things need level ground (Mac mini QA: cows "stacked" on a cliff, a haystack hanging over a snow slope)
         if ((o.flat ?? (/^animal_land/.test(e.category || '') || /heuhaufen|schubkarre|holzstapel|viehtraenke|waescheleine|katze|dorfbrunnen/.test(e.file))) && hi - lo > Math.max(1.2, k * 0.9)) return null;
         y = o.ground === 'centre' ? Math.min(y0 - 0.3, lo * 0.7 + y0 * 0.3 - 0.15) : rad < 1.5 ? Math.max(lo, y0 - 0.4) : lo; // 'centre': big buildings on a slope sit on their middle, not sunk to the lowest corner // lowest ground under the footprint, so nothing floats; small figures never sink into a steep bank (anglers were buried 5-10 m)
@@ -651,6 +652,10 @@ export class WorldScene {
       }
       const { obj, mixer } = A.make(e, o.anim, r);
       obj.position.set(q.x, y, q.z); obj.rotation.y = ang; obj.userData.small = Math.max(...e.size) < 3; obj.userData.mid = Math.max(...e.size) < 9; if (e.category.startsWith('figure')) { obj.userData.person = true; obj.userData.h = e.size[1]; } if (e.category === 'figure_music') obj.userData.musician = true; if (e.file.includes('schaf')) obj.userData.sheep = true; if (Array.isArray(o.scale)) obj.scale.set(...o.scale); else if (o.scale) obj.scale.setScalar(o.scale);
+      if (!o.water && rad > 4 && /^house|^church|^mill/.test(e.category || '') && typeof y === 'number') { /* stone plinth under big buildings on a slope: no gap under the walls */
+        const sc = obj.scale.x || 1, dep = 4 + rad * 0.3, pl = new THREE.Mesh(PLINTH_GEO, PLINTH_MAT);
+        pl.scale.set(e.size[0] * sc * 0.94, dep, e.size[2] * sc * 0.94); pl.position.set(q.x, y - dep / 2 + 0.12, q.z); pl.rotation.y = ang;
+        pl.receiveShadow = true; this.scene.add(pl); this.props.push(pl); }
       this.scene.add(obj); taken.push([q.x, q.z, rad]);
       this.props.push(obj); if (mixer) { mixer.obj = obj; this.mixers.push(mixer); }
       obj.traverse(c => { if (c.userData.millWheel) this.wheels.push(c); });
@@ -1624,6 +1629,7 @@ export const FOV_NORMAL = 62;
 const ENV_I = 0.55; // sky image light: less blue cast on meadows than before (0.95)
 const F_CLEAR = new THREE.Color(0xbfc6cd), F_GREY = new THREE.Color(0xb4b9c2);
 const WS_HIGH = new THREE.Color(0xffb27a), WS_LOW = new THREE.Color(0xff8a52);
+const PLINTH_GEO = new THREE.BoxGeometry(1, 1, 1), PLINTH_MAT = new THREE.MeshStandardMaterial({ color: 0x77736c, roughness: 0.95 });
 const WEEK_TINT = { wizard: { l: new THREE.Color(0xa8c4ff), h: new THREE.Color(0x88a8e8), f: new THREE.Color(0x9fb6dc) }, king: { l: new THREE.Color(0xffc860), h: new THREE.Color(0xe0c070), f: new THREE.Color(0xe0c890) }, devil: { l: new THREE.Color(0xff7040), h: new THREE.Color(0xd07860), f: new THREE.Color(0xd89a88) } };
 const H_BOLT = new THREE.Color(0xd8ccff), F_HELL = new THREE.Color(0x5a1c10), L_HELL = new THREE.Color(0xff6a2a), H_HELL = new THREE.Color(0x8a2a14), WC_HELL = new THREE.Color(0xe04a08);
 const WC_CLEAR = new THREE.Color(0x0b3448), WC_GREY = new THREE.Color(0x26323a); // sea body colour: clear vs. overcast
