@@ -628,8 +628,11 @@ export class WorldScene {
       let y;
       if (o.water) y = o.y ?? 0;
       else { // lowest ground under the footprint, so nothing floats
-        y = f.height(q.x, q.z); const k = rad * 0.6;
-        for (const [a, b] of [[k, 0], [-k, 0], [0, k], [0, -k]]) y = Math.min(y, f.height(q.x + a, q.z + b));
+        const y0 = f.height(q.x, q.z), k = Math.max(rad * 0.6, 0.8); let lo = y0, hi = y0;
+        for (const [a, b] of [[k, 0], [-k, 0], [0, k], [0, -k]]) { const h = f.height(q.x + a, q.z + b); lo = Math.min(lo, h); hi = Math.max(hi, h); }
+        // farm animals, hay and yard things need level ground (Mac mini QA: cows "stacked" on a cliff, a haystack hanging over a snow slope)
+        if ((o.flat ?? (/^animal_land/.test(e.category || '') || /heuhaufen|schubkarre|holzstapel|viehtraenke|waescheleine|katze|dorfbrunnen/.test(e.file))) && hi - lo > Math.max(1.2, k * 0.9)) return null;
+        y = rad < 1.5 ? Math.max(lo, y0 - 0.4) : lo; // lowest ground under the footprint, so nothing floats; small figures never sink into a steep bank (anglers were buried 5-10 m)
         y += o.dy || 0;
       }
       const { obj, mixer } = A.make(e, o.anim, r);
@@ -1000,7 +1003,7 @@ export class WorldScene {
       for (const [n, dd, off] of [['katapult', -55, 16], ['tribok', 50, 18], ['leiter', 5, 26], ['rammbock', -12, 24], ['zelt', -70, -12], ['palisade', -80, -10], ['banner', -40, 8], ['banner', 40, 8]]) {
         const e = byName(n); if (e) place(e, d0 + dd, off, { face: face(d0 + dd, off), gap: 1 }); }
     }
-    { const bn = byName('rideframe_banner'); if (bn) for (const sd of [1, -1]) place(bn, 6 + (sd > 0 ? 0 : 4), sd * (ROAD_W + 3.8), { face: 'road', anim: 'Wehen', gap: 0.5, radK: 0.3, overlap: true }); } // RIDEFRAME banners at the start
+    { const bn = byName('rideframe_banner'); if (bn) for (const sd of [1, -1]) place(bn, 6 + (sd > 0 ? 0 : 4), sd * (ROAD_W + (sd > 0 ? 2.8 : 3.8)), { face: 'road', rot: Math.PI, anim: 'Wehen', gap: 0.5, radK: 0.3, overlap: true }); } // RIDEFRAME banners at the start
     this._placeLegacyTops(segs);
     // everything that never moves: matrices once, then skipped by three's per-frame scene-graph update (was ~30 % CPU)
     const moving = new Set([...this.mixers.map(m => m.obj), ...this.birds, ...this.whales.map(w => w.obj), ...this.animated]);
