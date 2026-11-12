@@ -403,7 +403,7 @@ export class WorldScene {
     // guard rail on the sea side of cliffs and on the outside of hairpins
     const posts = [];
     for (let i = i0; i < i1; i += SUB) {
-      const cl = f.cliff[i] > 0.5 || f.edge?.[i] > 0.5, turn = i >= SUB && i < n - SUB ? Math.atan2(f.tx[i - SUB] * f.tz[i + SUB] - f.tz[i - SUB] * f.tx[i + SUB], f.tx[i - SUB] * f.tx[i + SUB] + f.tz[i - SUB] * f.tz[i + SUB]) / 2 : 0;
+      const cl = f.cliff[i] > 0.5, turn = i >= SUB && i < n - SUB ? Math.atan2(f.tx[i - SUB] * f.tz[i + SUB] - f.tz[i - SUB] * f.tx[i + SUB], f.tx[i - SUB] * f.tx[i + SUB] + f.tz[i - SUB] * f.tz[i + SUB]) / 2 : 0;
       if (cl || Math.abs(turn) > 0.12) {
         const side = cl ? -1 : -Math.sign(turn), rx = -f.tz[i], rz = f.tx[i];
         posts.push([f.x[i] + rx * (ROAD_W + 0.6) * side, f.e[i], f.z[i] + rz * (ROAD_W + 0.6) * side, Math.atan2(f.tx[i], f.tz[i]), i, side]);
