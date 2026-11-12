@@ -143,7 +143,7 @@ export class Sound {
       const db = this._src(this.buf.crackle, false, rnd(1, 1.4)), hp = this._filter('highpass', 1200), dg = c.createGain(); // falling stones
       dg.gain.setValueAtTime(0.0001, t); dg.gain.linearRampToValueAtTime(vol * (0.9 - far * 0.6), t + 0.15); dg.gain.linearRampToValueAtTime(0.0001, t + 1.4 * big);
       db.connect(hp).connect(dg).connect(out); db.start(t + 0.08, rnd(0, 1.5)); db.stop(t + 1.5 * big);
-    } else if (name === 'thunder') { this._thunder(t, vol, out, far);
+    } else if (name === 'thunder') { this._thunder(t, vol * 1.25, out, far, true); /* Freddy: no lightning crack, only the rolling thunder */
     } else if (name === 'quake') { // the earth tears open: a deep crack, splitting rock, a long groan from below
       this._thunder(t, vol, out, 0.2);
       for (let k = 0; k < 10; k++) { const dt = rnd(0.05, 2.8); this._hit(t + dt, vol * rnd(0.5, 0.95) * (1 - dt / 4), out); }
@@ -157,9 +157,10 @@ export class Sound {
       for (let k = 0; k < 7; k++) { const dt = rnd(0.1, 3.5); this._hit(t + dt, vol * rnd(0.4, 0.8) * (1 - dt / 5), out); }
     }
   }
-  _thunder(t, vol, out, far) { // a sharp crack (close strikes) rolling into a long, low rumble
-    const c = this.ctx, crack = this._src(this.buf.white, true, rnd(0.9, 1.2)), hp = this._filter('highpass', 900 + 1800 * (1 - far)), cg = c.createGain();
-    this._env(cg, t, 0.004, vol * (0.9 - 0.7 * far), 0.35); crack.connect(hp).connect(cg).connect(out); crack.start(t, rnd(0, 1)); crack.stop(t + 0.5);
+  _thunder(t, vol, out, far, noCrack = false) { // a sharp crack (close strikes) rolling into a long, low rumble
+    const c = this.ctx;
+    if (!noCrack) { const crack = this._src(this.buf.white, true, rnd(0.9, 1.2)), hp = this._filter('highpass', 900 + 1800 * (1 - far)), cg = c.createGain();
+    this._env(cg, t, 0.004, vol * (0.9 - 0.7 * far), 0.35); crack.connect(hp).connect(cg).connect(out); crack.start(t, rnd(0, 1)); crack.stop(t + 0.5); }
     const dur = rnd(3.5, 6), r = this._src(this.buf.brown, true), lp = this._filter('lowpass', 160 + 260 * (1 - far), 0.8), g = c.createGain();
     g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(vol * 1.4, t + 0.12 + far * 0.4); g.gain.setTargetAtTime(vol * 0.5, t + 0.8, 0.9); g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
     const lfo = c.createOscillator(), lg = c.createGain(); lfo.frequency.value = rnd(2.5, 5); lg.gain.value = vol * 0.45; lfo.connect(lg).connect(g.gain);
