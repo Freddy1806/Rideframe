@@ -32,7 +32,7 @@ export async function stravaUpload(rec, name, eleAt, onState = () => {}, imageUr
   const km = (rec.distance / 1000).toFixed(1).replace('.', ',');
   const r = await fetch('/api/strava/upload', { method: 'POST', headers: { ...hdr(), 'Content-Type': 'application/json' },
     body: JSON.stringify({ tcx: toTCX(rec, name, eleAt), name: `RIDEFRAME · ${name}`, external_id: 'rideframe-' + rec.id,
-      description: `${km} km · ${rec.gain} hm · Ø ${rec.avgPower} W\nGefahren in RIDEFRAME (Indoor, virtuelle Strecke).${imageUrl ? '\n📸 Bild zur Fahrt: ' + imageUrl : ''}` }) });
+      description: `${km} km · ${rec.gain} hm · Ø ${rec.avgPower} W\nGefahren in RIDEFRAME (Indoor, virtuelle Strecke).` /* no image link in the description (Freddy 12.11.: it exposed the Mac mini address) */ }) });
   const j = await r.json().catch(() => ({}));
   if (!r.ok) throw new Error(j.error || 'Upload fehlgeschlagen');
   onState('Strava verarbeitet die Fahrt …');
