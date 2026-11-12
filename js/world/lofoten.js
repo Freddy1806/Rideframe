@@ -951,7 +951,7 @@ export class WorldScene {
     if (cliffs.length) for (let d = 300; d < t.length - 100; d += 140 + r() * 120) {
       for (const side of [1, -1]) {
         // only into slopes that keep rising behind (a real mountainside), never as a free-standing slab
-        const p = f.at(d), q1 = spot(d, side * 34), q2 = spot(d, side * 70);
+        const ms = segAt(d).seaSide === 1 ? -side : side, p = f.at(d), q1 = spot(d, ms * 34), q2 = spot(d, ms * 70); // mirrored like place()
         if (f.height(q1.x, q1.z) - p.e < 18 || f.height(q2.x, q2.z) - p.e < 40) continue;
         const k = 0.75 + r() * 0.3; // narrower and much deeper than modelled, so the back disappears in the hill
         const o = place(cliffs[Math.floor(r() * cliffs.length)], d, side * (36 + r() * 10), { face: 'road', dy: -7, radK: 0.45, gap: 20, scale: [k * 0.75, k, k * 2.4] });
@@ -965,7 +965,7 @@ export class WorldScene {
     // the asphalt on the land side, only where the ground rises anyway, never in a village
     if (cliffs.length && !QS.has('nocut')) for (let d = 900 + r() * 800; d < t.length - 300; d += 1800 + r() * 1600) {
       const sg = segAt(d); if (sg.village || sg.temple) continue;
-      const side = sg.land === 'coast' || sg.land === 'river' || sg.land === 'cliff' ? 1 : (r() < 0.5 ? -1 : 1), p = f.at(d), q = spot(d, side * 22);
+      const side = sg.land === 'coast' || sg.land === 'river' || sg.land === 'cliff' ? 1 : (r() < 0.5 ? -1 : 1), p = f.at(d), q = spot(d, (sg.seaSide === 1 ? -side : side) * 22); // place() mirrors on sea-right roads: test the side it will really use
       if (f.height(q.x, q.z) - p.e < 5) continue;
       const e = cliffs[Math.floor(r() * cliffs.length)], k = 0.42 + r() * 0.18, R = Math.max(...e.size) / 2 * k;
       const o = place(e, d, side * (ROAD_W + 3.5 + R), { face: 'road', rot: (r() - 0.5) * 0.9, dy: -3, radK: k, gap: 2.5, scale: [k, k * (0.8 + r() * 0.5), k] }); // smaller and turned: a broken rock face, not a smooth wall

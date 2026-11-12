@@ -44,8 +44,9 @@ export class PoseCam {
     this.rel = this.rel == null ? rel : this.rel + (rel - this.rel) * 0.35;
     const c = this.calib;
     if (c?.up != null && c?.aero != null && Math.abs(c.aero - c.up) > 0.03) { // calibrated: between the two recorded head heights
-      const mid = (c.up + c.aero) / 2, stand = c.up - Math.abs(c.aero - c.up) * 0.7;
-      this.posture = this.head > mid ? 'aero' : this.head < stand ? 'standing' : 'upright';
+      const mid = (c.up + c.aero) / 2;
+      const sg = Math.sign(c.aero - c.up); // aero = nose lower in the picture (normally aero > up; a mirrored set-up still works)
+      this.posture = (this.head - mid) * sg > 0 ? 'aero' : (this.head - (c.up - (c.aero - c.up) * 0.7)) * sg < 0 ? 'standing' : 'upright';
     } else this.posture = this.rel < 0.38 ? 'aero' : 'upright'; // uncalibrated: head down near the shoulder line
     return this.posture;
   }
