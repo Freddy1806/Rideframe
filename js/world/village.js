@@ -113,8 +113,8 @@ export function buildVillage(ctx, v = {}) {
 
   // ---- 1 Home Gate: the messenger's own farm and the gate in the village fence ----
   if (st >= 1) {
-    const gate = any('dorftor'), gm = [0, 120, 225, 285, 315, 400, 400, 400, 400][st]; // spans the road, so it bypasses place() (which keeps things off the asphalt)
-    const go = gate && ctx.make ? ctx.make(gate) : gateMesh(); if (gate && ctx.make) go.scale.setScalar(Math.max(1, 9.4 / Math.max(gate.size[0], 0.1))); // posts clear the 6.6 m asphalt
+    const tower = st >= 8 ? any('torturm') : null, gate = tower || any('dorftor'), gm = [0, 120, 225, 285, 315, 400, 400, 400, 400][st]; // spans the road, so it bypasses place() (which keeps things off the asphalt)
+    const go = gate && ctx.make ? ctx.make(gate) : gateMesh(); if (gate && ctx.make && !tower) go.scale.setScalar(Math.max(1, 9.4 / Math.max(gate.size[0], 0.1))); /* stage 8 The Town Gate: the MacBook's gate tower (built with its passage along Z, true size) */ // posts clear the 6.6 m asphalt
     loose(go, gm, 0, 0, 0).userData.village.file = gate ? gate.file : 'gate'; // local x across the road
     const hedge = [any('etter_hecke'), any('etter_hecke_b')].filter(Boolean); // the village fence runs out from both gate posts
     if (hedge.length) for (const sd of [-1, 1]) for (let k = 0; k < 6; k++) put(hedge[k % hedge.length], gm, sd * (7.2 + k * 3.9), { face: 'along', overlap: true, radK: 0.5, gap: 0.5 });
