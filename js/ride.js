@@ -50,6 +50,9 @@ class ChapterPlayer {
   destroy() { this.v.pause(); this.v.removeAttribute('src'); this.v.load(); this.parts.forEach(p => URL.revokeObjectURL(p.url)); }
 }
 
+/** the same dice for everyone in a group: a small seeded generator (mulberry32 over a string hash) */
+function seeded(str) { let h = 1779033703; for (let i = 0; i < str.length; i++) h = Math.imul(h ^ str.charCodeAt(i), 3432918353) >>> 0;
+  return () => { h = (h + 0x6D2B79F5) >>> 0; let t = h; t = Math.imul(t ^ (t >>> 15), t | 1); t ^= t + Math.imul(t ^ (t >>> 7), t | 61); return ((t ^ (t >>> 14)) >>> 0) / 4294967296; }; }
 // ---------- climbs ----------
 function findClimbs(track) {
   const out = []; let start = null;
@@ -555,11 +558,14 @@ export class RideSession {
 
   // ---------- the wizard (rare, free rides only): a 60 s trial; pass = 30 s flight, fail = 5 min hell ----------
   _initWizard() {
-    if (this.workout || this.group || this.autopilot || this.state.settings.wizard === false) return;
+    if (this.workout || this.autopilot || this.state.settings.wizard === false) return;
     const qs = new URLSearchParams(location.search), spots = this.ch?.list.map(x => x.at) || [];
-    this.wiz = new Wizard({ length: this.track.length, startD: this.d, ftp: this.ftp, force: qs.has('wizard'), chance: qs.has('nowizard') ? 0 : 0.35,
+    // group ride (Freddy 12.11.): the wizard always comes, at the same spot for everyone (dice seeded with the group code);
+    // each rider takes the trial with his own watts, so one may fly while the other rides through hell
+    const grp = this.group ? seeded(this.group.code + this.route.id + this.lap) : null;
+    this.wiz = new Wizard({ length: this.track.length, startD: grp ? 0 : this.d, ftp: this.ftp, force: qs.has('wizard'), chance: qs.has('nowizard') ? 0 : grp ? 1 : 0.35, rng: grp || Math.random,
       avoid: d => spots.some(a => d > a - 1400 && d < a + 2900) }); // never on top of a dare and its race
-    if (this.wiz.state === 'off') { this.wiz = null; return; }
+    if (this.wiz.state === 'off' || (grp && this.d > this.wiz.at - 600)) { this.wiz = null; return; } // a late joiner already past his spot
     if (qs.has('wizard')) for (const x of this.ch?.list || []) if (x.at > this.wiz.at - 1400 && x.at < this.wiz.at + 2900) x.state = 'skipped';
     const c = document.createElement('div'); c.className = 'chcard glass wizcard'; c.id = 'hWiz'; c.hidden = true; this.el.querySelector('.hud').append(c);
     const hud = this.el.querySelector('.hud');
@@ -568,7 +574,7 @@ export class RideSession {
   _wizTick(dt) {
     const sp0 = this.player?.events?.surprises;
     // the wizard always waits at the finish line of a free ride and has the last word (Freddy)
-    if (sp0?.wizard && this.state.settings.wizard !== false && !this.workout && !this.group && !this.autopilot && this.lap >= this.laps && this.track.length - this.d < 400 && !this._goalWiz) this._goalWiz = sp0.wizard(this.track.length + 6);
+    if (sp0?.wizard && this.state.settings.wizard !== false && !this.workout && !this.autopilot && this.lap >= this.laps && this.track.length - this.d < 400 && !this._goalWiz) this._goalWiz = sp0.wizard(this.track.length + 6);
     if (this._goalWiz && !this._goalSaid && this.track.length - this.d < 70) { this._goalSaid = true; this.story?._line('wizard', 'goal'); }
     const z = this.wiz; if (!z || this.workout) return;
     if (z.exitH && this.d > z.exitH.d - 12) { sp0?.poof?.(z.exitH); z.exitH = null; } // he sends you on (up) and is gone in a puff
