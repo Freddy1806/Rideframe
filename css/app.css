@@ -496,6 +496,19 @@ input[type=number]::-webkit-inner-spin-button, input[type=number]::-webkit-outer
   .hud-route .name { max-width: 180px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 }
 @media (max-width: 1150px) { .hud-route .sep, .hud-route .name { display: none; } }
+/* group ride on a laptop (Freddy 12.11.: top right cut off): group chip + Sprachchat made the row ~1220 px wide.
+   Below 1300 px the round buttons show only their symbol (the title still names them) and the chips get narrower */
+@media (max-width: 1300px) {
+  .hud-top { gap: 10px; }
+  .hud-right { gap: 6px; min-width: 0; }
+  .hud-right .chip { min-width: 0; padding: 9px 11px; }
+  .hud-right .chip .v { font-size: 24px; }
+  .hud-right .camchip { padding: 9px 9px; display: flex; align-items: center; }
+  .hud-right .camchip .label { display: none; }
+  .hud-right .camchip .v { font-size: 20px; margin-top: 0; }
+  .chip.groupchip { min-width: 150px; }
+}
+@media (max-width: 1050px) { .hud-route { display: none; } .hud-top { justify-content: flex-end; } }
 /* wish list */
 .modal.wishes .box{max-width:720px;width:calc(100vw - 32px);max-height:88vh;display:flex;flex-direction:column}
 .wish-new{display:flex;gap:10px;align-items:stretch;margin-top:14px}
