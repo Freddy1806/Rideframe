@@ -22,7 +22,8 @@ export async function loadAssets() {
   const ok = await Promise.all(list.map(async e => {
     try {
       const g = await loader.loadAsync(new URL(e.file, base).href);
-      g.scene.traverse(o => { if (o.isMesh) { o.castShadow = true; o.receiveShadow = true; } });
+      const cast = !/^(festival|laundry)/.test(e.category || '') && Math.max(...(e.size || [9])) >= 1.2; /* bunting, stalls' cloth, washing and small bits threw ~950 shadow casters at the Stadtfest (shadow pass 1300 draw calls) */
+      g.scene.traverse(o => { if (o.isMesh) { o.castShadow = cast; o.receiveShadow = true; } });
       let farScene = null; // optional low-poly LOD for trees ("far": file), drawn beyond ~260 m
       if (e.far) try { farScene = (await loader.loadAsync(new URL(e.far, base).href)).scene; farScene.traverse(o => { if (o.isMesh) { o.castShadow = true; o.receiveShadow = true; } }); } catch {}
       return { ...e, scene: g.scene, farScene, clips: g.animations || [] };

@@ -493,7 +493,7 @@ export class WorldScene {
       for (const part of parts) {
         const im = new THREE.InstancedMesh(part.geo, part.mat, list.length);
         list.forEach(([x, y, z, sz, a, tilt], k) => { q.setFromEuler(new THREE.Euler(tilt, a, tilt * .7)); m4.compose(p.set(x, y, z), q, s.set(sz * (0.85 + (k % 3) * .15), sz * (0.8 + (k % 2) * .3), sz)); im.setMatrixAt(k, m4.multiply(part.m)); });
-        im.castShadow = im.receiveShadow = true; grp.add(im);
+        im.castShadow = false; im.receiveShadow = true; grp.add(im); /* the half-sunk rocks (max ~1.8 m) cast no shadow: their instances were 4M+ triangles in every shadow pass */
       }
     });
     if (!near) return;
