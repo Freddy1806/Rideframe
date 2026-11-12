@@ -1341,7 +1341,7 @@ export class WorldScene {
   // Everything is a smooth function of the distance (plus a slow drift in time), so it never jumps.
   _weather(d, time) {
     const L = this.track.length || 40000, u = Math.max(0, Math.min(1, d / L));
-    const rain = this.rainPlan.reduce((m, s) => Math.max(m, smooth(s.a - 700, s.a, d) * smooth(s.b + 500, s.b, d)), 0) * (1 - (this.hellK || 0)) * (1 - (this._fly ? 1 : 0)); // showers: at least one per ride, never the same
+    const rain = this.rainPlan.reduce((m, s) => Math.max(m, smooth(s.a - 700, s.a, d) * smooth(s.b + 500, s.b, d)), 0) * (1 - (this.hellK || 0)) * (1 - (this._flyK = (this._flyK || 0) + ((this._fly ? 1 : 0) - (this._flyK || 0)) * 0.02)); // showers: at least one per ride, never the same
     const cover0 = Math.max(0.1, Math.min(0.8, 0.32 + 0.2 * Math.sin(d / 5200 + 1.3) + 0.1 * Math.sin(d / 1700 + 4) + 0.06 * Math.sin(time * 0.003)));
     // the shower announces itself: from ~3 km before, the sky ahead closes up and darkens, so you see it coming
     const pre = this.rainPlan.reduce((m, s) => Math.max(m, smooth(s.a - 3000, s.a - 700, d) * smooth(s.b + 500, s.b, d)), 0);
