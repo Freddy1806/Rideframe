@@ -995,7 +995,7 @@ export class RideSession {
     if (w) { let s = 0, n = 0;
       for (const st of w.steps) { const a = s, b = Math.min(s + st.dur, this.elapsed); s += st.dur;
         if (st.pct < 88 || b - a < 5) continue; const ps = smp.filter(x => x[0] > a && x[0] <= b).map(x => x[2]); if (!ps.length) continue;
-        out.push({ name: `${st.label || st.name || 'Intervall'} ${++n}`, t: Math.round(b - a), w: Math.round(ps.reduce((x, y) => x + y, 0) / ps.length), target: Math.round(st.pct / 100 * (this.ftp || 0)) || undefined }); }
+        out.push({ name: (l => /\d/.test(l) ? (++n, l) : `${l} ${++n}`)(st.label || st.name || 'Intervall'), t: Math.round(b - a), w: Math.round(ps.reduce((x, y) => x + y, 0) / ps.length), target: Math.round(st.pct / 100 * (this.ftp || 0)) || undefined }); }
     } else for (const s of this.segDone) if (s.kind === 'climb') out.push({ name: s.name, t: Math.round(s.t), w: s.w });
     return out.length ? out : undefined;
   }
