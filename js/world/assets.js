@@ -46,7 +46,7 @@ function fake(e) { // box with the model's size, origin bottom centre, orange no
 
 export class Assets {
   constructor(list) {
-    this.list = list; this.by = {};
+    this.list = list; this.by = {}; this.used = new Set(); // which models a ride really places (?assetstats logs it: basis for loading only those)
     for (const e of list) (this.by[e.category] ||= []).push(e);
     this.rocks = list.filter(e => e.name.startsWith('Fels:'));
   }
@@ -61,7 +61,7 @@ export class Assets {
   make(e, anim, r = Math.random) {
     const skinned = e.clips.length > 0;
     const obj = skinned ? skClone(e.scene) : e.scene.clone(true);
-    obj.userData.asset = e.file;
+    obj.userData.asset = e.file; this.used.add(e.file);
     let mixer = null;
     if (e.clips.length) {
       mixer = new THREE.AnimationMixer(obj);
