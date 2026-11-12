@@ -18,6 +18,7 @@ import { terrainMaterial, tex, texReady, TIME, HELL, useSatellite } from './terr
 import { Water } from '../../vendor/jsm/objects/Water.js';
 import { mergeGeometries } from '../../vendor/jsm/utils/BufferGeometryUtils.js';
 import { loadAssets } from './assets.js';
+import { buildVillage, tickVillage } from './village.js';
 import { Riders } from './riders.js';
 import { ROAD_LINES_GLSL } from './roadlines.js';
 import { Events } from './events.js';
@@ -563,7 +564,7 @@ export class WorldScene {
 
   // ---- villages, harbour, landmarks at the climb tops ----
   _placeLandmarks() {
-    this.props = []; this.mixers = []; this.birds = []; this.whales = []; this.wheels = [];
+    this.props = []; this.mixers = []; this.birds = []; this.whales = []; this.wheels = []; this.villageAnim = [];
     this._bridges(); this._tunnels();
     if (ASSETS.count) return this._placeAssets();
     const f = this.field, t = this.track, r = rng(4242), segs = t.segments || [];
@@ -673,6 +674,10 @@ export class WorldScene {
     const festSeg = segs.filter(s => s.village).sort((p, q) => (q.to - q.from) * (q.village[1] - q.village[0]) - (p.to - p.from) * (p.village[1] - p.village[0]))[0];
     const segAt = d => segs.find(s => d >= s.from && d < s.to) || segs[segs.length - 1];
 
+    // the messenger's own village on the last metres before the finish, first, so it gets the ground (story stage 2)
+    if (t.__village && t.length > 1500) try {
+      this.village = buildVillage({ place, byName, make: e => A.make(e, null, r).obj, spot, f, scene: this.scene, props: this.props, anim: this.villageAnim, len: t.length }, t.__village);
+    } catch (e) { console.warn('village', e); }
     for (const s of segs) {
       const L = s.to - s.from;
       // ---- villages: houses, harbour, market square, musicians, people ----
@@ -1537,6 +1542,7 @@ export class WorldScene {
     }
     for (const m of this.mixers) if (m.obj.visible && (m.obj.userData.whale || Math.hypot(m.obj.position.x - cam.x, m.obj.position.z - cam.z) < 180)) m.update(Math.min(dt, 0.1));
     for (const w of this.wheels) w.rotation.x = time * 0.35;
+    if (this.villageAnim.length) tickVillage(this.villageAnim, time);
     for (const o of this.props) { const w = o.userData.walk; if (!w || !o.visible) continue; // walk along the road, turn round at the village ends
       w.d += w.v * Math.min(dt, 0.1); if (w.d < w.a || w.d > w.b) { w.v = -w.v; w.d = Math.max(w.a, Math.min(w.b, w.d)); }
       const p = this.field.at(w.d), l = Math.hypot(p.tx, p.tz) || 1, x = p.x - p.tz / l * w.off, z = p.z + p.tx / l * w.off;

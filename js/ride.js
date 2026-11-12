@@ -1,6 +1,6 @@
 // Ride mode: physics, video speed sync, trainer control, HUD, ghost and saving.
 import { db, uid } from './db.js';
-import { loadLedger, StoryRide, storyHTML, WHO } from './story.js';
+import { loadLedger, StoryRide, storyHTML, WHO, leaderOf } from './story.js';
 import { STEP, eleAt, gradeAt, timeAt, videoSpeedAt } from './track.js';
 import { defaultParams, step as physStep } from './physics.js';
 import { DemoScene } from './demo.js';
@@ -123,7 +123,10 @@ export class RideSession {
     } else {
       const c = document.createElement('canvas'); c.className = 'scene'; el.prepend(c);
       if (this.track.world) {
-        try { const { WorldScene, prepareWorld } = await import('./world/lofoten.js'); await prepareWorld(this.track); this.player = new WorldScene(c, this.track); window.__world = this.player; }
+        try { const { WorldScene, prepareWorld } = await import('./world/lofoten.js'); await prepareWorld(this.track);
+          { const L = await loadLedger().catch(() => null), q = new URLSearchParams(location.search).get('village'); // your village grows with your lifetime km
+            if (L || q != null) this.track.__village = { km: q != null ? +q : L.life.km, hm: L?.life.hm || 0, leader: L ? (L.colour || leaderOf(L.pts)) : null }; }
+          this.player = new WorldScene(c, this.track); window.__world = this.player; }
         catch (e) { console.warn('3D world failed, using 2D scene', e); }
       }
       if (!this.player) this.player = new DemoScene(c, this.track);
