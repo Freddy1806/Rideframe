@@ -773,8 +773,8 @@ export class RideSession {
     if (e.key === 'ArrowUp') { this.manualPower = Math.min(1500, this.manualPower + (e.shiftKey ? 50 : 10)); e.preventDefault(); }
     else if (e.key === 'ArrowDown') { this.manualPower = Math.max(0, this.manualPower - (e.shiftKey ? 50 : 10)); e.preventDefault(); }
     else if (e.key === 'g' || e.key === 'G') this.toggleShift();
-    else if (e.key === 'q' || e.key === ',' || e.key === '-') this.shift(-1);
-    else if (e.key === 'e' || e.key === '.' || e.key === '+') this.shift(1);
+    else if (e.key === 'q' || e.key === ',' || e.key === '-' || e.key === 'PageDown') { e.preventDefault?.(); this.shift(-1); } /* PageUp/PageDown: Bluetooth presenters and many media remotes */
+    else if (e.key === 'e' || e.key === '.' || e.key === '+' || e.key === 'PageUp') { e.preventDefault?.(); this.shift(1); }
     else if (e.key === ' ') { e.preventDefault(); this.paused ? this._resume() : this._pause(); }
     else if (e.key === 'Escape') { if (!this.paused && !this.finished) this._pause(); }
     else if (e.key === 'f') document.documentElement.requestFullscreen?.();
