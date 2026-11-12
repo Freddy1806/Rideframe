@@ -98,11 +98,24 @@ export const TEMPLE_SEGMENTS = [
   { kind: 'flat', min: 7, watt: 0.6, wobble: 0.8, name: 'Ausrollen am Teehaus', land: 'river', style: 'asia', temple: [0.5, 1.0] },
 ];
 
+// the long one (Freddy 12.11.: "100 km, 300-400 Hm, relativ geradeaus, an der Küste lang"): coast, beaches, fjord, villages,
+// five short waves (no interval targets, it is an endurance ride), ~100 km / ~400 Hm
+const KF = (min, name, extra = {}) => ({ kind: 'flat', min, watt: 0.7, wobble: 0.5, name, land: 'coast', ...extra });
+const KW = (gain, name, top) => [{ kind: 'climb', gain, grade: 3.5, watt: 0.8, interval: false, name, land: 'cliff', top }, { kind: 'recover', min: 3, name: 'Abfahrt ' + name.split(' ').pop(), land: 'coast' }];
+export const LONG_SEGMENTS = [
+  KF(16, 'Einrollen am Fischerhafen', { village: [0.05, 0.35] }), ...KW(25, 'Leuchtturmwelle', 'lookout'),
+  KF(18, 'Strandstraße', { beach: true }), KF(14, 'Fjordufer', { land: 'river', village: [0.3, 0.7] }), ...KW(35, 'Kirchhügel', 'church'),
+  KF(20, 'Klippenblick', { land: 'cliff' }), KF(14, 'Mühlendorf', { village: [0.2, 0.8] }), ...KW(30, 'Mühlenwelle', 'mill'),
+  KF(18, 'Dünenweg', { beach: true, wobble: 0.7 }), KF(16, 'Hafenstadt', { village: [0.1, 0.9] }), ...KW(40, 'Burgwelle', 'castle'),
+  KF(24, 'Lange Küstengerade', { wobble: 0.4 }), ...KW(25, 'Letzte Welle', 'lookout'), KF(14, 'Ausrollen am Hafen', { village: [0.5, 1.0], watt: 0.62 }),
+];
+
 /** The built-in designed routes beside the Felsenküste (id -> name, subtitle, segments, seed). */
 export const DESIGNED = {
   kurz: { name: 'Hafenrunde', place: 'Kurze Runde · 2 kurze Anstiege · Hafen und Dörfer', segs: SHORT_SEGMENTS, seed: 31 },
   fluss: { name: 'Flusstal', place: 'Am Fluss entlang · Ruderboote und Angler · 2 Anstiege', segs: RIVER_SEGMENTS, seed: 37 },
   pass: { name: 'Himmelsleiter', place: 'Königsetappe · 4 Serpentinen-Anstiege · Bergankunft am Pass', segs: PASS_SEGMENTS, seed: 41 },
+  lang: { name: 'Küstenklassiker', place: '100 km an der Küste · fast flach, fünf kurze Wellen · Strände, Fjord, Dörfer', segs: LONG_SEGMENTS, seed: 47 },
   kloster: { name: 'Nebelkloster', place: 'Bambus, Pagoden, Laternen · Mönche trainieren am Weg', segs: TEMPLE_SEGMENTS, seed: 43 },
 };
 export function makeBuiltinTrack(id) { const D = DESIGNED[id]; if (!D) return null; return { ...makeDesignedTrack(D.segs, { seed: D.seed, hairpin: 10 }), name: D.name }; } // wider hairpins: the legs stay ~64 m apart, no terrain between them pokes through
@@ -131,7 +144,7 @@ export function makeDesignedTrack(SEGS, { seed = 29, theme = 'coast', hairpin = 
       const st = (alt.length - 1) * STEP;
       for (let i = 0; i < n; i++) push(s.grade + 0.6 * Math.sin(i / 11) + 0.3 * Math.sin(i / 4.1));
       const minutes = s.min || Math.round(n * STEP / v / 60);
-      segs.push({ name: s.name, from: st, to: (alt.length - 1) * STEP, minutes, grade: s.grade, interval: true, watt: w, top: s.top, leadIn: st - from, ...extra });
+      segs.push({ name: s.name, from: st, to: (alt.length - 1) * STEP, minutes, grade: s.grade, interval: s.interval !== false, watt: w, top: s.top, leadIn: st - from, ...extra });
       for (let i = 0; i < 12; i++) push(1.5 - i / 8); // short false-flat at the top
       continue;
     } else if (s.kind === 'recover') {
