@@ -8,7 +8,7 @@
 // except wind, which has a synthesised fallback.
 
 const LOOPS = new Set(['waterfall', 'battle', 'fire']);
-const SYNTH = new Set(['fireball', 'explosion', 'rumble', 'crash']);
+const SYNTH = new Set(['fireball', 'explosion', 'rumble', 'crash', 'thunder', 'quake']);
 const LEVEL = { waterfall: 0.55, fire: 0.6, battle: 0.7 };
 const ALIAS = { waterfall: 'wasserfall' }; // German names of the recorded files
 const rnd = (a, b) => a + Math.random() * (b - a);
@@ -107,7 +107,7 @@ export class Sound {
     if (!this.on || this.paused || !(vol > 0.003)) { if (LOOPS.has(name)) this._loop(name, 0, pan); return; }
     if (!this._ctx()) return;
     if (LOOPS.has(name)) return this._loop(name, vol, pan);
-    const now = this.ctx.currentTime, gap = { explosion: 0.07, fireball: 0.12, rumble: 1.5, crash: 0.5 }[name] ?? 0.1;
+    const now = this.ctx.currentTime, gap = { explosion: 0.07, fireball: 0.12, rumble: 1.5, crash: 0.5, thunder: 0.8, quake: 3 }[name] ?? 0.1;
     if (now - (this.last[name] || -9) < gap) return; this.last[name] = now;
     if (this._has(name)) { this._file(name).then(b => b ? this._playBuf(b, vol, pan) : SYNTH.has(name) && this._synth(name, vol, pan)); return; }
     if (SYNTH.has(name)) this._synth(name, vol, pan);
@@ -143,6 +143,12 @@ export class Sound {
       const db = this._src(this.buf.crackle, false, rnd(1, 1.4)), hp = this._filter('highpass', 1200), dg = c.createGain(); // falling stones
       dg.gain.setValueAtTime(0.0001, t); dg.gain.linearRampToValueAtTime(vol * (0.9 - far * 0.6), t + 0.15); dg.gain.linearRampToValueAtTime(0.0001, t + 1.4 * big);
       db.connect(hp).connect(dg).connect(out); db.start(t + 0.08, rnd(0, 1.5)); db.stop(t + 1.5 * big);
+    } else if (name === 'thunder') { this._thunder(t, vol, out, far);
+    } else if (name === 'quake') { // the earth tears open: a deep crack, splitting rock, a long groan from below
+      this._thunder(t, vol, out, 0.2);
+      for (let k = 0; k < 10; k++) { const dt = rnd(0.05, 2.8); this._hit(t + dt, vol * rnd(0.5, 0.95) * (1 - dt / 4), out); }
+      const o = c.createOscillator(), og = c.createGain(); o.type = 'sawtooth'; o.frequency.setValueAtTime(48, t); o.frequency.exponentialRampToValueAtTime(22, t + 4);
+      const lp = this._filter('lowpass', 120); this._env(og, t, 0.3, vol * 0.5, 3.6); o.connect(lp).connect(og).connect(out); o.start(t); o.stop(t + 4.2);
     } else if (name === 'rumble') { // the keep comes down: long low roar with tumbling masonry
       const dur = 5.5, s = this._src(this.buf.brown, true), lp = this._filter('lowpass', 220, 0.9), g = c.createGain();
       g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(vol * 1.3, t + 0.25); g.gain.setTargetAtTime(vol * 0.7, t + 0.6, 1); g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
@@ -150,6 +156,14 @@ export class Sound {
       s.connect(lp).connect(g).connect(out); s.start(t, rnd(0, 3)); s.stop(t + dur); lfo.start(t); lfo.stop(t + dur);
       for (let k = 0; k < 7; k++) { const dt = rnd(0.1, 3.5); this._hit(t + dt, vol * rnd(0.4, 0.8) * (1 - dt / 5), out); }
     }
+  }
+  _thunder(t, vol, out, far) { // a sharp crack (close strikes) rolling into a long, low rumble
+    const c = this.ctx, crack = this._src(this.buf.white, true, rnd(0.9, 1.2)), hp = this._filter('highpass', 900 + 1800 * (1 - far)), cg = c.createGain();
+    this._env(cg, t, 0.004, vol * (0.9 - 0.7 * far), 0.35); crack.connect(hp).connect(cg).connect(out); crack.start(t, rnd(0, 1)); crack.stop(t + 0.5);
+    const dur = rnd(3.5, 6), r = this._src(this.buf.brown, true), lp = this._filter('lowpass', 160 + 260 * (1 - far), 0.8), g = c.createGain();
+    g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(vol * 1.4, t + 0.12 + far * 0.4); g.gain.setTargetAtTime(vol * 0.5, t + 0.8, 0.9); g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+    const lfo = c.createOscillator(), lg = c.createGain(); lfo.frequency.value = rnd(2.5, 5); lg.gain.value = vol * 0.45; lfo.connect(lg).connect(g.gain);
+    r.connect(lp).connect(g).connect(out); r.start(t, rnd(0, 3)); r.stop(t + dur); lfo.start(t); lfo.stop(t + dur);
   }
   _hit(t, v, out) { // one heavy block landing
     const c = this.ctx, o = c.createOscillator(), g = c.createGain(); o.frequency.setValueAtTime(rnd(55, 90), t); o.frequency.exponentialRampToValueAtTime(35, t + 0.3);

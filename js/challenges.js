@@ -11,11 +11,11 @@ export const CHALLENGERS = [
   { id: 'oma', name: 'Die Oma', models: ['oma_fahrrad', 'alte_frau'], k: 1.03, kind: 'run', // on her old bicycle once the MacBook has built it
     ask: 'Think you can beat granny?', win: 'Oh my, what legs!', lose: 'Hah! Granny wins again!' },
   { id: 'gull', name: 'Die Möwe', models: ['moewe'], k: 1.1, kind: 'fly',
-    ask: 'Skraa! Catch me if you can!', win: 'Skraa... skraa...', lose: 'Skraa! Too slow!' },
+    ask: 'Skraa! Catch me if you can!', win: "Fine. You win. I wasn't even trying.", lose: 'Skraa! Pedal harder, featherless!' },
   { id: 'eagle', name: 'Der Seeadler', models: ['seeadler'], k: 1.18, kind: 'fly',
-    ask: 'The sky is mine. Prove me wrong!', win: 'A worthy rival.', lose: 'Nobody outruns the eagle.' },
+    ask: 'The sky is mine. Prove me wrong!', win: 'Hmph. Lucky tailwind, I suppose.', lose: 'Nobody outruns the eagle.' },
   { id: 'kid', name: 'Das Kind', models: ['kind_fahrrad'], k: 1.32, kind: 'run', // never on foot: a child running 37 km/h looked wrong (Freddy); comes back on its bike
-    ask: 'Bet you can\'t beat me! Go go go!', win: 'Nooo! Again! Again!', lose: 'I won! I won!' },
+    ask: 'Bet you can\'t beat me! Go go go!', win: 'Nooo! Again! Again!', lose: "I won! I won! You're so slow!" },
 ];
 const DIST = [[600, 0.1], [1000, 0], [1500, -0.06]], GAP = 3200; // min metres between two dares (Freddy: never too many in a row) // distance and how much harder (shorter) or easier (longer)
 const OFFER_S = 14, LEAD = 150;

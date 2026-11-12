@@ -44,7 +44,10 @@ export const LINES = { // 12 per figure (stage 1); Fable's wording where the pla
     newweek: ['A new week. I bet on watts.'],
     effort: ['Show me twenty seconds of truth.', 'Now that is honest power.', "Numbers don't lie. You, occasionally."],
     pass: ['Passed. I am barely surprised.', 'Fly, then. You earned the sky.'],
-    fail: ['The Devil is already smiling.'],
+    fail: ['The Devil is already smiling.', "You fool. You didn't make it. Boom!"],
+    hellExit: ['Up you go. Do try harder next time.', 'Out of the fire. You owe me one.'],
+    land: ['Back on earth. Show-off.', 'Welcome down. Try not to gloat.'],
+    goal: ['The finish. I knew you would make it.', 'There. Now go and boast about it.'],
     finish: ['Today, you were mine. Mathematically.', 'A fine day for arithmetic.', 'I shall collect my winnings.'],
   },
   king: {

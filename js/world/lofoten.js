@@ -288,8 +288,21 @@ export class WorldScene {
       .replace('vec3 scatter = max( 0.0, dot( surfaceNormal, eyeDirection ) ) * waterColor;', 'vec3 scatter = ( 0.35 + 0.65 * max( 0.0, dot( surfaceNormal, eyeDirection ) ) ) * waterColor * 1.15;')
       // deeper sea: the mirrored sky is a touch darker and bluer (rough open water never mirrors the full horizon glare)
       .replace('vec3 albedo = mix( ( sunColor * diffuseLight * 0.3 + scatter ) * getShadowMask(), ( vec3( 0.1 ) + reflectionSample * 0.9 + reflectionSample * specularLight ), reflectance);', 'vec3 albedo = mix( ( sunColor * diffuseLight * 0.3 + scatter ) * mix( getShadowMask(), 1.0, uHigh ), ( vec3( 0.03, 0.06, 0.08 ) + reflectionSample * vec3( 0.72, 0.8, 0.86 ) + reflectionSample * specularLight ), reflectance * ( 1.0 - 0.7 * uHigh ));')
-      .replace('uniform float alpha;', 'uniform float alpha; uniform float uHigh;'); // from high up no shadow-map box and no mirror frustum edge on the sea (the bright trapezoid in the flight)
-    this.water.material.uniforms.uHigh = { value: 0 };
+      .replace('uniform float alpha;', 'uniform float alpha; uniform float uHigh; uniform float uHell;')
+      // hell (Freddy): the sea turns to stone. Black, glassy basalt with glowing cracks that breathe; no blue, no waves
+      .replace('gl_FragColor = vec4( outgoingLight, alpha );', `vec3 oc = outgoingLight;
+        if ( uHell > 0.002 ) {
+          vec2 q = worldPosition.xz * 0.035;
+          float c1 = abs( sin( q.x * 1.7 + sin( q.y * 1.3 ) * 2.1 ) * sin( q.y * 1.9 + sin( q.x * 0.9 ) * 2.3 ) );
+          float c2 = abs( sin( q.x * 4.3 - q.y * 2.9 + sin( q.y * 3.1 ) ) );
+          float crack = smoothstep( 0.07, 0.0, c1 ) + 0.55 * smoothstep( 0.04, 0.0, c2 ) * smoothstep( 0.3, 0.7, c1 );
+          float tone = 0.75 + 0.25 * sin( q.x * 7.0 + q.y * 5.0 );
+          vec3 rock = vec3( 0.055, 0.04, 0.036 ) * tone + reflectionSample * 0.07;
+          vec3 ember = vec3( 1.0, 0.32, 0.06 ) * min( crack, 1.0 ) * ( 0.55 + 0.45 * sin( time * 1.6 + q.x * 3.0 + q.y * 2.0 ) );
+          oc = mix( oc, rock + ember * 1.6, uHell );
+        }
+        gl_FragColor = vec4( oc, alpha );`); // from high up no shadow-map box and no mirror frustum edge on the sea (the bright trapezoid in the flight)
+    this.water.material.uniforms.uHigh = { value: 0 }; this.water.material.uniforms.uHell = HELL;
     this.water.material.transparent = true;
     this.water.rotation.x = -Math.PI / 2; this.water.position.y = 0; scene.add(this.water);
     { const wr0 = this.water.onBeforeRender; this.water.onBeforeRender = (...x) => { if (this.water.material.uniforms.uHigh.value < 0.999) wr0.apply(this.water, x); }; } // high in the flight the planar mirror no longer fits the perspective (a sharp bright wedge with an upside-down ridge): no mirror at all up there, and one render pass saved
@@ -1388,11 +1401,39 @@ export class WorldScene {
       this.light.color.lerp(L_HELL, hk * 0.85); this.light.intensity *= 1 - 0.4 * hk;
       this.hemi.color.lerp(H_HELL, hk * 0.8); this.hemi.intensity *= 1 - 0.25 * hk;
       FOG_SUNCOL.x = lerp(FOG_SUNCOL.x, 0.9, hk); FOG_SUNCOL.y = lerp(FOG_SUNCOL.y, 0.12, hk); FOG_SUNCOL.z = lerp(FOG_SUNCOL.z, 0.02, hk);
-      wu.waterColor.value.lerp(WC_HELL, hk); wu.sunColor.value.lerp(L_HELL, hk).multiplyScalar(1 + 1.5 * hk); // a glowing lava sea, not just a reddish one
+      wu.distortionScale.value = 3.4 * (1 - hk); // the sea turns to stone: no waves (the shader paints basalt with glowing cracks)
       su.uCover.value = lerp(su.uCover.value, 1, hk * 0.9); su.uVeil.value = lerp(su.uVeil.value, 1, hk * 0.9);
       this.clouds.material.uniforms.uCover.value = lerp(cover, 1, hk); this.cumulus.material.uniforms.uCover.value = lerp(cover, 1, hk);
     }
+    this._lightning(hk, time);
     this.weather = { cover, veil, rain, pre, hell: hk, sunEl: THREE.MathUtils.radToDeg(Math.asin(s.y)) };
+  }
+
+  /** hell's thunderstorm (Freddy): a jagged bolt somewhere ahead every few seconds, the whole scene flashes, thunder follows */
+  _lightning(hk, time) {
+    const B = this._bolts ||= { next: 0, flash: 0, mesh: null };
+    if (hk < 0.5) { if (B.mesh) B.mesh.visible = false; B.next = time + 2; return; }
+    if (time >= B.next) {
+      B.next = time + 1.8 + Math.random() * 4.2; B.flash = 1;
+      const p = this.field.at(this.d + 250 + Math.random() * 650), l = Math.hypot(p.tx, p.tz) || 1, side = (Math.random() - 0.5) * 900;
+      const x = p.x - p.tz / l * side, z = p.z + p.tx / l * side, g = Math.max(0, this.field.height(x, z));
+      B.mesh ||= (() => { const m = new THREE.Mesh(new THREE.BufferGeometry(), new THREE.MeshBasicMaterial({ color: 0xf4e6ff, transparent: true, blending: THREE.AdditiveBlending, depthWrite: false, fog: false, side: THREE.DoubleSide }));
+        m.frustumCulled = false; m.renderOrder = 5; this.scene.add(m); return m; })();
+      // a ribbon facing the camera, zig-zagging down from the clouds, with one or two side branches
+      const cam = this.camera.position, dx = x - cam.x, dz = z - cam.z, dl = Math.hypot(dx, dz) || 1, rx = -dz / dl, rz = dx / dl;
+      const pos = [], strip = (pts, w) => { for (let i = 0; i < pts.length - 1; i++) { const [a, b] = [pts[i], pts[i + 1]];
+        pos.push(a[0] - rx * w, a[1], a[2] - rz * w, a[0] + rx * w, a[1], a[2] + rz * w, b[0] + rx * w, b[1], b[2] + rz * w,
+          a[0] - rx * w, a[1], a[2] - rz * w, b[0] + rx * w, b[1], b[2] + rz * w, b[0] - rx * w, b[1], b[2] - rz * w); } };
+      const zig = (x0, y0, z0, y1, n, jit) => { const pts = []; for (let i = 0; i <= n; i++) { const f = i / n; pts.push([x0 + (Math.random() - 0.5) * jit * (i ? 1 : 0) + rx * (Math.random() - 0.5) * jit, y0 + (y1 - y0) * f, z0 + rz * (Math.random() - 0.5) * jit]); } return pts; };
+      const main = zig(x, g + 700, z, g, 14, 60); strip(main, 3.2);
+      for (let k = 0; k < 2; k++) { const s0 = main[3 + Math.floor(Math.random() * 6)]; strip(zig(s0[0], s0[1], s0[2], s0[1] - 160 - Math.random() * 160, 6, 50), 1.6); }
+      B.mesh.geometry.dispose(); B.mesh.geometry = new THREE.BufferGeometry(); B.mesh.geometry.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+      const far = Math.hypot(x - cam.x, z - cam.z), pan = Math.max(-0.9, Math.min(0.9, (side / 900) * 1.6));
+      setTimeout(() => this.events?.sfx('thunder', Math.max(0.35, 1 - far / 1600), pan), Math.min(3500, far / 343 * 1000 * 0.6));
+    }
+    B.flash = Math.max(0, B.flash - 0.07); const f = B.flash > 0.6 || (B.flash > 0.3 && B.flash < 0.45) ? 1 : B.flash * 0.4; // a double flicker, then it fades
+    if (B.mesh) { B.mesh.visible = B.flash > 0.25; B.mesh.material.opacity = Math.min(1, B.flash * 1.4); }
+    if (f > 0.01) { this.light.intensity *= 1 + 2.6 * f; this.hemi.intensity *= 1 + 3.5 * f; this.hemi.color.lerp(H_BOLT, f * 0.8); this.scene.fog.color.lerp(H_BOLT, f * 0.35); }
   }
 
   _setQuality(q) {
@@ -1574,7 +1615,7 @@ export const FOV_NORMAL = 62;
 const ENV_I = 0.55; // sky image light: less blue cast on meadows than before (0.95)
 const F_CLEAR = new THREE.Color(0xbfc6cd), F_GREY = new THREE.Color(0xb4b9c2);
 const WS_HIGH = new THREE.Color(0xffb27a), WS_LOW = new THREE.Color(0xff8a52);
-const F_HELL = new THREE.Color(0x5a1c10), L_HELL = new THREE.Color(0xff6a2a), H_HELL = new THREE.Color(0x8a2a14), WC_HELL = new THREE.Color(0xe04a08);
+const H_BOLT = new THREE.Color(0xd8ccff), F_HELL = new THREE.Color(0x5a1c10), L_HELL = new THREE.Color(0xff6a2a), H_HELL = new THREE.Color(0x8a2a14), WC_HELL = new THREE.Color(0xe04a08);
 const WC_CLEAR = new THREE.Color(0x0b3448), WC_GREY = new THREE.Color(0x26323a); // sea body colour: clear vs. overcast
 
 // sunset grade on top of three's Sky (Preetham): deep blue overhead, a pink belt of Venus opposite the sun,

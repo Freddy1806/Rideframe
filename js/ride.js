@@ -552,7 +552,13 @@ export class RideSession {
     for (const id of ['hHell', 'hWizFx']) { const f = document.createElement('div'); f.className = 'wizfx'; f.id = id; hud ? hud.before(f) : this.el.append(f); } // under the HUD: power and cards stay readable
   }
   _wizTick(dt) {
+    const sp0 = this.player?.events?.surprises;
+    // the wizard always waits at the finish line of a free ride and has the last word (Freddy)
+    if (sp0?.wizard && !this.workout && !this.group && !this.autopilot && this.track.length - this.d < 400 && !this._goalWiz) this._goalWiz = sp0.wizard(this.track.length + 6);
+    if (this._goalWiz && !this._goalSaid && this.track.length - this.d < 70) { this._goalSaid = true; this.story?._line('wizard', 'goal'); }
     const z = this.wiz; if (!z || this.workout) return;
+    if (z.exitH && this.d > z.exitH.d - 12) { sp0?.poof?.(z.exitH); z.exitH = null; } // he sends you on (up) and is gone in a puff
+    if (z.state === 'hell' && !z.exitH && z.t >= WIZ.hell - 25) z.exitH = sp0?.wizard?.(this.d + Math.max(90, this.v * 25)); // he waits where hell ends
     if (this.ch?.active && (z.state === 'wait' || z.state === 'ann')) return; // a race is on: the wizard waits his turn
     const sp = this.player?.events?.surprises, P = this.player, fx = this.q('#hWizFx');
     const flashFx = k => { if (!fx) return; fx.className = 'wizfx'; void fx.offsetWidth; fx.classList.add(k); };
@@ -562,10 +568,11 @@ export class RideSession {
       else if (e === 'cast') { sp?.poof?.(z.h); flashFx('cast'); }
       else if (e === 'pass') { this.story?.trialPass(); flashFx('rise'); P?.fly?.(WIZ.fly); }
       else if (e === 'fail') {
-        this.story?.hellIn(); P?.hell?.(true); if (sp) sp.hell = true; if (P) P.shakeImpulse = Math.max(P.shakeImpulse || 0, 1.6);
+        this.story?._line('wizard', 'fail'); this.story?.hellIn(); this.player?.events?.sfx?.('quake', 1, 0); P?.hell?.(true); if (sp) sp.hell = true; if (P) P.shakeImpulse = Math.max(P.shakeImpulse || 0, 1.6);
         this.q('#hHell')?.classList.add('hell'); flashFx('quake');
       } else if (e === 'end') {
-        if (z.was !== 'fly') this.story?.hellOut(); P?.hell?.(false); P?.land?.(); if (sp) { sp.hell = false; sp.hold = false; }
+        if (z.was !== 'fly') { this.story?._line('wizard', 'hellExit'); this.story?.hellOut(); } else { z.exitH = sp?.wizard?.(this.d + 70); this.story?._line('wizard', 'land'); }
+        P?.hell?.(false); P?.land?.(); if (sp) { sp.hell = false; sp.hold = false; }
         this.q('#hHell')?.classList.remove('hell'); flashFx('land');
       }
     }
