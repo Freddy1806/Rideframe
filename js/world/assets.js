@@ -18,7 +18,12 @@ export async function loadAssets() {
   // each ride loads only a few of them at random (?variants=N per base, default 1), so every ride looks a little different
   const nv = +(new URLSearchParams(location.search).get('variants') ?? 1), groups = {};
   for (const e of list) if (e.variant_of) (groups[e.variant_of] ||= []).push(e);
-  const keep = new Set(Object.values(groups).flatMap(g => g.sort(() => Math.random() - 0.5).slice(0, nv)));
+  // the variants of the day: the same for every load on one day (world modes compare 1:1, friends in a group ride see the same
+  // world), another mix tomorrow ("every ride looks a little different")
+  let h = 2166136261; for (const c of new Date().toDateString()) h = Math.imul(h ^ c.charCodeAt(0), 16777619) >>> 0;
+  const rnd = () => { h = (h + 0x6D2B79F5) >>> 0; let t = h; t = Math.imul(t ^ (t >>> 15), t | 1); t ^= t + Math.imul(t ^ (t >>> 7), t | 61); return ((t ^ (t >>> 14)) >>> 0) / 4294967296; };
+  const shuffle = g => { g = [...g].sort((x, y) => (x.file < y.file ? -1 : 1)); for (let i = g.length - 1; i > 0; i--) { const j = Math.floor(rnd() * (i + 1)); [g[i], g[j]] = [g[j], g[i]]; } return g; };
+  const keep = new Set(Object.keys(groups).sort().flatMap(k => shuffle(groups[k]).slice(0, nv)));
   list = list.filter(e => !e.variant_of || keep.has(e));
   // at most 6 downloads at once: hundreds in parallel made the public (Tailscale Funnel) path drop connections, and those models went missing
   const pool = (items, n, fn) => { const out = new Array(items.length); let i = 0; return Promise.all(Array.from({ length: Math.min(n, items.length) }, async () => { while (i < items.length) { const k = i++; out[k] = await fn(items[k]); } })).then(() => out); };
