@@ -179,15 +179,17 @@ export class Surprises {
         this.fx._p(o.x + Math.cos(a) * r, o.y + 0.2 + Math.random() * 2.2, o.z + Math.sin(a) * r, Math.cos(a + 1.6) * 0.6, 0.5 + Math.random() * 0.8, Math.sin(a + 1.6) * 0.6, 0.7, 0.3, 1, 1.2 + Math.random()); }
       this.fx.pts.visible = true;
     }
+    if (this.w._fly && t > (this.flockNext || 0) && this.A.find('vogelschwarm_hoch')) { this.flockNext = t + 12; this._flock(); }
     if (!this.hell) { this.hellT = 0; if (this.hellProps?.length) { for (const o of this.hellProps) o.dead = true; this.hellProps = []; } return; }
     // hell: embers rising all around you, fire bursting from cracks beside the road, the Mac's lava pieces at the roadside
     for (let k = 0; k < 4; k++) { const a = Math.random() * 6.28, r = 9 + Math.random() * 40, x = cam.x + Math.cos(a) * r, z = cam.z + Math.sin(a) * r, y = this.f.ground(x, z);
       const c = Math.random(); this.fx._p(x, y + Math.random() * 3, z, (Math.random() - .5) * 0.8, 1.5 + Math.random() * 2.5, (Math.random() - .5) * 0.8, 1, 0.3 + c * 0.4, c * 0.08, 2 + Math.random() * 2); }
     this.fx.pts.visible = true;
     this.hellT = (this.hellT || 0) + dt;
+    if (this.hellT > 2 && t > (this.batNext || 0) && this.A.find('fledermaeuse')) { this.batNext = t + 9 + Math.random() * 8; this._bats(); } // bat swarms flutter over the road
     if (this.hellT > 4 && t > (this.dragonNext || 0) && this.A.find('drache')) { this.dragonNext = t + 45; this._dragon(); } // a dragon sweeps over the road, breathing fire
     if (t > (this.burstNext || 0)) { this.burstNext = t + 0.7 + Math.random() * 1.1; this.fireBurst(d + 30 + Math.random() * 90, (Math.random() < 0.5 ? -1 : 1) * (ROAD_W + 2 + Math.random() * 9)); }
-    const kinds = (this._hellKinds ||= ['lava_fels', 'lava_fels_b', 'lava_fels_c', 'feuersaeule', 'lava_riss', 'hoellen_tor', 'totenschaedel', 'lava_see', 'obsidian_zacken', 'feuerdaemon', 'feuerdaemon', 'feuerdaemon'].filter(n => this.A.find(n)));
+    const kinds = (this._hellKinds ||= ['lava_fels', 'lava_fels_b', 'lava_fels_c', 'feuersaeule', 'lava_riss', 'hoellen_tor', 'totenschaedel', 'lava_see', 'obsidian_zacken', 'feuerdaemon', 'feuerdaemon', 'feuerdaemon', 'gluehende_kohle_haufen', 'gluehende_kohle_haufen'].filter(n => this.A.find(n)));
     if (kinds.length && d > (this.hellNextD || 0)) {
       this.hellNextD = d + 35 + Math.random() * 45;
       const kind = kinds[Math.floor(Math.random() * kinds.length)], wide = /lava_see|hoellen_tor/.test(kind) ? 4.5 : 0; // wide pieces keep clear of the asphalt
@@ -196,6 +198,17 @@ export class Surprises {
         s.obj.position.set(p.x, p.y, p.z); s.obj.rotation.y = imp ? Math.atan2(q.x - p.x, q.z - p.z) : Math.random() * 6.28; /* demons face you and jeer */ const e = { ...s, d: d + 140, step: () => {} }; this.active.push(e); (this.hellProps ||= []).push(e); }
     }
     if (this.hellProps) this.hellProps = this.hellProps.filter(e => e.d > d - 60 || (e.dead = true, false));
+  }
+  _bats() { // a swarm comes low out of the red haze ahead, flits over your head and is gone behind you
+    const d0 = this.w.d + 120 + Math.random() * 60, side = Math.random() < 0.5 ? -1 : 1, wob = Math.random() * 6;
+    this._run('fledermaeuse', [['Fliegen', 1.3]], (t, v) => { if (t > 9) return null; const dd = d0 - (14 + v) * t;
+      return { d: dd, off: side * (2 + 6 * Math.sin(t * 1.3 + wob)), fly: 4.5 + 2.5 * Math.sin(t * 2.1 + wob), back: true }; }, { scale: 1 });
+  }
+  _flock() { // wizard flight: a flock of birds keeps you company up there for a while, a little below and to the side
+    const side = Math.random() < 0.5 ? -1 : 1, lag = 40 + Math.random() * 40;
+    this._run('vogelschwarm_hoch', [['Fliegen', 1]], (t, v) => { if (t > 14 || !this.w._fly) return null;
+      const dd = (this.w._fly.d ?? this.w.d) + lag - t * 6, above = this.w.camera.position.y - this.f.at(dd).e;
+      return { d: dd, off: side * (25 + 10 * Math.sin(t * 0.4)), fly: Math.max(20, above - 18 + 4 * Math.sin(t * 0.7)), back: true }; }, { scale: 2 });
   }
   _dragon() { // comes head-on from far ahead, low over the road, fire in the middle of the pass, then climbs away behind you
     const d0 = this.w.d + 320, side = Math.random() < 0.5 ? -1 : 1; let fired = false;
