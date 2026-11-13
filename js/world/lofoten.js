@@ -1443,9 +1443,10 @@ export class WorldScene {
     this.hemi.intensity = (1.2 + 0.12 * cover + 0.05 * veil) * (1 - 0.5 * (this.tunnelK || 0)); // shadow slopes ~40 % of the sunlit side, not black; dim inside rock tunnels
     this.hemi.color.lerpColors(H_CLEAR, H_GREY, cover * 0.7); if (dusk > 0) { this.hemi.color.lerp(H_DUSK, dusk * 0.65); this.hemi.intensity *= 1 - 0.5 * dusk; } // after sunset: blue hour, violet fill
     // haze: cool lavender away from the sun, glowing red-orange towards it (weaker behind the veil)
-    this.scene.fog.color.lerpColors(F_CLEAR, F_GREY, cover * 0.6); if (dusk > 0) this.scene.fog.color.lerp(F_DUSK, Math.min(1, dusk * 1.4) * 0.85); // far islands sink into the dusk instead of standing pale
+    this.scene.fog.color.lerpColors(F_CLEAR, F_GREY, cover * 0.6); const setK = this.track.__sunset ? Math.max(0, Math.min(1, (0.07 - s.y) / 0.11)) : 0; // the haze darkens already while the sun goes down (pale islands at sunset, Mac mini 13.11.)
+    if (setK > 0) this.scene.fog.color.lerp(F_DUSK, setK * 0.85); // far islands sink into the dusk instead of standing pale
     FOG_SUN.x = s.x; FOG_SUN.y = s.y; FOG_SUN.z = s.z;
-    const g = (1 - 0.45 * veil) * (0.85 + 0.3 * low) * (1 - 0.6 * dusk);
+    const g = (1 - 0.45 * veil) * (0.85 + 0.3 * low) * (1 - 0.6 * Math.max(dusk, setK * 0.7));
     FOG_SUNCOL.x = 0.55 * g; FOG_SUNCOL.y = (0.3 - 0.07 * low - 0.12 * dusk) * g; FOG_SUNCOL.z = (0.1 - 0.04 * low - 0.03 * dusk) * g; // golden glow towards the sun
     const wu = this.water.material.uniforms;
     wu.sunDirection.value.copy(s); wu.sunColor.value.lerpColors(WS_HIGH, WS_LOW, low).multiplyScalar((1 - 0.5 * veil) * (1 - 0.75 * dusk));
@@ -1742,8 +1743,10 @@ float sn(vec2 p) { vec2 i = floor(p), f = fract(p); f = f * f * (3. - 2. * f); r
   vec3 discCol = mix(vec3(6., 3.4, 1.6), vec3(1.6, .11, .03), smoothstep(.15, .85, uLow)) * (1. - .3 * r / .019);
   retColor = mix(retColor, discCol, disc * (1. - .55 * uVeil));
   float az = atan(direction.x, direction.z);
-  vec2 q = vec2(az * 7. + uTime * .0015, ey * 95.);
+  vec2 q = vec2(az * 7. + uTime * .0015, ey * 95.), q2 = q - vec2(sign(az) * 43.98, 0.); // q2: the same streaks one turn on (7 x 2 pi)
   float st = sn(q) * .55 + sn(q * vec2(2.7, 2.1) + 3.1) * .3 + sn(q * vec2(7.3, 4.2) + 1.7) * .15;
+  float st2 = sn(q2) * .55 + sn(q2 * vec2(2.7, 2.1) + 3.1) * .3 + sn(q2 * vec2(7.3, 4.2) + 1.7) * .15;
+  st = mix(st, st2, .5 * smoothstep(2.4, 3.1416, abs(az))); // atan jumps at +-pi: blend both sides there, no straight seam in the sky
   float band = smoothstep(.006, .025, ey) * (1. - smoothstep(.07 + .06 * uDusk, .16 + .16 * uDusk, ey)); // at sunset the streaks reach higher
   float thick = smoothstep(.7 - .2 * uCover - .25 * uVeil * pow(cs, 30.), .82, st) * band;
   vec3 stCol = mix(vec3(.26, .22, .30), vec3(1.5, .5, .18), clamp(pow(cs, 10.) * 1.4 + .25 * pow(cs, 2.), 0., 1.));
