@@ -661,7 +661,7 @@ export class WorldScene {
       const pace = e => (e.speed ?? 0.8) * (r() < 0.5 ? 1 : -1);
       if (leashed.length) for (let k = 0, n = Math.max(2, Math.round((d1 - d0) / 70)); k < n; k++) { const e = leashed[Math.floor(r() * leashed.length)], side = k % 2 ? -1 : 1; walk(e, a + (b - a) * (k + 0.2 + r() * 0.6) / n, side * (ROAD_W + 0.8), pace(e)); } // dogs and a goat on the leash
       wagons.slice(0, 2).forEach((e, k) => { const side = k ? -1 : 1, dd = a + (b - a) * (0.3 + 0.4 * k + r() * 0.1), off = side * (ROAD_W - 0.25); // a horse cart rolls along the edge of the carriageway (1.7 m wide: the rider keeps 2 m)
-        const o = place(e, dd, off, { anim: 'Gehen', overlap: true, gap: -99, radK: 0.1, yAbs: top(dd) }); if (o) o.userData.walk = { d: dd, off, v: (e.speed ?? 1.2) * (k ? -1 : 1), a: d0 - 45, b: d1 + 45, lane: true, wrap: true }; }); /* wagons never turn on the spot: they roll out through the gate and come in again at the other end */
+        const o = place(e, dd, off, { anim: 'Gehen', overlap: true, gap: -99, radK: 0.1, yAbs: top(dd) }); if (o) o.userData.walk = { d: dd, off, v: (e.speed ?? 1.2) * (k ? -1 : 1), a: d0 - 45, b: d1 + 45, lane: true, wrap: true, gates: [d0 + 2, d1 - 2] }; }); /* wagons never turn on the spot: they roll out through the gate and come in again at the other end */
       const idle = ['magd', 'haendler', 'baeckerin', 'alte_frau', 'moench', 'kaufmann', 'edeldame', 'wirt', 'knecht', 'marktfrau', 'lehrling', 'junge', 'maedchen'].map(byName).filter(Boolean);
       if (idle.length) for (let d = d0 + 18; d < d1 - 12; d += 24 + r() * 20) { const side = r() < 0.5 ? 1 : -1, n = 2 + Math.floor(r() * 2), q0 = spot(d, side * (ROAD_W + 1.0)), fwd = Math.atan2(q0.tx, q0.tz); // a chat: two or three facing each other
         for (let k = 0; k < n; k++) { const an = k * 6.283 / n + r(); place(idle[Math.floor(r() * idle.length)], d + Math.cos(an) * 0.55, side * (ROAD_W + 1.0 + Math.sin(an) * 0.45), { face: fwd + (side > 0 ? -1 : 1) * (Math.PI / 2 - an) + Math.PI / 2, overlap: true, gap: 0.2, radK: 0.2, anim: k ? 'Stehen' : 'Rufen', yAbs: top(d) }); } }
@@ -1728,8 +1728,15 @@ export class WorldScene {
     for (const w of this.wheels) w.rotation.x = time * 0.35;
     if (this.villageAnim.length) tickVillage(this.villageAnim, time);
     for (const o of this.props) { const w = o.userData.walk; if (!w || !o.visible) continue; // walk along the road, turn round at the village ends
-      w.d += w.v * Math.min(dt, 0.1); if (w.d < w.a || w.d > w.b) { if (w.wrap) w.d = w.d < w.a ? w.b : w.a; else { w.v = -w.v; w.d = Math.max(w.a, Math.min(w.b, w.d)); } }
-      const p = this.field.at(w.d), l = Math.hypot(p.tx, p.tz) || 1, x = p.x - p.tz / l * w.off, z = p.z + p.tx / l * w.off;
+      w.d += w.v * Math.min(dt, 0.1);
+      if (w.d < w.a || w.d > w.b) { if (!w.wrap) { w.v = -w.v; w.d = Math.max(w.a, Math.min(w.b, w.d)); }
+        else { // a wagon never turns and never pops up in view: it rolls on while the rider is near, then waits out of sight until its entry point is far from the rider
+          const over = w.d < w.a ? w.a - w.d : w.d - w.b, dest = w.v > 0 ? w.a : w.b;
+          if (Math.abs(this.d - w.d) < 140 && over < 260) { /* keep rolling down the open road */ }
+          else if (Math.abs(this.d - dest) > 170) w.d = dest;
+          else { w.d -= w.v * Math.min(dt, 0.1); o.position.y = -80; continue; } } }
+      let off = w.off; if (w.gates) { const g = Math.min(Math.abs(w.d - w.gates[0]), Math.abs(w.d - w.gates[1])); off -= Math.sign(off) * 0.45 * Math.max(0, Math.min(1, (16 - g) / 8)); } // through the gate a little closer to the middle: clear of the pillars
+      const p = this.field.at(w.d), l = Math.hypot(p.tx, p.tz) || 1, x = p.x - p.tz / l * off, z = p.z + p.tx / l * off;
       o.position.set(x, w.lane ? p.e + 0.05 : this.field.ground(x, z), z); o.rotation.y = Math.atan2(p.tx * Math.sign(w.v), p.tz * Math.sign(w.v)); }
     for (const b of this.birds) { const c = b.userData.circle, a = c.ph + time * c.w;
       b.position.set(c.x + Math.cos(a) * c.R, c.y + Math.sin(time * 0.3 + c.ph) * 4, c.z + Math.sin(a) * c.R); b.rotation.y = -a; }
