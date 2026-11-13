@@ -181,11 +181,12 @@ async function showBoard() {
     const k = state.settings.boardSort || 'km', val = r => k === 'km' ? r.km : k === 'hm' ? r.hm : tot(r);
     const rows = [...b.rows].sort((x, y) => val(y) - val(x) || y.km - x.km);
     el.innerHTML = `<div class="board">
-      <div class="board-head"><div class="label">Rangliste diese Woche</div>
+      <div class="board-head"><div class="label">Rangliste diese Woche <button class="betinfo" id="betInfoBtn" title="Was bedeuten die blauen, gelben und roten Punkte?">?</button></div>
         <div class="board-tabs">${Object.entries(BOARD_SORT).map(([id, [t]]) => `<button class="${id === k ? 'on' : ''}" data-k="${id}">${t}</button>`).join('')}</div></div>
       <table><tbody>${rows.map((r, i) => `<tr class="${r.me ? 'me' : ''}" data-key="${esc(r.key || '')}" title="Profil ansehen"><td class="rank">${i + 1}</td><td class="nm"><span class="who">${faceImg(r.look)}${esc(r.name)}</span></td>
         <td>${fmtNum(r.km, 1)} km</td><td>${fmtNum(r.hm)} Hm</td><td class="dim">${r.days} ${r.days === 1 ? 'Tag' : 'Tage'}</td>
         <td class="pts">${r.pts ? `<span class="wz">${r.pts.wizard}</span><span class="kg">${r.pts.king}</span><span class="dv">${r.pts.devil}</span>` : '<span class="dim">–</span>'}</td></tr>`).join('')}</tbody></table></div>`;
+    el.querySelector('#betInfoBtn')?.addEventListener('click', () => import('./story.js').then(m => m.betInfo()));
     el.querySelectorAll('.board-tabs button').forEach(x => x.onclick = () => { state.settings.boardSort = x.dataset.k; saveSettings(); draw(); });
     el.querySelectorAll('tr[data-key]').forEach(tr => tr.onclick = () => tr.dataset.key && profileModal(tr.dataset.key, routeName));
     fillFaces(el);

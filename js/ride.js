@@ -1,6 +1,6 @@
 // Ride mode: physics, video speed sync, trainer control, HUD, ghost and saving.
 import { db, uid } from './db.js';
-import { loadLedger, StoryRide, storyHTML, WHO, leaderOf } from './story.js';
+import { loadLedger, StoryRide, storyHTML, wireStory, WHO, leaderOf } from './story.js';
 import { STEP, eleAt, gradeAt, timeAt, videoSpeedAt } from './track.js';
 import { defaultParams, step as physStep } from './physics.js';
 import { DemoScene } from './demo.js';
@@ -1062,6 +1062,7 @@ export class RideSession {
       <div class="row-actions"><button class="btn ghost" id="fShare">Bild zum Teilen</button><button class="btn ghost" id="fStrava">Auf Strava hochladen</button><button class="btn" id="fDone">Fertig</button></div></div>`;
     this.el.append(o);
     o.querySelector('#fDone').onclick = () => this._close(true);
+    wireStory(o, this._storySum); // "?" for the three points, the strength set for extra points (Freddy 13.11.)
     o.querySelector('#fFtp')?.addEventListener('click', async e => { // fitness test: take the new FTP, the ride remembers it as a test
       const b = e.currentTarget, w = +b.dataset.w; b.disabled = true;
       this.state.settings.ftp = w; rec.ftpTest = w;

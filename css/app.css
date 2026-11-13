@@ -625,3 +625,17 @@ img.face.big{width:96px;height:96px}
 @media (max-width: 700px) { .libacts { grid-template-columns: 1fr; } }
 /* long segmented choices (Wetter in Unreal: 7 options) wrap inside the card instead of running out of it */
 #ueWeather.seg, .seg.wrap { display: flex; flex-wrap: wrap; border-radius: 18px; flex-shrink: 1; max-width: 100%; }
+
+/* the bet on the result screen: "?" and the strength offer (13.11.) */
+.betinfo { margin-left: 6px; width: 20px; height: 20px; border-radius: 50%; border: 1px solid var(--line-2); background: none; color: var(--paper); font: 700 12px/1 inherit; cursor: pointer; vertical-align: middle; }
+.betinfo:hover { border-color: var(--accent); color: var(--accent); }
+.strcards { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; }
+.strcard { border: 1px solid var(--line-2); border-top: 3px solid var(--fc); border-radius: var(--radius); padding: 10px 12px; display: flex; flex-direction: column; gap: 6px; transition: opacity .2s; }
+.strcard.dim { opacity: .35; pointer-events: none; }
+.strhead { font-weight: 800; } .strhead small { color: var(--fc); font-weight: 700; margin-left: 4px; }
+.strq { font-style: italic; color: var(--muted); font-size: 13px; }
+.strwhat b { font-size: 22px; font-weight: 900; }
+.strlv { display: flex; flex-direction: column; gap: 6px; margin-top: auto; }
+.strlv .btn { justify-content: space-between; }
+.strgo { margin-bottom: 4px; }
+@media (max-width: 760px) { .strcards { grid-template-columns: 1fr; } }
