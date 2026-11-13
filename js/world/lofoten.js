@@ -42,7 +42,7 @@ const SUB = STEP / DS;
 // FOG_H), so peaks stand out against a hazy shore, and it glows warm towards the sun (like UE's exponential height
 // fog with directional inscattering / iq's fog article). Sun direction and glow colour are shared plain objects:
 // three copies Vector3/Color uniforms per material, plain {x,y,z} objects stay shared and update every material.
-const FOG_SUN = { x: 0, y: 0.05, z: -1 }, FOG_SUNCOL = { x: 0, y: 0, z: 0 }, FOG_H = 420;
+const FOG_SUN = { x: 0, y: 0.05, z: -1 }, FOG_SUNCOL = { x: 0, y: 0, z: 0 }, FOG_SET = { x: 0, y: 0, z: 0 }, FOG_H = 420; // FOG_SET.x: sunset strength (plain object = shared by reference through cloned uniforms)
 let fogInstalled = false;
 function installFog() {
   if (fogInstalled) return; fogInstalled = true;
@@ -54,6 +54,7 @@ function installFog() {
   uniform vec3 fogColor;
   uniform vec3 fogSunDir;
   uniform vec3 fogSunCol;
+  uniform vec3 fogSet;
   varying float vFogDepth;
   varying vec3 vFogRay;
   #ifdef FOG_EXP2
@@ -78,12 +79,14 @@ function installFog() {
     fogFactor = min( fogFactor * ( 1.0 - 0.25 * pow( fogS, 4.0 ) ), 0.88 - 0.16 * pow( fogS, 2.0 ) ); // a trace of the land's own darker tone always stays
     vec3 fogC = fogColor * ( 1.0 - 0.18 * pow( fogS, 3.0 ) ) + fogSunCol * ( 0.7 * pow( fogS, 5.0 ) + 0.5 * pow( fogS, 40.0 ) );
     gl_FragColor.rgb = mix( gl_FragColor.rgb, fogC, fogFactor );
+    // sunset: far land turns into a dark violet-brown backlit silhouette instead of pale lilac (Mac mini 13.11.); the mirror pass shares this, so reflections darken too
+    gl_FragColor.rgb = mix( gl_FragColor.rgb, gl_FragColor.rgb * vec3( 0.42, 0.3, 0.36 ), fogSet.x * smoothstep( 0.2, 0.75, fogFactor ) * ( 0.75 + 0.25 * fogS ) );
   #else
     float fogFactor = smoothstep( fogNear, fogFar, vFogDepth );
     gl_FragColor.rgb = mix( gl_FragColor.rgb, fogColor, fogFactor );
   #endif
 #endif`;
-  const add = u => { if (u && u.fogColor && !u.fogSunDir) { u.fogSunDir = { value: FOG_SUN }; u.fogSunCol = { value: FOG_SUNCOL }; } };
+  const add = u => { if (u && u.fogColor && !u.fogSunDir) { u.fogSunDir = { value: FOG_SUN }; u.fogSunCol = { value: FOG_SUNCOL }; u.fogSet = { value: FOG_SET }; } };
   add(THREE.UniformsLib.fog);
   for (const k in THREE.ShaderLib) add(THREE.ShaderLib[k].uniforms);
 }
@@ -282,7 +285,7 @@ export class WorldScene {
     // real water reflects ~4 % straight down (not 30 %): the sea is no longer a white mirror, the teal body and the
     // turquoise sand under the shallows show through; grazing angles still mirror the mountains
     this.water.material.fragmentShader = this.water.material.fragmentShader
-      .replace('vec3 reflectionSample = vec3( texture2D( mirrorSampler, mirrorCoord.xy / mirrorCoord.w + distortion ) );', 'vec2 rUv = mirrorCoord.xy / mirrorCoord.w + distortion; vec3 reflectionSample = texture2D( mirrorSampler, clamp( rUv, 0.002, 0.998 ) ).rgb; float rOut = max( max( -rUv.x, rUv.x - 1.0 ), max( -rUv.y, rUv.y - 1.0 ) ); reflectionSample = mix( reflectionSample, vec3( 0.32, 0.38, 0.44 ), smoothstep( -0.04, 0.02, rOut ) ); reflectionSample = mix( reflectionSample, vec3( 0.13, 0.22, 0.3 ), uHigh );') // outside the mirror image: a neutral sky tone, no stretched edge
+      .replace('vec3 reflectionSample = vec3( texture2D( mirrorSampler, mirrorCoord.xy / mirrorCoord.w + distortion ) );', 'vec2 rUv = mirrorCoord.xy / mirrorCoord.w + distortion; vec3 reflectionSample = texture2D( mirrorSampler, clamp( rUv, 0.002, 0.998 ) ).rgb; float rOut = max( max( -rUv.x, rUv.x - 1.0 ), max( -rUv.y, rUv.y - 1.0 ) ); reflectionSample = mix( reflectionSample, vec3( 0.32, 0.38, 0.44 ), smoothstep( -0.04, 0.02, rOut ) ); reflectionSample = mix( reflectionSample, vec3( 0.13, 0.22, 0.3 ), uHigh ); reflectionSample *= 1.0 - 0.45 * fogSet.x;') // sunset: no bright white mirror in the dusk water // outside the mirror image: a neutral sky tone, no stretched edge
       .replace('float rf0 = 0.3;', 'float rf0 = 0.04;')
       // sharper, brighter sun glitter: a glittering path on the sea towards the low sun
       .replace('sunLight( surfaceNormal, eyeDirection, 100.0, 2.0, 0.5, diffuseLight, specularLight );', 'sunLight( surfaceNormal, eyeDirection, 260.0, 5.0, 0.5, diffuseLight, specularLight );')
@@ -1445,7 +1448,7 @@ export class WorldScene {
     // haze: cool lavender away from the sun, glowing red-orange towards it (weaker behind the veil)
     this.scene.fog.color.lerpColors(F_CLEAR, F_GREY, cover * 0.6); const setK = this.track.__sunset ? Math.max(0, Math.min(1, (0.07 - s.y) / 0.11)) : 0; // the haze darkens already while the sun goes down (pale islands at sunset, Mac mini 13.11.)
     if (setK > 0) this.scene.fog.color.lerp(F_DUSK, setK * 0.85); // far islands sink into the dusk instead of standing pale
-    FOG_SUN.x = s.x; FOG_SUN.y = s.y; FOG_SUN.z = s.z;
+    FOG_SUN.x = s.x; FOG_SUN.y = s.y; FOG_SUN.z = s.z; FOG_SET.x = setK;
     const g = (1 - 0.45 * veil) * (0.85 + 0.3 * low) * (1 - 0.6 * Math.max(dusk, setK * 0.7));
     FOG_SUNCOL.x = 0.55 * g; FOG_SUNCOL.y = (0.3 - 0.07 * low - 0.12 * dusk) * g; FOG_SUNCOL.z = (0.1 - 0.04 * low - 0.03 * dusk) * g; // golden glow towards the sun
     const wu = this.water.material.uniforms;
