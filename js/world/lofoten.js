@@ -648,6 +648,7 @@ export class WorldScene {
     // ---- life in the lane (Freddy 13.11.: "mehr Menschen, Tiere an Leinen, Wägen"): passers-by, some with a dog at heel,
     // little groups chatting at a door, hand carts, geese and hens; all on the cobbles, clear of the middle of the road
     { let walkers = (A.by.figure_walk || []).concat(A.by.figure_idle || []).filter(e => e.clips.some(c => c.name === 'Gehen'));
+      const combo = /mensch_mit_hund|ziege_am_strick|pferdewagen|eselkarren/, leashed = walkers.filter(e => /mensch_mit_hund|ziege_am_strick/.test(e.file || '')), wagons = walkers.filter(e => /pferdewagen|eselkarren/.test(e.file || '')); walkers = walkers.filter(e => !combo.test(e.file || '')); /* the MacBook's combined models (person + dog on a leash, horse + wagon) get their own places below */
       const faced = walkers.filter(e => !/^dorf_|\/dorf_/.test(e.file || '')); if (faced.length >= 5) walkers = faced;
       walkers = walkers.map(e => [r(), e]).sort((x, y) => x[0] - y[0]).map(x => x[1]);
       const a = d0 + 8, b = d1 - 8, dog = byName('hund'), nW = Math.round((d1 - d0) / 15);
@@ -656,7 +657,11 @@ export class WorldScene {
         const st = e.speed ?? Object.entries(STRIDE).find(([n]) => (e.file || '').includes(n))?.[1] ?? 0.86, v = st * (0.96 + r() * 0.1) * (r() < 0.5 ? 1 : -1);
         if (!walk(e, dd, off, v)) continue;
         if (r() < 0.3 && walkers.length > 1) walk(walkers[(k + 7) % walkers.length], dd - 0.3, off - side * 0.75, v); // two walking side by side (same pace: they stay together)
-        else if (dog && r() < 0.35) walk(dog, dd + Math.sign(v) * 0.9, off - side * 0.55, v, e.speed > 1.2 ? 'Rennen' : 'Schritt'); } // a dog at heel
+        else if (dog && !leashed.length && r() < 0.35) walk(dog, dd + Math.sign(v) * 0.9, off - side * 0.55, v, e.speed > 1.2 ? 'Rennen' : 'Schritt'); } // a dog at heel
+      const pace = e => (e.speed ?? 0.8) * (r() < 0.5 ? 1 : -1);
+      if (leashed.length) for (let k = 0, n = Math.max(2, Math.round((d1 - d0) / 70)); k < n; k++) { const e = leashed[Math.floor(r() * leashed.length)], side = k % 2 ? -1 : 1; walk(e, a + (b - a) * (k + 0.2 + r() * 0.6) / n, side * (ROAD_W + 0.8), pace(e)); } // dogs and a goat on the leash
+      wagons.slice(0, 2).forEach((e, k) => { const side = k ? -1 : 1, dd = a + (b - a) * (0.3 + 0.4 * k + r() * 0.1), off = side * (ROAD_W - 0.45); // a horse cart rolls along the edge of the carriageway (1.7 m wide: the rider keeps 2 m)
+        const o = place(e, dd, off, { anim: 'Gehen', overlap: true, gap: -99, radK: 0.1, yAbs: top(dd) }); if (o) o.userData.walk = { d: dd, off, v: (e.speed ?? 1.2) * (k ? -1 : 1), a: a + 6, b: b - 6, lane: true }; });
       const idle = ['magd', 'haendler', 'baeckerin', 'alte_frau', 'moench', 'kaufmann', 'edeldame', 'wirt', 'knecht', 'marktfrau', 'lehrling', 'junge', 'maedchen'].map(byName).filter(Boolean);
       if (idle.length) for (let d = d0 + 18; d < d1 - 12; d += 24 + r() * 20) { const side = r() < 0.5 ? 1 : -1, n = 2 + Math.floor(r() * 2), q0 = spot(d, side * (ROAD_W + 1.0)), fwd = Math.atan2(q0.tx, q0.tz); // a chat: two or three facing each other
         for (let k = 0; k < n; k++) { const an = k * 6.283 / n + r(); place(idle[Math.floor(r() * idle.length)], d + Math.cos(an) * 0.55, side * (ROAD_W + 1.0 + Math.sin(an) * 0.45), { face: fwd + (side > 0 ? -1 : 1) * (Math.PI / 2 - an) + Math.PI / 2, overlap: true, gap: 0.2, radK: 0.2, anim: k ? 'Stehen' : 'Rufen', yAbs: top(d) }); } }
