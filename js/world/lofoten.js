@@ -636,9 +636,9 @@ export class WorldScene {
       if (level(d + w / 2, off) && place(e, d + w / 2, off, { face: 'road', overlap: true, gap: 1.2, ground: 'centre', scale: [1, sy, 1], anim: 'Schwingen' })) { stood++;
         if (r() < 0.3) place(byName(r() < 0.5 ? 'fass' : 'faesser_kisten'), d + w * 0.25, side * (ROAD_W + 0.75), { overlap: true, gap: 0.25, radK: 0.3, rot: r() * 3 }); // barrels at the wall
         if (r() < 0.22) place(byName(['magd', 'haendler', 'baeckerin', 'alte_frau', 'junge'][Math.floor(r() * 5)]), d + w * 0.6, side * (ROAD_W + 0.8), { face: 'road', overlap: true, gap: 0.3, radK: 0.3, anim: 'Stehen' }); // someone in the doorway
-        { const wall = side * (FRONT + set + 0.02), bit = (n, dd, o = {}) => place(byName(n), d + w * dd, wall, { face: 'road', overlap: true, gap: 0.2, radK: 0.15, anim: 'Schwingen', ...o }); // on the front wall (models: origin at the foot of the wall)
+        { const wall = side * (FRONT + set + 0.02), bit = (n, dd, o = {}) => place(byName(n), d + w * dd, wall + side * (o.inset || 0), { face: 'road', overlap: true, gap: 0.2, radK: 0.15, anim: 'Schwingen', ...o }); // on the front wall (models: origin at the foot of the wall)
           if (e.category !== 'house_lane' || !/_(a|c|e|h)(_v\d+)?\.glb$/.test(e.file)) { if (r() < 0.3) bit(['schild_baecker', 'schild_schmied', 'schild_schenke'][Math.floor(r() * 3)], 0.5); } // the shops bring their own sign
-          if (r() < 0.45) bit('wandlaterne', 0.12); if (r() < 0.4) bit('blumenkasten', 0.3); if (r() < 0.25) bit('regenfass', 0.92, { anim: null }); }
+          if (r() < 0.45) bit('wandlaterne', 0.12, { dy: 2.7, inset: 0.8 }); if (r() < 0.4) bit('blumenkasten', 0.3, { dy: 1.35, inset: 0.8 }); /* their origin is the lantern / the box itself; the ground floors stand back under the overhang (Mac mini 13.11.) */ if (r() < 0.25) bit('regenfass', 0.92, { anim: null }); }
         if (r() < 0.1) place(byName('katze'), d + w * 0.8, side * (ROAD_W + 0.6), { face: r() * 6.28, overlap: true, gap: 0.2, radK: 0.2, anim: 'Schlafen' });
       }
       d += w * 0.97;
@@ -647,7 +647,7 @@ export class WorldScene {
     const add = o => { this.scene.add(o); this.props.push(o); return o; };
     const frame = d => { const p = f.at(d), l = Math.hypot(p.tx, p.tz) || 1; return { p, tx: p.tx / l, tz: p.tz / l, ang: Math.atan2(p.tx, p.tz) }; };
     // cobbles from wall to wall: a ribbon on top of the asphalt (the painted lines vanish under it), its edges on the ground
-    { const W = FRONT + 0.9, pos = [], uv = [], idx = [], n = Math.ceil((d1 - d0) / 2.5);
+    { const W = FRONT + 1.7, pos = [], /* up to the ground-floor walls under the overhang */ uv = [], idx = [], n = Math.ceil((d1 - d0) / 2.5);
       for (let i = 0; i <= n; i++) { const d = d0 + (d1 - d0) * i / n, { p, tx, tz } = frame(d);
         for (const o of [-W, -ROAD_W, ROAD_W, W]) { const x = p.x - tz * o, z = p.z + tx * o, y = Math.abs(o) > ROAD_W ? Math.max(f.height(x, z), p.e - 0.25) + 0.05 : p.e + 0.035; pos.push(x, y, z); uv.push(o / 2.2, d / 2.2); }
         if (i < n) for (let k = 0; k < 3; k++) { const q = i * 4 + k; idx.push(q, q + 4, q + 1, q + 1, q + 4, q + 5); } }
