@@ -1443,9 +1443,9 @@ export class WorldScene {
     this.hemi.intensity = (1.2 + 0.12 * cover + 0.05 * veil) * (1 - 0.5 * (this.tunnelK || 0)); // shadow slopes ~40 % of the sunlit side, not black; dim inside rock tunnels
     this.hemi.color.lerpColors(H_CLEAR, H_GREY, cover * 0.7); if (dusk > 0) { this.hemi.color.lerp(H_DUSK, dusk * 0.65); this.hemi.intensity *= 1 - 0.5 * dusk; } // after sunset: blue hour, violet fill
     // haze: cool lavender away from the sun, glowing red-orange towards it (weaker behind the veil)
-    this.scene.fog.color.lerpColors(F_CLEAR, F_GREY, cover * 0.6); if (dusk > 0) this.scene.fog.color.lerp(F_DUSK, dusk * 0.7);
+    this.scene.fog.color.lerpColors(F_CLEAR, F_GREY, cover * 0.6); if (dusk > 0) this.scene.fog.color.lerp(F_DUSK, Math.min(1, dusk * 1.4) * 0.85); // far islands sink into the dusk instead of standing pale
     FOG_SUN.x = s.x; FOG_SUN.y = s.y; FOG_SUN.z = s.z;
-    const g = (1 - 0.45 * veil) * (0.85 + 0.3 * low) * (1 - 0.35 * dusk);
+    const g = (1 - 0.45 * veil) * (0.85 + 0.3 * low) * (1 - 0.6 * dusk);
     FOG_SUNCOL.x = 0.55 * g; FOG_SUNCOL.y = (0.3 - 0.07 * low - 0.12 * dusk) * g; FOG_SUNCOL.z = (0.1 - 0.04 * low - 0.03 * dusk) * g; // golden glow towards the sun
     const wu = this.water.material.uniforms;
     wu.sunDirection.value.copy(s); wu.sunColor.value.lerpColors(WS_HIGH, WS_LOW, low).multiplyScalar((1 - 0.5 * veil) * (1 - 0.75 * dusk));
@@ -1700,7 +1700,7 @@ function sunAt(u, out = new THREE.Vector3(), sunset = false) {
 // light colours (linear) for a high (6.5°) and a low (2°) sun; sky fill clear / overcast; haze clear / overcast
 const W_HIGH = new THREE.Color(0xffdcc2), W_LOW = new THREE.Color(0xffc9a4);
 const H_CLEAR = new THREE.Color(0xb6c4d6), H_GREY = new THREE.Color(0xaab4c4);
-const W_DUSK = new THREE.Color(0xff8a5a), H_DUSK = new THREE.Color(0x8c86b8), F_DUSK = new THREE.Color(0x7a6080); // after sunset
+const W_DUSK = new THREE.Color(0xff8a5a), H_DUSK = new THREE.Color(0x8c86b8), F_DUSK = new THREE.Color(0x4e3c5c); // after sunset
 export const FOV_NORMAL = 62;
 const ENV_I = 0.55; // sky image light: less blue cast on meadows than before (0.95)
 const F_CLEAR = new THREE.Color(0xbfc6cd), F_GREY = new THREE.Color(0xb4b9c2);
@@ -1744,7 +1744,7 @@ float sn(vec2 p) { vec2 i = floor(p), f = fract(p); f = f * f * (3. - 2. * f); r
   float az = atan(direction.x, direction.z);
   vec2 q = vec2(az * 7. + uTime * .0015, ey * 95.);
   float st = sn(q) * .55 + sn(q * vec2(2.7, 2.1) + 3.1) * .3 + sn(q * vec2(7.3, 4.2) + 1.7) * .15;
-  float band = smoothstep(.006, .025, ey) * (1. - smoothstep(.07 + .12 * uDusk, .16 + .2 * uDusk, ey)); // at sunset the streaks reach higher
+  float band = smoothstep(.006, .025, ey) * (1. - smoothstep(.07 + .06 * uDusk, .16 + .16 * uDusk, ey)); // at sunset the streaks reach higher
   float thick = smoothstep(.7 - .2 * uCover - .25 * uVeil * pow(cs, 30.), .82, st) * band;
   vec3 stCol = mix(vec3(.26, .22, .30), vec3(1.5, .5, .18), clamp(pow(cs, 10.) * 1.4 + .25 * pow(cs, 2.), 0., 1.));
   retColor = mix(retColor, stCol * (.7 + .5 * st), thick * .85);
@@ -1830,9 +1830,9 @@ void main() {
   vec3 col = mix(shade, lit, l * (.55 + .45 * hgt));
   col += vec3(1.3, .62, .3) * pow(vToSun, 6.) * (1. - t.b) * 1.2; // silver lining against the sun
   col = mix(col, mix(vec3(1., .74, .62), vec3(.9, .4, .38), uDusk), vFar * .45); // far heaps sink into the warm horizon haze
-  col *= mix(vec3(1.), vec3(.82, .5, .52), uDusk); // after sunset the heaps glow dusky rose, not white
+  col *= mix(vec3(1.), vec3(.58, .34, .4), uDusk); // after sunset the heaps glow dusky rose, not white (no cardboard)
   col = mix(col, col * vec3(.5, .2, .12) + vec3(.1, .025, .01), uHell); // hell: smoke-red, sooty heaps
-  gl_FragColor = vec4(col, a * .82); // a little sky shows through: they sit in the haze, not on it
+  gl_FragColor = vec4(col, a * .82 * (1. - .3 * uDusk)); // a little sky shows through: they sit in the haze, not on it
   #include <tonemapping_fragment>
   #include <colorspace_fragment>
 }` });
@@ -1854,7 +1854,7 @@ void main() {
   vec3 dir = normalize(vW - cameraPosition); // cloud deck 1.5 km up, seen through a dome: no far-plane edge at the horizon
   if (dir.y < .015) discard;
   vec2 p = (cameraPosition.xz + dir.xz / dir.y * 1500.) / 1700. + vec2(uTime * .004, uTime * .0015);
-  float f = mix(fbm(p), fbm(vec2(p.x * .3 + p.y * .12, p.y * 3.4)), uDusk * .7 + uLow * .25); // towards sunset the deck draws out into long streaks
+  float f = mix(fbm(p), fbm(vec2(p.x * .55 + p.y * .1, p.y * 1.8)), (uDusk * .55 + uLow * .2) * smoothstep(.05, .3, dir.y)); // gentle streaks, none near the horizon (it fanned out like warp speed, Mac mini 13.11.) // towards sunset the deck draws out into long streaks
   float c = smoothstep(.56 - .2 * uCover - .06 * uDusk, .8 - .12 * uCover, f);
   vec2 sd = normalize(uSun.xz + 1e-4);
   float lit = clamp(.5 + (f - fbm(p - sd * .045)) * 5., 0., 1.);
