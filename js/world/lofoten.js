@@ -13,7 +13,7 @@ export async function prepareWorld(track) {
   DEM = DEMS.get(key); useSatellite(DEM, track?.dem?.sat || 'lofoten_s2.jpg');
   console.info('RIDEFRAME Gelände', key, DEM ? `${DEM.n}² ${(DEM.size / 1000).toFixed(1)} km${DEM.real ? ' echt' : ''}` : 'fehlt');
 }
-import { asphalt, grassTuft, planks, stone } from './tex.js';
+import { asphalt, cobble, grassTuft, planks, stone } from './tex.js';
 import { terrainMaterial, tex, texReady, TIME, HELL, useSatellite } from './terrainmat.js';
 import { Water } from '../../vendor/jsm/objects/Water.js';
 import { mergeGeometries } from '../../vendor/jsm/utils/BufferGeometryUtils.js';
@@ -620,6 +620,59 @@ export class WorldScene {
     this.falls = placeWaterfalls(this, null, []);
   }
 
+  /** an old-town lane from d0 to d1 (see _placeAssets) */
+  _lane(d0, d1, { A, place, byName, spot, r, segAt }) {
+    const f = this.field, FRONT = ROAD_W + 1.5; // house fronts 1.5 m from the asphalt: 9.6 m from wall to wall
+    const lane = (A.by.house_lane || []), wide = [...(A.by.house || []), ...(A.by.house_big || [])].filter(e => e.size[0] <= 11.3 && e.size[1] >= 8 && !/rorbu|stall|scheune|schuppen|ruine|kulisse|torturm|baustelle|teehaus|pagode/.test(e.file));
+    const houses = lane.length >= 3 ? lane : [...lane, ...wide]; if (houses.length < 2) return;
+    const level = (d, off) => { const q = spot(d, segAt(d).seaSide === 1 ? -off : off), h = f.height(q.x, q.z), e = f.at(d).e; return h > 0.6 && Math.abs(h - e) < 2.6; };
+    let stood = 0, last = [null, null];
+    for (const side of [-1, 1]) for (let d = d0 + 6; d < d1 - 6;) {
+      let e = houses[Math.floor(r() * houses.length)]; if (e === last[(side + 1) / 2]) e = houses[Math.floor(r() * houses.length)]; // rarely the same house twice in a row
+      last[(side + 1) / 2] = e; const w = e.size[0], dep = e.size[2], sy = 0.92 + r() * 0.3, set = r() < 0.25 ? 0.5 + r() * 0.7 : 0; // some stand back half a metre: no ruler-straight wall
+      if (r() < 0.08) { d += 2.6 + r() * 1.6; continue; } // a slit between two houses: a side alley
+      const off = side * (FRONT + set + dep / 2);
+      if (level(d + w / 2, off) && place(e, d + w / 2, off, { face: 'road', overlap: true, gap: 1.2, ground: 'centre', scale: [1, sy, 1], anim: 'Schwingen' })) { stood++;
+        if (r() < 0.3) place(byName(r() < 0.5 ? 'fass' : 'faesser_kisten'), d + w * 0.25, side * (ROAD_W + 0.75), { overlap: true, gap: 0.25, radK: 0.3, rot: r() * 3 }); // barrels at the wall
+        if (r() < 0.22) place(byName(['magd', 'haendler', 'baeckerin', 'alte_frau', 'junge'][Math.floor(r() * 5)]), d + w * 0.6, side * (ROAD_W + 0.8), { face: 'road', overlap: true, gap: 0.3, radK: 0.3, anim: 'Stehen' }); // someone in the doorway
+        if (r() < 0.1) place(byName('katze'), d + w * 0.8, side * (ROAD_W + 0.6), { face: r() * 6.28, overlap: true, gap: 0.2, radK: 0.2, anim: 'Schlafen' });
+      }
+      d += w * 0.97;
+    }
+    if (stood < 6) return; // too steep or too wet here: the village stays as it was
+    const add = o => { this.scene.add(o); this.props.push(o); return o; };
+    const frame = d => { const p = f.at(d), l = Math.hypot(p.tx, p.tz) || 1; return { p, tx: p.tx / l, tz: p.tz / l, ang: Math.atan2(p.tx, p.tz) }; };
+    // cobbles from wall to wall: a ribbon on top of the asphalt (the painted lines vanish under it), its edges on the ground
+    { const W = FRONT + 0.9, pos = [], uv = [], idx = [], n = Math.ceil((d1 - d0) / 2.5);
+      for (let i = 0; i <= n; i++) { const d = d0 + (d1 - d0) * i / n, { p, tx, tz } = frame(d);
+        for (const o of [-W, -ROAD_W, ROAD_W, W]) { const x = p.x - tz * o, z = p.z + tx * o, y = Math.abs(o) > ROAD_W ? Math.max(f.height(x, z), p.e - 0.25) + 0.05 : p.e + 0.035; pos.push(x, y, z); uv.push(o / 2.2, d / 2.2); }
+        if (i < n) for (let k = 0; k < 3; k++) { const q = i * 4 + k; idx.push(q, q + 4, q + 1, q + 1, q + 4, q + 5); } }
+      const g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3)); g.setAttribute('uv', new THREE.Float32BufferAttribute(uv, 2)); g.setIndex(idx); g.computeVertexNormals();
+      const tx = LANE.tex ||= (() => { const c = cobble(); c.wrapS = c.wrapT = THREE.RepeatWrapping; c.anisotropy = 16; return c; })();
+      const m = new THREE.Mesh(g, LANE.mat ||= new THREE.MeshStandardMaterial({ map: tx, roughness: 0.92, side: THREE.DoubleSide, polygonOffset: true, polygonOffsetFactor: -6, polygonOffsetUnits: -6 }));
+      m.receiveShadow = true; m.userData.live = true; m.renderOrder = 1; this.scene.add(m); /* not in props: one mesh, never batched or culled away */ }
+    // a town gate at each end (the MacBook's gassen_torbogen once it exists, else plain stone) and things across the lane
+    const stoneM = LANE.stone ||= new THREE.MeshStandardMaterial({ map: (() => { const c = stone(); c.wrapS = c.wrapT = THREE.RepeatWrapping; c.repeat.set(2, 3); return c; })(), color: 0xfff4e2, roughness: 0.95 });
+    const gateE = byName('gassen_torbogen');
+    for (const d of [d0 + 2, d1 - 2]) { const { p, ang } = frame(d);
+      if (gateE) { const o = A.make(gateE, null, r).obj; o.position.set(p.x, p.e, p.z); o.rotation.y = ang; add(o); continue; }
+      const g = new THREE.Group(), hw = FRONT + 0.3;
+      for (const x of [-1, 1]) { const tw = new THREE.Mesh(new THREE.BoxGeometry(2.6, 9, 2.8), stoneM); tw.position.set(x * (hw + 1.3), 3.5, 0); tw.castShadow = tw.receiveShadow = true; g.add(tw);
+        const cap = new THREE.Mesh(new THREE.ConeGeometry(2.3, 2.6, 4), LANE.roof ||= new THREE.MeshStandardMaterial({ color: 0x6e3b2c, roughness: 0.9 })); cap.position.set(x * (hw + 1.3), 9.3, 0); cap.rotation.y = Math.PI / 4; cap.castShadow = true; g.add(cap); }
+      const top = new THREE.Mesh(new THREE.BoxGeometry(hw * 2, 2.2, 2.2), stoneM); top.position.y = 6.5; top.castShadow = true; g.add(top);
+      const arch = new THREE.Mesh(new THREE.TorusGeometry(hw, 0.55, 6, 14, Math.PI), stoneM); arch.position.y = 5.4 - hw * 0.0; arch.scale.y = 0.42; arch.castShadow = true; g.add(arch);
+      g.position.set(p.x, p.e - 1, p.z); g.rotation.y = ang; add(g); }
+    const cloth = LANE.cloth ||= [0xe9e2d2, 0xb5463a, 0x3f6b8c, 0xd9b44a, 0xf3efe6].map(c => new THREE.MeshStandardMaterial({ color: c, side: THREE.DoubleSide, roughness: 0.9 }));
+    const lineE = byName('gassen_waescheleine'), rope = LANE.rope ||= new THREE.MeshStandardMaterial({ color: 0x4a3b2a });
+    for (let d = d0 + 22; d < d1 - 18; d += 26 + r() * 22) { const { p, ang } = frame(d), g = new THREE.Group(), span = FRONT * 2 + 1, y = 5.6 + r() * 1.6;
+      if (lineE) { const o = A.make(lineE, 'Wehen', r); o.obj.position.set(p.x, p.e + y, p.z); o.obj.rotation.y = ang; add(o.obj); if (o.mixer) { o.mixer.obj = o.obj; this.mixers.push(o.mixer); } continue; }
+      const rp = new THREE.Mesh(new THREE.BoxGeometry(span, 0.035, 0.035), rope); g.add(rp);
+      if (r() < 0.55) for (let x = -span / 2 + 1; x < span / 2 - 1; x += 0.75 + r() * 0.5) { const w = 0.45 + r() * 0.45, h = 0.5 + r() * 0.6, c = new THREE.Mesh(new THREE.PlaneGeometry(w, h), cloth[Math.floor(r() * cloth.length)]); c.position.set(x, -h / 2, 0); c.rotation.x = (r() - 0.5) * 0.25; c.castShadow = true; g.add(c); } // washing
+      else for (let x = -span / 2 + 0.6; x < span / 2 - 0.5; x += 0.62) { const c = new THREE.Mesh(LANE.pen ||= new THREE.ConeGeometry(0.2, 0.42, 3), cloth[Math.floor(r() * cloth.length)]); c.position.set(x, -0.22 - 0.25 * (1 - (2 * x / span) ** 2), 0); c.rotation.x = Math.PI; c.scale.z = 0.08; g.add(c); } // pennants
+      g.position.set(p.x, p.e + y, p.z); g.rotation.y = ang; add(g); }
+    (this.lanes ||= []).push([d0, d1]);
+    console.info(`RIDEFRAME Gasse ${Math.round(d0)}-${Math.round(d1)} m, ${stood} Häuser`);
+  }
   // ---- Blender assets along the route: villages with market, harbour life, animals, birds, whales, rock walls ----
   _placeAssets() {
     const f = this.field, t = this.track, r = rng(9001), segs = t.segments || [], A = worldView(ASSETS, t.__mode ||= QS.get('mode') || 'voll', true); /* world mode: without people / animals / villages; placed as in the full world, then left out (below) */
@@ -702,6 +755,11 @@ export class WorldScene {
         // the village's theme (Freddy: town fair, wedding, a dark church fest, a funeral, a plain market), its music changes there
         const theme = s === festSeg ? 'stadtfest' : (villageNo === 0 && THEMES.includes(QS.get('theme')) ? QS.get('theme') : THEMES[(villageNo + themeOff) % 4]); villageNo++; /* each route starts the rotation elsewhere, so funeral and market appear too (max 3 villages per route); ?theme= forces the first */
         this.villageThemes.push({ a, b, theme });
+        // ---- the old-town lane (Freddy 13.11.: "durch enge Gassen fahren, Kopfsteinpflaster, mehr Dorf-Feeling"): inland villages
+        // open with houses wall to wall on both sides, their fronts a good metre from the kerb, cobbles from wall to wall,
+        // a stone gate at each end, washing and lanterns across. First, so the lane gets the ground before market and farms.
+        if ((s.lane ?? s.land === 'valley') && t.__mode !== 'leer') { const L0 = a + 14, LL = Math.min(260, (b - a) * 0.42 - 20);
+          if (LL >= 110) this._lane(L0, L0 + LL, { A, place, byName, spot, r, segAt }); }
         if (theme === 'stadtfest') {
           place(byName('karussell'), mid + 70, ROAD_W + 12, { face: 'road', anim: 'Drehen', gap: 3 });
           for (let k = 0; k < 3; k++) place(byName('festzelt_bierbank'), mid - 60 - k * 9, ROAD_W + 6, { face: 'road', gap: 1.5 });
@@ -1386,6 +1444,8 @@ export class WorldScene {
     }
     if (fast > 0 && !this.instant) { const t = performance.now() / 1000, a = fast * 0.0015;
       this.camera.rotation.z += Math.sin(t * 23) * a + Math.sin(t * 37) * a * 0.6; this.camera.rotation.x += Math.sin(t * 29) * a * 0.7; }
+    if (this.lanes && !this.instant && this.lanes.some(l => this.d > l[0] && this.d < l[1])) { const t = performance.now() / 1000, a = 0.0011 * Math.min(1, (this.speed ?? 6) / 6); // cobbles rattle the bars
+      this.camera.rotation.x += (Math.sin(t * 61) + Math.sin(t * 97) * 0.6) * a; this.camera.rotation.z += Math.sin(t * 71) * a * 0.5; }
     if (this.shakeImpulse > 0.01 && !this.instant) { const t = performance.now() / 1000, a = this.shakeImpulse * 0.014; // explosions (siege.js)
       this.camera.rotation.x += Math.sin(t * 41) * a + Math.sin(t * 17) * a * 0.5; this.camera.rotation.y += Math.sin(t * 33) * a * 0.6; this.camera.rotation.z += Math.sin(t * 27) * a * 0.7;
       this.shakeImpulse *= Math.exp(-dt * 2.8); }
@@ -1713,6 +1773,7 @@ export const FOV_NORMAL = 62;
 const ENV_I = 0.55; // sky image light: less blue cast on meadows than before (0.95)
 const F_CLEAR = new THREE.Color(0xbfc6cd), F_GREY = new THREE.Color(0xb4b9c2);
 const WS_HIGH = new THREE.Color(0xffb27a), WS_LOW = new THREE.Color(0xff8a52);
+const LANE = {}; // shared textures and materials of the old-town lanes
 const PLINTH_GEO = new THREE.BoxGeometry(1, 1, 1), PLINTH_MAT = new THREE.MeshStandardMaterial({ color: 0x77736c, roughness: 0.95 });
 const WEEK_TINT = { wizard: { l: new THREE.Color(0xa8c4ff), h: new THREE.Color(0x88a8e8), f: new THREE.Color(0x9fb6dc) }, king: { l: new THREE.Color(0xffc860), h: new THREE.Color(0xe0c070), f: new THREE.Color(0xe0c890) }, devil: { l: new THREE.Color(0xff7040), h: new THREE.Color(0xd07860), f: new THREE.Color(0xd89a88) } };
 const H_BOLT = new THREE.Color(0xd8ccff), F_HELL = new THREE.Color(0x5a1c10), L_HELL = new THREE.Color(0xff6a2a), H_HELL = new THREE.Color(0x8a2a14), WC_HELL = new THREE.Color(0xe04a08);

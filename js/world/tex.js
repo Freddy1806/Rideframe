@@ -156,3 +156,16 @@ export function stone(size = 256, seed = 31) {
   for (let k = 0; k < 120; k++) { g.fillStyle = hsl(30, 6, 32 + r() * 30); g.beginPath(); g.ellipse(r() * size, r() * size, 10 + r() * 14, 7 + r() * 9, r() * 3, 0, 7); g.fill(); }
   return tex(c);
 }
+
+/** Cobblestones for the old-town lanes: rows of rounded setts, tileable, worn in the middle. */
+export function cobble(size = 512, seed = 37) {
+  const [c, g] = canvas(size); const r = rng(seed);
+  g.fillStyle = '#4a443c'; g.fillRect(0, 0, size, size); // dark joints
+  const rows = 12, h = size / rows;
+  for (let j = 0; j < rows; j++) { let x = -(j % 2) * h * 0.6 - r() * 6;
+    while (x < size) { const w = h * (0.85 + r() * 0.7), l = 38 + r() * 26;
+      for (const dx of [0, size]) { g.fillStyle = hsl(30 + r() * 12, 9 + r() * 8, l + 8); g.beginPath(); g.roundRect(x + 2 - dx * 0 + (dx ? -size : 0), j * h + 2, w - 4, h - 4, h * 0.28); g.fill(); }
+      g.fillStyle = 'rgba(255,255,255,0.07)'; g.beginPath(); g.ellipse(x + w * 0.42, j * h + h * 0.38, w * 0.26, h * 0.2, 0, 0, 7); g.fill(); // worn, shiny crown
+      x += w; } }
+  return tex(c);
+}
