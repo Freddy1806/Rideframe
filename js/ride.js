@@ -523,7 +523,7 @@ export class RideSession {
   // everyone, dice seeded with the group code; each races against his own FTP, the results are shared with the group) ----------
   _initChallenges() {
     const n = this.state.settings.challenges ?? 4, sp = this.player?.events?.surprises;
-    if (this.workout || this.autopilot || !n) return;
+    if (this.workout || this.autopilot || !n || this.track.__mode === 'leer') return; // graphics level 1: landscape only, nothing happens
     const grp = this.group ? seeded(this.group.code + this.route.id + 'ch' + (this.lap || 1)) : null;
     this.ch = new Challenges({ length: this.track.length, startD: grp ? 0 : this.d, n, ftp: this.ftp, params: this.params, gradeAt: d => gradeAt(this.track, d),
       has: models => !sp || models.some(m => sp.A.find(m)), rng: grp || Math.random });
@@ -572,7 +572,7 @@ export class RideSession {
 
   // ---------- the wizard (rare, free rides only): a 60 s trial; pass = 30 s flight, fail = 5 min hell ----------
   _initWizard() {
-    if (this.workout || this.autopilot || this.state.settings.wizard === false) return;
+    if (this.workout || this.autopilot || this.state.settings.wizard === false || this.track.__mode === 'leer') return; // level 1: no wizard without his figure
     const qs = new URLSearchParams(location.search), spots = this.ch?.list.map(x => x.at) || [];
     // group ride (Freddy 12.11.): the wizard always comes, at the same spot for everyone (dice seeded with the group code);
     // each rider takes the trial with his own watts, so one may fly while the other rides through hell

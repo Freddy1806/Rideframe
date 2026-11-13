@@ -93,8 +93,8 @@ export class Assets {
   only(pred) { const v = new Assets(this.list.filter(pred)); v.used = this.used; return v; }
   /** the same models, but copies of the switched-off ones come out flagged `off` (no animation) and are dropped after placing:
    *  every random draw and footprint stays as in the full world, so a mode only takes things away (Mac mini 12.11.: the village moved) */
-  hide(keep) { const v = Object.create(this), make = this.make.bind(this);
-    v.make = (e, anim, r = Math.random) => { if (keep(e)) return make(e, anim, r);
+  hide(keep, thin = null) { const v = Object.create(this), make = this.make.bind(this);
+    v.make = (e, anim, r = Math.random) => { if (keep(e) && !(thin && thin(e))) return make(e, anim, r); // thin: drops single copies without touching the placement dice
       if (e.clips.length) for (let i = 0, n = e.category === 'laundry' ? e.clips.length : 1; i < n; i++) r(); // the same draws as make()
       const obj = e.scene.clone(true); obj.userData.asset = e.file; obj.userData.off = true; return { obj, mixer: null }; };
     return v; }
@@ -139,7 +139,7 @@ const WITH_PEOPLE = /^(reiter_ritter|personenkutsche|ruderboot|heissluftballon|z
 // the story and the challenges need these on every level above "leer": wizard, hell, arches, challengers
 const ALWAYS = /^(zauberer|magier|hexer|teufel|drache|fledermaeuse|vogelschwarm|lava_|feuer|hoellen|totenschaedel|obsidian|gluehende|start_torbogen|ziel_torbogen|reiter_ritter|ritter$|oma|kind|moewe|seeadler|adler)/;
 export const WORLD_MODES = [['voll', '4 · Voll belebt'], ['ruhig', '3 · Weniger Menschen und Tiere'], ['natur', '2 · Kaum Menschen und Tiere'], ['leer', '1 · Nur Landschaft']];
-const LEVEL = { voll: 4, ruhig: 3, natur: 2, leer: 1 }, SHARE = { ruhig: [0.5, 0.55], natur: [0.2, 0.3] }; // [people, animals] kept
+const LEVEL = { voll: 4, ruhig: 3, natur: 2, leer: 1 }, SHARE = { ruhig: [0.7, 0.75], natur: [0.35, 0.45] }, COPIES = { ruhig: 0.6, natur: 0.5 }; // model families [people, animals] loaded; share of their copies placed (Mac mini 13.11.: families alone took only 7 % of the Stadtfest crowd)
 const cat = e => e.category || '', bname = e => (e.file || '').split('/').pop().replace(/\.[a-z0-9]+$/i, '').toLowerCase();
 const isPerson = e => /^figure/.test(cat(e)) || WITH_PEOPLE.test(bname(e)), isAnimal = e => /^(animal|bird)/.test(cat(e));
 const share = e => { let h = 2166136261; for (const c of (e.variant_of || bname(e))) h = Math.imul(h ^ c.charCodeAt(0), 16777619) >>> 0; return h / 4294967296; }; // a model family stays or goes together
@@ -154,5 +154,6 @@ export function loadKeep(mode) {
 export function worldView(A, mode, stable = false) { // stable: placement (see hide)
   const k = loadKeep(mode), keep = e => !e.stub && k(e);
   if ((!mode || mode === 'voll') && !A.list.some(e => e.stub)) return A;
-  return stable ? A.hide(keep) : A.only(keep);
+  let n = 0; const c = COPIES[mode], thin = c ? e => (isPerson(e) || isAnimal(e)) && !ALWAYS.test(bname(e)) && ((++n * 0.6180339887) % 1) >= c : null; // every copy counts on: an even thinning, the same on every load
+  return stable ? A.hide(keep, thin) : A.only(keep);
 }

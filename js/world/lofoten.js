@@ -369,12 +369,13 @@ export class WorldScene {
     // 3 = full, 2 = no ambient occlusion, 1 = render scale 1.0, 0 = sea reflection every 2nd frame + smaller shadow map
     const qp = new URLSearchParams(location.search).get('q');
     // level 3 (ambient occlusion) only on request: it halves the frame rate on an M3 Pro
-    const mq = { natur: 1, leer: 0 }[this.track.__mode] ?? 2; // graphics level 2 / 1 start on the lighter render steps
+    const mq = { natur: 0, leer: 0 }[this.track.__mode] ?? 2; // graphics level 2 / 1 start on the lightest render step (render scale 1, small shadow map, sea mirror every 3rd frame)
     this.quality = qp !== null ? +qp : mq; this.autoQ = qp === null; this.fpsT = 0; this.fpsN = 0; this.fpsSince = 0;
     this.useAO = this.quality >= 3 && !new URLSearchParams(location.search).has('noao'); // headless screenshots: build everything, render once
     // sea mirror every 2nd frame (every 3rd on level 0): the ripples hide the one-frame lag
     this.reflEvery = this.quality >= 3 ? 1 : this.quality >= 1 ? 2 : 3;
     if (qp === null && mq < 2) this._setQuality(mq);
+    if (this.track.__mode === 'leer') { const wr = this.water.onBeforeRender; let k = 0; this.water.onBeforeRender = (...x) => { if (k++ < 30) wr.apply(this.water, x); }; } // level 1: the sea mirror freezes after the first frames (one render pass less)
     { const wr = this.water.onBeforeRender; let k = 0; this.water.onBeforeRender = (...a) => { if (this.instant || k++ % this.reflEvery === 0) wr.apply(this.water, a); }; }
     // loading: tiles build with a bigger per-frame budget until the ground around the start is complete
     this.loading = true; this.ready = new Promise(res => { this._readyRes = res; });
