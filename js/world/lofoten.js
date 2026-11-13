@@ -635,6 +635,9 @@ export class WorldScene {
       if (level(d + w / 2, off) && place(e, d + w / 2, off, { face: 'road', overlap: true, gap: 1.2, ground: 'centre', scale: [1, sy, 1], anim: 'Schwingen' })) { stood++;
         if (r() < 0.3) place(byName(r() < 0.5 ? 'fass' : 'faesser_kisten'), d + w * 0.25, side * (ROAD_W + 0.75), { overlap: true, gap: 0.25, radK: 0.3, rot: r() * 3 }); // barrels at the wall
         if (r() < 0.22) place(byName(['magd', 'haendler', 'baeckerin', 'alte_frau', 'junge'][Math.floor(r() * 5)]), d + w * 0.6, side * (ROAD_W + 0.8), { face: 'road', overlap: true, gap: 0.3, radK: 0.3, anim: 'Stehen' }); // someone in the doorway
+        { const wall = side * (FRONT + set + 0.02), bit = (n, dd, o = {}) => place(byName(n), d + w * dd, wall, { face: 'road', overlap: true, gap: 0.2, radK: 0.15, anim: 'Schwingen', ...o }); // on the front wall (models: origin at the foot of the wall)
+          if (e.category !== 'house_lane' || !/_(a|c|e|h)(_v\d+)?\.glb$/.test(e.file)) { if (r() < 0.3) bit(['schild_baecker', 'schild_schmied', 'schild_schenke'][Math.floor(r() * 3)], 0.5); } // the shops bring their own sign
+          if (r() < 0.45) bit('wandlaterne', 0.12); if (r() < 0.4) bit('blumenkasten', 0.3); if (r() < 0.25) bit('regenfass', 0.92, { anim: null }); }
         if (r() < 0.1) place(byName('katze'), d + w * 0.8, side * (ROAD_W + 0.6), { face: r() * 6.28, overlap: true, gap: 0.2, radK: 0.2, anim: 'Schlafen' });
       }
       d += w * 0.97;
@@ -663,9 +666,12 @@ export class WorldScene {
       const arch = new THREE.Mesh(new THREE.TorusGeometry(hw, 0.55, 6, 14, Math.PI), stoneM); arch.position.y = 5.4 - hw * 0.0; arch.scale.y = 0.42; arch.castShadow = true; g.add(arch);
       g.position.set(p.x, p.e - 1, p.z); g.rotation.y = ang; add(g); }
     const cloth = LANE.cloth ||= [0xe9e2d2, 0xb5463a, 0x3f6b8c, 0xd9b44a, 0xf3efe6].map(c => new THREE.MeshStandardMaterial({ color: c, side: THREE.DoubleSide, roughness: 0.9 }));
-    const lineE = byName('gassen_waescheleine'), rope = LANE.rope ||= new THREE.MeshStandardMaterial({ color: 0x4a3b2a });
+    const lineE = byName('waescheleine_gasse'), bowE = byName('gassen_bogen'), rope = LANE.rope ||= new THREE.MeshStandardMaterial({ color: 0x4a3b2a });
+    let across = 0;
     for (let d = d0 + 22; d < d1 - 18; d += 26 + r() * 22) { const { p, ang } = frame(d), g = new THREE.Group(), span = FRONT * 2 + 1, y = 5.6 + r() * 1.6;
-      if (lineE) { const o = A.make(lineE, 'Wehen', r); o.obj.position.set(p.x, p.e + y, p.z); o.obj.rotation.y = ang; add(o.obj); if (o.mixer) { o.mixer.obj = o.obj; this.mixers.push(o.mixer); } continue; }
+      if (bowE && across++ % 3 === 1) { const o = A.make(bowE, null, r).obj; o.position.set(p.x, p.e, p.z); o.rotation.y = ang; add(o); continue; } // every third: a stone flying arch between two houses
+      if (lineE) { const o = A.make(lineE, 'Wehen', r); o.obj.position.set(p.x, p.e, p.z); o.obj.rotation.y = ang; add(o.obj); if (o.mixer) { o.mixer.obj = o.obj; this.mixers.push(o.mixer); } continue; } // hooks at 5.4 m in the model itself
+      if (false) { const o = A.make(lineE, 'Wehen', r); o.obj.position.set(p.x, p.e + y, p.z); o.obj.rotation.y = ang; add(o.obj); if (o.mixer) { o.mixer.obj = o.obj; this.mixers.push(o.mixer); } continue; }
       const rp = new THREE.Mesh(new THREE.BoxGeometry(span, 0.035, 0.035), rope); g.add(rp);
       if (r() < 0.55) for (let x = -span / 2 + 1; x < span / 2 - 1; x += 0.75 + r() * 0.5) { const w = 0.45 + r() * 0.45, h = 0.5 + r() * 0.6, c = new THREE.Mesh(new THREE.PlaneGeometry(w, h), cloth[Math.floor(r() * cloth.length)]); c.position.set(x, -h / 2, 0); c.rotation.x = (r() - 0.5) * 0.25; c.castShadow = true; g.add(c); } // washing
       else for (let x = -span / 2 + 0.6; x < span / 2 - 0.5; x += 0.62) { const c = new THREE.Mesh(LANE.pen ||= new THREE.ConeGeometry(0.2, 0.42, 3), cloth[Math.floor(r() * cloth.length)]); c.position.set(x, -0.22 - 0.25 * (1 - (2 * x / span) ** 2), 0); c.rotation.x = Math.PI; c.scale.z = 0.08; g.add(c); } // pennants
