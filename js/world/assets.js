@@ -84,6 +84,7 @@ function fake(e) { // box with the model's size, origin bottom centre, orange no
 
 export class Assets {
   constructor(list) {
+    for (const e of list) if (/mensch_mit_hund|ziege_am_strick|pferdewagen|eselkarren/.test(e.file || '') && e.category === 'figure_walk') e.category = 'figure_lane'; // person + animal / horse + wagon in one model: only where the code sets them on purpose (lanes), never as a random roadside figure (Mac mini: a wagon stood sideways in a meadow)
     this.list = list; this.by = {}; this.used = new Set(); // which models a ride really places (?assetstats logs it: basis for loading only those)
     for (const e of list) (this.by[e.category] ||= []).push(e);
     this.rocks = list.filter(e => e.name.startsWith('Fels:'));
