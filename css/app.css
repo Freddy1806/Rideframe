@@ -639,3 +639,11 @@ img.face.big{width:96px;height:96px}
 .strlv .btn { justify-content: space-between; }
 .strgo { margin-bottom: 4px; }
 @media (max-width: 760px) { .strcards { grid-template-columns: 1fr; } }
+.strrows { display: grid; gap: 6px; }
+.strrow { display: grid; grid-template-columns: minmax(0, 1.3fr) minmax(0, 1fr) 110px 76px; gap: 8px; align-items: center; border-left: 3px solid var(--fc); padding: 4px 0 4px 10px; }
+.strrow .strname { display: flex; flex-direction: column; line-height: 1.2; } .strrow .strname small { opacity: .65; font-size: 12px; }
+.strrow input, .strrow select { width: 100%; min-width: 0; height: 36px; padding: 0 8px; border-radius: 8px; border: 1px solid var(--line-2); background: transparent; color: inherit; font: inherit; }
+.strrow select option { color: #111; }
+.strrow .btn { justify-content: center; height: 36px; }
+.strmore { margin-top: 8px; } .strmore summary { cursor: pointer; opacity: .8; font-size: 13px; margin-bottom: 6px; }
+@media (max-width: 560px) { .strrow { grid-template-columns: 1fr 1fr; } }

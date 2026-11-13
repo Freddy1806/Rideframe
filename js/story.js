@@ -13,6 +13,12 @@ export const WHO = {
   devil: { name: 'Devil', icon: '😈', color: '#ff5a3c' },
 };
 const DAY_KM_CAP = 150, DAY_HM_CAP = 3000, WIZ_MIN_CAP = 40, DUELS_CAP = 3;
+// Point balance (Fable review 13.11., Freddy: "15 for five minutes of hell does not fit"): one point is about one honest
+// minute of what a figure stands for. An hour on the flat = ~30 km = 30 for the King; an hour of climbing = ~700 Hm = 35
+// for the Devil (10 per 100 Hm paid three times as much as the flat); a minute at threshold = 1 for the Wizard.
+// Hell is the price of a failed trial, not a prize: the Devil only takes a small toll, less than the same minutes of
+// normal riding bring, so failing on purpose never pays. The passed trial is worth as much as ten threshold minutes.
+const HM_STEP = 20, TRIAL_PTS = 10, HELL_PTS = 3;
 const OWNER = { knight: 'king', gull: 'wizard', eagle: 'wizard', oma: 'devil', kid: 'devil' }; // whose man each challenger is
 
 /** Monday-based week key in local time, e.g. "2026-11-09" (the Monday) */
@@ -95,9 +101,9 @@ export class StoryRide {
       if (power >= 0.9 * this.ftp) { this.hiT += dt; if (this.wizMin < WIZ_MIN_CAP && this.hiT >= 60 * (this.wizMin + 1)) { this.wizMin++; this._add('wizard', 1, 'Minuten über 90 % FTP'); } }
       if (power >= 0.9 * this.ftp) this.hiRun = (this.hiRun || 0) + dt; else this.hiRun = 0;
     } else this.hiRun = 0;
-    // points as you go (king: 1/km; devil: 10 per 100 Hm)
+    // points as you go (king: 1/km; devil: 1 per 20 Hm)
     while (this.km >= (this._kmPaid || 0) + 1) { this._kmPaid = (this._kmPaid || 0) + 1; this._add('king', 1, 'Kilometer'); }
-    while (this.hm >= (this._hmPaid || 0) + 100) { this._hmPaid = (this._hmPaid || 0) + 100; this._add('devil', 10, 'Höhenmeter'); }
+    while (this.hm >= (this._hmPaid || 0) + HM_STEP) { this._hmPaid = (this._hmPaid || 0) + HM_STEP; this._add('devil', 1, 'Höhenmeter'); }
     // the warm-up: the week's leader at 0:20 (or the three announce the new week)
     if (this.t > 20 && !this.said.has('open')) { this.said.add('open'); const ld = leaderOf(L.pts);
       if (L.newWeek) this._line(pick(['wizard', 'king', 'devil']), 'newweek'); else if (ld) this._line(ld, 'lead'); }
@@ -112,9 +118,9 @@ export class StoryRide {
     if (this.queue.length && power < 1.05 * this.ftp && this.t >= (this.quietUntil || 0)) { const q = this.queue.shift(); if (this.t < q.until) { this.say?.(q.who, q.text); this.quietUntil = this.t + 4.5; } }
   }
   // ---- events from the ride ----
-  trialPass() { this.L.life.trials++; this._add('wizard', 20, 'Prüfung bestanden'); this._line('wizard', 'pass'); }
+  trialPass() { this.L.life.trials++; this._add('wizard', TRIAL_PTS, 'Prüfung bestanden'); this._line('wizard', 'pass'); }
   hellIn() { this.hellT = 0; this._line('devil', 'hellIn'); }
-  hellOut() { if (this.hellT == null) return; this._hadHell = true; this.hellT = null; this.L.life.hells++; this._add('devil', 15, 'Hölle überlebt'); this._line('devil', 'hellOut'); }
+  hellOut() { if (this.hellT == null) return; this._hadHell = true; this.hellT = null; this.L.life.hells++; this._add('devil', HELL_PTS, 'Zoll an den Teufel (Prüfung verpasst)'); this._line('devil', 'hellOut'); }
   challenge(id, type) { const who = OWNER[id]; if (!who) return;
     this._paid ||= new Set();
     if (type === 'accept' && this.duels < DUELS_CAP) { this.duels++; this._paid.add(id); this._add(who, 2, 'Challenge angenommen'); }
@@ -137,11 +143,11 @@ export class StoryRide {
 }
 
 /** "The Bet" in a few sentences (Fable 13.11.), for the info card behind the three coloured points */
-export const BET_INFO = 'Jeden Montag wetten Zauberer, König und Teufel im Wirtshaus auf dich. Wie du fährst, ist deine Stimme: Kilometer und regelmäßiges Fahren bringen dem König goldene Punkte, Höhenmeter und die Hölle dem Teufel rote, Watt und bestandene Prüfungen dem Zauberer blaue. Nach der Fahrt kannst du mit einer Kraft-Challenge einer der drei Figuren Extrapunkte schenken. Montags beginnt alles neu, und der Sieger färbt deine nächste Woche.';
+export const BET_INFO = 'Jeden Montag wetten Zauberer, König und Teufel im Wirtshaus auf dich. Wie du fährst, ist deine Stimme: Kilometer und regelmäßiges Fahren bringen dem König goldene Punkte, Höhenmeter dem Teufel rote, Watt und bestandene Prüfungen dem Zauberer blaue. Nach der Fahrt kannst du mit einer Kraft-Challenge einer der drei Figuren Extrapunkte schenken. Montags beginnt alles neu, und der Sieger färbt deine nächste Woche.';
 const RULES = [
   ['king', 'König', '1 Punkt pro km · 10 für einen Fahrtag (20 min+) · Ritter-Challenges'],
-  ['devil', 'Teufel', '10 Punkte pro 100 Hm · 15 für die überlebte Hölle · Oma- und Kind-Challenges'],
-  ['wizard', 'Zauberer', '1 Punkt pro Minute über 90 % FTP · 20 für die bestandene Prüfung · Möwe und Adler'],
+  ['devil', 'Teufel', '1 Punkt pro 20 Hm · 3 als Zoll, wenn du in der Hölle landest · Oma- und Kind-Challenges'],
+  ['wizard', 'Zauberer', '1 Punkt pro Minute über 90 % FTP · 10 für die bestandene Prüfung · Möwe und Adler'],
 ];
 /** modal: what the three points mean */
 export function betInfo() {
@@ -149,33 +155,41 @@ export function betInfo() {
   m.innerHTML = `<div class="box" style="max-width:560px"><div class="label">Die Wette</div><h2 class="display" style="font-size:34px;margin:6px 0 12px">🧙 👑 😈</h2>
     <p style="line-height:1.5">${BET_INFO}</p>
     ${RULES.map(([k, n, t]) => `<div style="display:flex;gap:10px;align-items:flex-start;margin:10px 0"><i style="flex:none;width:12px;height:12px;border-radius:50%;margin-top:4px;background:${WHO[k].color}"></i><div><b>${WHO[k].icon} ${n}</b><div class="hint" style="margin-top:2px">${t}</div></div></div>`).join('')}
-    <div class="hint" style="margin-top:6px">Kraft nach der Fahrt: 10 / 20 / 30 Punkte (leicht / normal / hart), +5 für die Figur, die gerade hinten liegt. Einmal am Tag, höchstens 4 pro Woche.</div>
+    <div class="hint" style="margin-top:6px">Ein Punkt ist ungefähr eine ehrliche Minute Arbeit. Kraft nach der Fahrt zählt pro Wiederholung: ${EXERCISES.map(e => `${e.what} ${rate(e)}`).join(' · ')}. Höchstens ${STR_DAY} Punkte am Tag, an ${STR_DAYS} Tagen pro Woche.</div>
     <div class="actions"><button class="btn" id="biOk">Verstanden</button></div></div>`;
   document.body.append(m); const close = () => m.remove(); m.querySelector('#biOk').onclick = close; m.onclick = e => { if (e.target === m) close(); };
 }
 
 // ---- "Nachspiel im Wirtshaus" (Freddy 13.11., rules by Fable): an optional strength set after the ride for extra points,
 // so you can win the bet without being the strongest rider. Honour-based; each figure offers one exercise. ----
-const LEVELS = [['leicht', 'Leicht', 0.5, 10, 2], ['normal', 'Normal', 1, 20, 4], ['hart', 'Hart', 2, 30, 6]]; // reps factor, points, minutes until "Geschafft"
+// 13.11. midday (Freddy + Fable): points PER REP, a fixed exercise per figure (Devil pull-ups, Wizard push-ups, King sit-ups)
+// plus free extras. Rates follow the same rule as the ride (1 point = about a minute of honest work incl. rests).
+const STR_DAY = 30, STR_DAYS = 4; // points a day, days a week: a strong week adds 120, about two good rides
+const EXERCISES = [ // per: reps (or minutes) for one point; who: fixed figure, extras go to a figure you pick
+  { id: 'pull', who: 'devil', what: 'Klimmzüge', per: 2 },
+  { id: 'push', who: 'wizard', what: 'Liegestütze', per: 5 },
+  { id: 'sit', who: 'king', what: 'Sit-ups', per: 8 },
+  { id: 'burpee', what: 'Burpees', per: 3 },
+  { id: 'squat', what: 'Kniebeugen', per: 8 },
+  { id: 'plank', what: 'Plank', per: 0.5, unit: 'min' },
+];
+const rate = e => e.unit === 'min' ? `${1 / e.per} P/min` : `1 P je ${e.per}`;
 const STRENGTH_LINES = {
   wizard: ['Hmph. Still breathing? Then try this.', 'Bah. Stronger than you look.'],
   king: ['The crown demands one more labour.', 'Splendid! We never doubted Ourselves.'],
   devil: ['Leaving already? One more little sin.', 'Deliciously done. Sore tomorrow, darling.'],
 };
-/** the three cards for this ride: { who, n, unit, what } at the normal level */
-export function strengthOffer(sum) {
-  const climb = (sum.hm || 0) >= 300 || sum.hell, long = sum.minutes >= 45;
-  if (climb) return [{ who: 'devil', n: 50, what: 'Liegestütze' }, { who: 'king', n: 3, unit: 'min', what: 'Wandsitzen' }, { who: 'wizard', n: 20, what: 'Klimmzüge (oder 40 Ruderzüge)' }];
-  if (long) return [{ who: 'devil', n: 50, what: 'Liegestütze' }, { who: 'king', n: 100, what: 'Kniebeugen' }, { who: 'wizard', n: 3, unit: 'min', what: 'Plank' }];
-  return [{ who: 'devil', n: 30, what: 'Burpees' }, { who: 'king', n: 80, what: 'Ausfallschritte' }, { who: 'wizard', n: 4, unit: 'min', what: 'Plank' }];
-}
-/** may this ride get the offer? (20 min+, once a day, at most 4 a week) */
-export function strengthOpen(sum) {
-  const L = sum?.L; if (!L || sum.minutes < 20) return false;
+const strDay = L => L.day.strength === true ? STR_DAY : (L.day.strength || 0); // true: a set booked under the old rules
+/** points left today for this ride's strength set (0 = no offer): 20 min+, 30 a day, 4 days a week */
+export function strengthLeft(sum) {
+  const L = sum?.L; if (!L || sum.minutes < 20) return 0;
   if (L.strWeek?.week !== L.week) L.strWeek = { week: L.week, n: 0 };
-  return !L.day.strength && L.strWeek.n < 4;
+  const today = strDay(L); if (!today && L.strWeek.n >= STR_DAYS) return 0;
+  return Math.max(0, STR_DAY - today);
 }
-const amount = (c, f) => c.unit === 'min' ? `${+(c.n * f).toFixed(1)} min` : `${Math.round(c.n * f)}`;
+export const strengthOpen = sum => strengthLeft(sum) > 0;
+/** points for n reps (or minutes) of exercise e, capped by what is left today */
+export const strengthPts = (e, n, left = STR_DAY) => Math.max(0, Math.min(left, Math.floor((+n || 0) / e.per)));
 
 /** result-screen block: the week's bet as three bars, today's points with the reasons, the strength offer */
 export function storyHTML(s) {
@@ -186,12 +200,16 @@ export function storyHTML(s) {
     <span>${w.icon} ${w.name}</span><span style="height:10px;border-radius:5px;background:#ffffff14;overflow:hidden"><i style="display:block;height:100%;width:${(s.week[k] / max * 100).toFixed(0)}%;background:${w.color}"></i></span>
     <span style="text-align:right" class="betpts" data-k="${k}">${s.week[k]}${s.ride[k] ? ` <small style="opacity:.7">+${s.ride[k]}</small>` : ''}</span>
     ${why ? `<span></span><span class="hint" style="grid-column:2 / 4;font-size:12px;opacity:.75">${why}</span>` : ''}</div>`; };
-  const lagging = Object.entries(s.week).sort((a, b) => a[1] - b[1])[0][0];
-  const offer = strengthOpen(s) ? `<div class="strength" id="strBox"><div class="label" style="margin:14px 0 8px">Nachspiel im Wirtshaus · Kraft für Extrapunkte</div>
-    <div class="strcards">${strengthOffer(s).map(c => `<div class="strcard" data-who="${c.who}" style="--fc:${WHO[c.who].color}"><div class="strhead">${WHO[c.who].icon} ${WHO[c.who].name}${c.who === lagging ? ' <small>+5 Aufholbonus</small>' : ''}</div>
-      <div class="strq">„${STRENGTH_LINES[c.who][0]}“</div><div class="strwhat"><b>${amount(c, 1)}</b> ${c.what}</div>
-      <div class="strlv">${LEVELS.map(([id, t, f, p]) => `<button class="btn ghost small" data-lv="${id}" title="${amount(c, f)} ${c.what}">${t} · ${amount(c, f)} · +${p + (c.who === lagging ? 5 : 0)}</button>`).join('')}</div></div>`).join('')}</div>
-    <div class="hint" style="margin-top:6px">In Sätzen aufteilen ist erlaubt. „Geschafft“ geht nach ein paar Minuten, ehrlich bleiben.</div></div>` : '';
+  const left = strengthLeft(s), opt = k => `<option value="${k}">${WHO[k].icon} ${WHO[k].name}</option>`;
+  const line = e => `<div class="strrow" data-ex="${e.id}" style="--fc:${e.who ? WHO[e.who].color : 'var(--line-2)'}">
+      <span class="strname"><b>${e.what}</b><small>${rate(e)}</small></span>
+      ${e.who ? `<span class="strwho">${WHO[e.who].icon} ${WHO[e.who].name}</span>` : `<select class="strwho" aria-label="Für wen">${['wizard', 'king', 'devil'].map(opt).join('')}</select>`}
+      <input type="number" inputmode="decimal" min="0" step="${e.unit === 'min' ? 0.5 : 1}" placeholder="${e.unit === 'min' ? 'Minuten' : 'Anzahl'}" aria-label="${e.what}">
+      <button class="btn small" data-add disabled>+0</button></div>`;
+  const offer = left > 0 ? `<div class="strength" id="strBox"><div class="label" style="margin:14px 0 8px">Nachspiel im Wirtshaus · Kraft für Extrapunkte · heute noch ${left} von ${STR_DAY}</div>
+    <div class="strrows">${EXERCISES.filter(e => e.who).map(line).join('')}</div>
+    <details class="strmore"><summary>Andere Übung (Burpees, Kniebeugen, Plank)</summary><div class="strrows">${EXERCISES.filter(e => !e.who).map(line).join('')}</div></details>
+    <div class="hint" style="margin-top:6px">Trag ein, was du wirklich geschafft hast, in Sätzen aufteilen ist erlaubt. Jede Wiederholung zählt.</div></div>` : '';
   return `<div class="chsum betsum" style="margin:14px 0 18px;text-align:left"><div class="label" style="margin-bottom:6px">The Bet · this week${s.leader ? ` · ${WHO[s.leader].name} leads` : ''} <button class="betinfo" title="Was bedeuten die drei Punkte?">?</button></div>${['wizard', 'king', 'devil'].map(row).join('')}${offer}</div>`;
 }
 
@@ -199,21 +217,19 @@ export function storyHTML(s) {
 export function wireStory(root, s) {
   root.querySelector('.betinfo')?.addEventListener('click', betInfo);
   const box = root.querySelector('#strBox'); if (!box || !s?.L) return;
-  const lagging = Object.entries(s.week).sort((a, b) => a[1] - b[1])[0][0], cards = strengthOffer(s);
-  box.querySelectorAll('.strcard [data-lv]').forEach(b => b.onclick = () => {
-    const el = b.closest('.strcard'), c = cards.find(x => x.who === el.dataset.who), [, t, f, p, wait] = LEVELS.find(l => l[0] === b.dataset.lv);
-    const pts = p + (c.who === lagging ? 5 : 0), until = Date.now() + wait * 60e3;
-    box.querySelectorAll('.strcard').forEach(x => x.classList.toggle('dim', x !== el));
-    el.querySelector('.strlv').innerHTML = `<div class="strgo"><b>${amount(c, f)} ${c.what}</b> (${t})</div><button class="btn small" data-done disabled>Geschafft</button> <button class="btn ghost small" data-cancel>Abbrechen</button> <span class="strt hint"></span>`;
-    const done = el.querySelector('[data-done]'), tl = el.querySelector('.strt');
-    const tick = setInterval(() => { const left = Math.max(0, until - Date.now()); if (!el.isConnected) return clearInterval(tick);
-      tl.textContent = left ? `„Geschafft“ in ${Math.floor(left / 60e3)}:${String(Math.ceil(left / 1000) % 60).padStart(2, '0')}` : ''; if (!left) { done.disabled = false; clearInterval(tick); } }, 500);
-    el.querySelector('[data-cancel]').onclick = () => { clearInterval(tick); root.querySelector('.betsum').outerHTML = storyHTML(s); wireStory(root, s); };
-    done.onclick = () => {
-      const L = s.L; L.pts[c.who] = (L.pts[c.who] || 0) + pts; L.day.strength = true; L.strWeek = { week: L.week, n: (L.strWeek?.week === L.week ? L.strWeek.n : 0) + 1 }; saveLedger(L);
-      s.week[c.who] = L.pts[c.who]; s.ride[c.who] = (s.ride[c.who] || 0) + pts; (s.why[c.who] ||= {})[`Kraft: ${c.what}`] = pts; s.leader = leaderOf(L.pts);
-      const sum = root.querySelector('.betsum'); sum.outerHTML = storyHTML(s); wireStory(root, s);
-      const q = root.querySelector('.betsum'); q?.insertAdjacentHTML('beforeend', `<div class="strq" style="margin-top:8px">${WHO[c.who].icon} „${STRENGTH_LINES[c.who][1]}“ · +${pts} ${WHO[c.who].name}</div>`);
+  box.querySelectorAll('.strrow').forEach(row => {
+    const e = EXERCISES.find(x => x.id === row.dataset.ex), inp = row.querySelector('input'), btn = row.querySelector('[data-add]');
+    const pts = () => strengthPts(e, inp.value, strengthLeft(s));
+    inp.oninput = () => { const p = pts(); btn.textContent = `+${p}`; btn.disabled = !p; };
+    btn.onclick = () => {
+      const p = pts(); if (!p) return;
+      const L = s.L, who = e.who || row.querySelector('select').value, first = !strDay(L);
+      L.pts[who] = (L.pts[who] || 0) + p; L.day.strength = strDay(L) + p;
+      if (first) L.strWeek = { week: L.week, n: (L.strWeek?.week === L.week ? L.strWeek.n : 0) + 1 };
+      saveLedger(L);
+      s.week[who] = L.pts[who]; s.ride[who] = (s.ride[who] || 0) + p; const w = (s.why[who] ||= {}), key = `Kraft: ${e.what}`; w[key] = (w[key] || 0) + p; s.leader = leaderOf(L.pts);
+      root.querySelector('.betsum').outerHTML = storyHTML(s); wireStory(root, s);
+      root.querySelector('.betsum')?.insertAdjacentHTML('beforeend', `<div class="strq" style="margin-top:8px">${WHO[who].icon} „${STRENGTH_LINES[who][1]}“ · +${p} ${WHO[who].name}</div>`);
     };
   });
 }
