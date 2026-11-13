@@ -7,11 +7,27 @@ import { clone as skClone } from '../../vendor/jsm/utils/SkeletonUtils.js';
 
 const base = new URL('../../assets/world/', import.meta.url);
 
-export async function loadAssets() {
+let MODE = null; // the graphics level the models were loaded for (see loadKeep)
+const QSM = () => (typeof location !== 'undefined' && new URLSearchParams(location.search).get('mode')) || globalThis.__rfMode || 'voll';
+// a model the chosen graphics level does not need is never downloaded (Freddy 13.11.: less memory on weak laptops; hiding alone
+// left the heap at 1.0-1.2 GB in every mode, Mac mini). It stays in the list as an empty stand-in so that placement draws the
+// same dice as in the full world; upgradeAssets() fills the stand-ins when a later ride on this page asks for more.
+const stub = e => ({ ...e, scene: new THREE.Group(), farScene: null, stub: true,
+  clips: Array.from({ length: e.nclips ?? (isPerson(e) || isAnimal(e) ? 1 : 0) }, () => ({ name: '', duration: 1 })) });
+let loadOne = null;
+/** a later ride with a higher level: download what is still missing (in place, every list keeps its objects) */
+export async function upgradeAssets(A, mode = QSM()) {
+  if (!loadOne || !MODE || LEVEL[mode] <= LEVEL[MODE]) return;
+  const keep = loadKeep(mode), todo = A.list.filter(e => e.stub && keep(e)); MODE = mode;
+  const prog = globalThis.__rfLoad = { done: 0, total: todo.length };
+  let i = 0; await Promise.all(Array.from({ length: 6 }, async () => { while (i < todo.length) { const e = todo[i++], got = await loadOne(e); prog.done++; if (got) Object.assign(e, got, { stub: false }); } }));
+}
+
+export async function loadAssets(mode = QSM()) {
   let list = [];
   try { list = await (await fetch(new URL('manifest.json', base))).json(); } catch { return new Assets([]); }
   if (typeof window === 'undefined') return new Assets([]);
-  if (new URLSearchParams(location.search).has('fakeassets')) return new Assets(list.map(fake)); // layout test without the GLBs
+  if (new URLSearchParams(location.search).has('fakeassets')) { const w = loadKeep(LEVEL[mode] ? mode : 'voll'); return new Assets(list.map(e => w(e) ? fake(e) : stub(e))); } // layout test without the GLBs
   const loader = new GLTFLoader().setMeshoptDecoder(MeshoptDecoder); /* the Mac mini packs GLBs with meshopt + WebP (several times smaller over the home upload line) */
   list = list.filter(e => e.category !== 'rider'); // bike/hands for the riders: loaded by avatar.js
   // variants from the Mac mini (thicker, thinner, other colours: "variant_of": base name) would triple the download:
@@ -27,6 +43,7 @@ export async function loadAssets() {
   list = list.filter(e => !e.variant_of || keep.has(e));
   // at most 6 downloads at once: hundreds in parallel made the public (Tailscale Funnel) path drop connections, and those models went missing
   const pool = (items, n, fn) => { const out = new Array(items.length); let i = 0; return Promise.all(Array.from({ length: Math.min(n, items.length) }, async () => { while (i < items.length) { const k = i++; out[k] = await fn(items[k]); } })).then(() => out); };
+  MODE = LEVEL[mode] ? mode : 'voll'; const wanted = loadKeep(MODE), skipped = list.filter(e => !wanted(e)); list = list.filter(wanted);
   const prog = globalThis.__rfLoad = { done: 0, total: list.length }; // the loading card in the ride shows "Welt wird geladen … 120 / 709"
   const ok = await pool(list, location.hostname === 'localhost' || location.hostname === '127.0.0.1' ? 16 : 6, async e => {
     try { return await one(e); } finally { prog.done++; } });
@@ -40,7 +57,8 @@ export async function loadAssets() {
       return { ...e, scene: g.scene, farScene, clips: g.animations || [] };
     } catch { try { const g = await loader.loadAsync(new URL(e.file, base).href + '?r=1'); return { ...e, scene: g.scene, farScene: null, clips: g.animations || [] }; } catch { return null; } } /* one retry: a dropped connection should not cost the model */
   }
-  return new Assets(ok.filter(Boolean));
+  loadOne = one;
+  return new Assets([...ok.filter(Boolean), ...skipped.map(stub)]);
 }
 
 // meshopt packing quantizes positions/normals/UVs to 8/16-bit integers. The static batching bakes the world matrix into a copy
@@ -88,6 +106,7 @@ export class Assets {
   pick(cat, r) { const l = this.by[cat]; return l?.length ? l[Math.floor(r() * l.length) % l.length] : null; }
   /** A placed copy. Returns { obj, mixer|null }; animations start at a random phase. */
   make(e, anim, r = Math.random) {
+    if (e.stub) { if (e.clips.length) r(); const obj = new THREE.Group(); obj.userData.asset = e.file; obj.userData.off = true; return { obj, mixer: null }; } // not loaded at this graphics level
     const skinned = e.clips.length > 0;
     const obj = skinned ? skClone(e.scene) : e.scene.clone(true);
     obj.userData.asset = e.file; this.used.add(e.file);
@@ -111,16 +130,29 @@ export class Assets {
 }
 const GLOW = new Set();
 
-/* ---- world modes (Freddy 12.11.): "Voll", "Ohne Menschen", "Ohne Menschen und Tiere", "Nur Landschaft" ---- */
+/* ---- graphics levels (Freddy 12.11. world modes, 13.11. "Grafik in 4 Stufen, damit der Arbeitsspeicher nicht so hoch sein muss") ----
+   4 voll  = everything, the castle falls            3 ruhig = about half the people and animals, no siege
+   2 natur = a few people and animals, lighter rendering   1 leer  = landscape only (trees, rock, water), nothing happens
+   The ids are the old world modes, so saved settings keep working. */
 // decided by category, not by words in the description: substrings hit "rOMAnisch", "wiKINGer", "dREHen", "ZIEGEl", "moosgrün", "TreBUCHEt" (Mac mini check of all 608 models)
 const WITH_PEOPLE = /^(reiter_ritter|personenkutsche|ruderboot|heissluftballon|zuschauer_tribuene)$/; // models outside figure_* with people on board
-export const WORLD_MODES = [['voll', 'Voll belebt'], ['ruhig', 'Ohne Menschen'], ['natur', 'Ohne Menschen und Tiere'], ['leer', 'Nur Landschaft']];
-export function worldView(A, mode, stable = false) { // stable: placement (see hide)
-  if (!mode || mode === 'voll') return A;
-  const cat = e => e.category || '', base = e => (e.file || '').split('/').pop().replace(/\.[a-z0-9]+$/i, '').toLowerCase();
+// the story and the challenges need these on every level above "leer": wizard, hell, arches, challengers
+const ALWAYS = /^(zauberer|magier|hexer|teufel|drache|fledermaeuse|vogelschwarm|lava_|feuer|hoellen|totenschaedel|obsidian|gluehende|start_torbogen|ziel_torbogen|reiter_ritter|ritter$|oma|kind|moewe|seeadler|adler)/;
+export const WORLD_MODES = [['voll', '4 · Voll belebt'], ['ruhig', '3 · Weniger Menschen und Tiere'], ['natur', '2 · Kaum Menschen und Tiere'], ['leer', '1 · Nur Landschaft']];
+const LEVEL = { voll: 4, ruhig: 3, natur: 2, leer: 1 }, SHARE = { ruhig: [0.5, 0.55], natur: [0.2, 0.3] }; // [people, animals] kept
+const cat = e => e.category || '', bname = e => (e.file || '').split('/').pop().replace(/\.[a-z0-9]+$/i, '').toLowerCase();
+const isPerson = e => /^figure/.test(cat(e)) || WITH_PEOPLE.test(bname(e)), isAnimal = e => /^(animal|bird)/.test(cat(e));
+const share = e => { let h = 2166136261; for (const c of (e.variant_of || bname(e))) h = Math.imul(h ^ c.charCodeAt(0), 16777619) >>> 0; return h / 4294967296; }; // a model family stays or goes together
+/** which models a level downloads and shows */
+export function loadKeep(mode) {
+  if (!LEVEL[mode] || mode === 'voll') return () => true;
   const keepCat = e => /^(cockpit|rider|fx)/.test(cat(e));
-  const person = e => /^figure/.test(cat(e)) || WITH_PEOPLE.test(base(e)), animal = e => /^(animal|bird)/.test(cat(e));
-  const nature = e => /^(tree|cliff|waterfall)/.test(cat(e)) || /^Fels:/.test(e.name || '');
-  const keep = mode === 'ruhig' ? e => keepCat(e) || !person(e) : mode === 'natur' ? e => keepCat(e) || (!person(e) && !animal(e)) : e => keepCat(e) || (!person(e) && !animal(e) && nature(e));
+  if (mode === 'leer') return e => keepCat(e) || (!isPerson(e) && !isAnimal(e) && (/^(tree|cliff|waterfall)/.test(cat(e)) || /^Fels:/.test(e.name || '')));
+  const [p, a] = SHARE[mode];
+  return e => keepCat(e) || ALWAYS.test(bname(e)) || ALWAYS.test(e.variant_of || '') || (isPerson(e) ? share(e) < p : isAnimal(e) ? share(e) < a : true);
+}
+export function worldView(A, mode, stable = false) { // stable: placement (see hide)
+  const k = loadKeep(mode), keep = e => !e.stub && k(e);
+  if ((!mode || mode === 'voll') && !A.list.some(e => e.stub)) return A;
   return stable ? A.hide(keep) : A.only(keep);
 }

@@ -268,9 +268,9 @@ function detail(id) {
             <span class="label" style="min-width:130px">Challenges</span>
             <select id="chSel" style="width:auto">${[0, 2, 3, 4, 6, 8].map(n => `<option value="${n}">${n ? n + ' pro Fahrt' : 'aus'}</option>`).join('')}</select>
           </div>
-          <div class="field" style="border:0;padding:10px 0 0;gap:10px;flex-wrap:wrap;justify-content:flex-start" title="Weniger Leben auf der Strecke: läuft auch auf schwächeren Laptops flüssig">
-            <span class="label" style="min-width:130px">Welt</span>
-            <select id="wmSel" style="width:auto">${[['voll', 'Voll belebt'], ['ruhig', 'Ohne Menschen'], ['natur', 'Ohne Menschen und Tiere'], ['leer', 'Nur Landschaft']].map(([v, t]) => `<option value="${v}">${t}</option>`).join('')}</select>
+          <div class="field" style="border:0;padding:10px 0 0;gap:10px;flex-wrap:wrap;justify-content:flex-start" title="Niedrigere Stufen laden weniger Modelle: weniger Arbeitsspeicher, schnellerer Start, flüssiger auf schwächeren Laptops. Beim Zusammenfahren wählt jeder seine eigene Stufe.">
+            <span class="label" style="min-width:130px">Grafik</span>
+            <select id="wmSel" style="width:auto">${[['voll', '4 · Voll belebt'], ['ruhig', '3 · Weniger Menschen und Tiere'], ['natur', '2 · Kaum Menschen und Tiere'], ['leer', '1 · Nur Landschaft']].map(([v, t]) => `<option value="${v}">${t}</option>`).join('')}</select>
           </div>
           <div class="field" style="border:0;padding:10px 0 0;gap:10px;flex-wrap:wrap;justify-content:flex-start" title="Die Sonne geht während der Fahrt unter: zur Hälfte der Strecke am Horizont, am Ende Dämmerung">
             <span class="label" style="min-width:130px">Licht</span>

@@ -17,7 +17,7 @@ import { asphalt, grassTuft, planks, stone } from './tex.js';
 import { terrainMaterial, tex, texReady, TIME, HELL, useSatellite } from './terrainmat.js';
 import { Water } from '../../vendor/jsm/objects/Water.js';
 import { mergeGeometries } from '../../vendor/jsm/utils/BufferGeometryUtils.js';
-import { loadAssets, worldView } from './assets.js';
+import { loadAssets, upgradeAssets, worldView } from './assets.js';
 import { buildVillage, tickVillage } from './village.js';
 import { Riders } from './riders.js';
 import { ROAD_LINES_GLSL } from './roadlines.js';
@@ -30,6 +30,8 @@ import { GTAOPass } from '../../vendor/jsm/postprocessing/GTAOPass.js';
 import { OutputPass } from '../../vendor/jsm/postprocessing/OutputPass.js';
 import { clumpGeometry, grassMaterial, grassColor, hellCollapse } from './grass.js';
 const ASSETS = await loadAssets();
+/** before a ride: make sure the models of this graphics level are there (a lower level loaded less) */
+export const upgradeWorld = mode => upgradeAssets(ASSETS, mode);
 // group templates from the Mac mini (herds, a band with its audience): [{ name, kind, radius_m, members: [{ file, x, z, rot, anim, phase }] }]
 const GROUPS = typeof fetch === 'undefined' ? [] : await fetch(new URL('../../assets/world/gruppen.json', import.meta.url)).then(r => r.ok ? r.json() : []).catch(() => []);
 
@@ -367,10 +369,12 @@ export class WorldScene {
     // 3 = full, 2 = no ambient occlusion, 1 = render scale 1.0, 0 = sea reflection every 2nd frame + smaller shadow map
     const qp = new URLSearchParams(location.search).get('q');
     // level 3 (ambient occlusion) only on request: it halves the frame rate on an M3 Pro
-    this.quality = qp !== null ? +qp : 2; this.autoQ = qp === null; this.fpsT = 0; this.fpsN = 0; this.fpsSince = 0;
+    const mq = { natur: 1, leer: 0 }[this.track.__mode] ?? 2; // graphics level 2 / 1 start on the lighter render steps
+    this.quality = qp !== null ? +qp : mq; this.autoQ = qp === null; this.fpsT = 0; this.fpsN = 0; this.fpsSince = 0;
     this.useAO = this.quality >= 3 && !new URLSearchParams(location.search).has('noao'); // headless screenshots: build everything, render once
     // sea mirror every 2nd frame (every 3rd on level 0): the ripples hide the one-frame lag
     this.reflEvery = this.quality >= 3 ? 1 : this.quality >= 1 ? 2 : 3;
+    if (qp === null && mq < 2) this._setQuality(mq);
     { const wr = this.water.onBeforeRender; let k = 0; this.water.onBeforeRender = (...a) => { if (this.instant || k++ % this.reflEvery === 0) wr.apply(this.water, a); }; }
     // loading: tiles build with a bigger per-frame budget until the ground around the start is complete
     this.loading = true; this.ready = new Promise(res => { this._readyRes = res; });
