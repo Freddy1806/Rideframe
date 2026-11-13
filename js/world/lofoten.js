@@ -1727,7 +1727,7 @@ export class WorldScene {
       if (o.matrixAutoUpdate !== false && !o.userData.walk && !o.userData.circle) o.matrixWorldAutoUpdate = go; }
     for (const w of this.wheels) w.rotation.x = time * 0.35;
     if (this.villageAnim.length) tickVillage(this.villageAnim, time);
-    for (const o of this.props) { const w = o.userData.walk; if (!w || !o.visible) continue; // walk along the road, turn round at the village ends
+    for (const o of this.props) { const w = o.userData.walk; if (!w || (!o.visible && !w.wrap)) continue; // walk along the road (wagons keep rolling out of sight, else one parked far away would never come back), turn round at the village ends
       w.d += w.v * Math.min(dt, 0.1);
       if (w.d < w.a || w.d > w.b) { if (!w.wrap) { w.v = -w.v; w.d = Math.max(w.a, Math.min(w.b, w.d)); }
         else { // a wagon never turns and never pops up in view: it rolls on while the rider is near, then waits out of sight until its entry point is far from the rider
