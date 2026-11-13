@@ -8,6 +8,7 @@ import { drawHudProfile } from './profile.js';
 import { fmtTime, fmtKm, fmtNum, esc, bestAvg } from './util.js';
 import { bestClimb, distAtTime } from './climbghost.js';
 import { stravaButton } from './stravaup.js';
+import { routeFns } from './tcx.js';
 import { gearsFrom, gearName, parseGear, estimateGear, virtualGrade } from './gears.js';
 import { UEBridge } from './uebridge.js';
 import { MiniMap } from './minimap.js';
@@ -146,6 +147,7 @@ export class RideSession {
         try { const { WorldScene, prepareWorld } = await import('./world/lofoten.js'); clearInterval(tk); ld0.remove(); await prepareWorld(this.track);
           { const L = await loadLedger().catch(() => null), q = new URLSearchParams(location.search).get('village'); // your village grows with your lifetime km
             if (L || q != null) this.track.__village = { km: q != null ? +q : L.life.km, hm: L?.life.hm || 0, leader: L ? (leaderOf(L.pts) || L.colour) : null, colour: new URLSearchParams(location.search).get('week') || L?.colour || null }; }
+          { const q = new URLSearchParams(location.search).get('sunset'); this.track.__sunset = q != null ? q === '1' : this.state.settings.light !== 'fest'; } /* the sun sets over the ride (route page: Licht) */
           this.track.__mode = new URLSearchParams(location.search).get('mode') || this.state.settings.worldMode || 'voll'; /* Voll / Ohne Menschen / ... (route page) */
           this.player = new WorldScene(c, this.track); window.__world = this.player; }
         catch (e) { console.warn('3D world failed, using 2D scene', e); }
@@ -1075,7 +1077,7 @@ export class RideSession {
       b.disabled = false; b.textContent = t;
     };
     if (rec.unsaved) o.querySelector('#fStrava')?.remove(); /* nothing to upload: the watts were typed, not ridden */
-    else o.querySelector('#fStrava').onclick = e => stravaButton(e.currentTarget, rec, this.route.name, d => eleAt(this.track, d), async () => {
+    else o.querySelector('#fStrava').onclick = e => stravaButton(e.currentTarget, rec, this.route.name, routeFns(this.track) || (d => eleAt(this.track, d)), async () => {
       const [{ makeShareImage }, { account }] = await Promise.all([import('./shareimg.js'), import('./account.js')]);
       return makeShareImage({ ...(await shareOpts()), who: account()?.name || '' });
     });

@@ -220,6 +220,9 @@ export function makeRealTrack(j) {
   }
   // metres -> lat/lon with the same flat projection the 3D field uses (x east, z south)
   const R = 6371008.8, la0 = 68.2, lat = ys.map(y => la0 - y / R * 180 / Math.PI), lon = xs.map(x => 14.0 + x / (R * Math.cos(la0 * Math.PI / 180)) * 180 / Math.PI);
+  // real GPS for Strava (Freddy 13.11.: the route on the Strava map): UTM 33N grid metres from the start -> WGS84. Kept apart from
+  // lat/lon above, which only feed the 3D field's own flat projection and must not move.
+  const gps = j.start_utm ? utmInv(xs, ys, j.start_utm[0], j.start_utm[1], 15) : null;
   // segments: villages from the places list, the stretches between them coast (sea beside the road) or valley
   const places = [...(j.places || [])].sort((a, b) => a.from_m - b.from_m), segs = [];
   const seaOn = (a, b) => { let s = 0, c = 0; for (let k = Math.floor(a / STEP); k < Math.min(n, b / STEP); k++) { s += side[k] !== 0; c++; } return c && s / c > 0.4; };
@@ -235,6 +238,20 @@ export function makeRealTrack(j) {
   const d0 = COAST_DESIGN, p = defaultParams(d0), time = []; let t = 0;
   for (let i = 0; i < n; i++) { time.push(t); t += STEP / speedFor(d0.ftp * 0.7, tmp.grade[i], p); } // "footage" pace: steady endurance ride
   const track = finishTrack({ length: (n - 1) * STEP, time, lat, lon, altRaw: alt, eleSource: 'dem' });
-  return { ...track, curve: new Array(n).fill(0), theme: 'coast', world: 'lofoten', segments: segs, intervals: [], name: j.name,
+  return { ...track, curve: new Array(n).fill(0), theme: 'coast', world: 'lofoten', segments: segs, intervals: [], name: j.name, gpsLat: gps?.lat, gpsLon: gps?.lon,
     dem: { file: j.file, n: j.n, size_m: j.size_m, start_px: [j.start_px[0] - 0.5, j.start_px[1] - 0.5], sat: j.sat, bridges: (j.bridges || []).filter(([a, b]) => b - a >= 25), tunnels: j.tunnels || [], tunnelKinds: j.tunnel_kinds || [] } }; // start_px counts pixel edges, the grid samples sit at pixel centres
+}
+
+/** inverse UTM (WGS84): easting e0 + x, northing n0 - y (y = metres south) -> { lat[], lon[] } in degrees; lon0 = central meridian */
+function utmInv(xs, ys, e0, n0, lon0) {
+  const a = 6378137, f = 1 / 298.257223563, k0 = 0.9996, e2 = f * (2 - f), ep2 = e2 / (1 - e2), e1 = (1 - Math.sqrt(1 - e2)) / (1 + Math.sqrt(1 - e2));
+  const lat = new Array(xs.length), lon = new Array(xs.length);
+  for (let i = 0; i < xs.length; i++) {
+    const x = e0 + xs[i] - 500000, M = (n0 - ys[i]) / k0, mu = M / (a * (1 - e2 / 4 - 3 * e2 * e2 / 64 - 5 * e2 ** 3 / 256));
+    const p1 = mu + (3 * e1 / 2 - 27 * e1 ** 3 / 32) * Math.sin(2 * mu) + (21 * e1 * e1 / 16 - 55 * e1 ** 4 / 32) * Math.sin(4 * mu) + (151 * e1 ** 3 / 96) * Math.sin(6 * mu) + (1097 * e1 ** 4 / 512) * Math.sin(8 * mu);
+    const C1 = ep2 * Math.cos(p1) ** 2, T1 = Math.tan(p1) ** 2, N1 = a / Math.sqrt(1 - e2 * Math.sin(p1) ** 2), R1 = a * (1 - e2) / (1 - e2 * Math.sin(p1) ** 2) ** 1.5, D = x / (N1 * k0);
+    lat[i] = (p1 - N1 * Math.tan(p1) / R1 * (D * D / 2 - (5 + 3 * T1 + 10 * C1 - 4 * C1 * C1 - 9 * ep2) * D ** 4 / 24 + (61 + 90 * T1 + 298 * C1 + 45 * T1 * T1 - 252 * ep2 - 3 * C1 * C1) * D ** 6 / 720)) * 180 / Math.PI;
+    lon[i] = lon0 + (D - (1 + 2 * T1 + C1) * D ** 3 / 6 + (5 - 2 * C1 + 28 * T1 - 3 * C1 * C1 + 8 * ep2 + 24 * T1 * T1) * D ** 5 / 120) / Math.cos(p1) * 180 / Math.PI;
+  }
+  return { lat, lon };
 }

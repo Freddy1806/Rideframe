@@ -245,7 +245,7 @@ export class WorldScene {
     // clearer air than before (turbidity 10 made the whole sky milky white): blue overhead, warm only towards the sun
     su.turbidity.value = 4; su.rayleigh.value = 2.6; su.mieCoefficient.value = 0.006; su.mieDirectionalG.value = 0.86;
     su.sunPosition.value.copy(sun);
-    su.uTime = { value: 0 }; su.uCover = { value: 0.4 }; su.uVeil = { value: 0 }; su.uLow = { value: 0 };
+    su.uTime = { value: 0 }; su.uCover = { value: 0.4 }; su.uVeil = { value: 0 }; su.uLow = { value: 0 }; su.uDusk = { value: 0 };
     su.uHell = HELL; // hell: a smoke-red sky
     sky.material.fragmentShader = skyGrade(sky.material.fragmentShader).replace('void main() {', 'uniform float uHell;\nvoid main() {')
       .replace('gl_FragColor = vec4( retColor, 1.0 );', 'gl_FragColor = vec4( mix( retColor, vec3( .32, .07, .03 ) * ( .55 + .45 * dot( retColor, vec3( .3, .5, .2 ) ) ) + retColor * vec3( .25, .06, .02 ), uHell ), 1.0 );');
@@ -1434,26 +1434,26 @@ export class WorldScene {
     // the shower announces itself: from ~3 km before, the sky ahead closes up and darkens, so you see it coming
     const pre = this.rainPlan.reduce((m, s) => Math.max(m, smooth(s.a - 3000, s.a - 700, d) * smooth(s.b + 500, s.b, d)), 0);
     const cover = lerp(cover0, 0.95, Math.max(rain, pre * 0.85)), veil = Math.max(smooth(0.3, 0.95, 0.5 + 0.5 * Math.sin(d / 6100 + 2.6)) * (0.4 + 0.6 * cover0), rain * 0.95, pre * 0.55);
-    const s = sunAt(u, this.sunDir); this.sunY = s.y; const low = 1 - Math.max(0, Math.min(1, (s.y - 0.035) / (0.113 - 0.035)));
+    const s = sunAt(u, this.sunDir, this.track.__sunset === true); this.sunY = s.y; const dusk = this.dusk = Math.max(0, Math.min(1, (0.035 - s.y) / 0.122)); const low = 1 - Math.max(0, Math.min(1, (s.y - 0.035) / (0.113 - 0.035)));
     const su = this.sky.material.uniforms;
-    su.sunPosition.value.copy(s); su.uCover.value = cover; su.uVeil.value = veil; su.uLow.value = low;
+    su.sunPosition.value.copy(s); su.uCover.value = cover; su.uVeil.value = veil; su.uLow.value = low; su.uDusk.value = dusk;
     // direct light: warm, a bit warmer as the sun sinks, dimmer behind the veil; never orange enough to rust the rock
     this.light.color.lerpColors(W_HIGH, W_LOW, low);
-    this.light.intensity = 3.7 * (1 - 0.38 * veil) * (1 - 0.12 * cover) * (1 - 0.12 * low) * (1 - 0.8 * (this.tunnelK || 0));
+    this.light.intensity = 3.7 * (1 - 0.38 * veil) * (1 - 0.12 * cover) * (1 - 0.12 * low) * (1 - 0.8 * (this.tunnelK || 0)) * (1 - 0.88 * dusk); if (dusk > 0) this.light.color.lerp(W_DUSK, dusk * 0.7);
     this.hemi.intensity = (1.2 + 0.12 * cover + 0.05 * veil) * (1 - 0.5 * (this.tunnelK || 0)); // shadow slopes ~40 % of the sunlit side, not black; dim inside rock tunnels
-    this.hemi.color.lerpColors(H_CLEAR, H_GREY, cover * 0.7);
+    this.hemi.color.lerpColors(H_CLEAR, H_GREY, cover * 0.7); if (dusk > 0) { this.hemi.color.lerp(H_DUSK, dusk * 0.65); this.hemi.intensity *= 1 - 0.5 * dusk; } // after sunset: blue hour, violet fill
     // haze: cool lavender away from the sun, glowing red-orange towards it (weaker behind the veil)
-    this.scene.fog.color.lerpColors(F_CLEAR, F_GREY, cover * 0.6);
+    this.scene.fog.color.lerpColors(F_CLEAR, F_GREY, cover * 0.6); if (dusk > 0) this.scene.fog.color.lerp(F_DUSK, dusk * 0.7);
     FOG_SUN.x = s.x; FOG_SUN.y = s.y; FOG_SUN.z = s.z;
-    const g = (1 - 0.45 * veil) * (0.85 + 0.3 * low);
-    FOG_SUNCOL.x = 0.55 * g; FOG_SUNCOL.y = (0.3 - 0.07 * low) * g; FOG_SUNCOL.z = (0.1 - 0.04 * low) * g; // golden glow towards the sun
+    const g = (1 - 0.45 * veil) * (0.85 + 0.3 * low) * (1 - 0.35 * dusk);
+    FOG_SUNCOL.x = 0.55 * g; FOG_SUNCOL.y = (0.3 - 0.07 * low - 0.12 * dusk) * g; FOG_SUNCOL.z = (0.1 - 0.04 * low - 0.03 * dusk) * g; // golden glow towards the sun
     const wu = this.water.material.uniforms;
-    wu.sunDirection.value.copy(s); wu.sunColor.value.lerpColors(WS_HIGH, WS_LOW, low).multiplyScalar(1 - 0.5 * veil);
+    wu.sunDirection.value.copy(s); wu.sunColor.value.lerpColors(WS_HIGH, WS_LOW, low).multiplyScalar((1 - 0.5 * veil) * (1 - 0.75 * dusk));
     // deep North-Sea blue-green under a clear sky, dull slate grey-blue under cloud, veil and rain (Freddy: never a glowing cyan)
     wu.waterColor.value.lerpColors(WC_CLEAR, WC_GREY, Math.min(1, cover * 0.7 + veil * 0.5 + (this.weather?.rain || 0)));
     this.clouds.material.uniforms.uSun.value.copy(s); this.clouds.material.uniforms.uCover.value = cover;
-    this.clouds.material.uniforms.uLow.value = low;
-    { const cu = this.cumulus.material.uniforms; cu.uSun.value.copy(s); cu.uCover.value = cover; cu.uLow.value = low; cu.uVeil.value = veil; }
+    this.clouds.material.uniforms.uLow.value = low; this.clouds.material.uniforms.uDusk.value = dusk;
+    { const cu = this.cumulus.material.uniforms; cu.uSun.value.copy(s); cu.uCover.value = cover; cu.uLow.value = low; cu.uVeil.value = veil; cu.uDusk.value = dusk; }
     // image-based light from the sky, re-baked only when the sun has moved noticeably (~0.2°)
     const hb = (this.hellK || 0) > 0.5; if (hb !== !!this._envHell) { this._envHell = hb; this.envSun = null; } // hell in, hell out: re-bake the sky light
     if (hb !== !!this._herdHell) { this._herdHell = hb; // no grazing cows in hell (Mac mini QA): farm animals leave while the screen burns red, and come back after
@@ -1559,7 +1559,7 @@ export class WorldScene {
     this._far(cam.x, cam.z); this.farCam.value.set(cam.x, cam.z);
     this._ensure(cam.x, cam.z);
     // shadows follow the rider
-    this.light.position.set(cam.x + this.sunDir.x * 400, cam.y + this.sunDir.y * 400 + 40, cam.z + this.sunDir.z * 400);
+    this.light.position.set(cam.x + this.sunDir.x * 400, cam.y + Math.max(0.03, this.sunDir.y) * 400 + 40, cam.z + this.sunDir.z * 400); // below the horizon the (dim) light stays just above it: no shadows from underneath
     this.light.target.position.set(cam.x - this.sunDir.x * 40, cam.y, cam.z - this.sunDir.z * 40);
     this.sky.position.copy(this.camera.position);
     this.roadBlur.value = Math.max(0, Math.min(1, ((this.speed || 0) * 3.6 - 12) / 50));
@@ -1568,7 +1568,7 @@ export class WorldScene {
     this.water.position.x = Math.round(cam.x / 100) * 100; this.water.position.z = Math.round(cam.z / 100) * 100;
     this.water.material.uniforms.time.value = time * 0.6; this.grassTime.value = time; TIME.value = time;
     { const sd = this.sky.material.uniforms.sunPosition.value, g = this.sunGlow, veil = this.weather?.veil || 0;
-      g.position.copy(this.camera.position).addScaledVector(sd, 8200); g.material.opacity = 0.5 * (1 - 0.65 * veil) * (1 - (this.tunnelK || 0)); }
+      g.position.copy(this.camera.position).addScaledVector(sd, 8200); g.material.opacity = 0.5 * (1 - 0.65 * veil) * (1 - (this.tunnelK || 0)) * (1 - 0.85 * (this.dusk || 0)); }
     this.cumulus.material.uniforms.uTime.value = time;
     if (this.rain.visible) { const ru = this.rain.material.uniforms; ru.uTime.value = time; ru.uCam.value.copy(this.camera.position); }
     this.clouds.position.copy(this.camera.position); this.clouds.material.uniforms.uTime.value = time; this.sky.material.uniforms.uTime.value = time;
@@ -1692,13 +1692,15 @@ function mergeGeos(list) { // keeps every attribute all parts share (terrain: co
 }
 
 // sun path over the ride (u = 0..1): elevation 6.5° -> 2°, azimuth 36° -> 24° west of north (north = -z, west = -x)
-function sunAt(u, out = new THREE.Vector3()) {
-  const k = u * u * (3 - 2 * u), el = THREE.MathUtils.degToRad(6.5 - 4.5 * k), az = THREE.MathUtils.degToRad(36 - 12 * u);
+function sunAt(u, out = new THREE.Vector3(), sunset = false) {
+  // sunset (Freddy 13.11.): from 8° the sun reaches the horizon at half the route and sinks to -5° (dusk) at the finish
+  const k = u * u * (3 - 2 * u), el = THREE.MathUtils.degToRad(sunset ? (u <= 0.5 ? 8 - 16 * u : -10 * (u - 0.5)) : 6.5 - 4.5 * k), az = THREE.MathUtils.degToRad(36 - 12 * u);
   return out.set(-Math.cos(el) * Math.sin(az), Math.sin(el), -Math.cos(el) * Math.cos(az));
 }
 // light colours (linear) for a high (6.5°) and a low (2°) sun; sky fill clear / overcast; haze clear / overcast
 const W_HIGH = new THREE.Color(0xffdcc2), W_LOW = new THREE.Color(0xffc9a4);
 const H_CLEAR = new THREE.Color(0xb6c4d6), H_GREY = new THREE.Color(0xaab4c4);
+const W_DUSK = new THREE.Color(0xff8a5a), H_DUSK = new THREE.Color(0x8c86b8), F_DUSK = new THREE.Color(0x7a6080); // after sunset
 export const FOV_NORMAL = 62;
 const ENV_I = 0.55; // sky image light: less blue cast on meadows than before (0.95)
 const F_CLEAR = new THREE.Color(0xbfc6cd), F_GREY = new THREE.Color(0xb4b9c2);
@@ -1714,7 +1716,7 @@ const WC_CLEAR = new THREE.Color(0x0b3448), WC_GREY = new THREE.Color(0x26323a);
 function skyGrade(fs) {
   return fs
     .replace('uniform vec3 up;', `uniform vec3 up;
-uniform float uTime, uCover, uVeil, uLow;
+uniform float uTime, uCover, uVeil, uLow, uDusk;
 float sh(vec2 p) { return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }
 float sn(vec2 p) { vec2 i = floor(p), f = fract(p); f = f * f * (3. - 2. * f); return mix(mix(sh(i), sh(i + vec2(1, 0)), f.x), mix(sh(i + vec2(0, 1)), sh(i + vec2(1, 1)), f.x), f.y); }`)
     .replace('L0 += ( vSunE * 19000.0 * Fex ) * sundisk;', '')
@@ -1736,16 +1738,20 @@ float sn(vec2 p) { vec2 i = floor(p), f = fract(p); f = f * f * (3. - 2. * f); r
   float belt = smoothstep(.015, .09, ey) * (1. - smoothstep(.12, .3, ey));
   retColor = mix(retColor, retColor * vec3(1.22, .93, 1.02) + vec3(.035, .008, .02), belt * anti * .35);
   float r = acos(clamp(cosTheta, -1., 1.));
-  float disc = 1. - smoothstep(.016, .019, r);
+  float disc = (1. - smoothstep(.016, .019, r)) * smoothstep(-.004, .006, direction.y); // the disc goes down behind the horizon
   vec3 discCol = mix(vec3(6., 3.4, 1.6), vec3(1.6, .11, .03), smoothstep(.15, .85, uLow)) * (1. - .3 * r / .019);
   retColor = mix(retColor, discCol, disc * (1. - .55 * uVeil));
   float az = atan(direction.x, direction.z);
   vec2 q = vec2(az * 7. + uTime * .0015, ey * 95.);
   float st = sn(q) * .55 + sn(q * vec2(2.7, 2.1) + 3.1) * .3 + sn(q * vec2(7.3, 4.2) + 1.7) * .15;
-  float band = smoothstep(.006, .025, ey) * (1. - smoothstep(.07, .16, ey));
+  float band = smoothstep(.006, .025, ey) * (1. - smoothstep(.07 + .12 * uDusk, .16 + .2 * uDusk, ey)); // at sunset the streaks reach higher
   float thick = smoothstep(.7 - .2 * uCover - .25 * uVeil * pow(cs, 30.), .82, st) * band;
   vec3 stCol = mix(vec3(.26, .22, .30), vec3(1.5, .5, .18), clamp(pow(cs, 10.) * 1.4 + .25 * pow(cs, 2.), 0., 1.));
   retColor = mix(retColor, stCol * (.7 + .5 * st), thick * .85);
+  // sunset (Freddy 13.11.): the sky turns redder and redder, after the sun is gone a glowing red band, violet-blue above
+  float sg = clamp(uLow * .6 + uDusk, 0., 1.);
+  retColor = mix(retColor, retColor * vec3(1.18, .62, .5) + vec3(.22, .05, .02) * hz * (.35 + .65 * toSun), sg * .55);
+  retColor = mix(retColor, retColor * mix(vec3(.42, .36, .62), vec3(1.1, .55, .4), hz * (.5 + .5 * pow(cs, 2.))), uDusk * .8);
   gl_FragColor = vec4( retColor, 1.0 );`);
 }
 
@@ -1793,7 +1799,7 @@ function cumulusLayer(sun) {
   g.instanceCount = N;
   const m = new THREE.ShaderMaterial({
     transparent: true, depthWrite: false, fog: false,
-    uniforms: { tC: { value: cumulusTexture() }, uHell: HELL, uTime: { value: 0 }, uSun: { value: sun.clone() }, uCover: { value: 0.4 }, uLow: { value: 0 }, uVeil: { value: 0 } },
+    uniforms: { tC: { value: cumulusTexture() }, uHell: HELL, uTime: { value: 0 }, uSun: { value: sun.clone() }, uCover: { value: 0.4 }, uLow: { value: 0 }, uVeil: { value: 0 }, uDusk: { value: 0 } },
     vertexShader: `attribute vec4 iA, iB; uniform float uTime, uCover; varying vec2 vUv; varying float vFade, vShape, vToSun, vFar; varying vec3 vR, vU, vV; uniform vec3 uSun;
 void main() {
   vec2 c = iA.xz + vec2(uTime * 4., uTime * 1.5); // drift with the wind
@@ -1811,7 +1817,7 @@ void main() {
   vR = R * iB.z; vU = U; vV = V; vShape = iB.x; vToSun = max(dot(-V, uSun), 0.);
   gl_Position = projectionMatrix * viewMatrix * vec4(P, 1.);
 }`,
-    fragmentShader: `uniform sampler2D tC; uniform vec3 uSun; uniform float uHell; uniform float uLow, uVeil, uCover; varying vec2 vUv; varying float vFade, vShape, vToSun, vFar; varying vec3 vR, vU, vV;
+    fragmentShader: `uniform sampler2D tC; uniform vec3 uSun; uniform float uHell; uniform float uLow, uVeil, uCover, uDusk; varying vec2 vUv; varying float vFade, vShape, vToSun, vFar; varying vec3 vR, vU, vV;
 void main() {
   vec4 t = texture2D(tC, vUv);
   float a = smoothstep(.05, .75, t.a) * vFade; if (a < .01) discard; // soft, frayed rims instead of a cut-out cotton-wool edge
@@ -1820,9 +1826,11 @@ void main() {
   float hgt = 1. - fract(vUv.y * 4.); // 0 = base, 1 = top of the card
   vec3 shade = mix(vec3(.36, .33, .42), vec3(.4, .4, .46), uCover) * (.62 + .38 * smoothstep(.0, .7, hgt)) * (.85 + .25 * n.y * .5 + .1);
   vec3 lit = mix(vec3(1.02, .76, .56), vec3(1.12, .62, .4), uLow) * (1. - .45 * uVeil); // midnight-sun gold, never paper white
+  lit = mix(lit, vec3(1.25, .4, .3), uDusk); shade *= mix(vec3(1.), vec3(.6, .52, .78), uDusk); // red-lit undersides, then violet
   vec3 col = mix(shade, lit, l * (.55 + .45 * hgt));
   col += vec3(1.3, .62, .3) * pow(vToSun, 6.) * (1. - t.b) * 1.2; // silver lining against the sun
-  col = mix(col, vec3(1., .74, .62), vFar * .45); // far heaps sink into the warm horizon haze
+  col = mix(col, mix(vec3(1., .74, .62), vec3(.9, .4, .38), uDusk), vFar * .45); // far heaps sink into the warm horizon haze
+  col *= mix(vec3(1.), vec3(.82, .5, .52), uDusk); // after sunset the heaps glow dusky rose, not white
   col = mix(col, col * vec3(.5, .2, .12) + vec3(.1, .025, .01), uHell); // hell: smoke-red, sooty heaps
   gl_FragColor = vec4(col, a * .82); // a little sky shows through: they sit in the haze, not on it
   #include <tonemapping_fragment>
@@ -1836,9 +1844,9 @@ void main() {
 function cloudLayer(sun) {
   const m = new THREE.ShaderMaterial({
     transparent: true, depthWrite: false, fog: false, side: THREE.BackSide,
-    uniforms: { uHell: HELL, uTime: { value: 0 }, uSun: { value: sun.clone() }, uCover: { value: 0.4 }, uLow: { value: 0 } },
+    uniforms: { uHell: HELL, uTime: { value: 0 }, uSun: { value: sun.clone() }, uCover: { value: 0.4 }, uLow: { value: 0 }, uDusk: { value: 0 } },
     vertexShader: 'varying vec3 vW; void main() { vec4 w = modelMatrix * vec4(position, 1.); vW = w.xyz; gl_Position = projectionMatrix * viewMatrix * w; }',
-    fragmentShader: `varying vec3 vW; uniform float uTime, uCover, uLow, uHell; uniform vec3 uSun;
+    fragmentShader: `varying vec3 vW; uniform float uTime, uCover, uLow, uHell, uDusk; uniform vec3 uSun;
 float h(vec2 p) { return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }
 float n(vec2 p) { vec2 i = floor(p), f = fract(p); f = f * f * (3. - 2. * f); return mix(mix(h(i), h(i + vec2(1, 0)), f.x), mix(h(i + vec2(0, 1)), h(i + vec2(1, 1)), f.x), f.y); }
 float fbm(vec2 p) { float v = 0., a = .5; for (int k = 0; k < 5; k++) { v += a * n(p); p = p * 2.03 + 17.1; a *= .5; } return v; }
@@ -1846,13 +1854,14 @@ void main() {
   vec3 dir = normalize(vW - cameraPosition); // cloud deck 1.5 km up, seen through a dome: no far-plane edge at the horizon
   if (dir.y < .015) discard;
   vec2 p = (cameraPosition.xz + dir.xz / dir.y * 1500.) / 1700. + vec2(uTime * .004, uTime * .0015);
-  float f = fbm(p);
-  float c = smoothstep(.56 - .2 * uCover, .8 - .12 * uCover, f);
+  float f = mix(fbm(p), fbm(vec2(p.x * .3 + p.y * .12, p.y * 3.4)), uDusk * .7 + uLow * .25); // towards sunset the deck draws out into long streaks
+  float c = smoothstep(.56 - .2 * uCover - .06 * uDusk, .8 - .12 * uCover, f);
   vec2 sd = normalize(uSun.xz + 1e-4);
   float lit = clamp(.5 + (f - fbm(p - sd * .045)) * 5., 0., 1.);
   float toSun = pow(max(dot(dir, uSun), 0.), 4.);
   vec3 dark = mix(vec3(.30, .30, .40), vec3(.36, .34, .40), uCover);
-  vec3 sunlit = mix(vec3(1.25, .78, .58), vec3(1.35, .58, .34), uLow);
+  vec3 sunlit = mix(mix(vec3(1.25, .78, .58), vec3(1.35, .58, .34), uLow), vec3(1.45, .36, .3), uDusk);
+  dark = mix(dark, vec3(.24, .2, .34), uDusk);
   vec3 col = mix(dark, sunlit, lit * (.55 + .45 * toSun)) * (.8 + .3 * smoothstep(.5, .9, fbm(p * 1.7)));
   col += vec3(1.3, .5, .2) * toSun * (1. - c) * .9;
   float fade = smoothstep(.015, .2, dir.y);

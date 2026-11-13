@@ -1,6 +1,17 @@
 // Strava export: a ride as Garmin TCX (time, distance, speed, watts, cadence, heart rate; no GPS = virtual ride).
 // Upload on strava.com/upload/select (Strava's own API needs a registered app + login, so we hand over the file).
 
+import { eleAt as eleOf, STEP } from './track.js';
+
+/** altitude along the route for the TCX; on real roads (Reine–Å, Küstenweg) it also carries .pos(d) -> [lat, lon], so Strava
+ *  draws the ride on the map in Lofoten (Freddy 13.11.), uploaded as a virtual ride */
+export function routeFns(track) {
+  if (!track?.ele) return null;
+  const f = d => eleOf(track, d), la = track.gpsLat, lo = track.gpsLon;
+  if (la?.length > 1 && lo?.length === la.length) f.pos = d => { const x = Math.max(0, Math.min(la.length - 1.001, d / STEP)), i = Math.floor(x), t = x - i; return [la[i] + (la[i + 1] - la[i]) * t, lo[i] + (lo[i + 1] - lo[i]) * t]; };
+  return f;
+}
+
 const xml = v => String(v).replace(/[<>&"']/g, c => ({ '<': '&lt;', '>': '&gt;', '&': '&amp;', '"': '&quot;', "'": '&apos;' })[c]);
 
 /** samples: [t s, distance m, watts, km/h, rpm, bpm]; eleAt(d) adds altitude so Strava shows the climbing */
@@ -8,6 +19,7 @@ export function toTCX(rec, name, eleAt = null) {
   name = xml(name); const d0 = rec.startD || 0;
   const start = new Date(rec.date - rec.duration * 1000), iso = t => new Date(start.getTime() + t * 1000).toISOString();
   const pts = rec.samples.map(([t, d, w, kmh, cad, hr]) => `<Trackpoint><Time>${iso(t)}</Time>`
+    + (eleAt?.pos ? (([la, lo]) => `<Position><LatitudeDegrees>${la.toFixed(6)}</LatitudeDegrees><LongitudeDegrees>${lo.toFixed(6)}</LongitudeDegrees></Position>`)(eleAt.pos(d0 + d)) : '')
     + (eleAt ? `<AltitudeMeters>${eleAt(d0 + d).toFixed(1)}</AltitudeMeters>` : '') + `<DistanceMeters>${d}</DistanceMeters>`
     + (hr ? `<HeartRateBpm><Value>${hr}</Value></HeartRateBpm>` : '') + (cad ? `<Cadence>${Math.min(254, cad)}</Cadence>` : '')
     + `<Extensions><TPX xmlns="http://www.garmin.com/xmlschemas/ActivityExtension/v2"><Speed>${(kmh / 3.6).toFixed(2)}</Speed><Watts>${w}</Watts></TPX></Extensions></Trackpoint>`);

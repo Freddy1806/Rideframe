@@ -16,6 +16,7 @@ import { fovOf, FOV_MIN, FOV_MAX } from './fov.js';
 import { fmtTime, fmtKm, fmtNum, esc, bestAvg } from './util.js';
 import { openControllerTest } from './controller.js';
 import { stravaButton } from './stravaup.js';
+import { routeFns } from './tcx.js';
 import { hudPrefs, hudControlsHTML, wireHudControls } from './hudprefs.js';
 import { allWorkouts, setMyWorkouts, workoutById, workoutDuration, workoutSVG } from './workouts.js';
 import { loadShared, sharedFor, shareRide, importShared, groupModal } from './share.js';
@@ -270,6 +271,10 @@ function detail(id) {
             <span class="label" style="min-width:130px">Welt</span>
             <select id="wmSel" style="width:auto">${[['voll', 'Voll belebt'], ['ruhig', 'Ohne Menschen'], ['natur', 'Ohne Menschen und Tiere'], ['leer', 'Nur Landschaft']].map(([v, t]) => `<option value="${v}">${t}</option>`).join('')}</select>
           </div>
+          <div class="field" style="border:0;padding:10px 0 0;gap:10px;flex-wrap:wrap;justify-content:flex-start" title="Die Sonne geht während der Fahrt unter: zur Hälfte der Strecke am Horizont, am Ende Dämmerung">
+            <span class="label" style="min-width:130px">Licht</span>
+            <select id="lightSel" style="width:auto"><option value="sunset">Sonnenuntergang während der Fahrt</option><option value="fest">Abendsonne (bleibt)</option></select>
+          </div>
           <div class="field" style="border:0;padding:10px 0 0;gap:10px;flex-wrap:wrap;justify-content:flex-start" title="Am Ziel geht es wieder am Start los, bis alle Runden gefahren sind (nicht in der Gruppenfahrt)">
             <span class="label" style="min-width:130px">Runden</span>
             <select id="lapSel" style="width:auto">${[1, 2, 3, 4, 5, 10].map(n => `<option value="${n}">${n === 1 ? '1 Runde' : n + ' Runden'} · ${fmtKm(t.length * n)} km</option>`).join('')}</select>
@@ -302,6 +307,8 @@ function detail(id) {
   $('#lapSel').onchange = e => { state.settings.laps = +e.target.value; saveSettings(); };
   $('#wmSel').value = state.settings.worldMode || 'voll';
   $('#wmSel').onchange = e => { state.settings.worldMode = e.target.value; saveSettings(); };
+  $('#lightSel').value = state.settings.light === 'fest' ? 'fest' : 'sunset';
+  $('#lightSel').onchange = e => { state.settings.light = e.target.value; saveSettings(); };
   $('#chSel').onchange = e => { state.settings.challenges = +e.target.value; saveSettings(); };
   wireDashboard(main, { state, saveSettings, toast, rerender: history,
     startTest: id => { state.settings.workout = id; saveSettings(); startRide(routeById('kueste60') ? 'kueste60' : 'demo'); },
@@ -370,7 +377,7 @@ function history() {
       await shareModal({ rec: x, route: r, track: r.track, photo: photo || null, pose: null, pb: x.routeId !== 'pure' && bestRide(x.routeId)?.id === x.id }); }
     catch (e) { toast('Bild ging nicht: ' + (e.message || e), 5000); }
     b.disabled = false; b.textContent = t; });
-  main.querySelectorAll('.strava').forEach(b => b.onclick = () => { const x = rides.find(r => r.id === b.dataset.id); if (x?.samples?.length) { const r = routeById(x.routeId), t = r?.track; stravaButton(b, x, routeName(x.routeId) || 'Fahrt', t?.ele ? d => eleAt(t, d) : null); } else toast('Diese Fahrt hat keine Messwerte.'); });
+  main.querySelectorAll('.strava').forEach(b => b.onclick = () => { const x = rides.find(r => r.id === b.dataset.id); if (x?.samples?.length) { const r = routeById(x.routeId), t = r?.track; stravaButton(b, x, routeName(x.routeId) || 'Fahrt', routeFns(t)); } else toast('Diese Fahrt hat keine Messwerte.'); });
 }
 
 // ---- form controls: stepper (− value +) with optional "no answer", segmented switch ----

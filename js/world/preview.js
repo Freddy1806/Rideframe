@@ -10,6 +10,7 @@ const rid = new URLSearchParams(location.search).get('route');
 const track = (rid && makeBuiltinTrack(rid)) || (rid && rid !== 'coast' && await loadRealTrack(rid)) || makeCoastTrack(), L = track.length;
 $('rname').textContent = track.name || 'Felsenküste';
 await prepareWorld(track);
+track.__sunset = new URLSearchParams(location.search).get('sunset') === '1';
 const world = new WorldScene($('gl'), track);
 world.paused = true;
 
