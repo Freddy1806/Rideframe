@@ -634,13 +634,13 @@ export class WorldScene {
       last[(side + 1) / 2] = e; const w = e.size[0], dep = e.size[2], sy = 0.92 + r() * 0.3, set = r() < 0.25 ? 0.5 + r() * 0.7 : 0; // some stand back half a metre: no ruler-straight wall
       if (r() < 0.08) { d += 2.6 + r() * 1.6; continue; } // a slit between two houses: a side alley
       const off = side * (FRONT + set + dep / 2);
-      if (level(d + w / 2, off) && place(e, d + w / 2, off, { face: 'road', overlap: true, gap: 1.2, yAbs: top(d + w / 2) - 0.12, scale: [1, sy, 1], anim: 'Schwingen' })) { stood++;
-        if (r() < 0.3) place(byName(r() < 0.5 ? 'fass' : 'faesser_kisten'), d + w * 0.25, side * (ROAD_W + 0.75), { overlap: true, gap: 0.25, radK: 0.3, rot: r() * 3, yAbs: top(d) }); // barrels at the wall
-        if (r() < 0.22) place(byName(['magd', 'haendler', 'baeckerin', 'alte_frau', 'junge'][Math.floor(r() * 5)]), d + w * 0.6, side * (ROAD_W + 0.8), { face: 'road', overlap: true, gap: 0.3, radK: 0.3, anim: 'Stehen', yAbs: top(d) }); // someone in the doorway
-        { const wall = side * (FRONT + set + 0.02), bit = (n, dd, o = {}) => place(byName(n), d + w * dd, wall + side * (o.inset || 0), { face: 'road', overlap: true, gap: 0.2, radK: 0.15, anim: 'Schwingen', yAbs: top(d), ...o }); // on the front wall (models: origin at the foot of the wall)
+      if (level(d + w / 2, off) && place(e, d + w / 2, off, { face: 'road', overlap: true, gap: 1.2, yAbs: top(d + w / 2) - 0.12, scale: [1, sy, 1], still: true })) { stood++;
+        if (r() < 0.3) place(byName(r() < 0.5 ? 'fass' : 'faesser_kisten'), d + w * 0.25, side * (ROAD_W + 0.75), { overlap: true, gap: 0.25, radK: 0.3, rot: r() * 3, yAbs: top(d), noShadow: true, still: true }); // barrels at the wall
+        if (r() < 0.12) place(byName(['magd', 'haendler', 'baeckerin', 'alte_frau', 'junge'][Math.floor(r() * 5)]), d + w * 0.6, side * (ROAD_W + 0.8), { face: 'road', overlap: true, gap: 0.3, radK: 0.3, anim: 'Stehen', yAbs: top(d), noShadow: true }); // someone in the doorway
+        { const wall = side * (FRONT + set + 0.02), bit = (n, dd, o = {}) => place(byName(n), d + w * dd, wall + side * (o.inset || 0), { face: 'road', overlap: true, gap: 0.2, radK: 0.15, still: true, noShadow: true, yAbs: top(d), ...o }); // on the front wall (models: origin at the foot of the wall)
           if (e.category !== 'house_lane' || !/_(a|c|e|h)(_v\d+)?\.glb$/.test(e.file)) { if (r() < 0.3) bit(['schild_baecker', 'schild_schmied', 'schild_schenke'][Math.floor(r() * 3)], 0.5); } // the shops bring their own sign
           if (r() < 0.45) bit('wandlaterne', 0.12, { dy: 2.7, inset: 0.8 }); if (r() < 0.4) bit('blumenkasten', 0.3, { dy: 1.35, inset: 0.8 }); /* their origin is the lantern / the box itself; the ground floors stand back under the overhang (Mac mini 13.11.) */ if (r() < 0.25) bit('regenfass', 0.92, { anim: null }); }
-        if (r() < 0.1) place(byName('katze'), d + w * 0.8, side * (ROAD_W + 0.6), { face: r() * 6.28, overlap: true, gap: 0.2, radK: 0.2, anim: 'Schlafen', yAbs: top(d) });
+        if (r() < 0.1) place(byName('katze'), d + w * 0.8, side * (ROAD_W + 0.6), { face: r() * 6.28, overlap: true, gap: 0.2, radK: 0.2, anim: 'Schlafen', yAbs: top(d), noShadow: true });
       }
       d += w * 0.97;
     }
@@ -651,8 +651,8 @@ export class WorldScene {
       const lf = A.by.figure_lane || [], leashed = lf.filter(e => /mensch_mit_hund|ziege_am_strick/.test(e.file || '')), wagons = lf.filter(e => /pferdewagen|eselkarren/.test(e.file || '')); /* the MacBook's combined models (person + dog on a leash, horse + wagon) get their own places below */
       const faced = walkers.filter(e => !/^dorf_|\/dorf_/.test(e.file || '')); if (faced.length >= 5) walkers = faced;
       walkers = walkers.map(e => [r(), e]).sort((x, y) => x[0] - y[0]).map(x => x[1]);
-      const a = d0 + 8, b = d1 - 8, dog = byName('hund'), nW = Math.round((d1 - d0) / 15);
-      const walk = (e, dd, off, v, anim = 'Gehen') => { const o = place(e, dd, off, { anim, overlap: true, gap: 0.25, radK: 0.25, yAbs: top(dd) }); if (o) o.userData.walk = { d: dd, off, v, a, b, lane: true }; return o; };
+      const a = d0 + 8, b = d1 - 8, dog = byName('hund'), nW = Math.round((d1 - d0) / 19);
+      const walk = (e, dd, off, v, anim = 'Gehen') => { const o = place(e, dd, off, { anim, overlap: true, gap: 0.25, radK: 0.25, yAbs: top(dd), noShadow: true }); if (o) o.userData.walk = { d: dd, off, v, a, b, lane: true }; return o; };
       if (walkers.length) for (let k = 0; k < nW; k++) { const e = walkers[k % walkers.length], side = k % 2 ? 1 : -1, dd = a + (b - a) * (k + r()) / nW, off = side * (ROAD_W + 0.35 + r() * 0.9);
         const st = e.speed ?? Object.entries(STRIDE).find(([n]) => (e.file || '').includes(n))?.[1] ?? 0.86, v = st * (0.96 + r() * 0.1) * (r() < 0.5 ? 1 : -1);
         if (!walk(e, dd, off, v)) continue;
@@ -663,10 +663,10 @@ export class WorldScene {
       wagons.slice(0, 2).forEach((e, k) => { const side = k ? -1 : 1, dd = a + (b - a) * (0.3 + 0.4 * k + r() * 0.1), off = side * (ROAD_W - 0.25); // a horse cart rolls along the edge of the carriageway (1.7 m wide: the rider keeps 2 m)
         const o = place(e, dd, off, { anim: 'Gehen', overlap: true, gap: -99, radK: 0.1, yAbs: top(dd) }); if (o) o.userData.walk = { d: dd, off, v: (e.speed ?? 1.2) * (k ? -1 : 1), a: d0 - 45, b: d1 + 45, lane: true, wrap: true, gates: [d0 + 2, d1 - 2] }; }); /* wagons never turn on the spot: they roll out through the gate and come in again at the other end */
       const idle = ['magd', 'haendler', 'baeckerin', 'alte_frau', 'moench', 'kaufmann', 'edeldame', 'wirt', 'knecht', 'marktfrau', 'lehrling', 'junge', 'maedchen'].map(byName).filter(Boolean);
-      if (idle.length) for (let d = d0 + 18; d < d1 - 12; d += 24 + r() * 20) { const side = r() < 0.5 ? 1 : -1, n = 2 + Math.floor(r() * 2), q0 = spot(d, side * (ROAD_W + 1.0)), fwd = Math.atan2(q0.tx, q0.tz); // a chat: two or three facing each other
-        for (let k = 0; k < n; k++) { const an = k * 6.283 / n + r(); place(idle[Math.floor(r() * idle.length)], d + Math.cos(an) * 0.55, side * (ROAD_W + 1.0 + Math.sin(an) * 0.45), { face: fwd + (side > 0 ? -1 : 1) * (Math.PI / 2 - an) + Math.PI / 2, overlap: true, gap: 0.2, radK: 0.2, anim: k ? 'Stehen' : 'Rufen', yAbs: top(d) }); } }
+      if (idle.length) for (let d = d0 + 18; d < d1 - 12; d += 36 + r() * 26) { const side = r() < 0.5 ? 1 : -1, n = 2 + Math.floor(r() * 2), q0 = spot(d, side * (ROAD_W + 1.0)), fwd = Math.atan2(q0.tx, q0.tz); // a chat: two or three facing each other
+        for (let k = 0; k < n; k++) { const an = k * 6.283 / n + r(); place(idle[Math.floor(r() * idle.length)], d + Math.cos(an) * 0.55, side * (ROAD_W + 1.0 + Math.sin(an) * 0.45), { face: fwd + (side > 0 ? -1 : 1) * (Math.PI / 2 - an) + Math.PI / 2, overlap: true, gap: 0.2, radK: 0.2, anim: k ? 'Stehen' : 'Rufen', yAbs: top(d), noShadow: true }); } }
       for (let d = d0 + 30; d < d1 - 20; d += 45 + r() * 35) { const side = r() < 0.5 ? 1 : -1, pickN = ['mann_schubkarre', 'karren', 'karren_heu', 'schubkarre', 'leiterwagen'][Math.floor(r() * 5)]; // carts parked along the wall
-        place(byName(pickN), d, side * (ROAD_W + 1.15), { face: 'along', overlap: true, gap: 0.2, radK: 0.2, yAbs: top(d), anim: 'Stehen' }); }
+        place(byName(pickN), d, side * (ROAD_W + 1.15), { face: 'along', overlap: true, gap: 0.2, radK: 0.2, yAbs: top(d), anim: 'Stehen', noShadow: true }); }
       for (let d = d0 + 40; d < d1 - 30; d += 60 + r() * 40) { const side = r() < 0.5 ? 1 : -1, bird = byName(r() < 0.5 ? 'gans' : 'huhn'); // a few geese or hens pecking at the wall
         for (let k = 0; k < 3; k++) { const g = place(bird, d + k * 0.8 + r() * 0.4, side * (ROAD_W + 0.7 + r() * 0.7), { face: r() * 6.28, overlap: true, gap: 0.2, radK: 0.2, yAbs: top(d) }); if (g) { g.userData.peck = { y: g.position.y, r: g.rotation.y, t: r() * 9 }; this.animated.push(g); } } } }
     const add = o => { this.scene.add(o); this.props.push(o); return o; };
@@ -751,7 +751,8 @@ export class WorldScene {
         pl.scale.set(e.size[0] * sc * 0.94, dep, e.size[2] * sc * 0.94); pl.position.set(q.x, y - dep / 2 + 0.12, q.z); pl.rotation.y = ang;
         pl.receiveShadow = true; this.scene.add(pl); this.props.push(pl); }
       this.scene.add(obj); taken.push([q.x, q.z, rad]);
-      this.props.push(obj); if (mixer) { mixer.obj = obj; this.mixers.push(mixer); }
+      if (o.yAbs != null) { obj.userData.lane = true; if (o.noShadow) obj.traverse(c => { c.castShadow = false; }); } // lane things: never in the sea mirror, the small ones cast no shadow (the lane cost 2069 draw calls in a shadow frame, Mac mini profile 13.11.)
+      this.props.push(obj); if (mixer && !o.still) { mixer.obj = obj; this.mixers.push(mixer); } /* still: no mixer, so the model is baked into the static batch (swinging signs of 68 lane houses kept every house a single draw) */
       obj.traverse(c => { if (c.userData.millWheel) this.wheels.push(c); });
       return obj;
     };
@@ -1182,7 +1183,7 @@ export class WorldScene {
     this.events = new Events(this, worldView(ASSETS, t.__mode)); // villagers calling out, birds, carts: before batching, which drops the props list
     if (!/[?&]nobatch/.test(location.search)) this._batchP = this._batch(); // async in slices: one 10-25 s block froze weaker laptops ("Seite reagiert nicht")
     // the sea mirror renders the scene a second time (was the biggest GPU cost): only terrain, road and big buildings go in
-    for (const o of this.props) if (o.userData.small || o.userData.mid || o.userData.walk || o.userData.circle || o.userData.whale || moving.has(o)) noMirror(o);
+    for (const o of this.props) if (o.userData.small || o.userData.mid || o.userData.lane || o.userData.walk || o.userData.circle || o.userData.whale || moving.has(o)) noMirror(o);
   }
   // static batching: every still prop is baked into one mesh per 500 m cell, size class and material (~1500 draw calls -> a few hundred)
   async _batch() {
