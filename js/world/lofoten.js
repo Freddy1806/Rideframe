@@ -1364,6 +1364,7 @@ export class WorldScene {
     if (this.loading && hole >= 500) { this.loading = false; // compile every shader of the start area first: no stutter in the first seconds
       const warm = new THREE.Group(); // plus the flight and hell visitors (their first frame stalled 0.4 s), compiled while the loading screen still shows
       if (ASSETS.count) for (const n of ['vogelschwarm_hoch', 'fledermaeuse', 'drache', 'gluehende_kohle_haufen', 'feuerdaemon', 'lava_fels', 'feuersaeule']) { const e = ASSETS.find(n); if (e) { const o = ASSETS.make(e, null).obj; o.position.copy(this.camera.position); o.position.y -= 400; warm.add(o); } }
+      if (this.lanes) for (const e of ASSETS.list) if (/^(house_lane|lane|figure_lane)$/.test(e.category || '') && !e.stub) { const o = ASSETS.make(e, 'Gehen').obj; o.position.copy(this.camera.position); o.position.y -= 400; warm.add(o); } /* the lane's own models: their first frame stalled 0.3-0.5 s when riding in (Mac mini 13.11.) */
       this.scene.add(warm); const done = () => { this.scene.remove(warm); Promise.resolve(this._batchNearP || this._batchP).catch(() => {}).then(() => { this._readyDone = true; this._readyRes(); }); if (QS.has('assetstats')) console.info('RIDEFRAME Modelle benutzt', ASSETS.used.size, 'von', ASSETS.count, JSON.stringify([...ASSETS.used])); };
       (this.renderer.compileAsync ? this.renderer.compileAsync(this.scene, this.camera) : Promise.resolve()).then(done, done); }
   }
