@@ -626,6 +626,7 @@ export class WorldScene {
     const f = this.field, FRONT = ROAD_W + 1.5; // house fronts 1.5 m from the asphalt: 9.6 m from wall to wall
     const lane = (A.by.house_lane || []), wide = [...(A.by.house || []), ...(A.by.house_big || [])].filter(e => e.size[0] <= 11.3 && e.size[1] >= 8 && !/rorbu|stall|scheune|schuppen|ruine|kulisse|torturm|baustelle|teehaus|pagode/.test(e.file));
     const houses = lane.length >= 3 ? lane : [...lane, ...wide]; if (houses.length < 2) return;
+    const top = d => f.at(d).e + 0.05; // the cobbles' height: everything in the lane stands on it (Freddy 13.11.: barrels and lanterns sank into the street)
     const level = (d, off) => { const q = spot(d, segAt(d).seaSide === 1 ? -off : off), h = f.height(q.x, q.z), e = f.at(d).e; return h > 0.6 && Math.abs(h - e) < 2.6; };
     let stood = 0, last = [null, null];
     for (const side of [-1, 1]) for (let d = d0 + 6; d < d1 - 6;) {
@@ -633,27 +634,47 @@ export class WorldScene {
       last[(side + 1) / 2] = e; const w = e.size[0], dep = e.size[2], sy = 0.92 + r() * 0.3, set = r() < 0.25 ? 0.5 + r() * 0.7 : 0; // some stand back half a metre: no ruler-straight wall
       if (r() < 0.08) { d += 2.6 + r() * 1.6; continue; } // a slit between two houses: a side alley
       const off = side * (FRONT + set + dep / 2);
-      if (level(d + w / 2, off) && place(e, d + w / 2, off, { face: 'road', overlap: true, gap: 1.2, ground: 'centre', scale: [1, sy, 1], anim: 'Schwingen' })) { stood++;
-        if (r() < 0.3) place(byName(r() < 0.5 ? 'fass' : 'faesser_kisten'), d + w * 0.25, side * (ROAD_W + 0.75), { overlap: true, gap: 0.25, radK: 0.3, rot: r() * 3 }); // barrels at the wall
-        if (r() < 0.22) place(byName(['magd', 'haendler', 'baeckerin', 'alte_frau', 'junge'][Math.floor(r() * 5)]), d + w * 0.6, side * (ROAD_W + 0.8), { face: 'road', overlap: true, gap: 0.3, radK: 0.3, anim: 'Stehen' }); // someone in the doorway
-        { const wall = side * (FRONT + set + 0.02), bit = (n, dd, o = {}) => place(byName(n), d + w * dd, wall + side * (o.inset || 0), { face: 'road', overlap: true, gap: 0.2, radK: 0.15, anim: 'Schwingen', ...o }); // on the front wall (models: origin at the foot of the wall)
+      if (level(d + w / 2, off) && place(e, d + w / 2, off, { face: 'road', overlap: true, gap: 1.2, yAbs: top(d + w / 2) - 0.12, scale: [1, sy, 1], anim: 'Schwingen' })) { stood++;
+        if (r() < 0.3) place(byName(r() < 0.5 ? 'fass' : 'faesser_kisten'), d + w * 0.25, side * (ROAD_W + 0.75), { overlap: true, gap: 0.25, radK: 0.3, rot: r() * 3, yAbs: top(d) }); // barrels at the wall
+        if (r() < 0.22) place(byName(['magd', 'haendler', 'baeckerin', 'alte_frau', 'junge'][Math.floor(r() * 5)]), d + w * 0.6, side * (ROAD_W + 0.8), { face: 'road', overlap: true, gap: 0.3, radK: 0.3, anim: 'Stehen', yAbs: top(d) }); // someone in the doorway
+        { const wall = side * (FRONT + set + 0.02), bit = (n, dd, o = {}) => place(byName(n), d + w * dd, wall + side * (o.inset || 0), { face: 'road', overlap: true, gap: 0.2, radK: 0.15, anim: 'Schwingen', yAbs: top(d), ...o }); // on the front wall (models: origin at the foot of the wall)
           if (e.category !== 'house_lane' || !/_(a|c|e|h)(_v\d+)?\.glb$/.test(e.file)) { if (r() < 0.3) bit(['schild_baecker', 'schild_schmied', 'schild_schenke'][Math.floor(r() * 3)], 0.5); } // the shops bring their own sign
           if (r() < 0.45) bit('wandlaterne', 0.12, { dy: 2.7, inset: 0.8 }); if (r() < 0.4) bit('blumenkasten', 0.3, { dy: 1.35, inset: 0.8 }); /* their origin is the lantern / the box itself; the ground floors stand back under the overhang (Mac mini 13.11.) */ if (r() < 0.25) bit('regenfass', 0.92, { anim: null }); }
-        if (r() < 0.1) place(byName('katze'), d + w * 0.8, side * (ROAD_W + 0.6), { face: r() * 6.28, overlap: true, gap: 0.2, radK: 0.2, anim: 'Schlafen' });
+        if (r() < 0.1) place(byName('katze'), d + w * 0.8, side * (ROAD_W + 0.6), { face: r() * 6.28, overlap: true, gap: 0.2, radK: 0.2, anim: 'Schlafen', yAbs: top(d) });
       }
       d += w * 0.97;
     }
     if (stood < 6) return; // too steep or too wet here: the village stays as it was
+    // ---- life in the lane (Freddy 13.11.: "mehr Menschen, Tiere an Leinen, Wägen"): passers-by, some with a dog at heel,
+    // little groups chatting at a door, hand carts, geese and hens; all on the cobbles, clear of the middle of the road
+    { let walkers = (A.by.figure_walk || []).concat(A.by.figure_idle || []).filter(e => e.clips.some(c => c.name === 'Gehen'));
+      const faced = walkers.filter(e => !/^dorf_|\/dorf_/.test(e.file || '')); if (faced.length >= 5) walkers = faced;
+      walkers = walkers.map(e => [r(), e]).sort((x, y) => x[0] - y[0]).map(x => x[1]);
+      const a = d0 + 8, b = d1 - 8, dog = byName('hund'), nW = Math.round((d1 - d0) / 15);
+      const walk = (e, dd, off, v, anim = 'Gehen') => { const o = place(e, dd, off, { anim, overlap: true, gap: 0.25, radK: 0.25, yAbs: top(dd) }); if (o) o.userData.walk = { d: dd, off, v, a, b, lane: true }; return o; };
+      if (walkers.length) for (let k = 0; k < nW; k++) { const e = walkers[k % walkers.length], side = k % 2 ? 1 : -1, dd = a + (b - a) * (k + r()) / nW, off = side * (ROAD_W + 0.35 + r() * 0.9);
+        const st = e.speed ?? Object.entries(STRIDE).find(([n]) => (e.file || '').includes(n))?.[1] ?? 0.86, v = st * (0.96 + r() * 0.1) * (r() < 0.5 ? 1 : -1);
+        if (!walk(e, dd, off, v)) continue;
+        if (r() < 0.3 && walkers.length > 1) walk(walkers[(k + 7) % walkers.length], dd - 0.3, off - side * 0.75, v); // two walking side by side (same pace: they stay together)
+        else if (dog && r() < 0.35) walk(dog, dd + Math.sign(v) * 0.9, off - side * 0.55, v, e.speed > 1.2 ? 'Rennen' : 'Schritt'); } // a dog at heel
+      const idle = ['magd', 'haendler', 'baeckerin', 'alte_frau', 'moench', 'kaufmann', 'edeldame', 'wirt', 'knecht', 'marktfrau', 'lehrling', 'junge', 'maedchen'].map(byName).filter(Boolean);
+      if (idle.length) for (let d = d0 + 18; d < d1 - 12; d += 24 + r() * 20) { const side = r() < 0.5 ? 1 : -1, n = 2 + Math.floor(r() * 2), q0 = spot(d, side * (ROAD_W + 1.0)), fwd = Math.atan2(q0.tx, q0.tz); // a chat: two or three facing each other
+        for (let k = 0; k < n; k++) { const an = k * 6.283 / n + r(); place(idle[Math.floor(r() * idle.length)], d + Math.cos(an) * 0.55, side * (ROAD_W + 1.0 + Math.sin(an) * 0.45), { face: fwd + (side > 0 ? -1 : 1) * (Math.PI / 2 - an) + Math.PI / 2, overlap: true, gap: 0.2, radK: 0.2, anim: k ? 'Stehen' : 'Rufen', yAbs: top(d) }); } }
+      for (let d = d0 + 30; d < d1 - 20; d += 45 + r() * 35) { const side = r() < 0.5 ? 1 : -1, pickN = ['mann_schubkarre', 'karren', 'karren_heu', 'schubkarre', 'leiterwagen'][Math.floor(r() * 5)]; // carts parked along the wall
+        place(byName(pickN), d, side * (ROAD_W + 1.15), { face: 'along', overlap: true, gap: 0.2, radK: 0.2, yAbs: top(d), anim: 'Stehen' }); }
+      for (let d = d0 + 40; d < d1 - 30; d += 60 + r() * 40) { const side = r() < 0.5 ? 1 : -1, bird = byName(r() < 0.5 ? 'gans' : 'huhn'); // a few geese or hens pecking at the wall
+        for (let k = 0; k < 3; k++) { const g = place(bird, d + k * 0.8 + r() * 0.4, side * (ROAD_W + 0.7 + r() * 0.7), { face: r() * 6.28, overlap: true, gap: 0.2, radK: 0.2, yAbs: top(d) }); if (g) { g.userData.peck = { y: g.position.y, r: g.rotation.y, t: r() * 9 }; this.animated.push(g); } } } }
     const add = o => { this.scene.add(o); this.props.push(o); return o; };
     const frame = d => { const p = f.at(d), l = Math.hypot(p.tx, p.tz) || 1; return { p, tx: p.tx / l, tz: p.tz / l, ang: Math.atan2(p.tx, p.tz) }; };
     // cobbles from wall to wall: a ribbon on top of the asphalt (the painted lines vanish under it), its edges on the ground
-    { const W = FRONT + 1.7, pos = [], /* up to the ground-floor walls under the overhang */ uv = [], idx = [], n = Math.ceil((d1 - d0) / 2.5);
-      for (let i = 0; i <= n; i++) { const d = d0 + (d1 - d0) * i / n, { p, tx, tz } = frame(d);
-        for (const o of [-W, -ROAD_W, ROAD_W, W]) { const x = p.x - tz * o, z = p.z + tx * o, y = Math.abs(o) > ROAD_W ? Math.max(f.height(x, z), p.e - 0.25) + 0.05 : p.e + 0.035; pos.push(x, y, z); uv.push(o / 2.2, d / 2.2); }
+    { const W = FRONT + 2.8, pos = [], /* up to the ground-floor walls under the overhang */ uv = [], col = [], idx = [], FADE = 14, c0 = d0 - FADE + 2, c1 = d1 + FADE - 2, n = Math.ceil((c1 - c0) / 2.5); /* Freddy 13.11.: the hard line asphalt/cobbles looked bad: the setts thin out over 14 m in front of each gate, with a ragged edge */
+      for (let i = 0; i <= n; i++) { const d = c0 + (c1 - c0) * i / n, { p, tx, tz } = frame(d), al = Math.max(0, Math.min(1, (d - c0) / FADE, (c1 - d) / FADE));
+        for (const o of [-W, -ROAD_W, ROAD_W, W]) { const x = p.x - tz * o, z = p.z + tx * o, y = Math.abs(o) > ROAD_W ? Math.max(f.height(x, z) + 0.05, p.e + 0.035) : p.e + 0.035; /* level from wall to wall, under the house fronts too: no bare strip at the wall foot */ pos.push(x, y, z); uv.push(o / 2.2, d / 2.2); col.push(1, 1, 1, al); }
         if (i < n) for (let k = 0; k < 3; k++) { const q = i * 4 + k; idx.push(q, q + 4, q + 1, q + 1, q + 4, q + 5); } }
-      const g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3)); g.setAttribute('uv', new THREE.Float32BufferAttribute(uv, 2)); g.setIndex(idx); g.computeVertexNormals();
+      const g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3)); g.setAttribute('uv', new THREE.Float32BufferAttribute(uv, 2)); g.setAttribute('color', new THREE.Float32BufferAttribute(col, 4)); g.setIndex(idx); g.computeVertexNormals();
       const tx = LANE.tex ||= (() => { const c = cobble(); c.wrapS = c.wrapT = THREE.RepeatWrapping; c.anisotropy = 16; return c; })();
-      const m = new THREE.Mesh(g, LANE.mat ||= new THREE.MeshStandardMaterial({ map: tx, roughness: 0.92, side: THREE.DoubleSide, polygonOffset: true, polygonOffsetFactor: -6, polygonOffsetUnits: -6 }));
+      const m = new THREE.Mesh(g, LANE.mat ||= new THREE.MeshStandardMaterial({ map: tx, roughness: 0.92, side: THREE.DoubleSide, polygonOffset: true, polygonOffsetFactor: -6, polygonOffsetUnits: -6, vertexColors: true, transparent: true, depthWrite: false }));
+      if (!LANE.cut) { LANE.cut = true; LANE.mat.onBeforeCompile = sh => { sh.fragmentShader = sh.fragmentShader.replace('#include <alphatest_fragment>', `{ float lum = dot( texture2D( map, vMapUv ).rgb, vec3( .333 ) ); diffuseColor.a = smoothstep( 0., .35, vColor.a * 1.35 - ( 1. - vColor.a ) * ( .25 + lum * 1.6 ) ); }\n#include <alphatest_fragment>`); }; } /* single stones stay, the joints go first: the asphalt shows between scattered setts */
       m.receiveShadow = true; m.userData.live = true; m.renderOrder = 1; this.scene.add(m); /* not in props: one mesh, never batched or culled away */ }
     // a town gate at each end (the MacBook's gassen_torbogen once it exists, else plain stone) and things across the lane
     const stoneM = LANE.stone ||= new THREE.MeshStandardMaterial({ map: (() => { const c = stone(); c.wrapS = c.wrapT = THREE.RepeatWrapping; c.repeat.set(2, 3); return c; })(), color: 0xfff4e2, roughness: 0.95 });
@@ -708,6 +729,7 @@ export class WorldScene {
       ang += o.rotT != null ? -side * o.rotT : (o.rot || 0); // rotT: a turn in a group template's frame (x along, +z towards the road), mirrored by side
       let y;
       if (o.water) y = o.y ?? 0;
+      else if (o.yAbs != null) y = o.yAbs + (o.dy || 0); // on a paved lane: the height of the cobbles, not of the ground under them
       else { // lowest ground under the footprint, so nothing floats
         const y0 = f.height(q.x, q.z), k = Math.max(rad * 0.6, 0.8); let lo = y0, hi = y0;
         for (const [a, b] of [[k, 0], [-k, 0], [0, k], [0, -k]]) { const h = f.height(q.x + a, q.z + b); lo = Math.min(lo, h); hi = Math.max(hi, h); }
@@ -1703,7 +1725,7 @@ export class WorldScene {
     for (const o of this.props) { const w = o.userData.walk; if (!w || !o.visible) continue; // walk along the road, turn round at the village ends
       w.d += w.v * Math.min(dt, 0.1); if (w.d < w.a || w.d > w.b) { w.v = -w.v; w.d = Math.max(w.a, Math.min(w.b, w.d)); }
       const p = this.field.at(w.d), l = Math.hypot(p.tx, p.tz) || 1, x = p.x - p.tz / l * w.off, z = p.z + p.tx / l * w.off;
-      o.position.set(x, this.field.ground(x, z), z); o.rotation.y = Math.atan2(p.tx * Math.sign(w.v), p.tz * Math.sign(w.v)); }
+      o.position.set(x, w.lane ? p.e + 0.05 : this.field.ground(x, z), z); o.rotation.y = Math.atan2(p.tx * Math.sign(w.v), p.tz * Math.sign(w.v)); }
     for (const b of this.birds) { const c = b.userData.circle, a = c.ph + time * c.w;
       b.position.set(c.x + Math.cos(a) * c.R, c.y + Math.sin(time * 0.3 + c.ph) * 4, c.z + Math.sin(a) * c.R); b.rotation.y = -a; }
     const fwd = this.camera.getWorldDirection(_v);
