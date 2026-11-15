@@ -31,7 +31,7 @@ function render() {
       ${tile('outdoor.html', '◉', 'Draußen fahren', out ? `Zuletzt ${fmtNum(out.distance / 1000, 1)} km · ${new Date(out.date).toLocaleDateString('de-DE', { day: 'numeric', month: 'short' })}` : 'GPS, Karte, Tempo, Höhenmeter')}
       ${tile('kraft.html', 'kg', 'Kraft', kw ? `Zuletzt ${esc(kw.name)} · ${new Date(kw.start || kw.date).toLocaleDateString('de-DE', { day: 'numeric', month: 'short' })}` : 'Sätze, Gewichte, Graphen')}
       ${tile('pure.html', 'W', 'Rollentrainer', 'Watt, ERG und Workouts ohne 3D')}
-      ${tile('./', '3D', '3D-Welt', 'Am besten am Laptop oder TV')}
+      ${tile('./?desktop', '3D', '3D-Welt', 'Am besten am Laptop oder TV')}
     </div>
     ${rides.length ? `<h3 class="ksec">Letzte Fahrten</h3>${rides.slice(0, 5).map(r => `<div class="hrow"><span>${r.routeId === 'outdoor' ? '◉' : r.routeId === 'pure' ? 'W' : '3D'}</span><div><b>${esc(r.workout && (r.routeId === 'outdoor' || r.routeId === 'pure') ? r.workout : r.routeName || (r.routeId === 'outdoor' ? 'Draußen' : 'Indoor'))}</b><small>${new Date(r.date).toLocaleDateString('de-DE', { weekday: 'short', day: 'numeric', month: 'short' })}</small></div><span>${fmtNum(r.distance / 1000, 1)} km · ${fmtTime(r.duration)}</span></div>`).join('')}` : ''}
     ${!acc ? '<p class="hint" style="margin-top:14px">Melde dich mit deinem RIDEFRAME-Konto an, dann landen Fahrten und Kraft-Workouts vom Handy auch am Laptop.</p>' : ''}`;

@@ -649,3 +649,13 @@ img.face.big{width:96px;height:96px}
 @media (max-width: 560px) { .strrow { grid-template-columns: 1fr 1fr; } }
 .groupchip .grow[data-rid] { cursor: pointer; border-radius: 6px; } .groupchip .grow[data-rid]:hover { background: #ffffff14; }
 .goalask .box .display { font-size: 64px; }
+/* phone portrait (Freddy 15.11.: login and dialogs must look good on the phone): stacked fields, full-width buttons, main action on top */
+@media (max-width: 560px) {
+  .modal .box { padding: 22px 18px; max-height: 92dvh; overflow-y: auto; }
+  .modal h2 { font-size: 30px; }
+  .modal .field { flex-direction: column; align-items: stretch; gap: 6px; }
+  .modal .field > div:first-child { min-width: 0 !important; font-weight: 700; }
+  .modal .field input[type=text], .modal .field input[type=password] { height: 48px !important; min-height: 48px; font-size: 16px; padding: 0 12px; }
+  .modal .actions { flex-direction: column-reverse; align-items: stretch; gap: 8px; }
+  .modal .actions .btn { width: 100%; margin: 0 !important; height: 50px; }
+}

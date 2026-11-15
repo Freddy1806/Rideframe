@@ -2,7 +2,7 @@
 // speed, distance, climbing, plus heart rate and a power meter over Bluetooth. Rides land in the same history
 // (routeId 'outdoor', outdoor: true) and go to Strava as a real ride with the GPS track.
 // Browser limits: the phone screen must stay on (wake lock keeps it on); Bluetooth needs Chrome (Android) or Bluefy (iPhone).
-import { Trainer, HeartRate } from './trainer.js';
+import { Trainer, HeartRate, CadenceSensor } from './trainer.js';
 import { db, uid } from './db.js';
 import { fmtTime, fmtNum, esc, bestAvg } from './util.js';
 
@@ -12,7 +12,7 @@ const ACCENTS = { orange: '#ff5a1f', violet: '#8b6cff', lime: '#c6f432', cyan: '
 const TILES = 'https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', ATTR = '© OpenStreetMap, © CARTO';
 const el = document.getElementById('out');
 let S = { riderKg: 75, ftp: 250 }, O = { tiles: ['time', 'dist', 'avgSpeed', 'gain', 'hr', 'power', 'cad', 'alt', 'maxSpeed'], autoPause: true, bigMap: false };
-const meter = new Trainer(), hrStrap = new HeartRate();
+const meter = new Trainer(), hrStrap = new HeartRate(), cadS = new CadenceSensor();
 const live = { power: 0, cad: 0, hr: 0, fix: null, acc: null, gpsErr: '' };
 let R = fresh(), view = 'ride', map = null, line = null, dot = null, follow = true, wake = null, watch = null;
 function fresh() { return { state: 'ready', id: uid(), start: 0, wall: 0, moving: 0, d: 0, v: 0, vMax: 0, gain: 0, eleS: null, eleRef: null, last: null, still: 0, kj: 0, pw: [], samples: [], track: [], lastSec: -1, laps: [], lapAt: { t: 0, d: 0 } }; }
@@ -112,7 +112,7 @@ const M = {
   power: { l: 'Leistung', u: 'W', v: () => meter.connected || DEMO ? Math.round(live.power) : '–' },
   avgPower: { l: 'Ø Leistung', u: 'W', v: () => R.pw.some(x => x) ? Math.round(avgP()) : '–' },
   np: { l: 'NP', u: 'W', v: () => R.pw.some(x => x) ? Math.round(NP()) : '–' },
-  cad: { l: 'Trittfrequenz', u: 'rpm', v: () => meter.connected || DEMO ? Math.round(live.cad) : '–' },
+  cad: { l: 'Trittfrequenz', u: 'rpm', v: () => meter.connected || cadS.connected || DEMO ? Math.round(live.cad) : '–' },
   kcal: { l: 'Kalorien', u: 'kcal', v: () => R.kj ? Math.round(R.kj * 1.1) : Math.round(R.moving / 3600 * 8 * (S.riderKg || 75)) },
   lapTime: { l: 'Runde Zeit', u: '', v: () => fmtTime(R.moving - R.lapAt.t) },
   lapDist: { l: 'Runde km', u: 'km', v: () => fmtNum((R.d - R.lapAt.d) / 1000, 2) },
@@ -131,10 +131,9 @@ const gpsTxt = () => live.gpsErr ? 'GPS fehlt' : !live.fix ? 'GPS sucht' : live.
 function render() {
   if (map) { map.remove(); map = null; line = null; dot = null; }
   if (view === 'list') return listView();
-  const bleOk = Trainer.supported();
   el.innerHTML = `<header class="ptop"><a class="pback" href="handy.html" title="Zur App">‹</a><div class="pbrand"><b>RIDEFRAME </b><span>Draußen</span></div>
       <span class="ppill ${live.fix && live.acc <= 40 ? 'on' : ''}" id="oGps"><i></i>${gpsTxt()}</span>
-      ${bleOk ? `<button class="ppill ${hrStrap.connected ? 'on' : ''}" id="oHr"><i></i>Puls</button><button class="ppill ${meter.connected ? 'on' : ''}" id="oPm"><i></i>Watt</button>` : ''}
+      <button class="ppill ${nSens() ? 'on' : ''}" id="oSens"><i></i>Sensoren${nSens() ? ' ' + nSens() : ''}</button>
       <button class="pgear" id="oSet" title="Einstellungen">⚙</button></header>
     ${live.gpsErr ? `<div class="pnote">${esc(live.gpsErr)}</div>` : ''}
     <div class="omap ${O.bigMap ? 'big' : ''}" id="oMap"><button class="omapbtn" id="oFollow" title="Auf mich zentrieren">◎</button><button class="omapbtn r" id="oBig" title="Karte größer/kleiner">${O.bigMap ? '▴' : '▾'}</button></div>
@@ -145,8 +144,7 @@ function render() {
   initMap();
   const on = (id, f) => { const x = $(id); if (x) x.onclick = f; };
   on('#oStart', start); on('#oPause', pause); on('#oLap', lap); on('#oEnd', endSheet); on('#oList', () => { view = 'list'; render(); }); on('#oSet', settingsSheet);
-  on('#oHr', async () => { try { await hrStrap.connect(); } catch (e) { if (e.name !== 'NotFoundError') flash(e.message || String(e)); } render(); });
-  on('#oPm', async () => { try { await meter.connect(); } catch (e) { if (e.name !== 'NotFoundError') flash(e.message || String(e)); } render(); });
+  on('#oSens', sensorSheet);
   on('#oFollow', () => { follow = true; if (live.fix) map.setView(live.fix.pt, Math.max(map.getZoom(), 15)); });
   on('#oBig', () => { O.bigMap = !O.bigMap; saveSettings(); render(); });
   el.querySelectorAll('[data-t]').forEach(b => b.onclick = () => tileSheet(+b.dataset.t));
@@ -166,6 +164,22 @@ function paint() {
   $('#oSpd').textContent = fmtNum(R.state === 'run' || DEMO ? R.v * 3.6 : (live.fix?.speed || 0) * 3.6, 1);
   el.querySelectorAll('[data-k]').forEach(b => { const v = String(M[b.dataset.k]?.v()); if (b.textContent !== v) b.textContent = v; });
   const g = $('#oGps'); if (g) { const t = gpsTxt(); if (!g.textContent.endsWith(t)) g.innerHTML = `<i></i>${t}`; g.classList.toggle('on', !!live.fix && live.acc <= 40); }
+}
+const nSens = () => [hrStrap, meter, cadS].filter(x => x.connected).length;
+/** all Bluetooth sensors in one place: heart rate strap/watch, power meter (pedals, crank, hub), speed/cadence sensor */
+function sensorSheet() {
+  const ok = Trainer.supported(), row = (id, name, what, dev) => `<div class="osens"><div><b>${name}</b><small>${dev.connected ? '✓ ' + esc(dev.device?.name || 'verbunden') : what}</small></div>
+    <button class="btn ${dev.connected ? 'ghost' : ''} ksmall" id="${id}" ${ok ? '' : 'disabled'}>${dev.connected ? 'Verbunden' : 'Koppeln'}</button></div>`;
+  const s = sheet(`<div class="label">Sensoren</div>
+    ${ok ? '' : `<div class="pnote">Dieser Browser kann kein Bluetooth (iPhone: Apple erlaubt es Web-Apps nicht). Sensoren gehen auf dem iPhone mit der kostenlosen App <b>Bluefy</b>: dort diese Seite öffnen. Auf Android: Chrome. GPS, Karte und Aufzeichnung laufen auch ohne Sensoren.</div>`}
+    ${row('sHr', 'Puls', 'Brustgurt oder Uhr mit „Herzfrequenz senden“', hrStrap)}
+    ${row('sPm', 'Wattmesser', 'Pedale, Kurbel oder Nabe (Bluetooth Cycling Power)', meter)}
+    ${row('sCad', 'Trittfrequenz', 'Speed-/Cadence-Sensor an der Kurbel', cadS)}
+    <p class="hint">Sensor vorher aufwecken (Gurt anfeuchten, kurz treten). Ein Wattmesser liefert die Trittfrequenz meist mit.</p>
+    <div class="pfoot"><button class="btn" id="sDone">Fertig</button></div>`);
+  const pair = (id, dev) => { const b = $('#' + id, s); if (b) b.onclick = async () => { if (dev.connected) return; try { await dev.connect(); } catch (e) { if (e.name !== 'NotFoundError') flash(e.message || String(e)); } s.remove(); render(); sensorSheet(); }; };
+  pair('sHr', hrStrap); pair('sPm', meter); pair('sCad', cadS);
+  $('#sDone', s).onclick = () => { s.remove(); render(); };
 }
 function tileSheet(i) {
   const s = sheet(`<div class="label">Feld ${i + 1}: Wert wählen</div><div class="ppick">${Object.entries(M).map(([k, m]) => `<button data-k2="${k}" class="${O.tiles[i] === k ? 'on' : ''}">${m.l}</button>`).join('')}</div>`);
@@ -273,6 +287,8 @@ function gpx(r) {
 meter.addEventListener('data', e => { live.power = e.detail.power || 0; live.cad = e.detail.cadence || 0; if (!hrStrap.connected && e.detail.hr) live.hr = e.detail.hr; });
 meter.addEventListener('status', () => { if (view === 'ride' && R.state !== 'done') render(); });
 hrStrap.addEventListener('hr', e => { live.hr = e.detail; });
+cadS.addEventListener('cad', e => { if (!meter.connected) live.cad = e.detail; });
+cadS.addEventListener('change', () => { if (!cadS.connected && !meter.connected) live.cad = 0; });
 hrStrap.addEventListener('change', () => { if (!hrStrap.connected) live.hr = 0; });
 let last = performance.now();
 setInterval(() => {

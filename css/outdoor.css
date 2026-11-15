@@ -19,3 +19,7 @@ body.outdoor { min-height: 100dvh; }
 .oshape path { fill: none; stroke: var(--accent); stroke-width: 2; stroke-linejoin: round; }
 .kchart .oele { fill: #ffffff18; stroke: none; }
 @media (orientation: landscape) and (max-height: 520px) { #out { max-width: none; } .omap { height: 46dvh; } }
+.osens { display: flex; align-items: center; gap: 10px; background: var(--ink-3); border-radius: 8px; padding: 10px 12px; }
+.osens div { flex: 1; min-width: 0; } .osens b { display: block; font-size: 15px; } .osens small { font-size: 12px; color: var(--muted); }
+.psheet { z-index: 2000; } .pflash { z-index: 2100; }
+.osens .btn:disabled { opacity: .35; }

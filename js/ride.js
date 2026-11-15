@@ -8,6 +8,7 @@ import { drawHudProfile } from './profile.js';
 import { fmtTime, fmtKm, fmtNum, esc, bestAvg } from './util.js';
 import { bestClimb, distAtTime } from './climbghost.js';
 import { stravaButton } from './stravaup.js';
+import { padButtons } from './controller.js';
 import { routeFns } from './tcx.js';
 import { gearsFrom, gearName, parseGear, estimateGear, virtualGrade } from './gears.js';
 import { UEBridge } from './uebridge.js';
@@ -357,7 +358,7 @@ export class RideSession {
 
   _pollPad() { // any Bluetooth gamepad (e.g. 8BitDo Micro on the bars) drives the whole ride; mapping in PAD_MAP (controller.js shows it)
     const pad = navigator.getGamepads?.().find(Boolean); if (!pad) return;
-    const b = pad.buttons.map(x => x.pressed), was = this.padPrev || [];
+    const b = padButtons(pad), was = this.padPrev || [];
     this.padPrev = b;
     if (!this.padSeen) { this.padSeen = true; this._flash('🎮 Controller bereit · Start = Pause · L/R = schalten'); }
     const hit = i => b[i] && !was[i];

@@ -11,6 +11,17 @@ const CANDIDATES = [
 export const PAD_MAP = [['L / R', 'Gang leichter / schwerer'], ['Steuerkreuz ↓ / ↑', 'Gang leichter / schwerer'], ['A', 'Challenge annehmen'], ['B', 'Anzeige wechseln'],
   ['X', 'Foto'], ['Y', 'Sicht wechseln'], ['L2 / R2', 'Sichtfeld weiter / enger'], ['Select (−)', 'Schaltmodus: echt / virtuell / Automatik / Berg-Watt'],
   ['Start (+) / Home', 'Pausemenü (Steuerkreuz wählen, A ok, B zurück; dort auch Optionen)'], ['Steuerkreuz ←', 'Musik an / aus'], ['Steuerkreuz →', 'Nächstes Lied']];
+/** pressed state per standard button index, so the printed letters mean the same on every pad. Nintendo-style pads
+ *  (8BitDo in Switch mode "S", Switch Pro): Chrome reports them by position (0 = bottom = their "B"), so A/B and X/Y are swapped
+ *  back here: "A" in PAD_MAP is the button printed A (Freddy's 8BitDo Micro). */
+export const NINTENDO = id => /8bitdo|pro controller|nintendo|057e|joy-?con/i.test(id || '');
+export function padButtons(pad) {
+  const b = pad.buttons.map(x => x.pressed);
+  if (NINTENDO(pad.id)) { [b[0], b[1]] = [b[1], b[0]]; [b[2], b[3]] = [b[3], b[2]]; }
+  return b;
+}
+const BTN = ['A', 'B', 'X', 'Y', 'L', 'R', 'L2 / ZL', 'R2 / ZR', 'Select (−)', 'Start (+)', 'L3', 'R3', 'Steuerkreuz ↑', 'Steuerkreuz ↓', 'Steuerkreuz ←', 'Steuerkreuz →', 'Home'];
+const ACT = ['Challenge annehmen / Menü ok', 'Anzeige wechseln / zurück', 'Foto', 'Sicht wechseln', 'Gang leichter', 'Gang schwerer', 'Sichtfeld weiter', 'Sichtfeld enger', 'Schaltmodus', 'Pausemenü', '', '', 'Gang schwerer', 'Gang leichter', 'Musik an/aus', 'Nächstes Lied', 'Pausemenü'];
 const hex = dv => [...new Uint8Array(dv.buffer, dv.byteOffset, dv.byteLength)].map(b => b.toString(16).padStart(2, '0')).join(' ');
 
 export function openControllerTest() {
@@ -18,7 +29,7 @@ export function openControllerTest() {
   m.innerHTML = `<div class="box" style="width:min(820px,94vw)">
     <div class="label">Bluetooth</div><h2 class="display" style="margin-top:10px">Controller<br>testen</h2>
     <p>Gerät wählen (z. B. dein Di2-Schaltwerk: vorher kurz schalten, damit es aufwacht), dann die Knöpfe drücken. Jede Nachricht erscheint unten. Gamepads und Tastatur werden auch angezeigt.</p>
-    <details style="margin:6px 0 10px"><summary style="cursor:pointer"><b>Gamepad-Belegung in der Fahrt</b> (z. B. 8BitDo Micro)</summary>
+    <details style="margin:6px 0 10px"><summary style="cursor:pointer"><b>Gamepad-Belegung in der Fahrt</b> (z. B. 8BitDo Micro, Schalter hinten auf S)</summary>
       <table style="margin-top:8px;border-collapse:collapse">${PAD_MAP.map(([k, v]) => `<tr><td style="padding:2px 14px 2px 0;white-space:nowrap"><b>${k}</b></td><td>${v}</td></tr>`).join('')}</table></details>
     <div class="actions" style="justify-content:flex-start"><button class="btn small" id="ctScan">Gerät suchen</button><button class="btn ghost small" id="ctCopy">Log kopieren</button><button class="btn ghost small" id="ctClose">Schließen</button></div>
     <pre id="ctLog" style="margin-top:18px;height:340px;overflow:auto;background:#000;border:1px solid var(--line-2);border-radius:4px;padding:12px;font:12px/1.5 ui-monospace,Menlo,monospace;white-space:pre-wrap"></pre></div>`;
@@ -31,7 +42,7 @@ export function openControllerTest() {
   const onKey = e => { if (e.key === 'Escape') return m.querySelector('#ctClose').click(); log(`Taste: ${e.code}`); }; document.addEventListener('keydown', onKey);
   // gamepads
   const prev = {};
-  const poll = () => { for (const gp of navigator.getGamepads?.() || []) { if (!gp) continue; gp.buttons.forEach((b, i) => { const k = gp.index + ':' + i; if (b.pressed !== !!prev[k]) { prev[k] = b.pressed; log(`Gamepad ${gp.id.slice(0, 30)} Knopf ${i} ${b.pressed ? 'gedrückt' : 'los'}`); } }); } raf = requestAnimationFrame(poll); }; poll();
+  const poll = () => { for (const gp of navigator.getGamepads?.() || []) { if (!gp) continue; padButtons(gp).forEach((p, i) => { const k = gp.index + ':' + i; if (p !== !!prev[k]) { prev[k] = p; log(`Gamepad ${gp.id.slice(0, 30)} ${BTN[i] || 'Knopf ' + i}${p ? ` gedrückt${ACT[i] ? ' → ' + ACT[i] : ''}` : ' los'}`); } }); } raf = requestAnimationFrame(poll); }; poll();
   m.querySelector('#ctScan').onclick = async () => {
     if (!navigator.bluetooth) return log('Kein Web Bluetooth (bitte Chrome/Edge).');
     try {

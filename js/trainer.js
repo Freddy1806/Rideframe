@@ -190,3 +190,35 @@ export class HeartRate extends EventTarget {
   disconnect() { this.closing = true; try { this.device?.gatt?.disconnect(); } catch {} }
   get connected() { return !!this.device?.gatt?.connected; }
 }
+
+/** Bluetooth speed/cadence sensor (Cycling Speed and Cadence service, e.g. Garmin, Wahoo RPM, Magene S3+): cadence for
+ *  rides outside (outdoor.html). Emits 'cad' (rpm) and 'speed' (m/s, wheel 2.105 m) and 'change'. */
+const CSC = 0x1816, CSCM = 0x2a5b;
+export class CadenceSensor extends EventTarget {
+  async connect() {
+    this.device = await navigator.bluetooth.requestDevice({ filters: [{ services: [CSC] }], optionalServices: [CSC, 'battery_service'] });
+    this.device.addEventListener('gattserverdisconnected', () => this._lost());
+    await this._open();
+  }
+  async _open() {
+    const c = await (await (await this.device.gatt.connect()).getPrimaryService(CSC)).getCharacteristic(CSCM);
+    c.addEventListener('characteristicvaluechanged', e => this._on(e.target.value));
+    await c.startNotifications(); this.dispatchEvent(new Event('change'));
+  }
+  _on(dv) {
+    const f = dv.getUint8(0); let o = 1; const now = performance.now();
+    if (f & 1) { const rev = dv.getUint32(o, true), t = dv.getUint16(o + 4, true); o += 6;
+      if (this._w) { const dr = rev - this._w.rev, dt = ((t - this._w.t + 65536) % 65536) / 1024; if (dt > 0 && dr >= 0 && dr < 100) { this.speed = dr * 2.105 / dt; this._wAt = now; this.dispatchEvent(new CustomEvent('speed', { detail: this.speed })); } }
+      this._w = { rev, t }; }
+    if (f & 2) { const rev = dv.getUint16(o, true), t = dv.getUint16(o + 2, true);
+      if (this._c) { const dr = (rev - this._c.rev + 65536) % 65536, dt = ((t - this._c.t + 65536) % 65536) / 1024;
+        if (dt > 0 && dr < 20) { this.cad = Math.round(dr / dt * 60); this._cAt = now; this.dispatchEvent(new CustomEvent('cad', { detail: this.cad })); }
+        else if (dr === 0 && now - (this._cAt || 0) > 3000) { this.cad = 0; this.dispatchEvent(new CustomEvent('cad', { detail: 0 })); } }
+      this._c = { rev, t }; }
+  }
+  async _lost() {
+    this.cad = 0; this.dispatchEvent(new Event('change'));
+    for (let i = 0; i < 6 && !this.closing; i++) { await new Promise(r => setTimeout(r, 2000 + i * 2000)); try { await this._open(); return; } catch {} }
+  }
+  get connected() { return !!this.device?.gatt?.connected; }
+}
