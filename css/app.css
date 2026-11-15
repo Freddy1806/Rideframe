@@ -647,3 +647,5 @@ img.face.big{width:96px;height:96px}
 .strrow .btn { justify-content: center; height: 36px; } .strrow .btn:disabled { background: transparent; border: 1px solid var(--line-2); color: inherit; opacity: .45; }
 .strmore { margin-top: 8px; } .strmore summary { cursor: pointer; opacity: .8; font-size: 13px; margin-bottom: 6px; }
 @media (max-width: 560px) { .strrow { grid-template-columns: 1fr 1fr; } }
+.groupchip .grow[data-rid] { cursor: pointer; border-radius: 6px; } .groupchip .grow[data-rid]:hover { background: #ffffff14; }
+.goalask .box .display { font-size: 64px; }

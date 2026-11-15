@@ -16,11 +16,11 @@ const xml = v => String(v).replace(/[<>&"']/g, c => ({ '<': '&lt;', '>': '&gt;',
 
 /** samples: [t s, distance m, watts, km/h, rpm, bpm]; eleAt(d) adds altitude so Strava shows the climbing */
 export function toTCX(rec, name, eleAt = null) {
-  name = xml(name); const d0 = rec.startD || 0;
+  name = xml(name); const d0 = rec.startD || 0, J = rec.jumps || [], jd = t => J.reduce((m, [tj, sk]) => tj <= t ? m + sk : m, 0); // jumps to friends: the map follows the jump, the distance does not
   const start = new Date(rec.date - rec.duration * 1000), iso = t => new Date(start.getTime() + t * 1000).toISOString();
   const pts = rec.samples.map(([t, d, w, kmh, cad, hr]) => `<Trackpoint><Time>${iso(t)}</Time>`
-    + (eleAt?.pos ? (([la, lo]) => `<Position><LatitudeDegrees>${la.toFixed(6)}</LatitudeDegrees><LongitudeDegrees>${lo.toFixed(6)}</LongitudeDegrees></Position>`)(eleAt.pos(d0 + d)) : '')
-    + (eleAt ? `<AltitudeMeters>${eleAt(d0 + d).toFixed(1)}</AltitudeMeters>` : '') + `<DistanceMeters>${d}</DistanceMeters>`
+    + (eleAt?.pos ? (([la, lo]) => `<Position><LatitudeDegrees>${la.toFixed(6)}</LatitudeDegrees><LongitudeDegrees>${lo.toFixed(6)}</LongitudeDegrees></Position>`)(eleAt.pos(d0 + d + jd(t))) : '')
+    + (eleAt ? `<AltitudeMeters>${eleAt(d0 + d + jd(t)).toFixed(1)}</AltitudeMeters>` : '') + `<DistanceMeters>${d}</DistanceMeters>`
     + (hr ? `<HeartRateBpm><Value>${hr}</Value></HeartRateBpm>` : '') + (cad ? `<Cadence>${Math.min(254, cad)}</Cadence>` : '')
     + `<Extensions><TPX xmlns="http://www.garmin.com/xmlschemas/ActivityExtension/v2"><Speed>${(kmh / 3.6).toFixed(2)}</Speed><Watts>${w}</Watts></TPX></Extensions></Trackpoint>`);
   // laps (Freddy 12.11.: every climb counts as its own lap, like the lap button on a bike computer): split at rec.lapMarks (seconds)

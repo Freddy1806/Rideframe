@@ -181,7 +181,7 @@ export class RideSession {
     this.music = new Music(this.group ? 'race' : this.workout ? 'workout' : 'world', st.musicVol ?? 0.45);
     this.coach = new Coach(st.coachVol ?? 0.9);
     this.el.querySelector('#hMusic')?.addEventListener('click', () => this._toggleMusic());
-    if (this.group) { this._wireVoice(); this.el.querySelector('#hGCode')?.addEventListener('click', e => { e.stopPropagation(); navigator.clipboard?.writeText(this.group.link).then(() => this._flash('Einladungslink kopiert · Code ' + this.group.code), () => this._flash('Code für Freunde: ' + this.group.code)); }); }
+    if (this.group) { this._wireVoice(); this._wireGroupChip(); }
     this._initChallenges();
     this._initWizard();
     this._initStory();
@@ -347,7 +347,7 @@ export class RideSession {
         this.samples.push([this.lastSample, Math.round(this._ridden()), Math.round(this.power), Math.round(this.v * 36) / 10, Math.round(this.cadence), this.hr]);
         this.powerHist.push(this.power);
       }
-      if (this.d >= this.track.length) { if (this.lap < this.laps) this._nextLap(); else this._finish(); }
+      if (this.d >= this.track.length) { if (this.lap < this.laps) this._nextLap(); else if (this.autopilot) this._finish(); else this._goalAsk(); }
     }
     if (now - (this.lastHud || 0) > 100) { this.lastHud = now; this._updateHUD(); }
     if (this.ue) this._ueLive();
@@ -744,7 +744,7 @@ export class RideSession {
       const gl = this.q?.('#hGroup .glist');
       if (gl) gl.innerHTML = os.length ? os.sort((a, b) => b.d - a.d).slice(0, 5).map(r => {
         const gap = r.d - this.d, txt = r.done ? 'im Ziel' : (gap >= 0 ? '+' : '−') + (Math.abs(gap) >= 1000 ? fmtKm(Math.abs(gap)) + ' km' : Math.round(Math.abs(gap)) + ' m');
-        return `<div class="grow ${gap >= 0 ? 'behind' : 'ahead'}${vc?.isSpeaking(r.pid) ? ' speaking' : ''}"><span>${vc?.isSpeaking(r.pid) ? `<i class="spk">${SPK_SVG}</i>` : ''}${esc(r.name)}</span><b class="num">${txt}</b><i class="num">${r.w} W</i></div>`;
+        return `<div class="grow ${gap >= 0 ? 'behind' : 'ahead'}${vc?.isSpeaking(r.pid) ? ' speaking' : ''}" data-rid="${esc(r.id)}" title="Klicken: zu ${esc(r.name)} springen (zählt nicht als Strecke)"><span>${vc?.isSpeaking(r.pid) ? `<i class="spk">${SPK_SVG}</i>` : ''}${esc(r.name)}</span><b class="num">${txt}</b><i class="num">${r.w} W</i></div>`;
       }).join('') : '<div class="grow"><span>Noch niemand da</span></div>';
     }
     if (list.length || this._hadRiders) { this.player?.setRiders?.(list); this._hadRiders = list.length > 0; }
@@ -872,7 +872,7 @@ export class RideSession {
     this.q('#pauseOverlay')?.remove();
     const o = document.createElement('div'); o.className = 'paused'; o.id = 'pauseOverlay';
     o.innerHTML = `<div class="box"><div class="label">${fmtKm(this.d)} km · ${fmtTime(this.elapsed)}</div><h2 class="display">Pause</h2>
-      <div class="row-actions padmenu"><button class="btn" id="pResume">Weiterfahren</button><button class="btn ghost" id="pOpts">Optionen</button><button class="btn ghost" id="pSave">Beenden &amp; speichern</button><button class="btn ghost" id="pDiscard">Verwerfen</button>${this.group?.voice?.on ? '<button class="btn ghost" id="pVoice">Sprachchat aus</button>' : ''}</div>
+      <div class="row-actions padmenu"><button class="btn" id="pResume">Weiterfahren</button><button class="btn ghost" id="pOpts">Optionen</button><button class="btn ghost" id="pSave">Beenden &amp; speichern</button><button class="btn ghost" id="pDiscard">Verwerfen</button>${this.group?.voice?.on ? '<button class="btn ghost" id="pVoice">Sprachchat aus</button>' : ''}${this.group ? this.group.others().filter(r => r.riding || r.d > 0).slice(0, 4).map((r, i) => `<button class="btn ghost" data-jump="${i}">⇢ Zu ${esc(r.name)} springen</button>`).join('') : this.autopilot ? '' : '<button class="btn ghost" id="pGroup">Gruppe öffnen</button>'}</div>
       <div class="hint pad-hint" style="margin-top:12px;opacity:.7">🎮 Steuerkreuz wählen · A ok · B zurück</div></div>`;
     this.el.append(o);
     o.querySelector('#pResume').onclick = () => this._resume();
@@ -880,6 +880,9 @@ export class RideSession {
     o.querySelector('#pSave').onclick = () => this._end(true);
     o.querySelector('#pDiscard').onclick = () => this._end(false);
     o.querySelector('#pVoice')?.addEventListener('click', e => { this.group.voice?.stop(); this.group.voice = null; e.target.remove(); this._flash('Sprachchat aus'); });
+    const os = this.group ? this.group.others().filter(r => r.riding || r.d > 0).slice(0, 4) : [];
+    o.querySelectorAll('[data-jump]').forEach(b => b.onclick = () => { const r = os[+b.dataset.jump]; if (r) { this._resume(); this._jump(r); } });
+    o.querySelector('#pGroup')?.addEventListener('click', () => this._openGroup());
     this._padFocus(0);
   }
   /** in-ride options (game-style, all reachable with the controller): each button shows its current state and toggles it */
@@ -908,7 +911,60 @@ export class RideSession {
     bs.forEach((b, k) => { b.style.outline = k === this._padI ? '3px solid var(--accent, #ff5a1f)' : ''; b.style.outlineOffset = '3px'; });
     bs[this._padI].focus?.({ preventScroll: true });
   }
-  _resume() { this.music?.resume(); this.paused = false; this.q('#pauseOverlay')?.remove(); this.last = performance.now(); }
+  _resume() { if (this._atGoal) return this._again(); this.music?.resume(); this.paused = false; this.q('#pauseOverlay')?.remove(); this.last = performance.now(); }
+
+  /** pause menu "Gruppe öffnen" (Freddy 15.11.): this solo ride becomes a group ride, friends join with the code and start next to you */
+  async _openGroup() {
+    const box = this.q('#pauseOverlay .box'); if (box) box.innerHTML = '<div class="label">Gruppe</div><h2 class="display">Wird geöffnet …</h2>';
+    let g; try { g = await (await import('./share.js')).hostFromRide(this.route.id); }
+    catch (e) { this._flash('Gruppe ging nicht: ' + (e.message || e)); return this._pause(); }
+    this.group = g; this.laps = Math.max(this.laps, this.lap); // from now on a group ride: everyone rides the same d (no more planned extra laps)
+    const right = this.q('.hud-right'), gear = this.q('#hGearChip');
+    if (right && !this.q('#hGroup')) { gear.insertAdjacentHTML('beforebegin', `<div class="chip glass groupchip" id="hGroup"><div class="label">Gruppe <button class="gcode" id="hGCode" title="Code für Freunde: klicken kopiert den Einladungslink">${esc(g.code)}</button></div><div class="glist">wartet …</div></div>`);
+      this.q('#hMusic')?.insertAdjacentHTML('beforebegin', `<button class="chip glass camchip voicechip" id="hVoice" title="Sprachchat an: ihr hört euch gegenseitig"><div class="label">Sprachchat</div><div class="v">${MIC_SVG}</div></button>`);
+      this._wireVoice(); this._wireGroupChip(); }
+    if (box) { box.innerHTML = `<div class="label">Gruppe offen</div><h2 class="display" style="letter-spacing:.12em">${esc(g.code)}</h2>
+      <p style="margin:6px 0 14px;opacity:.85">Freunde tippen in RIDEFRAME auf „Zusammen fahren“ und geben den Code ein, oder öffnen den Link. Sie starten direkt neben dir.</p>
+      <div class="row-actions padmenu"><button class="btn" id="pgOn">Weiterfahren</button><button class="btn ghost" id="pgLink">Link kopieren</button></div>`;
+      box.querySelector('#pgOn').onclick = () => this._resume();
+      box.querySelector('#pgLink').onclick = e => navigator.clipboard?.writeText(g.link).then(() => { e.target.textContent = 'Link kopiert ✓'; }, () => { e.target.textContent = g.link; });
+      this._padFocus(0); }
+  }
+  /** the group chip: the code copies the link, a click on a rider jumps to him */
+  _wireGroupChip() {
+    this.q('#hGCode')?.addEventListener('click', e => { e.stopPropagation(); navigator.clipboard?.writeText(this.group.link).then(() => this._flash('Einladungslink kopiert · Code ' + this.group.code), () => this._flash('Code für Freunde: ' + this.group.code)); });
+    this.q('#hGroup .glist')?.addEventListener('click', e => { const row = e.target.closest('[data-rid]'); const r = row && this.group.others().find(x => x.id === row.dataset.rid); if (r) this._jump(r); });
+  }
+  /** jump to a friend (Freddy 15.11.): the skipped metres never count, not as km, not for segments, records, the story or Strava */
+  _jump(r) {
+    if (!r || this.finished || this._atGoal) return;
+    const L = this.track.length, to = Math.max(0, Math.min(L - 40, r.d - 8)), skip = to - this.d;
+    if (Math.abs(skip) < 15) return this._flash(`Du bist schon bei ${r.name}`);
+    this.lapOff -= skip; (this._jumps ||= []).push([Math.floor(this.elapsed), Math.round(skip)]); // _ridden() stays where it was
+    this.d = to; this.lastEle = eleAt(this.track, to); if (r.v > 0 && r.v < 30) this.v = r.v;
+    this._segs = []; this._segShow = null; this._segCard(null); this._cg = null; this._cgD = null; // no segment or climb time across a jump
+    const f = document.createElement('div'); f.className = 'lapfade'; f.innerHTML = `<div>⇢ ${esc(r.name)}<small>Sprung zählt nicht als Strecke</small></div>`; this.el.append(f);
+    setTimeout(() => f.classList.add('out'), 1100); setTimeout(() => f.remove(), 2000);
+  }
+  /** finish line on the last lap (Freddy 15.11.): fireworks, then ride on (the route from the start) or end the ride */
+  _goalAsk() {
+    if (this._atGoal || this.finished) return;
+    this._atGoal = true; this.paused = true; this.player.pause?.(); this.d = this.track.length - 0.01;
+    const sp = this.player?.events?.surprises; sp?._salvo?.(this.track.length + 40, 12);
+    this.q('#pauseOverlay')?.remove();
+    const o = document.createElement('div'); o.className = 'paused goalask'; o.id = 'pauseOverlay';
+    o.innerHTML = `<div class="box"><div class="label">${fmtKm(this._ridden())} km · ${fmtTime(this.elapsed)}${this.laps > 1 ? ` · ${this.lap} Runden` : ''}</div><h2 class="display">Im Ziel!</h2>
+      <div class="row-actions padmenu"><button class="btn" id="gOn">Weiterfahren · Strecke von vorn</button><button class="btn ghost" id="gEnd">Beenden &amp; speichern</button></div>
+      <div class="hint pad-hint" style="margin-top:12px;opacity:.7">🎮 Steuerkreuz wählen · A ok</div></div>`;
+    this.el.append(o);
+    o.querySelector('#gOn').onclick = () => this._again();
+    o.querySelector('#gEnd').onclick = () => { this._atGoal = false; this.q('#pauseOverlay')?.remove(); this.paused = false; this._finish(); };
+    this._padFocus(0);
+  }
+  _again() {
+    this._atGoal = false; this.q('#pauseOverlay')?.remove(); this.laps = this.lap + 1;
+    this.music?.resume(); this.paused = false; this.last = performance.now(); this._nextLap();
+  }
 
   _rideRecord(complete) {
     const pw = this.samples.map(s => s[2]);
@@ -917,18 +973,18 @@ export class RideSession {
       duration: Math.round(this.elapsed), distance: Math.round(this._ridden()), laps: this.laps > 1 ? this._lapRows() : undefined, segs: this.segDone.length ? this.segDone.map(({ id, t, w }) => ({ id, t, w })) : undefined, lapMarks: this._marks(), ivs: this._intervals(), gain: Math.round(this.gainAcc), startD: Math.round(this.startD), workout: this.workout?.name || this._wName || undefined, workoutId: this._wId || undefined,
       avgPower: pw.length ? Math.round(pw.reduce((a, b) => a + b, 0) / pw.length) : 0,
       maxPower: Math.max(0, ...pw), best5: bestAvg(pw, 300), best20: bestAvg(pw, 1200),
-      samples: this.samples, challenges: this.ch?.stats.offered ? { ...this.ch.stats } : undefined, wizard: this.wiz?.was || (this.wiz?.state === 'hell' ? 'hell' : this.wiz?.state === 'fly' ? 'fly' : undefined),
+      samples: this.samples, jumps: this._jumps?.length ? this._jumps : undefined, challenges: this.ch?.stats.offered ? { ...this.ch.stats } : undefined, wizard: this.wiz?.was || (this.wiz?.state === 'hell' ? 'hell' : this.wiz?.state === 'fly' ? 'fly' : undefined),
     };
   }
 
   async _finish() {
     this.finished = true; this.player.pause();
-    const full = this.startD < 50 && this.laps === 1; // only a ride from the start line is a time on this route (one lap)
+    const full = this.startD < 50 && this.laps === 1 && !this._jumps; // jumped to a friend: no time on this route // only a ride from the start line is a time on this route (one lap)
     const rec = this._rideRecord(full);
     if (this.keyPower) { rec.unsaved = true; return this._summary(rec, null, 'Mit den Pfeiltasten gefahren: nicht gespeichert'); }
     const prev = (await db.ridesFor(this.route.id)).filter(r => r.complete).sort((a, b) => a.duration - b.duration);
     await db.put('rides', rec); import('./account.js').then(a => a.pushRide(rec)); this._keepPhoto(rec);
-    this._summary(rec, full ? prev : null, full ? '' : this.laps > 1 ? `${this.laps} Runden: ` + rec.laps.map((l, i) => `${i + 1}. ${fmtTime(l.t)}`).join(' · ') : 'Ab km ' + fmtKm(this.startD) + ' gestartet, zählt nicht als Bestzeit');
+    this._summary(rec, full ? prev : null, full ? '' : this._jumps && this.laps === 1 ? 'Mit Sprung zu Mitfahrern, zählt nicht als Bestzeit' : this.laps > 1 ? `${this.laps} Runden: ` + rec.laps.map((l, i) => `${i + 1}. ${fmtTime(l.t)}`).join(' · ') : 'Ab km ' + fmtKm(this.startD) + ' gestartet, zählt nicht als Bestzeit');
   }
 
   /** End screen; prev = completed rides to rank against (null: not ranked, note says why). */
