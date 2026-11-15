@@ -14,7 +14,7 @@ const pending = new Map(); // oauth state -> time
 const claims = new Map(), stateClaim = new Map(); // installed phone app (iOS): the login runs in a separate browser with its own storage, so the app fetches its key by a one-time claim code
 
 const readJSON = async (f, d) => { try { return JSON.parse(await readFile(f, 'utf8')); } catch { return d; } };
-async function saveTokens(t) { await mkdir(DATA, { recursive: true }); await writeFile(TOK, JSON.stringify(t, null, 1)); }
+async function saveTokens(t) { await mkdir(DATA, { recursive: true }); await writeFile(TOK, JSON.stringify(t, null, 1), { mode: 0o600 }); } // Strava logins of the riders: readable by the host user only
 const send = (res, code, obj) => { res.writeHead(code, { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' }); res.end(JSON.stringify(obj)); };
 const html = (res, body) => { res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-store' }); res.end(`<!doctype html><meta charset="utf-8"><meta name="viewport" content="width=device-width"><body style="font:18px system-ui;background:#0b0b0b;color:#f4f4ef;display:grid;place-items:center;height:90vh;text-align:center">${body}`); };
 async function body(req, max = 20e6) {
@@ -77,7 +77,7 @@ export async function stravaApi(req, res, path) {
       const r = await fetch('https://www.strava.com/oauth/token', { method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ client_id: cfg.client_id, client_secret: cfg.client_secret, code: q.get('code'), grant_type: 'authorization_code' }) });
       const j = await r.json();
-      if (!r.ok) return html(res, 'Strava hat die Verbindung abgelehnt: ' + String(j.message || r.status).replace(/</g, '')
+      if (!r.ok) return html(res, 'Strava hat die Verbindung abgelehnt: ' + String(j.message || r.status).replace(/[<>&"']/g, '')
         + (r.status === 403 ? '<br><small>Neue Strava-Apps erlauben anfangs nur den Besitzer der App.</small>' : '')), true;
       const k = randomBytes(24).toString('hex'), all = await readJSON(TOK, {});
       all[k] = { access_token: j.access_token, refresh_token: j.refresh_token, expires_at: j.expires_at, athlete: { id: j.athlete?.id, name: [j.athlete?.firstname, j.athlete?.lastname].filter(Boolean).join(' ') }, at: Date.now() };

@@ -1,7 +1,7 @@
 // Simple player accounts, served by serve.mjs under /api/account/* (only where RIDEFRAME is hosted, e.g. the Mac mini).
 // Name + password only (Freddy's wish: no email, no security standards beyond a hashed password). Names are unique (case-insensitive).
 // Stored in <data>/accounts.json; each account's rides in <data>/users/<id>/rides/<rideId>.json, settings (incl. the chosen rider) in settings.json.
-import { readFile, writeFile, mkdir, readdir, unlink, stat, rm } from 'node:fs/promises';
+import { readFile, writeFile, mkdir, readdir, unlink, stat, rm, rename } from 'node:fs/promises';
 import { randomBytes, scryptSync, timingSafeEqual } from 'node:crypto';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
@@ -9,7 +9,8 @@ import { join } from 'node:path';
 const DATA = process.env.RIDEFRAME_DATA || join(homedir(), 'RIDEFRAME_data');
 const ACC = join(DATA, 'accounts.json');
 const readJSON = async (f, d) => { try { return JSON.parse(await readFile(f, 'utf8')); } catch { return d; } };
-const writeJSON = async (f, o) => { await mkdir(join(f, '..'), { recursive: true }); await writeFile(f, JSON.stringify(o)); };
+// written to a temp file first and then swapped in, so a crash mid-write never leaves a half accounts.json; readable by the host user only
+const writeJSON = async (f, o) => { await mkdir(join(f, '..'), { recursive: true }); const t = `${f}.${randomBytes(4).toString('hex')}.tmp`; await writeFile(t, JSON.stringify(o), { mode: 0o600 }); await rename(t, f); };
 const send = (res, code, obj) => { res.writeHead(code, { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' }); res.end(JSON.stringify(obj)); return true; };
 async function body(req, max = 20e6) {
   const chunks = []; let n = 0;
@@ -24,7 +25,21 @@ function withAcc(fn) {
   lock = run.catch(() => {}); return run;
 }
 
+/* ---- brakes for the public link: nobody tries passwords or creates accounts without end ---- */
+const TOKEN_DAYS = 180, MAX_FILES = 5000; // a login lasts half a year per device; rides / strength sessions per account
+const hits = new Map(); // key -> [timestamps]
+function limited(key, max, ms) { // true = over the limit (and counts this try)
+  const now = Date.now(), l = (hits.get(key) || []).filter(t => now - t < ms);
+  if (l.length >= max) { hits.set(key, l); return true; }
+  l.push(now); hits.set(key, l);
+  if (hits.size > 5000) for (const [k, v] of hits) if (!v.some(t => now - t < 36e5)) hits.delete(k);
+  return false;
+}
+const clientIp = req => String(req.headers['x-forwarded-for'] || req.socket?.remoteAddress || '').split(',')[0].trim().slice(0, 60);
+const count = async d => (await readdir(d).catch(() => [])).length;
+
 async function login(a, u) {
+  const old = Date.now() - TOKEN_DAYS * 864e5; for (const [k, v] of Object.entries(a.tokens)) if (!(v.at > old)) delete a.tokens[k];
   const token = randomBytes(24).toString('hex'); a.tokens[token] = { key: u.name.toLowerCase(), at: Date.now() };
   await writeJSON(ACC, a); return token;
 }
@@ -99,19 +114,24 @@ export async function accountsApi(req, res, path) {
       const b = await body(req, 1e4), name = String(b.name || '').trim().replace(/\s+/g, ' '), pw = String(b.password || '');
       if (name.length < 2 || name.length > 24 || !/^[\p{L}\p{N} ._-]+$/u.test(name)) return send(res, 400, { error: 'Name: 2–24 Zeichen (Buchstaben, Zahlen, Leerzeichen, . _ -).' });
       if (pw.length < 3) return send(res, 400, { error: 'Passwort: mindestens 3 Zeichen.' });
+      const ip = clientIp(req), slow = { error: 'Zu viele Versuche. Bitte in ein paar Minuten nochmal.' };
+      if (limited('ip:' + ip, 40, 10 * 60e3)) return send(res, 429, slow); // logins + registrations per address
       return await withAcc(async a => {
-        const k = name.toLowerCase(), u = a.users[k];
+        const k = name.toLowerCase(), u = Object.hasOwn(a.users, k) ? a.users[k] : null;
         if (op === 'register') {
+          if (pw.length < 6 || pw.length > 200) return send(res, 400, { error: 'Passwort: mindestens 6 Zeichen.' }); // new accounts only, old short passwords still log in
           if (u) return send(res, 409, { error: `Den Namen „${u.name}“ gibt es schon.` });
+          if (limited('reg:' + ip, 5, 36e5) || limited('reg', 30, 36e5)) return send(res, 429, { error: 'Gerade wurden sehr viele Konten angelegt. Bitte später nochmal.' });
           const salt = randomBytes(12).toString('hex');
           a.users[k] = { name, salt, hash: hash(pw, salt), id: randomBytes(8).toString('hex'), created: Date.now() };
           return send(res, 200, { token: await login(a, a.users[k]), name });
         }
-        if (!u || !timingSafeEqual(Buffer.from(hash(pw, u.salt), 'hex'), Buffer.from(u.hash, 'hex'))) return send(res, 401, { error: 'Name oder Passwort stimmt nicht.' });
+        if ((hits.get('pw:' + k) || []).filter(t => Date.now() - t < 10 * 60e3).length >= 10) return send(res, 429, slow); // 10 wrong passwords per name in 10 minutes
+        if (!u || !timingSafeEqual(Buffer.from(hash(pw, u.salt), 'hex'), Buffer.from(u.hash, 'hex'))) { limited('pw:' + k, 10, 10 * 60e3); return send(res, 401, { error: 'Name oder Passwort stimmt nicht.' }); }
         return send(res, 200, { token: await login(a, u), name: u.name });
       });
     }
-    const a = await readJSON(ACC, { users: {}, tokens: {} }), t = a.tokens[token], u = t && a.users[t.key];
+    const a = await readJSON(ACC, { users: {}, tokens: {} }), t0 = Object.hasOwn(a.tokens, token) ? a.tokens[token] : null, t = t0 && t0.at > Date.now() - TOKEN_DAYS * 864e5 ? t0 : null, u = t && Object.hasOwn(a.users, t.key) ? a.users[t.key] : null;
     if (!u) return send(res, 401, { error: 'Nicht angemeldet.' });
     const dir = userDir(u.id);
     if (op === 'logout' && req.method === 'POST') return await withAcc(async a => { delete a.tokens[token]; await writeJSON(ACC, a); return send(res, 200, { ok: true }); });
@@ -137,7 +157,7 @@ export async function accountsApi(req, res, path) {
     const km = op.match(/^kraft\/([\w-]{1,64})$/); /* strength workouts (kraft.html): one file per session, same idea as rides */
     if (km) {
       const f = join(dir, 'kraft', km[1] + '.json');
-      if (req.method === 'PUT') { await writeJSON(f, await body(req, 2e6)); return send(res, 200, { ok: true }); }
+      if (req.method === 'PUT') { if (await count(join(dir, 'kraft')) >= MAX_FILES) return send(res, 507, { error: 'Speicher für dieses Konto ist voll.' }); await writeJSON(f, await body(req, 2e6)); return send(res, 200, { ok: true }); }
       if (req.method === 'DELETE') { await unlink(f).catch(() => {}); return send(res, 200, { ok: true }); }
       const r = await readJSON(f, null); return r ? send(res, 200, r) : send(res, 404, { error: 'nicht gefunden' });
     }
@@ -145,7 +165,7 @@ export async function accountsApi(req, res, path) {
     const m = op.match(/^rides\/([\w-]{1,64})$/);
     if (m) {
       const f = join(dir, 'rides', m[1] + '.json');
-      if (req.method === 'PUT') { await writeJSON(f, await body(req)); boardCache = null; boardGen++; return send(res, 200, { ok: true }); }
+      if (req.method === 'PUT') { if (await count(join(dir, 'rides')) >= MAX_FILES) return send(res, 507, { error: 'Speicher für dieses Konto ist voll.' }); await writeJSON(f, await body(req)); boardCache = null; boardGen++; return send(res, 200, { ok: true }); }
       if (req.method === 'DELETE') { await unlink(f).catch(() => {}); sums.delete(f); boardCache = null; boardGen++; return send(res, 200, { ok: true }); }
       const r = await readJSON(f, null); return r ? send(res, 200, r) : send(res, 404, { error: 'nicht gefunden' });
     }
