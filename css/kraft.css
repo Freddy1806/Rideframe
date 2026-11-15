@@ -81,3 +81,8 @@
 .kchart .kdotb { fill: var(--accent); }
 .kchartcap { font-size: 13px; color: var(--muted); margin: 4px 0 12px; } .kchartcap b { color: var(--paper); }
 @media (max-width: 380px) { .kstats b { font-size: 18px; } .kset { grid-template-columns: 28px 1fr 56px 48px 40px; } }
+.kstats { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+@media (max-width: 360px) { .kstats { grid-template-columns: repeat(2, minmax(0, 1fr)); row-gap: 10px; } .kstats b { font-size: 20px; } }
+@media (max-width: 380px) { .kset { grid-template-columns: 26px minmax(0, 1fr) 54px 46px 40px; } }
+@media (max-width: 340px) { .kset { grid-template-columns: 24px minmax(0, 1fr) 50px 42px 38px; gap: 5px; } }
+@media (max-width: 360px) { .krest { gap: 6px; padding-left: 10px; padding-right: 10px; } .krest b { font-size: 24px; } .krest button { padding: 0 8px; } }

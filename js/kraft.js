@@ -97,12 +97,13 @@ function render() {
   wireMain();
 }
 
+const hm = s => `${Math.floor(s / 3600)}:${String(Math.floor(s % 3600 / 60)).padStart(2, '0')}`; // week total as h:mm, fits the narrow column
 function startView() {
   const wk = Date.now() - 7 * 864e5, week = list.filter(s => (s.start || s.date) > wk);
   const last = []; for (const s of list) if (!last.some(x => x.name === s.name) && last.length < 3) last.push(s);
   return `<section class="kcard kweek"><div class="label">Letzte 7 Tage</div><div class="kstats">
       <div><b>${week.length}</b><small>Workouts</small></div><div><b>${week.reduce((a, s) => a + doneSets(s), 0)}</b><small>Sätze</small></div>
-      <div><b>${kgTxt(week.reduce((a, s) => a + sessVol(s), 0))}</b><small>Volumen</small></div><div><b>${fmtTime(week.reduce((a, s) => a + (s.dur || 0), 0))}</b><small>Zeit</small></div></div>
+      <div><b>${kgTxt(week.reduce((a, s) => a + sessVol(s), 0))}</b><small>Volumen</small></div><div><b>${hm(week.reduce((a, s) => a + (s.dur || 0), 0))}</b><small>Stunden</small></div></div>
       ${weekBars()}</section>
     <button class="btn kbig" id="kNew">Leeres Workout starten</button>
     ${tpls.length ? `<h3 class="ksec">Vorlagen</h3><div class="kgrid">${tpls.map((t, i) => `<div class="kcard ktpl" data-tpl="${i}"><b>${esc(t.name)}</b><span>${t.ex.map(x => esc(exOf(x.k).n)).join(', ')}</span><button class="kx" data-tdel="${i}" title="Vorlage löschen">✕</button></div>`).join('')}</div>` : ''}

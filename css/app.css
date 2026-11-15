@@ -659,3 +659,27 @@ img.face.big{width:96px;height:96px}
   .modal .actions { flex-direction: column-reverse; align-items: stretch; gap: 8px; }
   .modal .actions .btn { width: 100%; margin: 0 !important; height: 50px; }
 }
+/* Rand-Regel (Freddy 15.11.): long names never run out of a pill, they end in "…" inside the padding */
+.pill { min-width: 0; max-width: 100%; }
+.pill .t { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+#accPill { flex: 0 1 auto; max-width: 220px; }
+#accPill .t { max-width: 160px; }
+/* Rand-Regel 15.11.: below laptop width the tabs get their own row instead of squeezing the pills to nothing */
+.topbar .pill { flex: none; }
+#accPill { flex: 0 1 auto; min-width: 96px; }
+@media (max-width: 1180px) {
+  .app { grid-template-rows: auto 1fr; }
+  .topbar { flex-wrap: wrap; row-gap: 0; padding-top: 12px; }
+  .topbar .wordmark, .topbar .pill { margin-bottom: 4px; }
+  .topbar .tabs { order: 9; flex: 1 0 100%; height: 48px; overflow-x: auto; scrollbar-width: none; }
+  .topbar .tabs::-webkit-scrollbar { display: none; }
+  .tab:first-child { padding-left: 0; } .tab:first-child.active::after { left: 0; }
+}
+.libacts { min-width: min(100%, 520px); }
+.libacts .btn { white-space: normal; text-align: center; line-height: 1.2; padding-left: 14px; padding-right: 14px; min-height: 56px; height: auto; }
+@media (min-width: 1400px) { #accPill { max-width: 300px; } #accPill .t { max-width: 240px; } }
+.stats { grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px; }
+.stat .label { letter-spacing: .08em; white-space: nowrap; }
+.view-head { flex-wrap: wrap; }
+.view-head > * { min-width: 0; }
+@media (max-width: 1180px) { .libacts { min-width: 0; flex: 1 1 100%; } }

@@ -126,7 +126,9 @@ body.pure { overflow: hidden; height: 100dvh; }
 @media (max-width: 360px) { body:not(.handy) .ptop .pbrand { display: none; } .ptop { gap: 6px; } .ptop .ppill { padding: 0 10px; } }
 .ptile b { font-size: clamp(14px, 18cqw, 36px); }
 .ptile .label { white-space: normal; overflow: visible; text-overflow: clip; line-height: 1.1; }
-.ptile b { font-size: clamp(13px, 16.5cqw, 36px); }
+.ptile b { font-size: clamp(13px, 15cqw, 36px); }
 #handy .pbrand { flex: none; overflow: visible; }
 #handy .ppill { flex: 0 1 auto; min-width: 0; }
 @media (max-width: 440px) { body.outdoor .ptop .pbrand { display: none; } body.outdoor .ptop .pback + * { margin-left: auto; } }
+/* smallest phones (320 px): the unit moves under the number, so the number keeps the whole tile width */
+@media (max-width: 340px) { .ptile { grid-template-columns: minmax(0, 1fr); } .ptile b { font-size: clamp(15px, 19cqw, 30px); } .ptile small { line-height: 1.1; } }
