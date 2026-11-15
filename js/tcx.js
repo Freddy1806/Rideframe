@@ -17,18 +17,20 @@ const xml = v => String(v).replace(/[<>&"']/g, c => ({ '<': '&lt;', '>': '&gt;',
 /** samples: [t s, distance m, watts, km/h, rpm, bpm]; eleAt(d) adds altitude so Strava shows the climbing */
 export function toTCX(rec, name, eleAt = null) {
   name = xml(name); const d0 = rec.startD || 0, J = rec.jumps || [], jd = t => J.reduce((m, [tj, sk]) => tj <= t ? m + sk : m, 0); // jumps to friends: the map follows the jump, the distance does not
-  const start = new Date(rec.date - rec.duration * 1000), iso = t => new Date(start.getTime() + t * 1000).toISOString();
-  const pts = rec.samples.map(([t, d, w, kmh, cad, hr]) => `<Trackpoint><Time>${iso(t)}</Time>`
-    + (eleAt?.pos ? (([la, lo]) => `<Position><LatitudeDegrees>${la.toFixed(6)}</LatitudeDegrees><LongitudeDegrees>${lo.toFixed(6)}</LongitudeDegrees></Position>`)(eleAt.pos(d0 + d + jd(t))) : '')
-    + (eleAt ? `<AltitudeMeters>${eleAt(d0 + d + jd(t)).toFixed(1)}</AltitudeMeters>` : '') + `<DistanceMeters>${d}</DistanceMeters>`
+  const DUR = rec.elapsed || rec.duration, start = new Date(rec.date - DUR * 1000) /* outdoor: sample times are wall-clock seconds incl. pauses */, iso = t => new Date(start.getTime() + t * 1000).toISOString();
+  // outdoor rides (outdoor.html) carry their own GPS per sample: [.., lat, lon, ele]
+  const pos = ([la, lo]) => `<Position><LatitudeDegrees>${la.toFixed(6)}</LatitudeDegrees><LongitudeDegrees>${lo.toFixed(6)}</LongitudeDegrees></Position>`;
+  const pts = rec.samples.map(([t, d, w, kmh, cad, hr, la, lo, el]) => `<Trackpoint><Time>${iso(t)}</Time>`
+    + (la != null ? pos([la, lo]) : eleAt?.pos ? pos(eleAt.pos(d0 + d + jd(t))) : '')
+    + (el != null ? `<AltitudeMeters>${(+el).toFixed(1)}</AltitudeMeters>` : eleAt ? `<AltitudeMeters>${eleAt(d0 + d + jd(t)).toFixed(1)}</AltitudeMeters>` : '') + `<DistanceMeters>${d}</DistanceMeters>`
     + (hr ? `<HeartRateBpm><Value>${hr}</Value></HeartRateBpm>` : '') + (cad ? `<Cadence>${Math.min(254, cad)}</Cadence>` : '')
     + `<Extensions><TPX xmlns="http://www.garmin.com/xmlschemas/ActivityExtension/v2"><Speed>${(kmh / 3.6).toFixed(2)}</Speed><Watts>${w}</Watts></TPX></Extensions></Trackpoint>`);
   // laps (Freddy 12.11.: every climb counts as its own lap, like the lap button on a bike computer): split at rec.lapMarks (seconds)
-  const marks = [...new Set((rec.lapMarks || []).map(Math.round))].filter(t => t > 0 && t < rec.duration).sort((a, b) => a - b), cuts = [0, ...marks, Infinity];
+  const marks = [...new Set((rec.lapMarks || []).map(Math.round))].filter(t => t > 0 && t < DUR).sort((a, b) => a - b), cuts = [0, ...marks, Infinity];
   const laps = [];
   for (let k = 0; k < cuts.length - 1; k++) {
     const idx = []; rec.samples.forEach((s, i) => { if (s[0] > cuts[k] - (k ? 0 : 1) && s[0] <= cuts[k + 1]) idx.push(i); }); if (!idx.length) continue;
-    const ss = idx.map(i => rec.samples[i]), t0 = k ? cuts[k] : 0, t1 = Math.min(rec.duration, ss[ss.length - 1][0]), prevD = idx[0] > 0 ? rec.samples[idx[0] - 1][1] : 0;
+    const ss = idx.map(i => rec.samples[i]), t0 = k ? cuts[k] : 0, t1 = Math.min(DUR, ss[ss.length - 1][0]), prevD = idx[0] > 0 ? rec.samples[idx[0] - 1][1] : 0;
     const w = ss.reduce((a, s) => a + s[2], 0) / ss.length, hrs = ss.map(s => s[5]).filter(Boolean);
     laps.push(`<Lap StartTime="${iso(t0)}"><TotalTimeSeconds>${Math.max(1, t1 - t0)}</TotalTimeSeconds><DistanceMeters>${Math.max(0, ss[ss.length - 1][1] - prevD)}</DistanceMeters>
 <Calories>${Math.round(w * (t1 - t0) / 1000 * 1.1)}</Calories>`

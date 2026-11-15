@@ -31,6 +31,7 @@ export async function syncAccount(state, preferServer = false) {
   const { ids } = await api('rides'), have = new Set(ids), local = await db.all('rides'), mine = new Set(local.map(r => r.id));
   for (const r of local) if (!have.has(r.id)) await pushRide(r);
   for (const id of ids) if (!mine.has(id)) { const r = await api('rides/' + id).catch(() => null); if (r?.id) await db.put('rides', r); }
+  await syncKraft().catch(() => {});
   const L = await db.kvGet('story').catch(() => null); if (L) pushStory(L); /* the leaderboard shows this week's wager points too */
   return true;
 }
@@ -43,6 +44,20 @@ export function settingsChanged(settings) {
 }
 /** call after a ride was saved locally */
 export async function pushRide(rec) { if (acc) await api('rides/' + rec.id, { method: 'PUT', body: JSON.stringify(rec) }).catch(() => {}); }
+
+/** strength workouts (kraft.html) live in kv 'kraft' (newest first); both ways like the rides. Returns the merged list. */
+export async function syncKraft() {
+  const local = (await db.kvGet('kraft').catch(() => null)) || [];
+  if (!acc) return local;
+  const { ids } = await api('kraft'), have = new Set(ids), mine = new Set(local.map(w => w.id)), gone = new Set((await db.kvGet('kraftGone').catch(() => null)) || []);
+  for (const w of local) if (!have.has(w.id)) await pushKraft(w);
+  for (const id of gone) if (have.has(id)) await api('kraft/' + id, { method: 'DELETE' }).catch(() => {});
+  for (const id of ids) if (!mine.has(id) && !gone.has(id)) { const w = await api('kraft/' + id).catch(() => null); if (w?.id) local.push(w); }
+  local.sort((a, b) => b.date - a.date); await db.kvSet('kraft', local); await db.kvSet('kraftGone', []);
+  return local;
+}
+export async function pushKraft(w) { if (acc) await api('kraft/' + w.id, { method: 'PUT', body: JSON.stringify(w) }).catch(() => {}); }
+export async function deleteKraftRemote(id) { if (acc) await api('kraft/' + id, { method: 'DELETE' }); }
 
 /** the wager's points of this week, for the friends leaderboard */
 export async function pushStory(L) { if (acc && L?.week) await api('story', { method: 'PUT', body: JSON.stringify({ week: L.week, pts: L.pts }) }).catch(() => {}); }
@@ -86,7 +101,7 @@ export function accountModal(state, onChange, { first = false } = {}) {
         try { await api('delete', { method: 'POST', body: JSON.stringify({ password: m.querySelector('#aDelPw').value }) }); }
         catch (e) { m.querySelector('#aErr').textContent = e.message; return; }
         for (const r of await db.all('rides').catch(() => [])) await db.del('rides', r.id).catch(() => {});
-        await db.kvSet('story', null).catch(() => {}); acc = null; store(null); onChange?.(); close();
+        await db.kvSet('story', null).catch(() => {}); await db.kvSet('kraft', []).catch(() => {}); acc = null; store(null); onChange?.(); close();
       };
       m.querySelector('#aOut').onclick = async () => { await api('logout', { method: 'POST' }).catch(() => {}); acc = null; store(null); onChange?.(); close(); };
       return;

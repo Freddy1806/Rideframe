@@ -22,7 +22,7 @@ export async function profileModal(key, routeName) {
   const close = () => m.remove(); m.addEventListener('click', e => { if (e.target === m) close(); });
   let p; try { p = await loadProfile(key); } catch (e) { m.querySelector('.box').innerHTML = `<p>${esc(e.message)}</p><div class="actions"><button class="btn" id="pOk">Schließen</button></div>`; m.querySelector('#pOk').onclick = close; return; }
   const mine = !!account() && account().name === p.name; // your own profile: rides can be deleted here too (Freddy 12.11.: 1-min / 0-km junk)
-  const rn = r => r.routeId === 'pure' ? (r.workout ? 'Training · ' + r.workout : 'Training') : routeName?.(r.routeId) || r.routeName || 'Eigene Strecke';
+  const rn = r => r.routeId === 'pure' ? (r.workout ? 'Training · ' + r.workout : 'Training') : r.routeId === 'outdoor' ? 'Draußen' + (r.workout ? ' · ' + r.workout : '') : routeName?.(r.routeId) || r.routeName || 'Eigene Strecke';
   m.querySelector('.box').innerHTML = `<div class="phead">${faceImg(p.look, 'face big')}<div><div class="label">Fahrer</div><h2 class="display">${esc(p.name)}</h2>
       <div class="meta">${p.since ? 'dabei seit ' + new Date(p.since).toLocaleDateString('de-DE') : ''}</div></div></div>
     <div class="pstats"><div><b>${num(p.count)}</b><span>Fahrten</span></div><div><b>${num(p.km, 1)}</b><span>km</span></div><div><b>${num(p.hm)}</b><span>Höhenmeter</span></div><div><b>${hms(p.dur)}</b><span>im Sattel</span></div></div>

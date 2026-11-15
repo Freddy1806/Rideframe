@@ -92,10 +92,17 @@ export async function stravaApi(req, res, path) {
       const b = await body(req), fd = new FormData();
       fd.append('file', new Blob([b.tcx], { type: 'application/xml' }), 'rideframe.tcx');
       fd.append('data_type', 'tcx'); fd.append('name', String(b.name || 'RIDEFRAME').slice(0, 200));
-      fd.append('description', String(b.description || '').slice(0, 2000)); fd.append('trainer', '1');
+      fd.append('description', String(b.description || '').slice(0, 2000)); fd.append('trainer', b.outdoor ? '0' : '1');
       if (b.external_id) fd.append('external_id', String(b.external_id).slice(0, 100));
       const r = await fetch(API + '/uploads', { method: 'POST', headers: { Authorization: 'Bearer ' + tok }, body: fd });
       const j = await r.json(); return send(res, r.ok ? 200 : r.status, r.ok ? { id: j.id_str || j.id, status: j.status, error: j.error } : { error: j.message || 'Upload fehlgeschlagen' }), true;
+    }
+    if (op === 'activity' && req.method === 'POST') { // strength workouts (kraft.html): no file, a manual activity "Krafttraining"
+      const b = await body(req, 1e5), f = new URLSearchParams({ name: String(b.name || 'Krafttraining').slice(0, 200), sport_type: String(b.sport_type || 'WeightTraining').replace(/[^A-Za-z]/g, ''),
+        start_date_local: String(b.start_date_local || ''), elapsed_time: String(Math.max(60, Math.round(+b.elapsed_time || 0))), description: String(b.description || '').slice(0, 4000) });
+      if (b.external_id) f.set('external_id', String(b.external_id).slice(0, 100));
+      const r = await fetch(API + '/activities', { method: 'POST', headers: { Authorization: 'Bearer ' + tok, 'Content-Type': 'application/x-www-form-urlencoded' }, body: f });
+      const j = await r.json().catch(() => ({})); return send(res, r.ok ? 200 : r.status, r.ok ? { id: j.id } : { error: j.message || 'Strava hat abgelehnt' }), true;
     }
     const m = op.match(/^upload\/(\d+)$/);
     if (m) {

@@ -32,7 +32,8 @@ export async function stravaUpload(rec, name, eleAt, onState = () => {}, imageUr
   const km = (rec.distance / 1000).toFixed(1).replace('.', ',');
   const r = await fetch('/api/strava/upload', { method: 'POST', headers: { ...hdr(), 'Content-Type': 'application/json' },
     body: JSON.stringify({ tcx: toTCX(rec, name, eleAt), name: `RIDEFRAME · ${name}`, external_id: 'rideframe-' + rec.id,
-      description: `${km} km · ${rec.gain} hm · Ø ${rec.avgPower} W\nGefahren in RIDEFRAME (Indoor, virtuelle Strecke).` + intervalText(rec) /* no image link in the description (Freddy 12.11.: it exposed the Mac mini address) */ }) });
+      outdoor: !!rec.outdoor, description: rec.outdoor ? `${km} km · ${rec.gain} hm${rec.avgPower ? ` · Ø ${rec.avgPower} W` : ''}\nDraußen aufgezeichnet mit RIDEFRAME.`
+      : `${km} km · ${rec.gain} hm · Ø ${rec.avgPower} W\nGefahren in RIDEFRAME (Indoor, virtuelle Strecke).` + intervalText(rec) /* no image link in the description (Freddy 12.11.: it exposed the Mac mini address) */ }) });
   const j = await r.json().catch(() => ({}));
   if (!r.ok) throw new Error(j.error || 'Upload fehlgeschlagen');
   onState('Strava verarbeitet die Fahrt …');
@@ -76,4 +77,15 @@ function intervalText(rec) {
   const iv = rec.ivs; if (!iv?.length) return '';
   const mm = t => `${Math.floor(t / 60)}:${String(Math.round(t % 60)).padStart(2, '0')}`;
   return '\n\nIntervalle:\n' + iv.map((x, i) => `${i + 1}. ${x.name} · ${mm(x.t)} · Ø ${x.w} W${x.target ? ` (Ziel ${x.target} W)` : ''}`).join('\n');
+}
+
+/** a strength workout as a manual Strava activity (Krafttraining, no file). Returns the activity URL. */
+export async function stravaStrength({ id, name, start, dur, description }) {
+  const d = new Date(start), p = n => String(n).padStart(2, '0');
+  const local = `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}T${p(d.getHours())}:${p(d.getMinutes())}:${p(d.getSeconds())}`;
+  const r = await fetch('/api/strava/activity', { method: 'POST', headers: { ...hdr(), 'Content-Type': 'application/json' },
+    body: JSON.stringify({ name, sport_type: 'WeightTraining', start_date_local: local, elapsed_time: dur, description, external_id: 'rideframe-kraft-' + id }) });
+  const j = await r.json().catch(() => ({}));
+  if (!r.ok) throw new Error(/write|scope|permission/i.test(j.error || '') ? 'Strava erlaubt das Anlegen nicht. Bitte Strava einmal neu verbinden.' : j.error || 'Upload fehlgeschlagen');
+  return 'https://www.strava.com/activities/' + j.id;
 }

@@ -121,7 +121,7 @@ function applyAccent() {
 }
 
 export function allRoutes() { return [...state.routes, ...Object.keys(BUILTIN).filter(id => id !== 'demo' || new URLSearchParams(location.search).has('demo')).map(getBuiltin)]; } /* Passo Demo hidden from the list (Freddy 12.11.); it stays as an internal fallback (routeById, ?view=ride default, ?demo shows it) */
-const routeName = id => id === 'pure' ? 'Pure (Handy)' : routeById(id)?.name;
+const routeName = id => id === 'pure' ? 'Pure (Handy)' : id === 'outdoor' ? 'Draußen' : routeById(id)?.name;
 export function routeById(id) { return BUILTIN[id] ? getBuiltin(id) : state.routes.find(r => r.id === id); }
 export function ridesFor(id) { return state.rides.filter(r => r.routeId === id); }
 export function bestRide(id) { return ridesFor(id).filter(r => r.complete).sort((a, b) => a.duration - b.duration)[0]; }
@@ -358,7 +358,7 @@ function history() {
     <h2 class="section">Alle Fahrten</h2>
     ${rides.length ? `<table class="table">
       <tr><th class="label">Datum</th><th class="label">Strecke</th><th class="label">Zeit</th><th class="label">Distanz</th><th class="label">Höhenmeter</th><th class="label">Ø Watt</th><th class="label">Ø km/h</th><th class="label"></th><th class="label"></th></tr>
-      ${rides.map(x => { const pb = x.routeId !== 'pure' && bestRide(x.routeId)?.id === x.id; return `<tr class="${pb ? 'pb' : ''}"><td>${new Date(x.date).toLocaleString('de-DE', { dateStyle: 'short', timeStyle: 'short' })}</td><td>${esc((routeName(x.routeId) || 'Gelöschte Strecke') + (x.routeId === 'pure' && x.workout ? ' · ' + x.workout : ''))}</td><td>${fmtTime(x.duration)}</td><td>${fmtKm(x.distance)} km</td><td>${fmtNum(x.gain)} hm</td><td>${x.avgPower} W</td><td>${fmtNum(x.distance / x.duration * 3.6, 1)}</td><td>${pb ? 'BESTZEIT' : x.complete ? '' : '<span style="color:var(--muted)">abgebrochen</span>'}</td><td style="white-space:nowrap"><button class="btn ghost small strava" data-id="${x.id}">Strava</button> <button class="btn ghost small share" data-id="${x.id}">Teilen</button> <button class="btn ghost small rimg" data-id="${x.id}" title="Bild zur Fahrt machen">Bild</button> <button class="btn ghost small rdel" data-id="${x.id}" title="Fahrt löschen">✕</button></td></tr>`; }).join('')}
+      ${rides.map(x => { const pb = x.routeId !== 'pure' && x.routeId !== 'outdoor' && bestRide(x.routeId)?.id === x.id; return `<tr class="${pb ? 'pb' : ''}"><td>${new Date(x.date).toLocaleString('de-DE', { dateStyle: 'short', timeStyle: 'short' })}</td><td>${esc((routeName(x.routeId) || 'Gelöschte Strecke') + ((x.routeId === 'pure' || x.routeId === 'outdoor') && x.workout ? ' · ' + x.workout : ''))}</td><td>${fmtTime(x.duration)}</td><td>${fmtKm(x.distance)} km</td><td>${fmtNum(x.gain)} hm</td><td>${x.avgPower} W</td><td>${fmtNum(x.distance / x.duration * 3.6, 1)}</td><td>${pb ? 'BESTZEIT' : x.complete ? '' : '<span style="color:var(--muted)">abgebrochen</span>'}</td><td style="white-space:nowrap"><button class="btn ghost small strava" data-id="${x.id}">Strava</button> <button class="btn ghost small share" data-id="${x.id}">Teilen</button> <button class="btn ghost small rimg" data-id="${x.id}" title="Bild zur Fahrt machen">Bild</button> <button class="btn ghost small rdel" data-id="${x.id}" title="Fahrt löschen">✕</button></td></tr>`; }).join('')}
     </table>` : '<div class="empty">Noch keine Fahrten. Wähle eine Strecke und fahr los.</div>'}
   </section>`;
   wireDashboard(main, { state, saveSettings, toast, rerender: history,

@@ -1,0 +1,83 @@
+/* RIDEFRAME Kraft: strength log like Strong, phone first; also used by outdoor.html for its cards */
+#kraft { min-height: 100dvh; max-width: 620px; margin: 0 auto; padding: env(safe-area-inset-top) 12px calc(env(safe-area-inset-bottom) + 90px); display: flex; flex-direction: column; gap: 10px; }
+.kseg { flex: none; }
+.kmain { display: flex; flex-direction: column; gap: 10px; }
+.kcard { background: var(--ink-2); border: 1px solid var(--line); border-radius: 10px; padding: 12px 14px; position: relative; }
+.ksec { margin: 12px 0 0; font-size: 13px; text-transform: uppercase; letter-spacing: .1em; color: var(--muted); }
+.kstats { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; margin-top: 8px; }
+.kstats b { display: block; font-size: 22px; font-weight: 900; font-stretch: 108%; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.kstats small { font-size: 11px; color: var(--muted); font-weight: 700; }
+.kbars { display: grid; grid-template-columns: repeat(8, 1fr); gap: 6px; height: 78px; margin-top: 12px; align-items: end; }
+.kbars div { height: 100%; display: flex; flex-direction: column; justify-content: flex-end; align-items: center; position: relative; padding-bottom: 14px; }
+.kbars i { display: block; width: 100%; background: var(--accent); border-radius: 3px 3px 0 0; min-height: 2px; }
+.kbars small { position: absolute; top: -2px; font-size: 10px; font-weight: 800; }
+.kbars span { position: absolute; bottom: 0; font-size: 9px; color: var(--muted); }
+.kbig { width: 100%; height: 54px; }
+.ksmall { height: 36px; padding: 0 14px; font-size: 13px; }
+.kgrid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.ktpl { cursor: pointer; display: flex; flex-direction: column; gap: 4px; min-height: 76px; }
+.ktpl b { font-size: 15px; padding-right: 20px; }
+.ktpl span { font-size: 12px; color: var(--muted); line-height: 1.35; }
+.kx { position: absolute; top: 6px; right: 6px; width: 30px; height: 30px; border-radius: 50%; color: var(--muted); font-size: 15px; }
+.khist { cursor: pointer; }
+.khh { display: flex; justify-content: space-between; gap: 8px; align-items: baseline; }
+.khh b { font-size: 16px; } .khh span { font-size: 12px; color: var(--muted); }
+.khm { display: flex; gap: 12px; flex-wrap: wrap; font-size: 12px; color: var(--muted); margin: 4px 0 8px; font-weight: 700; }
+.kpr { color: var(--accent); }
+.khx div, .kdet div { display: flex; justify-content: space-between; gap: 10px; font-size: 13px; padding: 3px 0; border-top: 1px solid var(--line); }
+.khx div span:last-child { color: var(--muted); white-space: nowrap; }
+.kdet { margin-top: 10px; }
+.kdet b { display: block; margin-bottom: 4px; cursor: pointer; }
+.kdet div span:first-child { color: var(--muted); min-width: 28px; }
+.kdet div span:nth-child(2) { flex: 1; }
+.kdet div span:nth-child(3) { color: var(--muted); font-size: 12px; }
+.ksearch { height: 44px; border-radius: 8px; background: var(--ink-3); border: 1px solid var(--line-2); padding: 0 14px; font-size: 16px; width: 100%; color: var(--paper); margin-bottom: 8px; }
+.ksearch:focus { outline: none; border-color: var(--accent); }
+.kexrow { display: flex; justify-content: space-between; align-items: center; gap: 10px; cursor: pointer; margin-bottom: 6px; padding: 10px 14px; }
+.kexrow b { display: block; font-size: 15px; } .kexrow span { font-size: 12px; color: var(--muted); }
+.kexrow .kbest { font-size: 15px; font-weight: 900; color: var(--paper); white-space: nowrap; }
+/* the live workout */
+.kname { flex: 1; min-width: 0; height: 40px; background: transparent; border: 0; border-bottom: 1px solid var(--line-2); color: var(--paper); font-size: 18px; font-weight: 900; padding: 0 4px; }
+.kname:focus { outline: none; border-color: var(--accent); }
+.kclock { display: flex; justify-content: space-between; font-size: 13px; color: var(--muted); font-weight: 700; padding: 0 2px; }
+.kclock span:first-child { color: var(--accent); font-variant-numeric: tabular-nums; font-size: 15px; }
+.kexh { display: flex; align-items: center; margin-bottom: 6px; }
+.kexn { font-size: 17px; font-weight: 900; color: var(--accent); text-align: left; flex: 1; padding: 4px 0; }
+.kex .kx { position: static; }
+.kset { display: grid; grid-template-columns: 34px 1fr 64px 56px 44px; gap: 6px; align-items: center; padding: 3px 0; border-radius: 6px; }
+.kset.bw { grid-template-columns: 34px 1fr 64px 56px 44px; }
+.kset.time { grid-template-columns: 34px 1fr 90px 44px; }
+.kset.khead span { font-size: 10px; text-transform: uppercase; letter-spacing: .1em; color: var(--muted); font-weight: 800; text-align: center; }
+.kset.khead span:nth-child(2) { text-align: left; }
+.kset input { height: 38px; border-radius: 6px; background: var(--ink-3); border: 1px solid var(--line-2); color: var(--paper); text-align: center; font-size: 16px; font-weight: 800; width: 100%; min-width: 0; font-variant-numeric: tabular-nums; }
+.kset input::placeholder { color: #ffffff40; }
+.kset input:focus { outline: none; border-color: var(--accent); }
+.kno { text-align: center; font-weight: 900; font-size: 14px; cursor: pointer; }
+.kprev { text-align: left; font-size: 12px; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-weight: 700; }
+.kchk { height: 38px; border-radius: 6px; background: var(--ink-3); border: 1px solid var(--line-2); font-weight: 900; color: var(--muted); }
+.kset.done { background: color-mix(in srgb, var(--accent) 16%, transparent); }
+.kset.done .kchk { background: var(--accent); color: var(--accent-ink, #0b0b0b); border-color: var(--accent); }
+.kset.done input { background: transparent; border-color: transparent; }
+.kaddset { width: 100%; height: 36px; margin-top: 6px; border-radius: 6px; background: var(--ink-3); font-weight: 800; font-size: 13px; color: var(--paper); }
+.kcancel { color: #ff6b6b; border-color: #ff6b6b55; align-self: center; margin-top: 10px; }
+.krest { position: fixed; left: 50%; transform: translateX(-50%); bottom: calc(env(safe-area-inset-bottom) + 12px); width: min(596px, calc(100vw - 24px)); z-index: 40;
+  background: var(--paper); color: var(--ink); border-radius: 12px; display: grid; grid-template-columns: 56px 1fr 56px 80px; gap: 6px; align-items: center; padding: 14px 8px 8px; overflow: hidden; box-shadow: 0 8px 30px #000a; }
+.krest[hidden] { display: none; }
+.krest b { text-align: center; font-size: 28px; font-weight: 900; font-variant-numeric: tabular-nums; }
+.krest button { height: 40px; border-radius: 8px; background: #0001; font-weight: 900; color: var(--ink); }
+.krbar { position: absolute; left: 0; right: 0; top: 0; height: 5px; background: #0002; }
+.krbar i { display: block; height: 100%; background: var(--accent); transition: width .5s linear; }
+.kpick { display: flex; flex-direction: column; gap: 4px; max-height: 52dvh; overflow-y: auto; }
+.kpick button { text-align: left; padding: 10px 12px; border-radius: 8px; background: var(--ink-3); }
+.kpick button b { display: block; font-size: 15px; } .kpick button small { font-size: 12px; color: var(--muted); }
+.kpick button[hidden] { display: none; }
+.knew { display: flex; flex-direction: column; gap: 8px; margin-top: 10px; }
+.kmseg { margin-bottom: 8px; } .kmseg button { font-size: 10px; height: 36px; }
+.kchart { width: 100%; height: auto; display: block; }
+.kchart text { font-size: 10px; fill: var(--muted); font-weight: 700; }
+.kchart .kgrid { stroke: var(--line); stroke-width: 1; }
+.kchart .kline { fill: none; stroke: var(--accent); stroke-width: 2.5; stroke-linejoin: round; }
+.kchart .kdot { fill: var(--ink-2); stroke: var(--accent); stroke-width: 2; }
+.kchart .kdotb { fill: var(--accent); }
+.kchartcap { font-size: 13px; color: var(--muted); margin: 4px 0 12px; } .kchartcap b { color: var(--paper); }
+@media (max-width: 380px) { .kstats b { font-size: 18px; } .kset { grid-template-columns: 28px 1fr 56px 48px 40px; } }

@@ -1,0 +1,21 @@
+/* RIDEFRAME Draußen: outdoor recording, phone portrait */
+body.outdoor { min-height: 100dvh; }
+#out { min-height: 100dvh; max-width: 620px; margin: 0 auto; padding: env(safe-area-inset-top) 12px calc(env(safe-area-inset-bottom) + 10px); display: flex; flex-direction: column; gap: 10px; }
+.omap { position: relative; height: 30dvh; min-height: 170px; border-radius: 10px; overflow: hidden; border: 1px solid var(--line); background: #1a1a1a; flex: none; }
+.omap.big { height: 52dvh; }
+.omap.det { height: 260px; margin-bottom: 10px; }
+.omapbtn { position: absolute; z-index: 500; left: 8px; bottom: 8px; width: 38px; height: 38px; border-radius: 50%; background: #000b; color: #fff; font-size: 18px; border: 1px solid #fff3; }
+.omapbtn.r { left: auto; right: 8px; }
+.leaflet-container { background: #1a1a1a; font: inherit; }
+.leaflet-control-attribution { font-size: 9px !important; background: #0008 !important; color: #aaa !important; }
+.leaflet-control-attribution a { color: #ccc !important; }
+.obig { padding: 8px 16px 10px; }
+.obig .pbigv b { font-size: clamp(56px, 18vw, 110px); }
+#out .ptiles { flex: none; overflow: visible; }
+.orow { display: flex; gap: 12px; align-items: center; cursor: pointer; }
+.oinfo { flex: 1; min-width: 0; } .oinfo b { display: block; font-size: 16px; } .oinfo > span { font-size: 12px; color: var(--muted); }
+.oinfo .khm { margin: 4px 0 0; }
+.oshape { width: 64px; height: 64px; flex: none; background: var(--ink-3); border-radius: 8px; }
+.oshape path { fill: none; stroke: var(--accent); stroke-width: 2; stroke-linejoin: round; }
+.kchart .oele { fill: #ffffff18; stroke: none; }
+@media (orientation: landscape) and (max-height: 520px) { #out { max-width: none; } .omap { height: 46dvh; } }

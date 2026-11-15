@@ -133,6 +133,14 @@ export async function accountsApi(req, res, path) {
       return await withAcc(async a => { delete a.users[t.key]; for (const [k, v] of Object.entries(a.tokens)) if (v.key === t.key) delete a.tokens[k];
         await writeJSON(ACC, a); await rm(dir, { recursive: true, force: true }); boardCache = null; boardGen++; return send(res, 200, { ok: true }); }); }
     if (op === 'wishes' || op.startsWith('wishes/')) return await wishes(req, res, op, u);
+    if (op === 'kraft') { const f = await readdir(join(dir, 'kraft')).catch(() => []); return send(res, 200, { ids: f.filter(x => x.endsWith('.json')).map(x => x.slice(0, -5)) }); }
+    const km = op.match(/^kraft\/([\w-]{1,64})$/); /* strength workouts (kraft.html): one file per session, same idea as rides */
+    if (km) {
+      const f = join(dir, 'kraft', km[1] + '.json');
+      if (req.method === 'PUT') { await writeJSON(f, await body(req, 2e6)); return send(res, 200, { ok: true }); }
+      if (req.method === 'DELETE') { await unlink(f).catch(() => {}); return send(res, 200, { ok: true }); }
+      const r = await readJSON(f, null); return r ? send(res, 200, r) : send(res, 404, { error: 'nicht gefunden' });
+    }
     if (op === 'rides') { const f = await readdir(join(dir, 'rides')).catch(() => []); return send(res, 200, { ids: f.filter(x => x.endsWith('.json')).map(x => x.slice(0, -5)) }); }
     const m = op.match(/^rides\/([\w-]{1,64})$/);
     if (m) {
