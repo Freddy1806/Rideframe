@@ -103,6 +103,24 @@ export async function stravaApi(req, res, path) {
       const r = await fetch(API + '/uploads', { method: 'POST', headers: { Authorization: 'Bearer ' + tok }, body: fd });
       const j = await r.json(); return send(res, r.ok ? 200 : r.status, r.ok ? { id: j.id_str || j.id, status: j.status, error: j.error } : { error: j.message || 'Upload fehlgeschlagen' }), true;
     }
+    if (op === 'segments' && req.method === 'GET') { // Strava segments for the outdoor map: the rider's starred ones (all) plus popular ones around a point
+      const q = new URL(req.url, 'http://x').searchParams, out = new Map(), H = { Authorization: 'Bearer ' + tok };
+      const cacheF = join(DATA, 'strava_segs.json'), cache = await readJSON(cacheF, {});
+      const st = await fetch(API + '/segments/starred?per_page=60', { headers: H }).then(r => r.ok ? r.json() : []).catch(() => []);
+      for (const sg of Array.isArray(st) ? st.slice(0, 60) : []) {
+        let c = cache[sg.id];
+        if (!c || Date.now() - (c.at || 0) > 3 * 864e5) { const d = await fetch(`${API}/segments/${sg.id}`, { headers: H }).then(r => r.ok ? r.json() : null).catch(() => null); if (!d?.map?.polyline) continue;
+          c = cache[sg.id] = { id: sg.id, name: d.name, dist: d.distance, grade: d.average_grade, line: d.map.polyline, pr: d.athlete_segment_stats?.pr_elapsed_time || null, kom: d.xoms?.kom || null, at: Date.now() }; }
+        out.set(sg.id, { ...c, starred: true });
+      }
+      const b = (q.get('bounds') || '').split(',').map(Number);
+      if (b.length === 4 && b.every(Number.isFinite)) {
+        const ex = await fetch(`${API}/segments/explore?activity_type=riding&bounds=${b.join(',')}`, { headers: H }).then(r => r.ok ? r.json() : {}).catch(() => ({}));
+        for (const e of ex.segments || []) if (!out.has(e.id)) out.set(e.id, { id: e.id, name: e.name, dist: e.distance, grade: e.avg_grade, line: e.points, starred: false });
+      }
+      await mkdir(DATA, { recursive: true }); await writeFile(cacheF, JSON.stringify(cache));
+      return send(res, 200, { segments: [...out.values()] }), true;
+    }
     if (op === 'activity' && req.method === 'POST') { // strength workouts (kraft.html): no file, a manual activity "Krafttraining"
       const b = await body(req, 1e5), f = new URLSearchParams({ name: String(b.name || 'Krafttraining').slice(0, 200), sport_type: String(b.sport_type || 'WeightTraining').replace(/[^A-Za-z]/g, ''),
         start_date_local: String(b.start_date_local || ''), elapsed_time: String(Math.max(60, Math.round(+b.elapsed_time || 0))), description: String(b.description || '').slice(0, 4000) });

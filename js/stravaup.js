@@ -92,3 +92,9 @@ export async function stravaStrength({ id, name, start, dur, description }) {
   if (!r.ok) throw new Error(/write|scope|permission/i.test(j.error || '') ? 'Strava erlaubt das Anlegen nicht. Bitte Strava einmal neu verbinden.' : j.error || 'Upload fehlgeschlagen');
   return 'https://www.strava.com/activities/' + j.id;
 }
+
+/** Strava segments for the outdoor map: starred ones + popular ones in bounds [swLat, swLon, neLat, neLon]; [] without Strava */
+export async function stravaSegments(bounds) {
+  try { const r = await fetch('/api/strava/segments?bounds=' + bounds.map(v => v.toFixed(5)).join(','), { headers: hdr(), cache: 'no-store' }); return r.ok ? (await r.json()).segments || [] : []; }
+  catch { return []; }
+}

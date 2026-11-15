@@ -23,3 +23,5 @@ body.outdoor { min-height: 100dvh; }
 .osens div { flex: 1; min-width: 0; } .osens b { display: block; font-size: 15px; } .osens small { font-size: 12px; color: var(--muted); }
 .psheet { z-index: 2000; } .pflash { z-index: 2100; }
 .osens .btn:disabled { opacity: .35; }
+.oseg { display: flex; justify-content: space-between; align-items: center; gap: 10px; background: #f2b630; color: #0b0b0b; border-radius: 10px; padding: 10px 14px; font-weight: 800; }
+.oseg[hidden] { display: none; } .oseg b { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; } .oseg span { white-space: nowrap; font-variant-numeric: tabular-nums; }

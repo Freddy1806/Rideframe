@@ -5,6 +5,7 @@
 import { Trainer, HeartRate, CadenceSensor } from './trainer.js';
 import { db, uid } from './db.js';
 import { fmtTime, fmtNum, esc, bestAvg } from './util.js';
+import { SegTracker } from './segtrack.js';
 
 const $ = (s, r = document) => r.querySelector(s);
 const params = new URLSearchParams(location.search), DEMO = params.has('demo');
@@ -15,7 +16,26 @@ let S = { riderKg: 75, ftp: 250 }, O = { tiles: ['time', 'dist', 'avgSpeed', 'ga
 const meter = new Trainer(), hrStrap = new HeartRate(), cadS = new CadenceSensor();
 const live = { power: 0, cad: 0, hr: 0, fix: null, acc: null, gpsErr: '' };
 let R = fresh(), view = 'ride', map = null, line = null, dot = null, follow = true, wake = null, watch = null;
-function fresh() { return { state: 'ready', id: uid(), start: 0, wall: 0, moving: 0, d: 0, v: 0, vMax: 0, gain: 0, eleS: null, eleRef: null, last: null, still: 0, kj: 0, pw: [], samples: [], track: [], lastSec: -1, laps: [], lapAt: { t: 0, d: 0 } }; }
+function fresh() { return { state: 'ready', id: uid(), start: 0, wall: 0, moving: 0, d: 0, v: 0, vMax: 0, gain: 0, eleS: null, eleRef: null, last: null, still: 0, kj: 0, pw: [], samples: [], track: [], lastSec: -1, laps: [], lapAt: { t: 0, d: 0 }, segs: [] }; }
+// Strava segments: loaded once there is a fix and Strava is connected, drawn on the map, timed live
+const segT = new SegTracker(); let segAt = null, segLayer = null;
+async function loadSegs(pt) {
+  if (segAt && Math.abs(segAt[0] - pt[0]) + Math.abs(segAt[1] - pt[1]) < .05) return; segAt = pt;
+  const { stravaSegments } = await import('./stravaup.js'), d = .06, list = DEMO ? demoSegs() : await stravaSegments([pt[0] - d, pt[1] - d * 2, pt[0] + d, pt[1] + d * 2]);
+  if (segT.add(list)) drawSegs();
+}
+function drawSegs() {
+  if (!map) return; segLayer?.remove(); segLayer = L.layerGroup().addTo(map);
+  for (const s of segT.segs.values()) L.polyline(s.pts, { color: s.starred ? '#f2b630' : '#9aa0a6', weight: s.starred ? 4 : 3, opacity: .85, dashArray: s.starred ? null : '6 6' }).bindTooltip(s.name).addTo(segLayer);
+  line?.bringToFront();
+}
+function segEvent(e) {
+  if (!e) return;
+  if (e.type === 'start') flash(`◆ Segment: ${e.seg.name}`);
+  else if (e.type === 'lost') flash(`Segment ${e.seg.name} verlassen`);
+  else { const pr = e.seg.pr, d = pr ? e.t - pr : null; R.segs.push({ id: 'strava:' + e.seg.id, name: e.seg.name, t: e.t });
+    flash(`🏁 ${e.seg.name}: ${fmtTime(e.t)}${pr ? ` · PR ${fmtTime(pr)} (${d <= 0 ? '−' : '+'}${fmtTime(Math.abs(d))})` : ''}`); }
+}
 
 // ---------------- settings ----------------
 async function loadSettings() {
@@ -39,6 +59,7 @@ function onFix(p) {
   live.gpsErr = ''; live.acc = c.accuracy; live.alt = c.altitude; const prev = live.fix; live.fix = { pt, t, speed: c.speed, alt: c.altitude, acc: c.accuracy };
   if (dot) dot.setLatLng(pt); else if (map) onFixDot();
   if (map && follow) map.setView(pt, Math.max(map.getZoom(), 15), { animate: false });
+  if (!prev || segAt) loadSegs(pt).catch(() => {});
   if (R.state !== 'run') { if (!prev && map) map.setView(pt, 16); return; }
   if (c.accuracy > 40) return; // too vague for distance
   if (!R.last) { R.last = { pt, t }; R.track.push(pt); line?.addLatLng(pt); return; }
@@ -47,7 +68,7 @@ function onFix(p) {
   if (d / dt > 33) return; // a jump (>120 km/h): ignore this fix
   if (d < Math.max(2, Math.min(8, c.accuracy * .25)) && v < 1) { R.v = v < .8 ? 0 : v; return; } // standing: GPS wobble is not distance
   const moving = !O.autoPause || v > .8;
-  if (moving) { R.d += d; R.track.push(pt); line?.addLatLng(pt); }
+  if (moving) { R.d += d; R.track.push(pt); line?.addLatLng(pt); segEvent(segT.update(pt, R.wall)); }
   R.v = v; R.vMax = Math.max(R.vMax, v < 30 ? v : 0); R.last = { pt, t };
   if (c.altitude != null) { // smoothed altitude, climbing counted with 3 m hysteresis (raw GPS height jumps)
     R.eleS = R.eleS == null ? c.altitude : R.eleS + (c.altitude - R.eleS) * .2;
@@ -92,7 +113,7 @@ function record() {
   const pw = R.pw, hasP = pw.some(x => x > 0);
   return { id: R.id, routeId: 'outdoor', outdoor: true, date: Date.now(), complete: true, duration: Math.round(R.moving), elapsed: Math.round(R.wall), distance: Math.round(R.d), gain: Math.round(R.gain), startD: 0,
     workout: R.name || rideName(R.start), avgPower: hasP ? Math.round(avgP()) : 0, maxPower: hasP ? Math.max(...pw) : 0, best5: hasP ? bestAvg(pw, 300) : 0, best20: hasP ? bestAvg(pw, 1200) : 0,
-    np: hasP ? Math.round(NP()) : 0, kj: Math.round(R.kj), maxSpeed: Math.round(R.vMax * 36) / 10, lapMarks: R.laps.length ? R.laps : undefined, samples: R.samples };
+    np: hasP ? Math.round(NP()) : 0, kj: Math.round(R.kj), maxSpeed: Math.round(R.vMax * 36) / 10, stravaSegs: R.segs.length ? R.segs : undefined, lapMarks: R.laps.length ? R.laps : undefined, samples: R.samples };
 }
 // a crash, a reload or an empty battery must not lose the ride: the state goes to kv every 10 s
 let draftAt = 0;
@@ -137,6 +158,7 @@ function render() {
       <button class="pgear" id="oSet" title="Einstellungen">⚙</button></header>
     ${live.gpsErr ? `<div class="pnote">${esc(live.gpsErr)}</div>` : ''}
     <div class="omap ${O.bigMap ? 'big' : ''}" id="oMap"><button class="omapbtn" id="oFollow" title="Auf mich zentrieren">◎</button><button class="omapbtn r" id="oBig" title="Karte größer/kleiner">${O.bigMap ? '▴' : '▾'}</button></div>
+    <div class="oseg" id="oSeg" hidden></div>
     <section class="pbig obig"><div class="label">Tempo</div><div class="pbigv"><b id="oSpd">0,0</b><small>km/h</small></div></section>
     <section class="ptiles">${O.tiles.map((k, i) => `<button class="ptile" data-t="${i}"><span class="label">${M[k]?.l || k}</span><b data-k="${k}">–</b><small>${M[k]?.u || ''}</small></button>`).join('')}</section>
     <footer class="pfoot">${R.state === 'run' ? `<button class="btn ghost" id="oPause">Pause</button><button class="btn ghost" id="oLap">Runde</button>`
@@ -156,6 +178,7 @@ function initMap() {
   L.tileLayer(TILES, { attribution: ATTR, maxZoom: 19, subdomains: 'abcd' }).addTo(map);
   line = L.polyline(R.track, { color: getComputedStyle(document.documentElement).getPropertyValue('--accent').trim() || '#ff5a1f', weight: 5, opacity: .95 }).addTo(map);
   if (live.fix) onFixDot();
+  drawSegs();
   map.on('dragstart', () => { follow = false; });
 }
 function onFixDot() { dot = L.circleMarker(live.fix.pt, { radius: 7, color: '#fff', weight: 2, fillColor: getComputedStyle(document.documentElement).getPropertyValue('--accent').trim() || '#ff5a1f', fillOpacity: 1 }).addTo(map); }
@@ -163,6 +186,7 @@ function paint() {
   if (view !== 'ride' || !$('#oSpd')) return;
   $('#oSpd').textContent = fmtNum(R.state === 'run' || DEMO ? R.v * 3.6 : (live.fix?.speed || 0) * 3.6, 1);
   el.querySelectorAll('[data-k]').forEach(b => { const v = String(M[b.dataset.k]?.v()); if (b.textContent !== v) b.textContent = v; });
+  const sb = $('#oSeg'), a = segT.active; if (sb) { sb.hidden = !a; if (a) sb.innerHTML = `<b>◆ ${esc(a.seg.name)}</b><span>${fmtTime(R.wall - a.t0)} · ${Math.round(a.prog * 100)} %${a.seg.pr ? ` · PR ${fmtTime(a.seg.pr)}` : ''}</span>`; }
   const g = $('#oGps'); if (g) { const t = gpsTxt(); if (!g.textContent.endsWith(t)) g.innerHTML = `<i></i>${t}`; g.classList.toggle('on', !!live.fix && live.acc <= 40); }
 }
 const nSens = () => [hrStrap, meter, cadS].filter(x => x.connected).length;
@@ -250,6 +274,7 @@ function detail(r) {
       <div><span>Höhenmeter</span><b>${r.gain} hm</b></div><div><span>Gesamtzeit</span><b>${fmtTime(r.elapsed || r.duration)}</b></div>
       ${hrs.length ? `<div><span>Ø Puls</span><b>${Math.round(hrs.reduce((a, b) => a + b, 0) / hrs.length)}</b></div><div><span>Max Puls</span><b>${Math.max(...hrs)}</b></div>` : ''}
       ${r.avgPower ? `<div><span>Ø Leistung</span><b>${r.avgPower} W</b></div><div><span>NP</span><b>${r.np} W</b></div>` : ''}</div>
+    ${r.stravaSegs?.length ? `<div class="label" style="margin-top:10px">Strava-Segmente (live gestoppt)</div><div class="kdet">${r.stravaSegs.map(x => `<div><span>◆</span><span>${esc(x.name)}</span><span>${fmtTime(x.t)}</span></div>`).join('')}</div>` : ''}
     <div class="label" style="margin-top:10px">Höhe &amp; Tempo</div>${profile(r)}
     <div class="pfoot col"><button class="btn" id="dStrava">Zu Strava hochladen</button><button class="btn ghost" id="dGpx">GPX herunterladen</button><button class="btn danger" id="dDel">Löschen</button></div>`);
   if (window.L && pts.length > 1) setTimeout(() => {
@@ -312,3 +337,9 @@ if (draft?.samples?.length && Date.now() - draft.savedAt < 12 * 3600e3) {
 }
 if (DEMO && params.has('run')) start();
 if ('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js').catch(() => {});
+function demoSegs() { // two fake segments on the demo loop (?demo)
+  const c = [67.9326, 13.0890], r = .006, at = (a0, a1, star, name) => { const pts = []; for (let a = a0; a <= a1; a += .02) pts.push([c[0] + Math.sin(a) * r, c[1] + Math.cos(a) * r * 2.4]);
+    let o = '', pl = 0, pn = 0; const e = v => { v = v < 0 ? ~(v << 1) : v << 1; let s = ''; while (v >= 0x20) { s += String.fromCharCode((0x20 | (v & 0x1f)) + 63); v >>= 5; } return s + String.fromCharCode(v + 63); };
+    for (const [x, y] of pts) { const la = Math.round(x * 1e5), lo = Math.round(y * 1e5); o += e(la - pl) + e(lo - pn); pl = la; pn = lo; } return { id: name, name, line: o, starred: star, pr: 30 }; };
+  return [at(.1, .6, true, 'Demo-Anstieg'), at(1.5, 2.2, false, 'Demo-Sprint')];
+}
