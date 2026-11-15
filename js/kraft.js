@@ -87,7 +87,7 @@ function sheet(html) {
 
 function render() {
   if (W) return workoutScreen();
-  const head = `<header class="ptop"><a class="pback" href="./" title="Zur App">‹</a><div class="pbrand"><b>RIDEFRAME </b><span>Kraft</span></div>
+  const head = `<header class="ptop"><a class="pback" href="handy.html" title="Zur App">‹</a><div class="pbrand"><b>RIDEFRAME </b><span>Kraft</span></div>
     ${acc ? `<span class="ppill on"><i></i>${esc(acc.name)}</span>` : '<span class="ppill" title="In der App anmelden, dann sind die Workouts auf allen Geräten"><i></i>Nur hier</span>'}</header>
     <nav class="pseg kseg">${[['start', 'Training'], ['hist', 'Verlauf'], ['ex', 'Übungen']].map(([k, n]) => `<button data-tab="${k}" class="${tab === k ? 'on' : ''}">${n}</button>`).join('')}</nav>`;
   el.innerHTML = head + `<main class="kmain">${tab === 'hist' ? histView() : tab === 'ex' ? exView() : startView()}</main>`;
@@ -339,3 +339,4 @@ window.addEventListener('beforeunload', () => { if (W) db.kvSet('kraftDraft', W)
 await load();
 render();
 if (W) flash('Dein offenes Workout läuft weiter.');
+if ('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js').catch(() => {});

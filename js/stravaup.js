@@ -13,14 +13,17 @@ export async function stravaStatus() {
 
 /** opens Strava's login in a popup; resolves true once this browser holds a key */
 export function stravaConnect() {
-  const before = getKey();
-  const w = window.open('/api/strava/connect', 'strava', 'width=620,height=760');
+  const before = getKey(), claim = [...crypto.getRandomValues(new Uint8Array(16))].map(b => b.toString(16).padStart(2, '0')).join('');
+  const w = window.open('/api/strava/connect?claim=' + claim, 'strava', 'width=620,height=760');
   if (!w) { location.href = '/api/strava/connect'; return Promise.resolve(false); }
+  let asking = false; // the installed iPhone app logs in in a separate browser: fetch the key by the claim code
+  const ask = async () => { if (asking) return; asking = true; try { const j = await (await fetch('/api/strava/claim/' + claim, { cache: 'no-store' })).json(); if (j.key) localStorage.setItem(KEY, j.key); } catch {} asking = false; };
   return new Promise(res => {
     const t0 = Date.now(), iv = setInterval(() => {
       const k = getKey();
+      if (!(k && k !== before) && (Date.now() - t0) % 2000 < 400) ask();
       if (k && k !== before) { clearInterval(iv); res(true); }
-      else if (w.closed && Date.now() - t0 > 1500) { clearInterval(iv); setTimeout(() => res(!!getKey() && getKey() !== before), 300); }
+      else if (w.closed && Date.now() - t0 > 1500) { clearInterval(iv); setTimeout(async () => { asking = false; await ask(); res(!!getKey() && getKey() !== before); }, 300); }
       else if (Date.now() - t0 > 5 * 60e3) { clearInterval(iv); res(false); }
     }, 400);
   });

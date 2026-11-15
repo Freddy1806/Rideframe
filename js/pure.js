@@ -153,7 +153,7 @@ function render() {
   const bt = !trainer.connected && !DEMO, bleOk = Trainer.supported();
   el.innerHTML = `
   <header class="ptop">
-    <a class="pback" href="./" title="Zur App">‹</a><div class="pbrand"><b>RIDEFRAME </b><span>Pure</span></div>
+    <a class="pback" href="handy.html" title="Zur App">‹</a><div class="pbrand"><b>RIDEFRAME </b><span>Pure</span></div>
     <button class="ppill ${trainer.connected || DEMO ? 'on' : ''}" id="pTr"><i></i>${DEMO ? 'Demo' : trainer.connected ? esc(trainer.device?.name || 'Trainer') : 'Trainer'}</button>
     <button class="ppill ${hrStrap.connected ? 'on' : ''}" id="pHr"><i></i>Puls</button>
     <button class="pgear" id="pSetBtn" title="Einstellungen">⚙</button>
@@ -279,10 +279,10 @@ async function toStrava(btn, rec) {
   } catch (e) { alert(e.message || String(e)); }
 }
 function doneScreen(rec) {
-  el.innerHTML = `<header class="ptop"><a class="pback" href="./">‹</a><div class="pbrand">RIDEFRAME <span>Pure</span></div></header>
+  el.innerHTML = `<header class="ptop"><a class="pback" href="handy.html">‹</a><div class="pbrand">RIDEFRAME <span>Pure</span></div></header>
     <section class="pdone"><div class="label">Gespeichert</div><h1 class="display">${fmtTime(rec.duration)}</h1>
     <p>${fmtNum(rec.distance / 1000, 1)} km · Ø ${rec.avgPower} W · NP ${rec.np} W · ${rec.kj} kJ</p>
-    <div class="pfoot col"><a class="btn" href="./pure.html${location.search}">Neue Fahrt</a><a class="btn ghost" href="./">Zur App</a></div></section>`;
+    <div class="pfoot col"><a class="btn" href="./pure.html${location.search}">Neue Fahrt</a><a class="btn ghost" href="handy.html">Zur App</a></div></section>`;
 }
 
 // ---------------- data ----------------
@@ -310,3 +310,4 @@ document.addEventListener('keydown', e => {
 await loadSettings();
 render();
 if (DEMO && params.has('run')) start();
+if ('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js').catch(() => {});

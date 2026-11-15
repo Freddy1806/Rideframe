@@ -132,7 +132,7 @@ function render() {
   if (map) { map.remove(); map = null; line = null; dot = null; }
   if (view === 'list') return listView();
   const bleOk = Trainer.supported();
-  el.innerHTML = `<header class="ptop"><a class="pback" href="./" title="Zur App">‹</a><div class="pbrand"><b>RIDEFRAME </b><span>Draußen</span></div>
+  el.innerHTML = `<header class="ptop"><a class="pback" href="handy.html" title="Zur App">‹</a><div class="pbrand"><b>RIDEFRAME </b><span>Draußen</span></div>
       <span class="ppill ${live.fix && live.acc <= 40 ? 'on' : ''}" id="oGps"><i></i>${gpsTxt()}</span>
       ${bleOk ? `<button class="ppill ${hrStrap.connected ? 'on' : ''}" id="oHr"><i></i>Puls</button><button class="ppill ${meter.connected ? 'on' : ''}" id="oPm"><i></i>Watt</button>` : ''}
       <button class="pgear" id="oSet" title="Einstellungen">⚙</button></header>
@@ -295,3 +295,4 @@ if (draft?.samples?.length && Date.now() - draft.savedAt < 12 * 3600e3) {
   $('#rDrop', s).onclick = () => { db.kvDel('outdoorDraft').catch(() => {}); s.remove(); };
 }
 if (DEMO && params.has('run')) start();
+if ('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js').catch(() => {});

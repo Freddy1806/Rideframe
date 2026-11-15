@@ -11,6 +11,7 @@ const DATA = process.env.RIDEFRAME_DATA || join(homedir(), 'RIDEFRAME_data');
 const CFG = join(DATA, 'strava.json'), TOK = join(DATA, 'strava_tokens.json');
 const API = 'https://www.strava.com/api/v3';
 const pending = new Map(); // oauth state -> time
+const claims = new Map(), stateClaim = new Map(); // installed phone app (iOS): the login runs in a separate browser with its own storage, so the app fetches its key by a one-time claim code
 
 const readJSON = async (f, d) => { try { return JSON.parse(await readFile(f, 'utf8')); } catch { return d; } };
 async function saveTokens(t) { await mkdir(DATA, { recursive: true }); await writeFile(TOK, JSON.stringify(t, null, 1)); }
@@ -55,9 +56,13 @@ export async function stravaApi(req, res, path) {
       const t = key && (await readJSON(TOK, {}))[key];
       return send(res, 200, { configured, connected: !!t, athlete: t?.athlete || null }), true;
     }
+    const cm = op.match(/^claim\/([a-f0-9]{16,64})$/);
+    if (cm) { const v = claims.get(cm[1]); if (v) claims.delete(cm[1]); return send(res, 200, { key: v?.key || null }), true; }
     if (!configured) return send(res, 503, { error: 'Strava ist auf diesem Server noch nicht eingerichtet.' }), true;
     if (op === 'connect') {
       const state = randomBytes(12).toString('hex'); pending.set(state, Date.now());
+      { const c = new URL(req.url, 'http://x').searchParams.get('claim') || ''; if (/^[a-f0-9]{16,64}$/.test(c)) stateClaim.set(state, c); }
+      for (const [c, v] of claims) if (Date.now() - v.t > 15 * 60e3) claims.delete(c);
       for (const [s, t] of pending) if (Date.now() - t > 15 * 60e3) pending.delete(s);
       const u = new URL('https://www.strava.com/oauth/authorize');
       u.search = new URLSearchParams({ client_id: cfg.client_id, response_type: 'code', redirect_uri: baseUrl(req, cfg) + '/api/strava/callback', approval_prompt: 'auto', scope: 'activity:write,read', state });
@@ -65,6 +70,7 @@ export async function stravaApi(req, res, path) {
     }
     if (op.startsWith('callback')) {
       const q = new URL(req.url, 'http://x').searchParams;
+      const claim = stateClaim.get(q.get('state') || ''); stateClaim.delete(q.get('state') || '');
       if (!pending.delete(q.get('state') || '')) return html(res, 'Die Anmeldung ist abgelaufen. Bitte im Spiel nochmal auf „Mit Strava verbinden“ klicken.'), true;
       if (q.get('error') || !q.get('code')) return html(res, 'Strava-Verbindung abgebrochen. Du kannst dieses Fenster schließen.'), true;
       if (!(q.get('scope') || '').includes('activity:write')) return html(res, 'Bitte beim Verbinden das Hochladen von Aktivitäten erlauben (Haken drin lassen) und nochmal versuchen.'), true;
@@ -75,7 +81,7 @@ export async function stravaApi(req, res, path) {
         + (r.status === 403 ? '<br><small>Neue Strava-Apps erlauben anfangs nur den Besitzer der App.</small>' : '')), true;
       const k = randomBytes(24).toString('hex'), all = await readJSON(TOK, {});
       all[k] = { access_token: j.access_token, refresh_token: j.refresh_token, expires_at: j.expires_at, athlete: { id: j.athlete?.id, name: [j.athlete?.firstname, j.athlete?.lastname].filter(Boolean).join(' ') }, at: Date.now() };
-      await saveTokens(all);
+      await saveTokens(all); if (claim) claims.set(claim, { t: Date.now(), key: k });
       return html(res, `<div>Mit Strava verbunden ✓<br><small>Das Fenster schließt sich gleich, sonst einfach schließen.</small></div><script>try{localStorage.setItem('rf_strava_key',${JSON.stringify(k)})}catch(e){}setTimeout(()=>window.close(),900);if(!window.opener)setTimeout(()=>location.href='/',1500)</script>`), true;
     }
     if (op === 'disconnect' && req.method === 'POST') { const all = await readJSON(TOK, {}); delete all[key]; await saveTokens(all); return send(res, 200, { ok: true }), true; }

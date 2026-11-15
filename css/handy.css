@@ -1,0 +1,15 @@
+/* RIDEFRAME phone app home (handy.html) */
+#handy { min-height: 100dvh; max-width: 620px; margin: 0 auto; padding: env(safe-area-inset-top) 12px calc(env(safe-area-inset-bottom) + 20px); display: flex; flex-direction: column; gap: 12px; }
+#handy .ptop { justify-content: space-between; }
+.htiles { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.htile { background: var(--ink-2); border: 1px solid var(--line); border-radius: 12px; padding: 16px 14px; min-height: 132px; display: flex; flex-direction: column; gap: 4px; color: var(--paper); text-decoration: none; }
+.htile:active { border-color: var(--accent); }
+.htile .hico { font-size: 26px; font-weight: 900; color: var(--accent); line-height: 1; margin-bottom: auto; }
+.htile b { font-size: 18px; font-weight: 900; font-stretch: 108%; }
+.htile small { font-size: 12px; color: var(--muted); line-height: 1.3; }
+.htile:first-child { grid-column: 1 / -1; min-height: 110px; background: var(--accent); color: var(--accent-ink, #0b0b0b); border-color: var(--accent); }
+.htile:first-child .hico, .htile:first-child small { color: inherit; opacity: .8; }
+.hrow { display: flex; align-items: center; gap: 12px; padding: 10px 2px; border-bottom: 1px solid var(--line); }
+.hrow > span:first-child { width: 28px; text-align: center; color: var(--accent); font-weight: 900; }
+.hrow div { flex: 1; min-width: 0; } .hrow b { display: block; font-size: 15px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; } .hrow small { font-size: 12px; color: var(--muted); }
+.hrow > span:last-child { font-size: 13px; color: var(--muted); white-space: nowrap; font-weight: 700; }
