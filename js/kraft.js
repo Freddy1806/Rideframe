@@ -74,6 +74,8 @@ function prevSets(k, without = null) {
   for (const s of list) { if (s.id === without) continue; const x = (s.ex || []).find(y => y.k === k); if (x?.sets.some(y => y.done)) return x.sets.filter(y => y.done); }
   return [];
 }
+/** short form for the narrow "Vorher" column: the column heads already say kg / Wdh */
+const prevTxt = (t, s) => !s ? '–' : t === 'time' ? `${+s.s || 0} s` : t === 'bw' ? `${+s.kg ? '+' + fmtNum(+s.kg, +s.kg % 1 ? 1 : 0) + ' × ' : ''}${+s.r || 0}` : `${fmtNum(+s.kg || 0, +s.kg % 1 ? 1 : 0)} × ${+s.r || 0}`;
 const setTxt = (t, s) => !s ? '–' : t === 'time' ? `${+s.s || 0} s` : t === 'bw' ? `${+s.kg ? '+' + fmtNum(+s.kg, 1) + ' kg × ' : ''}${+s.r || 0} Wdh` : `${fmtNum(+s.kg || 0, 1)} kg × ${+s.r || 0}`;
 const kgTxt = v => v >= 1000 ? fmtNum(v / 1000, 1) + ' t' : fmtNum(v) + ' kg';
 const dayTxt = t => new Date(t).toLocaleDateString('de-DE', { weekday: 'short', day: 'numeric', month: 'short' });
@@ -171,7 +173,7 @@ function exBlock(x, i) {
     ${x.note ? `<div class="hint">${esc(x.note)}</div>` : ''}
     <div class="kset khead ${x.t}"><span>Satz</span><span>Vorher</span>${cols.map(c => `<span>${c}</span>`).join('')}<span>✓</span></div>
     ${x.sets.map((s, j) => { const pv = prev[j] || prev[prev.length - 1]; return `<div class="kset ${x.t} ${s.done ? 'done' : ''}" data-j="${j}"><span class="kno" data-smenu="${j}">${s.warm ? 'W' : j + 1 - x.sets.slice(0, j).filter(y => y.warm).length}</span>
-      <button class="kprev" data-fill="${j}">${prev[j] ? setTxt(x.t, prev[j]) : '–'}</button>
+      <button class="kprev" data-fill="${j}">${prev[j] ? prevTxt(x.t, prev[j]) : '–'}</button>
       ${x.t === 'time' ? `<input inputmode="numeric" data-f="s" value="${s.s ?? ''}" placeholder="${pv?.s ?? ''}">`
         : `<input inputmode="decimal" data-f="kg" value="${s.kg === '' || s.kg == null ? '' : String(s.kg).replace('.', ',')}" placeholder="${pv ? String(pv.kg ?? '').replace('.', ',') : ''}"><input inputmode="numeric" data-f="r" value="${s.r ?? ''}" placeholder="${pv?.r ?? ''}">`}
       <button class="kchk" data-chk="${j}">✓</button></div>`; }).join('')}

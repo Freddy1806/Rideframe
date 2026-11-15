@@ -105,3 +105,28 @@ body.pure { overflow: hidden; height: 100dvh; }
   .ptile .label { font-size: 11px; }
   .ptile b { font-size: clamp(32px, 3.4vw, 54px); }
 }
+/* Rand-Check (Freddy 15.11.): values shrink with their tile instead of being cut; round buttons never get squeezed */
+.ptile { container-type: inline-size; }
+.ptile b { font-size: clamp(16px, 21cqw, 36px); }
+.pgear, .ppill { flex: none; }
+.pseg button { padding: 4px 8px; line-height: 1.15; }
+.ptiles { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+.ptile .label { font-size: clamp(8px, 8cqw, 10px); letter-spacing: .06em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.ptile { padding-left: 10px; padding-right: 10px; }
+.pname { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
+.ppill { max-width: 46vw; }
+.pflash { left: 12px; right: 12px; margin: 0 auto; width: fit-content; transform: translateY(20px); }
+.pflash.on { transform: translateY(0); }
+@media (max-width: 360px) {
+  .pctl { gap: 4px; } .pctl button { font-size: 15px; } .pctl .pval b { font-size: 20px; }
+  .kmseg { grid-template-columns: 1fr 1fr !important; }
+}
+.pbrand { min-width: 0; overflow: hidden; }
+@media (max-width: 480px) { .ptop .pbrand b { display: none; } }
+@media (max-width: 360px) { body:not(.handy) .ptop .pbrand { display: none; } .ptop { gap: 6px; } .ptop .ppill { padding: 0 10px; } }
+.ptile b { font-size: clamp(14px, 18cqw, 36px); }
+.ptile .label { white-space: normal; overflow: visible; text-overflow: clip; line-height: 1.1; }
+.ptile b { font-size: clamp(13px, 16.5cqw, 36px); }
+#handy .pbrand { flex: none; overflow: visible; }
+#handy .ppill { flex: 0 1 auto; min-width: 0; }
+@media (max-width: 440px) { body.outdoor .ptop .pbrand { display: none; } body.outdoor .ptop .pback + * { margin-left: auto; } }

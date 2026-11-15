@@ -43,7 +43,7 @@ const shown = () => { const n = Math.max(1, Math.min(P.smooth, live.buf.length))
 const ZONES = [[55, 'Z1', '#6b7480'], [75, 'Z2', '#2f8fe0'], [90, 'Z3', '#2fb36b'], [105, 'Z4', '#f2b630'], [120, 'Z5', '#ff8a1f'], [150, 'Z6', '#ff4f3c'], [1e9, 'Z7', '#c43cff']];
 const zoneOf = w => ZONES.find(z => w / ftp() * 100 < z[0]);
 const M = {
-  cad: { l: 'Trittfrequenz', u: 'rpm', v: () => Math.round(live.cad) },
+  cad: { l: 'Kadenz', u: 'rpm', v: () => Math.round(live.cad) },
   hr: { l: 'Puls', u: 'bpm', v: () => live.hr || '–' },
   time: { l: 'Fahrzeit', u: '', v: () => fmtTime(R.moving) },
   wall: { l: 'Gesamtzeit', u: '', v: () => fmtTime(R.wall) },
@@ -52,7 +52,7 @@ const M = {
   avgSpeed: { l: 'Ø Tempo', u: 'km/h', v: () => fmtNum(R.moving ? R.d / R.moving * 3.6 : 0, 1) },
   avg: { l: 'Ø Leistung', u: 'W', v: () => Math.round(avgP()) },
   np: { l: 'NP', u: 'W', v: () => Math.round(NP()) },
-  max: { l: 'Max Leistung', u: 'W', v: () => R.max },
+  max: { l: 'Max Watt', u: 'W', v: () => R.max },
   kj: { l: 'Arbeit', u: 'kJ', v: () => Math.round(R.kj) },
   kcal: { l: 'Kalorien', u: 'kcal', v: () => Math.round(R.kj * 1.1) },
   tss: { l: 'TSS', u: '', v: () => Math.round(R.moving * NP() * IF() / (ftp() * 3600) * 100) },

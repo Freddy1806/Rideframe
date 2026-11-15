@@ -22,7 +22,7 @@ function render() {
   const out = rides.find(r => r.routeId === 'outdoor'), kw = kraft[0];
   const tile = (href, icon, name, sub) => `<a class="htile" href="${href}"><span class="hico">${icon}</span><b>${name}</b><small>${sub}</small></a>`;
   el.innerHTML = `<header class="ptop"><div class="pbrand" style="font-size:22px">RIDE<span>FRAME</span></div>
-      <button class="ppill ${acc ? 'on' : ''}" id="hAcc"><i></i>${acc ? esc(acc.name) : 'Anmelden'}</button></header>
+      <button class="ppill ${acc ? 'on' : ''}" id="hAcc"><i></i><span class="pname">${acc ? esc(acc.name) : 'Anmelden'}</span></button></header>
     ${!standalone ? installHint() : ''}
     <section class="kcard"><div class="label">Diese Woche</div><div class="kstats">
       <div><b>${wr.length}</b><small>Fahrten</small></div><div><b>${fmtNum(wr.reduce((a, r) => a + r.distance, 0) / 1000, 0)}</b><small>km</small></div>

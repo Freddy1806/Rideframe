@@ -13,4 +13,4 @@
 .hrow > span:first-child { width: 28px; text-align: center; color: var(--accent); font-weight: 900; }
 .hrow div { flex: 1; min-width: 0; } .hrow b { display: block; font-size: 15px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; } .hrow small { font-size: 12px; color: var(--muted); }
 .hrow > span:last-child { font-size: 13px; color: var(--muted); white-space: nowrap; font-weight: 700; }
-#handy .ppill { max-width: 60vw; }
+#handy .ppill { max-width: 52vw; }
