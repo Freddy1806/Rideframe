@@ -27,3 +27,12 @@ body.outdoor { min-height: 100dvh; }
 .oseg[hidden] { display: none; } .oseg b { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; } .oseg span { white-space: nowrap; font-variant-numeric: tabular-nums; }
 .osens .kx { position: static; flex: none; }
 .oseg b { white-space: normal; overflow: visible; }
+/* pocket mode: black, locked, GPS keeps running */
+#opocket { position: fixed; inset: 0; z-index: 3000; background: #000; display: grid; place-items: center; touch-action: none; user-select: none; -webkit-user-select: none; }
+#opocket .opin { display: grid; justify-items: center; gap: 10px; color: #3a3a3a; transition: transform 2s; }
+#opocket b { font-size: 44px; font-weight: 900; font-variant-numeric: tabular-nums; }
+#opocket span { font-size: 18px; font-weight: 800; }
+#opocket button { margin-top: 40px; width: 84px; height: 84px; border-radius: 50%; border: 2px solid #2a2a2a; background: none; position: relative; }
+#opocket button i { position: absolute; inset: -2px; border-radius: 50%; border: 3px solid #555; clip-path: inset(100% 0 0 0); }
+#opocket button.hold i { clip-path: inset(0 0 0 0); transition: clip-path 1.5s linear; border-color: #777; }
+#opocket small { font-size: 12px; color: #333; }

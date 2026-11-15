@@ -161,12 +161,12 @@ function render() {
     <div class="oseg" id="oSeg" hidden></div>
     <section class="pbig obig"><div class="label">Tempo</div><div class="pbigv"><b id="oSpd">0,0</b><small>km/h</small></div></section>
     <section class="ptiles">${O.tiles.map((k, i) => `<button class="ptile" data-t="${i}"><span class="label">${M[k]?.l || k}</span><b data-k="${k}">–</b><small>${M[k]?.u || ''}</small></button>`).join('')}</section>
-    <footer class="pfoot">${R.state === 'run' ? `<button class="btn ghost" id="oPause">Pause</button><button class="btn ghost" id="oLap">Runde</button>`
+    <footer class="pfoot">${R.state === 'run' ? `<button class="btn ghost" id="oPause">Pause</button><button class="btn ghost" id="oLap">Runde</button><button class="btn ghost" id="oPocket" title="Bildschirm schwarz, GPS läuft weiter">Tasche</button>`
       : `${R.state === 'ready' ? '<button class="btn ghost" id="oList">Fahrten</button>' : ''}<button class="btn" id="oStart">${R.state === 'pause' ? 'Weiter' : 'Start'}</button>${R.state === 'pause' ? '<button class="btn ghost" id="oEnd">Beenden</button>' : ''}`}</footer>`;
   initMap();
   const on = (id, f) => { const x = $(id); if (x) x.onclick = f; };
   on('#oStart', start); on('#oPause', pause); on('#oLap', lap); on('#oEnd', endSheet); on('#oList', () => { view = 'list'; render(); }); on('#oSet', settingsSheet);
-  on('#oSens', sensorSheet);
+  on('#oSens', sensorSheet); on('#oPocket', pocket);
   on('#oFollow', () => { follow = true; if (live.fix) map.setView(live.fix.pt, Math.max(map.getZoom(), 15)); });
   on('#oBig', () => { O.bigMap = !O.bigMap; saveSettings(); render(); });
   el.querySelectorAll('[data-t]').forEach(b => b.onclick = () => tileSheet(+b.dataset.t));
@@ -188,6 +188,20 @@ function paint() {
   el.querySelectorAll('[data-k]').forEach(b => { const v = String(M[b.dataset.k]?.v()); if (b.textContent !== v) b.textContent = v; });
   const sb = $('#oSeg'), a = segT.active; if (sb) { sb.hidden = !a; if (a) sb.innerHTML = `<b>◆ ${esc(a.seg.name)}</b><span>${fmtTime(R.wall - a.t0)} · ${Math.round(a.prog * 100)} %${a.seg.pr ? ` · PR ${fmtTime(a.seg.pr)}` : ''}</span>`; }
   const g = $('#oGps'); if (g) { const t = gpsTxt(); if (!g.textContent.endsWith(t)) g.innerHTML = `<i></i>${t}`; g.classList.toggle('on', !!live.fix && live.acc <= 40); }
+}
+/** pocket mode (Freddy 15.11.): browsers stop GPS when the screen goes off, so the screen stays on but black (an OLED
+ *  screen then hardly uses power) and locked against pocket touches; hold the ring 1.5 s to come back */
+function pocket() {
+  if ($('#opocket')) return;
+  const o = document.createElement('div'); o.id = 'opocket';
+  o.innerHTML = `<div class="opin"><b id="opT">–</b><span id="opD"></span><button id="opU" aria-label="Entsperren"><i></i></button><small>Zum Entsperren halten</small></div>`;
+  document.body.append(o); lockScreen();
+  const stats = () => { const t = $('#opT'), d = $('#opD'); if (!t) return clearInterval(iv); t.textContent = M.time.v(); d.textContent = `${M.dist.v()} km`; o.firstChild.style.transform = `translateY(${Math.round(Math.sin(Date.now() / 6e4) * 60)}px)`; };
+  const iv = setInterval(stats, 1000); stats();
+  let held = 0; const u = $('#opU'), stop = () => { clearTimeout(held); u.classList.remove('hold'); };
+  u.addEventListener('pointerdown', e => { e.preventDefault(); u.classList.add('hold'); held = setTimeout(() => { clearInterval(iv); o.remove(); }, 1500); });
+  ['pointerup', 'pointerleave', 'pointercancel'].forEach(t => u.addEventListener(t, stop));
+  o.addEventListener('contextmenu', e => e.preventDefault());
 }
 const nSens = () => hub.count;
 /** all Bluetooth sensors in one place (Freddy 15.11.): one "Gerät verbinden", the app detects what each device sends,
