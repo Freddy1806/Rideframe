@@ -2,7 +2,7 @@
 // The Strava app secret never reaches the browser: it lives in <data>/strava.json on the host:
 //   { "client_id": "12345", "client_secret": "…", "public_url": "https://mac-mini-….ts.net" }
 // Each browser that connects gets a random key (kept in its localStorage); the host keeps that rider's Strava tokens.
-import { readFile, writeFile, mkdir } from 'node:fs/promises';
+import { readFile, writeFile, mkdir, readdir } from 'node:fs/promises';
 import { randomBytes } from 'node:crypto';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
@@ -10,6 +10,7 @@ import { join } from 'node:path';
 const DATA = process.env.RIDEFRAME_DATA || join(homedir(), 'RIDEFRAME_data');
 const CFG = join(DATA, 'strava.json'), TOK = join(DATA, 'strava_tokens.json');
 const API = 'https://www.strava.com/api/v3';
+const imgDay = new Map(); // strava key -> { d: day, n: share images today }
 const pending = new Map(); // oauth state -> time
 const claims = new Map(), stateClaim = new Map(); // installed phone app (iOS): the login runs in a separate browser with its own storage, so the app fetches its key by a one-time claim code
 
@@ -56,14 +57,15 @@ export async function stravaApi(req, res, path) {
       const t = key && (await readJSON(TOK, {}))[key];
       return send(res, 200, { configured, connected: !!t, athlete: t?.athlete || null }), true;
     }
-    const cm = op.match(/^claim\/([a-f0-9]{16,64})$/);
-    if (cm) { const v = claims.get(cm[1]); if (v) claims.delete(cm[1]); return send(res, 200, { key: v?.key || null }), true; }
+    const cm = op.match(/^claim\/([a-f0-9]{32,64})$/); // one-time, 5 minutes: only the app that started this login knows the code
+    if (cm) { const v = claims.get(cm[1]); if (v) claims.delete(cm[1]); return send(res, 200, { key: v && Date.now() - v.t < 5 * 60e3 ? v.key : null }), true; }
     if (!configured) return send(res, 503, { error: 'Strava ist auf diesem Server noch nicht eingerichtet.' }), true;
     if (op === 'connect') {
       const state = randomBytes(12).toString('hex'); pending.set(state, Date.now());
-      { const c = new URL(req.url, 'http://x').searchParams.get('claim') || ''; if (/^[a-f0-9]{16,64}$/.test(c)) stateClaim.set(state, c); }
+      { const c = new URL(req.url, 'http://x').searchParams.get('claim') || ''; if (/^[a-f0-9]{32,64}$/.test(c)) stateClaim.set(state, c); }
+      if (pending.size > 2000) { pending.clear(); stateClaim.clear(); } // someone hammering the link never fills the memory
       for (const [c, v] of claims) if (Date.now() - v.t > 15 * 60e3) claims.delete(c);
-      for (const [s, t] of pending) if (Date.now() - t > 15 * 60e3) pending.delete(s);
+      for (const [s, t] of pending) if (Date.now() - t > 15 * 60e3) { pending.delete(s); stateClaim.delete(s); }
       const u = new URL('https://www.strava.com/oauth/authorize');
       u.search = new URLSearchParams({ client_id: cfg.client_id, response_type: 'code', redirect_uri: baseUrl(req, cfg) + '/api/strava/callback', approval_prompt: 'auto', scope: 'activity:write,read', state });
       res.writeHead(302, { Location: u.toString() }); res.end(); return true;
@@ -91,6 +93,9 @@ export async function stravaApi(req, res, path) {
       const b = await body(req, 8e6), m = String(b.jpg || '').match(/^data:image\/jpeg;base64,(.+)$/);
       if (!m) return send(res, 400, { error: 'kein Bild' }), true;
       const id = randomBytes(12).toString('hex'); await mkdir(join(DATA, 'shares'), { recursive: true });
+      const day = new Date().toDateString(), n = imgDay.get(key); // 40 share images per rider and day, 5000 on the host in total
+      if ((n?.d === day && n.n >= 40) || (await readdir(join(DATA, 'shares')).catch(() => [])).length >= 5000) return send(res, 429, { error: 'Zu viele Bilder für heute.' }), true;
+      imgDay.set(key, { d: day, n: n?.d === day ? n.n + 1 : 1 }); if (imgDay.size > 5000) imgDay.clear();
       await writeFile(join(DATA, 'shares', id + '.jpg'), Buffer.from(m[1], 'base64'));
       return send(res, 200, { url: baseUrl(req, cfg) + '/api/strava/image/' + id + '.jpg' }), true;
     }

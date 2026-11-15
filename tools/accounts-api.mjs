@@ -26,7 +26,7 @@ function withAcc(fn) {
 }
 
 /* ---- brakes for the public link: nobody tries passwords or creates accounts without end ---- */
-const TOKEN_DAYS = 180, MAX_FILES = 5000; // a login lasts half a year per device; rides / strength sessions per account
+const TOKEN_DAYS = 180, MAX_FILES = 5000, MAX_BYTES = 600e6; // 600 MB of rides per account // a login lasts half a year per device; rides / strength sessions per account
 const hits = new Map(); // key -> [timestamps]
 function limited(key, max, ms) { // true = over the limit (and counts this try)
   const now = Date.now(), l = (hits.get(key) || []).filter(t => now - t < ms);
@@ -37,6 +37,15 @@ function limited(key, max, ms) { // true = over the limit (and counts this try)
 }
 const clientIp = req => String(req.headers['x-forwarded-for'] || req.socket?.remoteAddress || '').split(',')[0].trim().slice(0, 60);
 const count = async d => (await readdir(d).catch(() => [])).length;
+/** room left for one more file in this folder? (number of files and their size together) */
+async function full(d) {
+  const fs = await readdir(d).catch(() => []); if (fs.length >= MAX_FILES) return true;
+  let n = 0; for (const f of fs) { n += (await stat(join(d, f)).catch(() => null))?.size || 0; if (n > MAX_BYTES) return true; }
+  return false;
+}
+/* invitation code (optional): one line in <data>/invite.txt or RIDEFRAME_INVITE. Set = only people who know it can create an account; logins are never affected. */
+const inviteCode = async () => (process.env.RIDEFRAME_INVITE || await readFile(join(DATA, 'invite.txt'), 'utf8').catch(() => '')).trim();
+const sameText = (a, b) => { const x = Buffer.from(String(a).trim().toLowerCase()), y = Buffer.from(String(b).trim().toLowerCase()); return x.length === y.length && timingSafeEqual(x, y); };
 
 async function login(a, u) {
   const old = Date.now() - TOKEN_DAYS * 864e5; for (const [k, v] of Object.entries(a.tokens)) if (!(v.at > old)) delete a.tokens[k];
@@ -120,6 +129,8 @@ export async function accountsApi(req, res, path) {
         const k = name.toLowerCase(), u = Object.hasOwn(a.users, k) ? a.users[k] : null;
         if (op === 'register') {
           if (pw.length < 6 || pw.length > 200) return send(res, 400, { error: 'Passwort: mindestens 6 Zeichen.' }); // new accounts only, old short passwords still log in
+          const inv = await inviteCode();
+          if (inv && !sameText(b.invite || '', inv)) return send(res, 403, { invite: true, error: b.invite ? 'Der Einladungscode stimmt nicht.' : 'Für ein neues Konto brauchst du den Einladungscode von Freddy.' });
           if (u) return send(res, 409, { error: `Den Namen „${u.name}“ gibt es schon.` });
           if (limited('reg:' + ip, 5, 36e5) || limited('reg', 30, 36e5)) return send(res, 429, { error: 'Gerade wurden sehr viele Konten angelegt. Bitte später nochmal.' });
           const salt = randomBytes(12).toString('hex');
@@ -165,7 +176,7 @@ export async function accountsApi(req, res, path) {
     const m = op.match(/^rides\/([\w-]{1,64})$/);
     if (m) {
       const f = join(dir, 'rides', m[1] + '.json');
-      if (req.method === 'PUT') { if (await count(join(dir, 'rides')) >= MAX_FILES) return send(res, 507, { error: 'Speicher für dieses Konto ist voll.' }); await writeJSON(f, await body(req)); boardCache = null; boardGen++; return send(res, 200, { ok: true }); }
+      if (req.method === 'PUT') { if (await full(join(dir, 'rides'))) return send(res, 507, { error: 'Speicher für dieses Konto ist voll.' }); await writeJSON(f, await body(req)); boardCache = null; boardGen++; return send(res, 200, { ok: true }); }
       if (req.method === 'DELETE') { await unlink(f).catch(() => {}); sums.delete(f); boardCache = null; boardGen++; return send(res, 200, { ok: true }); }
       const r = await readJSON(f, null); return r ? send(res, 200, r) : send(res, 404, { error: 'nicht gefunden' });
     }
