@@ -1,0 +1,63 @@
+/* RIDEFRAME phone app: bottom navigation, Activities feed (aktivitaeten.html) and Stats (statistik.html), UX review 16.11. */
+#feed, #stat { min-height: 100dvh; max-width: 620px; margin: 0 auto; padding: env(safe-area-inset-top) 14px calc(env(safe-area-inset-bottom) + 24px); display: flex; flex-direction: column; gap: 12px; }
+/* the bar is fixed: every page that has it keeps its last line free above it */
+body.hasnav :is(#handy, #profil, #feed, #stat) { padding-bottom: calc(env(safe-area-inset-bottom) + 92px); }
+
+/* ---- bottom navigation ---- */
+.bnav { position: fixed; left: 0; right: 0; bottom: 0; z-index: 40; display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); padding: 0 max(0px, calc((100% - 620px) / 2)) env(safe-area-inset-bottom);
+  background: color-mix(in srgb, var(--ink-2) 94%, transparent); border-top: 1px solid var(--line); backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px); }
+.bnav a { min-height: 58px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 3px; color: var(--muted); text-decoration: none; font-size: 11px; font-weight: 800; letter-spacing: .02em; -webkit-tap-highlight-color: transparent; }
+.bnav a span { white-space: nowrap; }
+.bnav .bico { width: 24px; height: 24px; }
+.bnav a.on { color: var(--accent); }
+.bnav a:active { opacity: .7; }
+/* the toast sits above the bar instead of on it */
+body.hasnav .pflash { bottom: calc(env(safe-area-inset-bottom) + 76px); }
+
+/* ---- activity rows (also on Home) ---- */
+button.hrow { width: 100%; text-align: left; font: inherit; color: inherit; }
+.frow { min-height: 56px; }
+.fside { flex: none; display: flex; flex-direction: column; align-items: flex-end; text-align: right; white-space: nowrap; }
+.fside b { font-size: 15px; font-weight: 900; font-variant-numeric: tabular-nums; } .fside b i { font-style: normal; font-size: 11px; color: var(--muted); font-weight: 700; }
+.fside small { font-size: 12px; color: var(--muted); font-weight: 700; }
+.hall { align-self: flex-end; color: var(--accent); font-weight: 800; font-size: 14px; text-decoration: none; padding: 10px 2px; min-height: 44px; display: inline-flex; align-items: center; }
+
+/* ---- feed ---- */
+.fchips { display: flex; flex-wrap: wrap; gap: 8px; }
+.fchip { height: 36px; min-width: 44px; padding: 0 14px; border-radius: 99px; border: 1px solid var(--line-2); color: var(--muted); font-size: 13px; font-weight: 800; white-space: nowrap; --c: var(--mc, var(--accent)); }
+:root[data-theme="light"] .fchip { --c: var(--mcl, var(--accent)); }
+.fchip.on { background: var(--c); border-color: var(--c); color: var(--accent-ink); }
+.fchip:not(.on)[style] { border-color: color-mix(in srgb, var(--c) 45%, var(--line-2)); }
+.fweek { display: flex; flex-direction: column; }
+.fwh { display: flex; justify-content: space-between; align-items: baseline; gap: 10px; padding: 8px 2px 2px; flex-wrap: wrap; }
+.fwh .label { color: var(--paper); }
+.fwt { font-size: 12px; color: var(--muted); font-weight: 700; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.fempty { display: flex; flex-direction: column; gap: 14px; margin-top: 20px; } .fempty .btn { text-decoration: none; } .fempty .hint { font-size: 15px; line-height: 1.4; }
+
+/* ---- detail sheet ---- */
+.fdet .label { margin-top: 4px; }
+.fdh { display: flex; align-items: center; gap: 12px; --c: var(--mc); } :root[data-theme="light"] .fdh { --c: var(--mcl); }
+.fdh h2 { flex: 1; min-width: 0; font-size: 24px; font-weight: 900; font-stretch: 108%; line-height: 1.1; overflow-wrap: anywhere; }
+.fdet .psum { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.fdet .psum b { font-size: 20px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.fdet .psum small { font-size: 11px; color: var(--muted); font-weight: 700; }
+.fchart .fhr { fill: none; stroke: #e5484d; stroke-width: 1.4; stroke-linejoin: round; opacity: .85; } .fchart .fhrt { fill: #e5484d; }
+.fdet .kdet b { cursor: default; }
+
+/* ---- stats ---- */
+.sseg { grid-template-columns: repeat(2, 1fr); margin: 10px 0 4px; }
+.sbars { display: grid; grid-template-columns: repeat(8, minmax(0, 1fr)); gap: 6px; height: 130px; margin-top: 8px; }
+.sbars > div { position: relative; display: flex; flex-direction: column; justify-content: flex-end; padding: 16px 0 16px; min-width: 0; }
+.sbars span { display: flex; flex-direction: column-reverse; border-radius: 3px 3px 0 0; overflow: hidden; min-height: 0; }
+.sbars i { display: block; min-height: 2px; background: var(--c); --c: var(--mc); } :root[data-theme="light"] .sbars i { --c: var(--mcl); }
+.sbars small { position: absolute; top: 0; left: 0; right: 0; text-align: center; font-size: 10px; font-weight: 800; white-space: nowrap; }
+.sbars em { position: absolute; bottom: 0; left: 0; right: 0; text-align: center; font-style: normal; font-size: 9px; color: var(--muted); white-space: nowrap; }
+.sleg span { --c: var(--mc); } :root[data-theme="light"] .sleg span { --c: var(--mcl); } .sleg span[style] i { background: var(--c); }
+.ftrow > i { font-style: normal; font-size: 20px; color: var(--muted); margin-left: auto; }
+.ftrow > div { flex: 1; }
+.slink { margin-top: 6px; }
+.slink > i { font-style: normal; color: var(--muted); font-size: 20px; }
+.hrecent { display: flex; flex-direction: column; }
+.fdet .psum .fldc { grid-column: 1 / -1; } /* load is the one number every sport has: its own full row with the source */
+.fspl div span:nth-child(2) { display: flex; align-items: center; } .fspl i { display: block; height: 8px; border-radius: 4px; background: var(--accent); opacity: .8; }
+@media (max-width: 360px) { .fdet .psum b { font-size: 17px; } .fdet .psum div { padding: 8px 10px; } }

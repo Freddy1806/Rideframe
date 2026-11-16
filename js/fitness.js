@@ -3,6 +3,7 @@
 // Source per activity, best first: watts (TSS) -> heart rate (share of heart-rate reserve) -> running pace against the
 // own threshold pace -> duration with a fixed factor. Pure functions; profil.js draws them.
 import { normPower, best, estimateFTP } from './stats.js';
+import { e1rm } from './kraftlib.js';
 
 const DAY = 864e5;
 const dayKey = t => { const d = new Date(t); d.setHours(0, 0, 0, 0); return d.getTime(); };
@@ -75,4 +76,11 @@ export function streak(acts, min = 3) {
   let w = new Date(wk(Date.now())), n = 0; if ((days.get(w.getTime())?.size || 0) < min) w.setDate(w.getDate() - 7);
   while ((days.get(w.getTime())?.size || 0) >= min) { n++; w.setDate(w.getDate() - 7); }
   return n;
+}
+/** the bests over all sports for the stats page: watts (20 / 5 min), longest ride, run times, strength records and the top lifts (estimated 1RM) */
+export function bests(acts) {
+  const bike = acts.filter(a => !a.kraft && sportOf(a) !== 'run'), kr = acts.filter(a => a.kraft), lifts = new Map();
+  for (const k of kr) for (const x of k.ex || []) if (x.t === 'w') for (const y of x.sets || []) if (y.done) { const v = e1rm(+y.kg, +y.r); if (v > (lifts.get(x.n) || 0)) lifts.set(x.n, v); }
+  return { p20: Math.max(0, ...bike.map(a => a.best20 || 0)), p5: Math.max(0, ...bike.map(a => a.best5 || 0)), longest: bike.slice().sort((a, b) => b.distance - a.distance)[0] || null,
+    run: runBests(acts), prs: kr.reduce((a, k) => a + (k.prs || 0), 0), lifts: [...lifts].sort((a, b) => b[1] - a[1]).slice(0, 3) };
 }

@@ -12,6 +12,14 @@ const seed = async p => p.evaluate(async ([long, NAME]) => { const { db } = awai
   await db.kvSet('kraft', [0, 1, 2].map(i => ({ id: 'w' + i, name: 'Oberkörper schwer und lang benannt', start: now - i * 3 * d, date: now - i * 3 * d + 3600e3, dur: 3725, prs: 2,
     ex: [{ k: 'bench', n: 'Bankdrücken', t: 'w', sets: [{ kg: 102.5, r: 10, done: true }, { kg: 100, r: 8, done: true }] }, { k: 'my_x', n: long, t: 'w', sets: [{ kg: 140, r: 12, done: true }] },
       { k: 'pull', n: 'Klimmzüge', t: 'bw', sets: [{ kg: 12.5, r: 12, done: true }] }, { k: 'plank', n: 'Plank', t: 'time', sets: [{ s: 185, done: true }] }] })));
+  // rides and runs for the feed, the stats and the detail sheet: samples rows like outdoor.js writes them
+  // [sec, metres, watts, km/h, cadence, bpm, lat, lon, ele]; 2 = power and 5 = heart rate are what fitness.js reads
+  const ride = (id, routeId, ago, dur, dist, w, nm2, x = {}) => ({ id, routeId, sport: routeId === 'run' ? 'run' : 'ride', outdoor: routeId === 'outdoor' || routeId === 'run', date: now - ago * d, complete: true, duration: dur, elapsed: dur + 60, distance: dist, gain: 420,
+    workout: nm2, avgPower: w, np: w ? w + 8 : 0, best20: w ? w + 12 : 0, best5: w ? w + 35 : 0, kj: Math.round(w * dur / 1000), ...x,
+    samples: [...Array(240)].map((_, i) => [i * dur / 240 | 0, Math.round(dist * i / 240), w ? w + Math.round(30 * Math.sin(i / 9)) : 0, Math.round(dist / dur * 36 * (1 + .1 * Math.sin(i / 20))) / 10, 88, 128 + Math.round(30 * Math.sin(i / 40)), 67.93 + i / 24000, 13.09 + i / 9000, 20 + i % 60]) });
+  for (const r of await db.all('rides')) await db.del('rides', r.id);
+  for (const r of [ride('lr1', 'outdoor', 0, 8125, 98765, 238, long + ' über den Pass und zurück'), ride('lr2', 'run', 1, 3725, 12345, 0, 'Lauf ' + long, { kmSplits: [301, 296, 305, 299, 310, 288, 301, 297, 300, 304, 299, 302] }),
+    ride('lr3', 'pure', 2, 3600, 33100, 215, 'Sweet spot', { laps: [{ t: 720, d: 6900, w: 238 }, { t: 720, d: 6800, w: 241 }] }), ride('lr4', 'kurz', 9, 2700, 21300, 180, '', { routeName: 'Lofoten Küste virtuell mit langem Namen' })]) await db.put('rides', r);
   await db.kvDel('outdoorDraft').catch(() => {}); await db.kvDel('runDraft').catch(() => {}); await db.kvDel('kraftDraft').catch(() => {}); await db.kvDel('pureDraft').catch(() => {});
   localStorage.setItem('rf_account', JSON.stringify({ token: 'x', name: NAME }));
 }, [LONG, NAME]);
@@ -46,6 +54,14 @@ const SCREENS = [
   ['rollentrainer-entwurf', '/pure.html', async p => { await p.evaluate(async () => { const { db } = await import('/js/db.js'); await db.kvSet('pureDraft', { state: 'pause', moving: 3725, wall: 3800, d: 42345, samples: [[1, 5, 200, 30, 90, 140]], savedAt: Date.now() }); }); await p.reload(); await p.waitForTimeout(700); }],
   ['kraft-schnell', '/kraft.html', async p => { await p.click('#kQuick'); await p.fill('#qT', 'Ich habe gerade 100 Liegestütze und 50 Klimmzüge gemacht, 3x10 Bankdrücken mit 80 kg, 30 Hampelmänner mit Klatschen, 2 Minuten Plank, blabla, ungefähr 45 Minuten trainiert'); await p.click('#qGo'); }],
   ['kraft-schnell-ki', '/kraft.html', async p => { await p.click('#kQuick'); await p.click('#qAi'); }],
+  ['aktivitaeten', '/aktivitaeten.html', null],
+  ['aktivitaeten-filter', '/aktivitaeten.html', p => p.click('[data-f="run"]')],
+  ['aktivitaet-fahrt', '/aktivitaeten.html', p => p.click('[data-act="r:lr1"]')],
+  ['aktivitaet-lauf', '/aktivitaeten.html', p => p.click('[data-act="r:lr2"]')],
+  ['aktivitaet-kraft', '/aktivitaeten.html', p => p.click('[data-act="k:w0"]')],
+  ['statistik', '/statistik.html', null],
+  ['statistik-last', '/statistik.html', p => p.click('[data-by="load"]')],
+  ['handy-aktivitaet', '/handy.html', p => p.click('[data-act]')],
   ['profil', '/profil.html', null],
   ['profil-daten', '/profil.html', p => p.click('#fSet')],
 ];

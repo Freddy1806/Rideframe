@@ -4,24 +4,12 @@
 import { db, uid } from './db.js';
 import { fmtTime, fmtNum, esc, twoWeeks, weekStat } from './util.js';
 import { applyTheme } from './theme.js';
+import { CATALOG, nm, e1rm, vol, doneSets, sessVol, setTxt, nSets, kgTxt, stravaText } from './kraftlib.js';
 
 const $ = (s, r = document) => r.querySelector(s);
 const el = document.getElementById('kraft');
 
-// t: w = weight × reps, bw = body weight (reps, optional extra kg), time = seconds
-const CATALOG = [
-  ['squat', 'Squat (barbell)', 'w', 'Legs'], ['dead', 'Deadlift', 'w', 'Back'], ['rdl', 'Romanian deadlift', 'w', 'Legs'],
-  ['bench', 'Bench press', 'w', 'Chest'], ['incline', 'Incline bench press (dumbbell)', 'w', 'Chest'], ['ohp', 'Overhead press', 'w', 'Shoulders'],
-  ['row', 'Bent-over row (barbell)', 'w', 'Back'], ['lat', 'Lat pulldown', 'w', 'Back'], ['cable', 'Seated cable row', 'w', 'Back'],
-  ['legpress', 'Leg press', 'w', 'Legs'], ['lunge', 'Lunges', 'w', 'Legs'], ['hipthrust', 'Hip thrust', 'w', 'Legs'],
-  ['legcurl', 'Leg curl', 'w', 'Legs'], ['legext', 'Leg extension', 'w', 'Legs'], ['calf', 'Calf raises', 'w', 'Legs'],
-  ['curl', 'Biceps curls', 'w', 'Arms'], ['tri', 'Triceps pushdown (cable)', 'w', 'Arms'], ['lateral', 'Lateral raises', 'w', 'Shoulders'], ['facepull', 'Face pulls', 'w', 'Shoulders'],
-  ['pull', 'Pull-ups', 'bw', 'Back'], ['chin', 'Chin-ups', 'bw', 'Back'], ['dip', 'Dips', 'bw', 'Chest'], ['push', 'Push-ups', 'bw', 'Chest'],
-  ['situp', 'Sit-ups', 'bw', 'Core'], ['legraise', 'Hanging leg raises', 'bw', 'Core'], ['burpee', 'Burpees', 'bw', 'Full body'], ['airsquat', 'Air squats', 'bw', 'Legs'],
-  ['stepup', 'Step-ups', 'bw', 'Legs'], ['plank', 'Plank', 'time', 'Core'], ['sideplank', 'Side plank', 'time', 'Core'], ['wallsit', 'Wall sit', 'time', 'Legs'],
-].map(([k, n, t, g]) => ({ k, n, t, g }));
 const GROUP = { Beine: 'Legs', Rücken: 'Back', Brust: 'Chest', Schultern: 'Shoulders', Arme: 'Arms', Rumpf: 'Core', Ganzkörper: 'Full body', Eigene: 'Custom' };
-const nm = x => CATALOG.find(e => e.k === x.k)?.n || x.n;
 
 let S = {}, list = [], mine = [], tpls = [], W = null, tab = 'start', rest = null, acc = null;
 
@@ -52,10 +40,6 @@ function exercises() {
 const exOf = k => exercises().find(e => e.k === k) || { k, n: k, t: 'w', g: '' };
 
 // ---------------- numbers ----------------
-const e1rm = (kg, r) => kg > 0 && r > 0 ? (r === 1 ? kg : kg * (1 + r / 30)) : 0; // Epley, like Strong
-const vol = sets => sets.filter(s => s.done).reduce((a, s) => a + (+s.kg || 0) * (+s.r || 0), 0);
-const doneSets = s => (s.ex || []).reduce((a, x) => a + x.sets.filter(y => y.done).length, 0);
-const sessVol = s => (s.ex || []).reduce((a, x) => a + vol(x.sets), 0);
 /** per session: one point for this exercise (only sessions that have done sets of it), oldest first */
 function history(k) {
   const out = [];
@@ -84,9 +68,6 @@ function prevSets(k, without = null) {
 }
 /** short form for the narrow "Vorher" column: the column heads already say kg / Wdh */
 const prevTxt = (t, s) => !s ? '–' : t === 'time' ? `${+s.s || 0} s` : t === 'bw' ? `${+s.kg ? '+' + fmtNum(+s.kg, +s.kg % 1 ? 1 : 0) + ' × ' : ''}${+s.r || 0}` : `${fmtNum(+s.kg || 0, +s.kg % 1 ? 1 : 0)} × ${+s.r || 0}`;
-const setTxt = (t, s) => !s ? '–' : t === 'time' ? `${+s.s || 0} s` : t === 'bw' ? `${+s.kg ? '+' + fmtNum(+s.kg, 1) + ' kg × ' : ''}${+s.r || 0} reps` : `${fmtNum(+s.kg || 0, 1)} kg × ${+s.r || 0}`;
-const nSets = n => `${n} ${n === 1 ? 'set' : 'sets'}`;
-const kgTxt = v => v >= 1000 ? fmtNum(v / 1000, 1) + ' t' : fmtNum(v) + ' kg';
 const dayTxt = t => new Date(t).toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short' });
 
 // ---------------- screens ----------------
@@ -368,11 +349,6 @@ function finishSheet() {
   $('#fStrava', s).onclick = async e => { e.target.disabled = true; const w = await save(); s.remove(); tab = 'hist'; render(); await toStrava(w); };
 }
 
-function stravaText(w) {
-  return w.ex.map(x => { const d = x.sets.filter(y => !y.warm); const same = d.every(y => setTxt(x.t, y) === setTxt(x.t, d[0]));
-    return `${nm(x)}: ${same ? `${d.length} × ${setTxt(x.t, d[0])}` : d.map(y => setTxt(x.t, y)).join(', ')}`; }).join('\n')
-    + `\n\n${nSets(doneSets(w))} · ${kgTxt(sessVol(w))} volume${w.prs ? ` · 🏆 ${w.prs} ${w.prs === 1 ? 'record' : 'records'}` : ''}\nRecorded with RIDEFRAME Strength.`;
-}
 async function toStrava(w) {
   const { stravaStatus, stravaConnect, stravaStrength } = await import('./stravaup.js');
   const st = await stravaStatus();
