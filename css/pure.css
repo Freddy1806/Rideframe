@@ -134,3 +134,6 @@ body.pure { overflow: hidden; height: 100dvh; }
 @media (max-width: 340px) { .ptile { grid-template-columns: minmax(0, 1fr); } .ptile b { font-size: clamp(15px, 19cqw, 30px); } .ptile small { line-height: 1.1; } }
 .pgear { display: grid; place-items: center; color: var(--paper); } .gico { width: 18px; height: 18px; }
 .psheetin > .label:first-child { font-size: 15px; color: var(--paper); letter-spacing: .08em; }
+/* phone pages scroll like a normal app page (Freddy 16.11.: "sieht aus, als würde man scrollen, aber man kann nicht"); never sideways */
+html:has(body.handy), html:has(body.kraft), html:has(body.outdoor) { height: auto; overflow-x: hidden; }
+body.handy, body.kraft, body.outdoor { height: auto; min-height: 100dvh; overflow-x: hidden; overflow-y: auto; overscroll-behavior-x: none; }

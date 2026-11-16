@@ -88,3 +88,8 @@
 @media (max-width: 360px) { .krest { gap: 6px; padding-left: 10px; padding-right: 10px; } .krest b { font-size: 24px; } .krest button { padding: 0 8px; } }
 :root[data-theme="light"] .kcancel { color: #c62828; border-color: #c6282855; }
 .kbarcap { margin-top: 14px; }
+/* week card: this week against last week */
+.hwhead { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; }
+.wdl { font-size: 10px; font-weight: 700; color: var(--muted); white-space: nowrap; }
+.kstats .wd { display: block; font-style: normal; font-size: 11px; font-weight: 700; color: var(--muted); margin-top: 2px; white-space: nowrap; font-variant-numeric: tabular-nums; }
+.kstats .wd.up { color: #2fbf71; } .kstats .wd.down { color: #e5484d; }

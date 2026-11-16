@@ -5,7 +5,7 @@ export const MODES = {
   ride: { name: 'Draußen fahren', short: 'Draußen', href: 'outdoor.html', color: '#ff5a1f', light: '#e04a12' },
   run: { name: 'Laufen', short: 'Laufen', href: 'outdoor.html?sport=run', color: '#2fd3e0', light: '#0a8f9c' },
   trainer: { name: 'Indoor-Trainer', short: 'Indoor', href: 'pure.html', color: '#8b6cff', light: '#6446e8' },
-  world: { name: 'Strecken & 3D', short: '3D-Welt', href: './?desktop', color: '#c6f432', light: '#5f8a00' },
+  world: { name: 'Virtuelle Strecken', short: 'Virtuell', href: './?desktop', color: '#c6f432', light: '#5f8a00' },
   kraft: { name: 'Kraft', short: 'Kraft', href: 'kraft.html', color: '#ff4f9a', light: '#d62c78' },
 };
 export const ACCENTS = { orange: ['#ff5a1f', '#e04a12'], violet: ['#8b6cff', '#6446e8'], lime: ['#c6f432', '#5f8a00'], cyan: ['#2fd3e0', '#0a8f9c'], pink: ['#ff4f9a', '#d62c78'] };

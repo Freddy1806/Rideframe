@@ -13,3 +13,13 @@ export function bestAvg(values, n) {
   for (let i = 0; i < values.length; i++) { s += values[i]; if (i >= n) s -= values[i - n]; if (i >= n - 1) best = Math.max(best, s / n); }
   return Math.round(best);
 }
+
+// ---- current week (Mon–Sun) against the week before (Freddy 16.11.: "immer die aktuelle Woche, von Woche zu Woche besser werden") ----
+export const weekStart = t => { const d = new Date(t); d.setHours(0, 0, 0, 0); d.setDate(d.getDate() - ((d.getDay() + 6) % 7)); return d.getTime(); };
+/** splits items into this week and the week before; at(item) = its time in ms */
+export function twoWeeks(items, at = x => x.date) { const w0 = weekStart(Date.now()), p = new Date(w0); p.setDate(p.getDate() - 7); const w1 = p.getTime();
+  return { cur: items.filter(x => at(x) >= w0), prev: items.filter(x => at(x) >= w1 && at(x) < w0) }; }
+/** one number of the week card: value, label and a small arrow line against last week; show(v) formats the number */
+export function weekStat(cur, prev, label, show = v => fmtNum(v)) {
+  const d = cur - prev, cls = d > 0 ? 'up' : d < 0 ? 'down' : '';
+  return `<div><b>${show(cur)}</b><small>${label}</small><em class="wd ${cls}">${d > 0 ? '▲' : d < 0 ? '▼' : '='} ${show(prev)}</em></div>`; }

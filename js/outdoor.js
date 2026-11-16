@@ -4,7 +4,7 @@
 // Browser limits: the phone screen must stay on (wake lock keeps it on); Bluetooth needs Chrome (Android) or Bluefy (iPhone).
 import { SensorHub, roleText } from './sensors.js';
 import { db, uid } from './db.js';
-import { fmtTime, fmtNum, esc, bestAvg } from './util.js';
+import { fmtTime, fmtNum, esc, bestAvg, twoWeeks, weekStat } from './util.js';
 import { SegTracker } from './segtrack.js';
 import { applyTheme, icon } from './theme.js';
 
@@ -16,7 +16,8 @@ const W = RUN ? { act: 'Lauf', acts: 'Läufe', brand: 'Laufen', time: 'Laufzeit'
   : { act: 'Fahrt', acts: 'Fahrten', brand: 'Draußen', time: 'Fahrzeit', go: 'Weiterfahren', none: 'Noch keine Fahrt draußen aufgezeichnet. Zurück, Start drücken und losfahren.', where: 'draußen', dflt: 'Ausfahrt' };
 const pace = mps => mps > .3 ? (s => `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2, '0')}`)(1000 / mps) : '–:––';
 if (RUN) { document.title = 'RIDEFRAME Laufen'; document.documentElement.dataset.mode = 'run'; }
-const TILES = () => `https://{s}.basemaps.cartocdn.com/${document.documentElement.dataset.theme === 'light' ? 'light_all' : 'dark_all'}/{z}/{x}/{y}{r}.png`, ATTR = '© OpenStreetMap, © CARTO';
+// map tiles without an API key (16.11.: CARTO now answers every tile with an "API KEY REQUIRED" image): Esri grey canvas, dark or light
+const TILES = () => `https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_${document.documentElement.dataset.theme === 'light' ? 'Light' : 'Dark'}_Gray_Base/MapServer/tile/{z}/{y}/{x}`, ATTR = 'Esri, HERE, Garmin, © OpenStreetMap';
 const el = document.getElementById('out');
 let S = { riderKg: 75, ftp: 250 }, O = { tiles: RUN ? ['time', 'dist', 'avgPace', 'hr', 'gain', 'lastKm', 'lapPace', 'kcal', 'clock'] : ['time', 'dist', 'avgSpeed', 'gain', 'hr', 'power', 'cad', 'alt', 'maxSpeed'], autoPause: true, bigMap: false, n: 9, map: 'small', big: 'main', pg: 0 };
 // data pages like Cadence (Freddy 16.11.): 4, 6 or 9 fields per page, up to 3 pages to swipe, big field and map size selectable
@@ -195,7 +196,7 @@ function render() {
 function initMap() {
   if (!window.L || !document.getElementById('oMap')) return;
   map = L.map('oMap', { zoomControl: false, attributionControl: true }).setView(live.fix?.pt || R.track[R.track.length - 1] || [51.16, 10.45], live.fix || R.track.length ? 16 : 5);
-  L.tileLayer(TILES(), { attribution: ATTR, maxZoom: 19, subdomains: 'abcd' }).addTo(map);
+  L.tileLayer(TILES(), { attribution: ATTR, maxZoom: 19, maxNativeZoom: 16 }).addTo(map);
   line = L.polyline(R.track, { color: getComputedStyle(document.documentElement).getPropertyValue('--accent').trim() || '#ff5a1f', weight: 5, opacity: .95 }).addTo(map);
   if (live.fix) onFixDot();
   drawSegs();
@@ -308,10 +309,10 @@ async function toStrava(rec, btn) {
 // ---------------- list + detail ----------------
 async function listView() {
   const rides = (await db.ridesFor(MODE).catch(() => [])).sort((a, b) => b.date - a.date);
-  const wk = Date.now() - 7 * 864e5, w = rides.filter(r => r.date > wk), tot = rides.reduce((a, r) => a + r.distance, 0);
+  const { cur: w, prev: pw } = twoWeeks(rides), sum = (l, f) => l.reduce((a, r) => a + (f(r) || 0), 0), tot = sum(rides, r => r.distance);
   el.innerHTML = `<header class="ptop"><button class="pback" id="oBack">‹</button><div class="pbrand"><b>RIDEFRAME </b><span>${W.brand}</span></div></header>
-    <section class="kcard"><div class="label">Letzte 7 Tage</div><div class="kstats"><div><b>${w.length}</b><small>${W.acts}</small></div><div><b>${fmtNum(w.reduce((a, r) => a + r.distance, 0) / 1000, 0)}</b><small>km</small></div>
-      <div><b>${fmtNum(w.reduce((a, r) => a + r.gain, 0))}</b><small>hm</small></div><div><b>${fmtTime(w.reduce((a, r) => a + r.duration, 0))}</b><small>Zeit</small></div></div>
+    <section class="kcard"><div class="hwhead"><span class="label">Diese Woche</span><span class="wdl">▲▼ zur Vorwoche</span></div><div class="kstats">${weekStat(w.length, pw.length, W.acts)}${weekStat(Math.round(sum(w, r => r.distance) / 1000), Math.round(sum(pw, r => r.distance) / 1000), 'km')}
+      ${weekStat(sum(w, r => r.gain), sum(pw, r => r.gain), 'Anstieg (m)')}${weekStat(sum(w, r => r.duration), sum(pw, r => r.duration), 'Zeit', fmtTime)}</div>
       <div class="hint" style="margin-top:8px">Insgesamt ${rides.length} ${rides.length === 1 ? W.act : W.acts} · ${fmtNum(tot / 1000, 0)} km ${W.where}</div></section>
     ${rides.length ? rides.map(r => `<div class="kcard orow" data-id="${r.id}">${shape(r)}<div class="oinfo"><b>${esc(r.workout || W.dflt)}</b><span>${new Date(r.date).toLocaleDateString('de-DE', { weekday: 'short', day: 'numeric', month: 'short', year: 'numeric' })}</span>
       <div class="khm"><span>${fmtNum(r.distance / 1000, 1)} km</span><span>${fmtTime(r.duration)}</span><span>${r.gain} m Anstieg</span><span>${RUN ? pace(r.duration ? r.distance / r.duration : 0) + ' min/km' : fmtNum(r.duration ? r.distance / r.duration * 3.6 : 0, 1) + ' km/h'}</span></div></div></div>`).join('')
@@ -342,7 +343,7 @@ function detail(r) {
     <div class="label" style="margin-top:10px">Höhe &amp; Tempo</div>${profile(r)}
     <div class="pfoot col"><button class="btn" id="dStrava">Zu Strava hochladen</button><button class="btn ghost" id="dGpx">GPX herunterladen</button><button class="btn danger" id="dDel">Löschen</button></div>`);
   if (window.L && pts.length > 1) setTimeout(() => {
-    const m = L.map($('#dMap', s), { zoomControl: false }); L.tileLayer(TILES(), { attribution: ATTR, maxZoom: 19, subdomains: 'abcd' }).addTo(m);
+    const m = L.map($('#dMap', s), { zoomControl: false }); L.tileLayer(TILES(), { attribution: ATTR, maxZoom: 19, maxNativeZoom: 16 }).addTo(m);
     const ln = L.polyline(pts.map(p => [p[6], p[7]]), { color: getComputedStyle(document.documentElement).getPropertyValue('--accent').trim(), weight: 4 }).addTo(m);
     L.circleMarker([pts[0][6], pts[0][7]], { radius: 6, color: '#fff', fillColor: '#2fb36b', fillOpacity: 1, weight: 2 }).addTo(m);
     L.circleMarker([pts[pts.length - 1][6], pts[pts.length - 1][7]], { radius: 6, color: '#fff', fillColor: '#ff4f3c', fillOpacity: 1, weight: 2 }).addTo(m);

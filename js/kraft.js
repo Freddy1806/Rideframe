@@ -2,7 +2,7 @@
 // every exercise has its graph (estimated 1RM, heaviest weight, volume, reps), records are marked, and a finished workout
 // can go to Strava as "Krafttraining". Stored in kv 'kraft' (newest first) and, with an account, on the host (account.js syncKraft).
 import { db, uid } from './db.js';
-import { fmtTime, fmtNum, esc } from './util.js';
+import { fmtTime, fmtNum, esc, twoWeeks, weekStat } from './util.js';
 import { applyTheme } from './theme.js';
 
 const $ = (s, r = document) => r.querySelector(s);
@@ -101,11 +101,11 @@ function render() {
 
 const hm = s => `${Math.floor(s / 3600)}:${String(Math.floor(s % 3600 / 60)).padStart(2, '0')}`; // week total as h:mm, fits the narrow column
 function startView() {
-  const wk = Date.now() - 7 * 864e5, week = list.filter(s => (s.start || s.date) > wk);
+  const { cur: week, prev } = twoWeeks(list, s => s.start || s.date), sum = (l, f) => l.reduce((a, s) => a + f(s), 0);
   const last = []; for (const s of list) if (!last.some(x => x.name === s.name) && last.length < 3) last.push(s);
-  return `<section class="kcard kweek"><div class="label">Letzte 7 Tage</div><div class="kstats">
-      <div><b>${week.length}</b><small>Workouts</small></div><div><b>${week.reduce((a, s) => a + doneSets(s), 0)}</b><small>Sätze</small></div>
-      <div><b>${kgTxt(week.reduce((a, s) => a + sessVol(s), 0))}</b><small>Volumen</small></div><div><b>${hm(week.reduce((a, s) => a + (s.dur || 0), 0))}</b><small>Dauer (h)</small></div></div>
+  return `<section class="kcard kweek"><div class="hwhead"><span class="label">Diese Woche</span><span class="wdl">▲▼ zur Vorwoche</span></div><div class="kstats">
+      ${weekStat(week.length, prev.length, 'Workouts')}${weekStat(sum(week, doneSets), sum(prev, doneSets), 'Sätze')}
+      ${weekStat(sum(week, sessVol), sum(prev, sessVol), 'Volumen', kgTxt)}${weekStat(sum(week, s => s.dur || 0), sum(prev, s => s.dur || 0), 'Dauer (h)', hm)}</div>
       ${weekBars()}</section>
     <button class="btn kbig" id="kNew">Leeres Workout starten</button>
     ${tpls.length ? `<h3 class="ksec">Vorlagen</h3><div class="kgrid">${tpls.map((t, i) => `<div class="kcard ktpl" data-tpl="${i}"><b>${esc(t.name)}</b><span>${t.ex.map(x => esc(exOf(x.k).n)).join(', ')}</span><button class="kx" data-tdel="${i}" title="Vorlage löschen">✕</button></div>`).join('')}</div>` : ''}
