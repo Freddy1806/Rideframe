@@ -7,7 +7,7 @@ import { db } from './db.js';
 const HRS = 0x180d, HRM = 0x2a37, CPS = 0x1818, CPM = 0x2a63, CSC = 0x1816, CSCM = 0x2a5b, FTMS = 0x1826, IBD = 0x2ad2;
 const NAMES = ['HRM', 'Polar', 'TICKR', 'Wahoo', 'KICKR', 'ELEMNT', 'Garmin', 'HRM-Pro', 'COOSPO', 'Coospo', 'CooSpo', 'Magene', 'Suunto', 'Decathlon', 'XOSS', 'iGPSPORT',
   'Favero', 'ASSIOMA', 'Assioma', 'Stages', '4iiii', 'SRM', 'Quarq', 'Rally', 'Vector', 'PowerTap', 'Rotor', 'SIGEYI', 'Shimano', 'Verity', 'H10', 'H9', 'Forerunner', 'fenix', 'Edge', 'RPM', 'Whoop', 'WHOOP', 'Amazfit'];
-const WHAT = { hr: 'Puls', power: 'Leistung', cad: 'Trittfrequenz', speed: 'Tempo' };
+const WHAT = { hr: 'Heart rate', power: 'Power', cad: 'Cadence', speed: 'Speed' };
 
 export class SensorHub extends EventTarget {
   constructor() { super(); this.live = { hr: 0, power: 0, cad: 0, speed: 0 }; this.at = { hr: 0, power: 0, cad: 0 }; this.devs = new Map(); this.known = []; }
@@ -47,7 +47,7 @@ export class SensorHub extends EventTarget {
     if (await sub(CPS, CPM, v => this._cpm(v, rec))) { roles.add('power'); roles.add('cad'); }
     else if (await sub(FTMS, IBD, v => this._ibd(v))) { roles.add('power'); roles.add('cad'); } // Wahoo KICKR & other smart trainers
     if (await sub(CSC, CSCM, v => this._csc(v, rec))) { roles.add('cad'); roles.add('speed'); }
-    if (!roles.size) { dev.gatt.disconnect(); this.devs.delete(dev.id); throw new Error(`„${dev.name || 'Gerät'}“ sendet weder Puls noch Leistung noch Trittfrequenz. Bei Uhren erst „Herzfrequenz senden“ einschalten.`); }
+    if (!roles.size) { dev.gatt.disconnect(); this.devs.delete(dev.id); throw new Error(`“${dev.name || 'Device'}” sends neither heart rate nor power nor cadence. On a watch, first turn on “broadcast heart rate”.`); }
     try { rec.battery = (await (await (await srv.getPrimaryService('battery_service')).getCharacteristic('battery_level')).readValue()).getUint8(0); } catch {}
     rec.roles = [...roles];
     if (!rec.wired) { rec.wired = true; dev.addEventListener('gattserverdisconnected', () => this._lost(rec)); }

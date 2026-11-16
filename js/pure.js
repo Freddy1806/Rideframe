@@ -43,32 +43,32 @@ const shown = () => { const n = Math.max(1, Math.min(P.smooth, live.buf.length))
 const ZONES = [[55, 'Z1', '#6b7480'], [75, 'Z2', '#2f8fe0'], [90, 'Z3', '#2fb36b'], [105, 'Z4', '#f2b630'], [120, 'Z5', '#ff8a1f'], [150, 'Z6', '#ff4f3c'], [1e9, 'Z7', '#c43cff']];
 const zoneOf = w => ZONES.find(z => w / ftp() * 100 < z[0]);
 const M = {
-  cad: { l: 'Kadenz', u: 'rpm', v: () => Math.round(live.cad) },
-  hr: { l: 'Puls', u: 'bpm', v: () => live.hr || '–' },
-  time: { l: 'Fahrzeit', u: '', v: () => fmtTime(R.moving) },
-  wall: { l: 'Gesamtzeit', u: '', v: () => fmtTime(R.wall) },
-  dist: { l: 'Strecke', u: 'km', v: () => fmtNum(R.d / 1000, 2) },
-  speed: { l: 'Tempo', u: 'km/h', v: () => fmtNum(R.v * 3.6, 1) },
-  avgSpeed: { l: 'Ø Tempo', u: 'km/h', v: () => fmtNum(R.moving ? R.d / R.moving * 3.6 : 0, 1) },
-  avg: { l: 'Ø Leistung', u: 'W', v: () => Math.round(avgP()) },
+  cad: { l: 'Cadence', u: 'rpm', v: () => Math.round(live.cad) },
+  hr: { l: 'Heart rate', u: 'bpm', v: () => live.hr || '–' },
+  time: { l: 'Time', u: '', v: () => fmtTime(R.moving) },
+  wall: { l: 'Elapsed', u: '', v: () => fmtTime(R.wall) },
+  dist: { l: 'Distance', u: 'km', v: () => fmtNum(R.d / 1000, 2) },
+  speed: { l: 'Speed', u: 'km/h', v: () => fmtNum(R.v * 3.6, 1) },
+  avgSpeed: { l: 'Avg speed', u: 'km/h', v: () => fmtNum(R.moving ? R.d / R.moving * 3.6 : 0, 1) },
+  avg: { l: 'Avg power', u: 'W', v: () => Math.round(avgP()) },
   np: { l: 'NP', u: 'W', v: () => Math.round(NP()) },
-  max: { l: 'Max Leistung', u: 'W', v: () => R.max },
-  kj: { l: 'Arbeit', u: 'kJ', v: () => Math.round(R.kj) },
-  kcal: { l: 'Kalorien', u: 'kcal', v: () => Math.round(R.kj * 1.1) },
+  max: { l: 'Max power', u: 'W', v: () => R.max },
+  kj: { l: 'Work', u: 'kJ', v: () => Math.round(R.kj) },
+  kcal: { l: 'Calories', u: 'kcal', v: () => Math.round(R.kj * 1.1) },
   tss: { l: 'TSS', u: '', v: () => Math.round(R.moving * NP() * IF() / (ftp() * 3600) * 100) },
   if: { l: 'IF', u: '', v: () => fmtNum(IF(), 2) },
   wkg: { l: 'W/kg', u: '', v: () => fmtNum(shown() / (S.riderKg || 75), 1) },
   pct: { l: '% FTP', u: '%', v: () => Math.round(shown() / ftp() * 100) },
   zone: { l: 'Zone', u: '', v: () => zoneOf(shown())[1] },
-  lapTime: { l: 'Rundenzeit', u: '', v: () => fmtTime(lapNow().t) },
-  lapAvg: { l: 'Ø Runde', u: 'W', v: () => Math.round(lapNow().w) },
-  lapDist: { l: 'Runde km', u: 'km', v: () => fmtNum(lapNow().d / 1000, 2) },
-  laps: { l: 'Runde', u: '', v: () => R.laps.length + 1 },
-  best5: { l: 'Beste 5 min', u: 'W', v: () => bestAvg(R.pw, 300) || '–' },
-  best20: { l: 'Beste 20 min', u: 'W', v: () => bestAvg(R.pw, 1200) || '–' },
-  hrMax: { l: 'Max Puls', u: 'bpm', v: () => R.hrMax || '–' },
-  target: { l: 'Ziel', u: 'W', v: () => targetW() ?? '–' },
-  clock: { l: 'Uhrzeit', u: '', v: () => new Date().toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' }) },
+  lapTime: { l: 'Lap time', u: '', v: () => fmtTime(lapNow().t) },
+  lapAvg: { l: 'Lap avg', u: 'W', v: () => Math.round(lapNow().w) },
+  lapDist: { l: 'Lap km', u: 'km', v: () => fmtNum(lapNow().d / 1000, 2) },
+  laps: { l: 'Lap', u: '', v: () => R.laps.length + 1 },
+  best5: { l: 'Best 5 min', u: 'W', v: () => bestAvg(R.pw, 300) || '–' },
+  best20: { l: 'Best 20 min', u: 'W', v: () => bestAvg(R.pw, 1200) || '–' },
+  hrMax: { l: 'Max HR', u: 'bpm', v: () => R.hrMax || '–' },
+  target: { l: 'Target', u: 'W', v: () => targetW() ?? '–' },
+  clock: { l: 'Clock', u: '', v: () => new Date().toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' }) },
 };
 
 // ---------------- control ----------------
@@ -104,7 +104,7 @@ function tick(dt) {
   R.v = step(R.v, live.power, P.mode === 'grade' ? P.grade : 0, dt, pp);
   if (!counting) { R.v = 0; return; }
   R.moving += dt; R.d += R.v * dt; R.kj += live.power * dt / 1000;
-  if (P.mode === 'work' && !R.wDone) { R.wT += dt; const a = wAt(); if (a?.done) { R.wDone = true; flash('Workout geschafft. Weiter frei fahren oder beenden.'); P.mode = 'erg'; P.erg = Math.round(ftp() * .5); render(); } }
+  if (P.mode === 'work' && !R.wDone) { R.wT += dt; const a = wAt(); if (a?.done) { R.wDone = true; flash('Workout done. Keep riding freely or finish.'); P.mode = 'erg'; P.erg = Math.round(ftp() * .5); render(); } }
   if (Math.floor(R.moving) > R.lastSec) { // one sample per second
     R.lastSec = Math.floor(R.moving);
     const w = Math.round(live.power); R.pw.push(w); R.max = Math.max(R.max, w); R.hrMax = Math.max(R.hrMax, live.hr || 0);
@@ -123,12 +123,12 @@ function pause() { R.state = 'pause'; render(); }
 function lap() {
   if (R.state !== 'run') return;
   const l = lapNow(); R.laps.push({ t: Math.round(l.t), d: Math.round(l.d), w: Math.round(l.w) });
-  R.lap = { t: R.moving, d: R.d, sum: 0, n: 0 }; flash(`Runde ${R.laps.length}: ${fmtTime(l.t)} · Ø ${Math.round(l.w)} W`);
+  R.lap = { t: R.moving, d: R.d, sum: 0, n: 0 }; flash(`Lap ${R.laps.length}: ${fmtTime(l.t)} · avg ${Math.round(l.w)} W`);
 }
 function record() {
   const pw = R.pw, w = work();
   return { id: uid(), routeId: 'pure', date: Date.now(), complete: true, duration: Math.round(R.moving), distance: Math.round(R.d), gain: 0, startD: 0,
-    workout: w?.name || (P.mode === 'grade' ? 'Steigung' : 'ERG'), avgPower: Math.round(avgP()), maxPower: Math.max(0, ...pw), best5: bestAvg(pw, 300), best20: bestAvg(pw, 1200),
+    workout: w?.name || (P.mode === 'grade' ? 'Grade' : 'ERG'), avgPower: Math.round(avgP()), maxPower: Math.max(0, ...pw), best5: bestAvg(pw, 300), best20: bestAvg(pw, 1200),
     np: Math.round(NP()), kj: Math.round(R.kj), laps: R.laps.length ? [...R.laps, { t: Math.round(lapNow().t), d: Math.round(lapNow().d), w: Math.round(lapNow().w) }] : undefined, samples: R.samples };
 }
 
@@ -145,7 +145,7 @@ function control() {
   const w = work();
   return `<div class="pwork"><select id="pWork">${allWorkouts().map(x => `<option value="${x.id}" ${x.id === P.workout ? 'selected' : ''}>${x.mine ? '★ ' : ''}${esc(x.name)} · ${Math.round(workoutDuration(x) / 60)} min</option>`).join('')}</select>
     <div class="pctl small"><button data-i="-5">−5 %</button><span class="pint" id="pInt">${R.intensity} %</span><button data-i="5">+5 %</button></div>
-    ${R.state === 'ready' ? `<div class="pwed"><button class="btn ghost ksmall" id="pWAdapt">Anpassen</button><button class="btn ghost ksmall" id="pWNew">+ Neu bauen</button></div>` : ''}</div>
+    ${R.state === 'ready' ? `<div class="pwed"><button class="btn ghost ksmall" id="pWAdapt">Adjust</button><button class="btn ghost ksmall" id="pWNew">+ Build new</button></div>` : ''}</div>
     ${w ? `<div class="pwsvg" id="pWsvg">${workoutSVG(w, R.wT, 40)}</div><div class="pstep" id="pStep"></div>` : ''}`;
 }
 
@@ -154,26 +154,26 @@ function render() {
   const bt = !trainer.connected && !DEMO, bleOk = Trainer.supported();
   el.innerHTML = `
   <header class="ptop">
-    <a class="pback" href="handy.html" title="Zur App">‹</a><div class="pbrand"><b>RIDEFRAME </b><span>Indoor</span></div>
+    <a class="pback" href="handy.html" title="Back to app">‹</a><div class="pbrand"><b>RIDEFRAME </b><span>Indoor</span></div>
     <button class="ppill ${trainer.connected || DEMO ? 'on' : ''}" id="pTr"><i></i>${DEMO ? 'Demo' : trainer.connected ? esc(trainer.device?.name || 'Trainer') : 'Trainer'}</button>
-    <button class="ppill ${hrStrap.connected ? 'on' : ''}" id="pHr"><i></i>Puls</button>
-    <button class="pgear" id="pSetBtn" title="Einstellungen">${icon('gear', 'gico')}</button>
+    <button class="ppill ${hrStrap.connected ? 'on' : ''}" id="pHr"><i></i>HR</button>
+    <button class="pgear" id="pSetBtn" title="Settings" aria-label="Settings">${icon('gear', 'gico')}</button>
   </header>
-  ${!bleOk && !DEMO ? `<div class="pnote">Bluetooth ist hier nicht verfügbar, der Trainer lässt sich nicht verbinden.</div>` : ''}
+  ${!bleOk && !DEMO ? `<div class="pnote">Bluetooth is not available here, so the trainer cannot connect.</div>` : ''}
   <section class="pbig" id="pBig">
-    <div class="label">Leistung ${P.smooth > 1 ? `· ${P.smooth} s` : ''}</div>
+    <div class="label">Power ${P.smooth > 1 ? `· ${P.smooth} s` : ''}</div>
     <div class="pbigv"><b id="pPow">0</b><small>W</small></div>
     <div class="pbigs"><span id="pTarget"></span><span id="pZone"></span></div>
     <div class="pzbar"><i id="pZbar"></i></div>
   </section>
   <section class="ptiles">${P.tiles.map((k, i) => `<button class="ptile" data-t="${i}"><span class="label">${M[k]?.l || k}</span><b data-k="${k}">–</b><small>${M[k]?.u || ''}</small></button>`).join('')}</section>
   <section class="pmode">
-    <div class="pseg">${[['erg', 'ERG'], ['grade', 'Steigung'], ['work', 'Workout']].map(([k, n]) => `<button class="${P.mode === k ? 'on' : ''}" data-m="${k}">${n}</button>`).join('')}</div>
+    <div class="pseg">${[['erg', 'ERG'], ['grade', 'Grade'], ['work', 'Workout']].map(([k, n]) => `<button class="${P.mode === k ? 'on' : ''}" data-m="${k}">${n}</button>`).join('')}</div>
     ${control()}
   </section>
   <footer class="pfoot">
-    ${R.state === 'run' ? `<button class="btn ghost" id="pPause">Pause</button><button class="btn ghost" id="pLap">Runde</button>`
-      : `<button class="btn" id="pStart">${R.state === 'pause' ? 'Weiter' : 'Start'}</button>${R.state === 'pause' ? '<button class="btn ghost" id="pEnd">Beenden</button>' : ''}`}
+    ${R.state === 'run' ? `<button class="btn ghost" id="pPause">Pause</button><button class="btn ghost" id="pLap">Lap</button>`
+      : `<button class="btn" id="pStart">${R.state === 'pause' ? 'Resume' : 'Start'}</button>${R.state === 'pause' ? '<button class="btn ghost" id="pEnd">Finish</button>' : ''}`}
   </footer>
   <div class="pflash" id="pflash"></div>`;
   wire(); paint();
@@ -207,7 +207,7 @@ function paint() {
   if (R.state === 'done' || !$('#pPow')) return;
   const w = shown(), z = zoneOf(w), t = targetW();
   $('#pPow').textContent = Math.round(w);
-  $('#pTarget').textContent = t != null ? `Ziel ${t} W` : P.mode === 'grade' ? `Steigung ${fmtNum(P.grade, 1)} %` : '';
+  $('#pTarget').textContent = t != null ? `Target ${t} W` : P.mode === 'grade' ? `Grade ${fmtNum(P.grade, 1)} %` : '';
   $('#pZone').textContent = `${z[1]} · ${Math.round(w / ftp() * 100)} % FTP`;
   $('#pZbar').style.cssText = `width:${Math.min(100, w / ftp() / 1.5 * 100)}%;background:${z[2]}`;
   $('#pBig').style.setProperty('--z', z[2]);
@@ -216,7 +216,7 @@ function paint() {
   el.querySelectorAll('[data-k]').forEach(b => { const v = M[b.dataset.k]?.v(); if (b.textContent !== String(v)) b.textContent = v; });
   const a = wAt();
   if (a && $('#pStep')) {
-    $('#pStep').innerHTML = a.done ? 'Workout fertig' : `<b>${esc(a.step.label || '')}</b> · noch ${fmtTime(a.left)}${a.next ? ` · danach ${Math.round(a.nextTarget * R.intensity / 100)} W` : ''}`;
+    $('#pStep').innerHTML = a.done ? 'Workout done' : `<b>${esc(a.step.label || '')}</b> · ${fmtTime(a.left)} left${a.next ? ` · then ${Math.round(a.nextTarget * R.intensity / 100)} W` : ''}`;
     const w0 = work(); if (w0 && R.state === 'run') $('#pWsvg').innerHTML = workoutSVG(w0, R.wT, 40);
   }
   $('.ppill#pHr')?.classList.toggle('on', hrStrap.connected);
@@ -230,10 +230,10 @@ function sheet(html) {
 }
 function numberSheet() {
   const erg = P.mode === 'erg';
-  const s = sheet(`<div class="label">${erg ? 'Ziel-Leistung' : 'Steigung'}</div>
+  const s = sheet(`<div class="label">${erg ? 'Target power' : 'Grade'}</div>
     <input id="pNum" type="number" inputmode="decimal" value="${erg ? P.erg : P.grade}" step="${erg ? 5 : 0.5}">
     ${erg ? `<div class="pquick">${[50, 65, 75, 90, 100, 105, 120].map(p => `<button data-p="${p}">${p} %<small>${Math.round(ftp() * p / 100)} W</small></button>`).join('')}</div>` : ''}
-    <div class="pfoot"><button class="btn ghost" id="pNo">Abbrechen</button><button class="btn" id="pOk">OK</button></div>`);
+    <div class="pfoot"><button class="btn ghost" id="pNo">Cancel</button><button class="btn" id="pOk">OK</button></div>`);
   const inp = $('#pNum', s); setTimeout(() => { inp.focus(); inp.select(); }, 50);
   const ok = v => { if (Number.isFinite(v)) { if (erg) P.erg = Math.max(0, Math.min(2000, Math.round(v))); else P.grade = Math.max(-10, Math.min(20, v)); saveSettings(); applyTrainer(); } s.remove(); render(); };
   s.querySelectorAll('[data-p]').forEach(b => b.onclick = () => ok(ftp() * b.dataset.p / 100));
@@ -242,17 +242,17 @@ function numberSheet() {
   $('#pNo', s).onclick = () => s.remove();
 }
 function tileSheet(i) {
-  const s = sheet(`<div class="label">Feld ${i + 1}: Wert wählen</div><div class="ppick">${Object.entries(M).map(([k, m]) => `<button data-k2="${k}" class="${P.tiles[i] === k ? 'on' : ''}">${m.l}</button>`).join('')}</div>`);
+  const s = sheet(`<div class="label">Field ${i + 1}: choose value</div><div class="ppick">${Object.entries(M).map(([k, m]) => `<button data-k2="${k}" class="${P.tiles[i] === k ? 'on' : ''}">${m.l}</button>`).join('')}</div>`);
   s.querySelectorAll('[data-k2]').forEach(b => b.onclick = () => { P.tiles[i] = b.dataset.k2; saveSettings(); s.remove(); render(); });
 }
 function settingsSheet() {
-  const s = sheet(`<div class="label">Einstellungen</div>
+  const s = sheet(`<div class="label">Settings</div>
     <label class="prow">FTP<input id="sFtp" type="number" inputmode="numeric" value="${S.ftp || ''}"><small>W</small></label>
-    <label class="prow">Gewicht<input id="sKg" type="number" inputmode="decimal" value="${S.riderKg}"><small>kg</small></label>
-    <label class="prow">Leistung glätten<select id="sSm">${[1, 3, 5, 10].map(n => `<option value="${n}" ${P.smooth === n ? 'selected' : ''}>${n} s</option>`).join('')}</select></label>
+    <label class="prow">Weight<input id="sKg" type="number" inputmode="decimal" value="${S.riderKg}"><small>kg</small></label>
+    <label class="prow">Smooth power<select id="sSm">${[1, 3, 5, 10].map(n => `<option value="${n}" ${P.smooth === n ? 'selected' : ''}>${n} s</option>`).join('')}</select></label>
     <label class="prow">Auto-Pause<input id="sAp" type="checkbox" class="toggle" ${P.autoPause ? 'checked' : ''}></label>
-    <button class="btn ghost small" id="sReset" style="margin-top:6px">Felder zurücksetzen</button>
-    <div class="pfoot"><button class="btn" id="sOk">Fertig</button></div>`);
+    <button class="btn ghost small" id="sReset" style="margin-top:6px">Reset fields</button>
+    <div class="pfoot"><button class="btn" id="sOk">Done</button></div>`);
   $('#sReset', s).onclick = () => { P.tiles = ['cad', 'hr', 'time', 'dist', 'speed', 'avg', 'np', 'kj', 'lapTime', 'lapAvg', 'max', 'tss']; };
   $('#sOk', s).onclick = () => {
     S.ftp = Math.max(50, Math.min(700, +$('#sFtp', s).value || S.ftp)); S.riderKg = Math.max(30, Math.min(200, parseFloat($('#sKg', s).value.replace(',', '.')) || S.riderKg));
@@ -260,36 +260,36 @@ function settingsSheet() {
   };
 }
 function endSheet() {
-  const rec = record(), rows = [['Fahrzeit', fmtTime(rec.duration)], ['Strecke', fmtNum(rec.distance / 1000, 2) + ' km'], ['Ø Leistung', rec.avgPower + ' W'], ['NP', rec.np + ' W'],
-    ['Max', rec.maxPower + ' W'], ['Arbeit', rec.kj + ' kJ'], ['TSS', M.tss.v()], ['IF', M.if.v()], ['Ø Puls', avgHr() || '–'], ['Max Puls', R.hrMax || '–']];
-  const s = sheet(`<div class="label">Fahrt beenden</div><h2 class="display" style="font-size:34px;margin:8px 0 14px">${esc(rec.workout)}</h2>
+  const rec = record(), rows = [['Time', fmtTime(rec.duration)], ['Distance', fmtNum(rec.distance / 1000, 2) + ' km'], ['Avg power', rec.avgPower + ' W'], ['NP', rec.np + ' W'],
+    ['Max', rec.maxPower + ' W'], ['Work', rec.kj + ' kJ'], ['TSS', M.tss.v()], ['IF', M.if.v()], ['Avg HR', avgHr() || '–'], ['Max HR', R.hrMax || '–']];
+  const s = sheet(`<div class="label">Finish ride</div><h2 class="display" style="font-size:34px;margin:8px 0 14px">${esc(rec.workout)}</h2>
     <div class="psum">${rows.map(([a, b]) => `<div><span>${a}</span><b>${b}</b></div>`).join('')}</div>
-    ${rec.laps ? `<div class="label" style="margin:14px 0 6px">Runden</div><div class="plaps">${rec.laps.map((l, i) => `<div><span>${i + 1}</span><span>${fmtTime(l.t)}</span><span>${fmtNum(l.d / 1000, 2)} km</span><b>${l.w} W</b></div>`).join('')}</div>` : ''}
-    <div class="pfoot col"><button class="btn" id="eSave">Speichern</button><button class="btn ghost" id="eStrava">Speichern + Strava</button>
-      <button class="btn ghost" id="eBack">Weiterfahren</button><button class="btn danger" id="eDrop">Verwerfen</button></div>`);
+    ${rec.laps ? `<div class="label" style="margin:14px 0 6px">Laps</div><div class="plaps">${rec.laps.map((l, i) => `<div><span>${i + 1}</span><span>${fmtTime(l.t)}</span><span>${fmtNum(l.d / 1000, 2)} km</span><b>${l.w} W</b></div>`).join('')}</div>` : ''}
+    <div class="pfoot col"><button class="btn" id="eSave">Save</button><button class="btn ghost" id="eStrava">Save + Strava</button>
+      <button class="btn ghost" id="eBack">Resume</button><button class="btn danger" id="eDrop">Discard</button></div>`);
   const save = async () => { R.state = 'done'; trainer.setPower(null); await db.put('rides', rec).catch(() => {}); import('./account.js').then(a => a.pushRide?.(rec)).catch(() => {}); };
   $('#eBack', s).onclick = () => s.remove();
-  $('#eDrop', s).onclick = () => { if (!confirm('Fahrt wirklich verwerfen?')) return; R.state = 'done'; trainer.setPower(null); location.href = './pure.html' + location.search; };
+  $('#eDrop', s).onclick = () => { if (!confirm('Really discard this ride?')) return; R.state = 'done'; trainer.setPower(null); location.href = './pure.html' + location.search; };
   $('#eSave', s).onclick = async () => { await save(); s.remove(); doneScreen(rec); };
-  if (S.autoStrava) { $('#eSave', s).onclick = () => $('#eStrava', s).click(); $('#eSave', s).textContent = 'Speichern + Strava'; $('#eStrava', s).hidden = true; } // settings: upload on its own
+  if (S.autoStrava) { $('#eSave', s).onclick = () => $('#eStrava', s).click(); $('#eSave', s).textContent = 'Save + Strava'; $('#eStrava', s).hidden = true; } // settings: upload on its own
   $('#eStrava', s).onclick = async e => { await save(); await toStrava(e.target, rec); s.remove(); doneScreen(rec); };
 }
 const avgHr = () => { const h = R.samples.map(x => x[5]).filter(Boolean); return h.length ? Math.round(h.reduce((a, b) => a + b, 0) / h.length) : 0; };
 async function toStrava(btn, rec) {
-  const name = rec.workout === 'ERG' || rec.workout === 'Steigung' ? 'Pure ' + rec.workout : rec.workout;
+  const name = rec.workout === 'ERG' || rec.workout === 'Grade' ? 'Pure ' + rec.workout : rec.workout;
   const st = await stravaStatus();
   if (!st.configured) { stravaExport(rec, name); return; }
   try {
-    if (!st.connected && !(await stravaConnect())) throw new Error('Nicht mit Strava verbunden.');
+    if (!st.connected && !(await stravaConnect())) throw new Error('Not connected to Strava.');
     const url = await stravaUpload(rec, name, null, t => { btn.textContent = t; });
     window.open(url, '_blank');
   } catch (e) { alert(e.message || String(e)); }
 }
 function doneScreen(rec) {
   el.innerHTML = `<header class="ptop"><a class="pback" href="handy.html">‹</a><div class="pbrand">RIDEFRAME <span>Indoor</span></div></header>
-    <section class="pdone"><div class="label">Gespeichert</div><h1 class="display">${fmtTime(rec.duration)}</h1>
-    <p>${fmtNum(rec.distance / 1000, 1)} km · Ø ${rec.avgPower} W · NP ${rec.np} W · ${rec.kj} kJ</p>
-    <div class="pfoot col"><a class="btn" href="./pure.html${location.search}">Neue Fahrt</a><a class="btn ghost" href="handy.html">Zur App</a></div></section>`;
+    <section class="pdone"><div class="label">Saved</div><h1 class="display">${fmtTime(rec.duration)}</h1>
+    <p>${fmtNum(rec.distance / 1000, 1)} km · avg ${rec.avgPower} W · NP ${rec.np} W · ${rec.kj} kJ</p>
+    <div class="pfoot col"><a class="btn" href="./pure.html${location.search}">New ride</a><a class="btn ghost" href="handy.html">Back to app</a></div></section>`;
 }
 
 // ---------------- data ----------------
