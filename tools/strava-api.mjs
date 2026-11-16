@@ -20,7 +20,7 @@ const send = (res, code, obj) => { res.writeHead(code, { 'Content-Type': 'applic
 const html = (res, body) => { res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-store' }); res.end(`<!doctype html><meta charset="utf-8"><meta name="viewport" content="width=device-width"><body style="font:18px system-ui;background:#0b0b0b;color:#f4f4ef;display:grid;place-items:center;height:90vh;text-align:center">${body}`); };
 async function body(req, max = 20e6) {
   const chunks = []; let n = 0;
-  for await (const c of req) { n += c.length; if (n > max) throw new Error('zu groß'); chunks.push(c); }
+  for await (const c of req) { n += c.length; if (n > max) throw new Error('too large'); chunks.push(c); }
   return JSON.parse(Buffer.concat(chunks).toString('utf8') || '{}');
 }
 function baseUrl(req, cfg) {
@@ -50,7 +50,7 @@ export async function stravaApi(req, res, path) {
     const im = op.match(/^image\/([a-f0-9]{24})\.jpg$/); // share images, public (linked from the Strava description)
     if (im && req.method === 'GET') {
       try { const b = await readFile(join(DATA, 'shares', im[1] + '.jpg')); res.writeHead(200, { 'Content-Type': 'image/jpeg', 'Cache-Control': 'public, max-age=31536000' }); res.end(b); }
-      catch { send(res, 404, { error: 'nicht gefunden' }); }
+      catch { send(res, 404, { error: 'not found' }); }
       return true;
     }
     if (op === 'status') {
@@ -59,7 +59,7 @@ export async function stravaApi(req, res, path) {
     }
     const cm = op.match(/^claim\/([a-f0-9]{32,64})$/); // one-time, 5 minutes: only the app that started this login knows the code
     if (cm) { const v = claims.get(cm[1]); if (v) claims.delete(cm[1]); return send(res, 200, { key: v && Date.now() - v.t < 5 * 60e3 ? v.key : null }), true; }
-    if (!configured) return send(res, 503, { error: 'Strava ist auf diesem Server noch nicht eingerichtet.' }), true;
+    if (!configured) return send(res, 503, { error: 'Strava is not set up on this server yet.' }), true;
     if (op === 'connect') {
       const state = randomBytes(12).toString('hex'); pending.set(state, Date.now());
       { const c = new URL(req.url, 'http://x').searchParams.get('claim') || ''; if (/^[a-f0-9]{32,64}$/.test(c)) stateClaim.set(state, c); }
@@ -73,28 +73,28 @@ export async function stravaApi(req, res, path) {
     if (op.startsWith('callback')) {
       const q = new URL(req.url, 'http://x').searchParams;
       const claim = stateClaim.get(q.get('state') || ''); stateClaim.delete(q.get('state') || '');
-      if (!pending.delete(q.get('state') || '')) return html(res, 'Die Anmeldung ist abgelaufen. Bitte im Spiel nochmal auf „Mit Strava verbinden“ klicken.'), true;
-      if (q.get('error') || !q.get('code')) return html(res, 'Strava-Verbindung abgebrochen. Du kannst dieses Fenster schließen.'), true;
-      if (!(q.get('scope') || '').includes('activity:write')) return html(res, 'Bitte beim Verbinden das Hochladen von Aktivitäten erlauben (Haken drin lassen) und nochmal versuchen.'), true;
+      if (!pending.delete(q.get('state') || '')) return html(res, 'The sign-in has expired. Please click “Connect Strava” in the game again.'), true;
+      if (q.get('error') || !q.get('code')) return html(res, 'Strava connection cancelled. You can close this window.'), true;
+      if (!(q.get('scope') || '').includes('activity:write')) return html(res, 'Please allow uploading activities when connecting (leave the box ticked) and try again.'), true;
       const r = await fetch('https://www.strava.com/oauth/token', { method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ client_id: cfg.client_id, client_secret: cfg.client_secret, code: q.get('code'), grant_type: 'authorization_code' }) });
       const j = await r.json();
-      if (!r.ok) return html(res, 'Strava hat die Verbindung abgelehnt: ' + String(j.message || r.status).replace(/[<>&"']/g, '')
-        + (r.status === 403 ? '<br><small>Neue Strava-Apps erlauben anfangs nur den Besitzer der App.</small>' : '')), true;
+      if (!r.ok) return html(res, 'Strava refused the connection: ' + String(j.message || r.status).replace(/[<>&"']/g, '')
+        + (r.status === 403 ? '<br><small>New Strava apps only allow the app owner at first.</small>' : '')), true;
       const k = randomBytes(24).toString('hex'), all = await readJSON(TOK, {});
       all[k] = { access_token: j.access_token, refresh_token: j.refresh_token, expires_at: j.expires_at, athlete: { id: j.athlete?.id, name: [j.athlete?.firstname, j.athlete?.lastname].filter(Boolean).join(' ') }, at: Date.now() };
       await saveTokens(all); if (claim) claims.set(claim, { t: Date.now(), key: k });
-      return html(res, `<div>Mit Strava verbunden ✓<br><small>Das Fenster schließt sich gleich, sonst einfach schließen.</small></div><script>try{localStorage.setItem('rf_strava_key',${JSON.stringify(k)})}catch(e){}setTimeout(()=>window.close(),900);if(!window.opener)setTimeout(()=>location.href='/',1500)</script>`), true;
+      return html(res, `<div>Connected to Strava ✓<br><small>This window closes in a moment; otherwise just close it.</small></div><script>try{localStorage.setItem('rf_strava_key',${JSON.stringify(k)})}catch(e){}setTimeout(()=>window.close(),900);if(!window.opener)setTimeout(()=>location.href='/',1500)</script>`), true;
     }
     if (op === 'disconnect' && req.method === 'POST') { const all = await readJSON(TOK, {}); delete all[key]; await saveTokens(all); return send(res, 200, { ok: true }), true; }
     const tok = key && await access(key, cfg);
-    if (!tok) return send(res, 401, { error: 'Nicht mit Strava verbunden.' }), true;
+    if (!tok) return send(res, 401, { error: 'Not connected to Strava.' }), true;
     if (op === 'image' && req.method === 'POST') { // the share image, so the Strava description can link to it
       const b = await body(req, 8e6), m = String(b.jpg || '').match(/^data:image\/jpeg;base64,(.+)$/);
-      if (!m) return send(res, 400, { error: 'kein Bild' }), true;
+      if (!m) return send(res, 400, { error: 'no image' }), true;
       const id = randomBytes(12).toString('hex'); await mkdir(join(DATA, 'shares'), { recursive: true });
       const day = new Date().toDateString(), n = imgDay.get(key); // 40 share images per rider and day, 5000 on the host in total
-      if ((n?.d === day && n.n >= 40) || (await readdir(join(DATA, 'shares')).catch(() => [])).length >= 5000) return send(res, 429, { error: 'Zu viele Bilder für heute.' }), true;
+      if ((n?.d === day && n.n >= 40) || (await readdir(join(DATA, 'shares')).catch(() => [])).length >= 5000) return send(res, 429, { error: 'Too many images for today.' }), true;
       imgDay.set(key, { d: day, n: n?.d === day ? n.n + 1 : 1 }); if (imgDay.size > 5000) imgDay.clear();
       await writeFile(join(DATA, 'shares', id + '.jpg'), Buffer.from(m[1], 'base64'));
       return send(res, 200, { url: baseUrl(req, cfg) + '/api/strava/image/' + id + '.jpg' }), true;
@@ -106,7 +106,7 @@ export async function stravaApi(req, res, path) {
       fd.append('description', String(b.description || '').slice(0, 2000)); fd.append('trainer', b.outdoor ? '0' : '1');
       if (b.external_id) fd.append('external_id', String(b.external_id).slice(0, 100));
       const r = await fetch(API + '/uploads', { method: 'POST', headers: { Authorization: 'Bearer ' + tok }, body: fd });
-      const j = await r.json(); return send(res, r.ok ? 200 : r.status, r.ok ? { id: j.id_str || j.id, status: j.status, error: j.error } : { error: j.message || 'Upload fehlgeschlagen' }), true;
+      const j = await r.json(); return send(res, r.ok ? 200 : r.status, r.ok ? { id: j.id_str || j.id, status: j.status, error: j.error } : { error: j.message || 'Upload failed' }), true;
     }
     if (op === 'segments' && req.method === 'GET') { // Strava segments for the outdoor map: the rider's starred ones (all) plus popular ones around a point
       const q = new URL(req.url, 'http://x').searchParams, out = new Map(), H = { Authorization: 'Bearer ' + tok };
@@ -127,11 +127,11 @@ export async function stravaApi(req, res, path) {
       return send(res, 200, { segments: [...out.values()] }), true;
     }
     if (op === 'activity' && req.method === 'POST') { // strength workouts (kraft.html): no file, a manual activity "Krafttraining"
-      const b = await body(req, 1e5), f = new URLSearchParams({ name: String(b.name || 'Krafttraining').slice(0, 200), sport_type: String(b.sport_type || 'WeightTraining').replace(/[^A-Za-z]/g, ''),
+      const b = await body(req, 1e5), f = new URLSearchParams({ name: String(b.name || 'Strength training').slice(0, 200), sport_type: String(b.sport_type || 'WeightTraining').replace(/[^A-Za-z]/g, ''),
         start_date_local: String(b.start_date_local || ''), elapsed_time: String(Math.max(60, Math.round(+b.elapsed_time || 0))), description: String(b.description || '').slice(0, 4000) });
       if (b.external_id) f.set('external_id', String(b.external_id).slice(0, 100));
       const r = await fetch(API + '/activities', { method: 'POST', headers: { Authorization: 'Bearer ' + tok, 'Content-Type': 'application/x-www-form-urlencoded' }, body: f });
-      const j = await r.json().catch(() => ({})); return send(res, r.ok ? 200 : r.status, r.ok ? { id: j.id } : { error: j.message || 'Strava hat abgelehnt' }), true;
+      const j = await r.json().catch(() => ({})); return send(res, r.ok ? 200 : r.status, r.ok ? { id: j.id } : { error: j.message || 'Strava refused' }), true;
     }
     const m = op.match(/^upload\/(\d+)$/);
     if (m) {

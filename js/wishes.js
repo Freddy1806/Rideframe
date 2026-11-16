@@ -3,6 +3,7 @@
 import { account, accountModal, wishApi } from './account.js';
 
 const esc = s => String(s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+const ST = { neu: 'new', geplant: 'planned', 'in Arbeit': 'in progress', umgesetzt: 'done', 'nicht geplant': 'not planned' };
 const day = t => new Date(t).toLocaleDateString('en-GB', { day: 'numeric', month: 'numeric' });
 
 export async function wishModal(state, onAccount) {
@@ -24,8 +25,8 @@ export async function wishModal(state, onAccount) {
       <button class="wvote ${w.voted ? 'on' : ''}" title="+1">▲<b>${w.votes}</b></button>
       <div class="wbody"><div class="wtext">${esc(w.text)}</div>
         <div class="wmeta">${esc(w.by)} · ${day(w.at)} · ${j.admin
-          ? `<select class="wstat">${j.status.map(s => `<option ${s === w.status ? 'selected' : ''}>${s}</option>`).join('')}</select>`
-          : `<span class="wpill s-${w.status.replace(/\s/g, '')}">${esc(w.status)}</span>`}${w.mine || j.admin ? ' · <button class="wdel">delete</button>' : ''}</div>
+          ? `<select class="wstat">${j.status.map(s => `<option value="${esc(s)}" ${s === w.status ? 'selected' : ''}>${ST[s] || s}</option>`).join('')}</select>`
+          : `<span class="wpill s-${w.status.replace(/\s/g, '')}">${esc(ST[w.status] || w.status)}</span>`}${w.mine || j.admin ? ' · <button class="wdel">delete</button>' : ''}</div>
         ${w.note ? `<div class="wnote">${esc(w.note)}</div>` : ''}</div></div>`).join('');
     m.querySelectorAll('.wish').forEach(el => { const id = el.dataset.id;
       el.querySelector('.wvote').onclick = () => run(() => wishApi.vote(id));

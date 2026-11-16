@@ -15,7 +15,7 @@ const writeJSON = async (f, o) => { await mkdir(join(f, '..'), { recursive: true
 const send = (res, code, obj) => { res.writeHead(code, { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' }); res.end(JSON.stringify(obj)); return true; };
 async function body(req, max = 20e6) {
   const chunks = []; let n = 0;
-  for await (const c of req) { n += c.length; if (n > max) throw new Error('zu groß'); chunks.push(c); }
+  for await (const c of req) { n += c.length; if (n > max) throw new Error('too large'); chunks.push(c); }
   return JSON.parse(Buffer.concat(chunks).toString('utf8') || '{}');
 }
 const hash = (pw, salt) => scryptSync(String(pw), salt, 32).toString('hex');
@@ -131,8 +131,8 @@ export async function accountsApi(req, res, path) {
     if (op === 'ping') return send(res, 200, { ok: true });
     if (op === 'forgot' && req.method === 'POST') { /* same answer whether the address exists or not, so nobody can test addresses */
       const b = await body(req, 1e4), e = normMail(b.email), ip = clientIp(req), mail = !!(await mailConfig());
-      if (!EMAIL.test(e)) return send(res, 400, { error: 'Bitte deine E-Mail-Adresse eingeben.' });
-      if (limited('forgot-ip:' + ip, 10, 36e5) || limited('forgot:' + e, 3, 36e5)) return send(res, 429, { error: 'Zu viele Anfragen. Bitte in einer Stunde nochmal.' });
+      if (!EMAIL.test(e)) return send(res, 400, { error: 'Please enter your email address.' });
+      if (limited('forgot-ip:' + ip, 10, 36e5) || limited('forgot:' + e, 3, 36e5)) return send(res, 429, { error: 'Too many requests. Please try again in an hour.' });
       if (mail) await withAcc(async a => { const hit = byMail(a, e); if (!hit) return;
         const tok = randomBytes(32).toString('hex'), now = Date.now(); a.resets = Object.fromEntries(Object.entries(a.resets || {}).filter(([, r]) => r.exp > now && r.key !== hit[0]));
         a.resets[sha(tok)] = { key: hit[0], exp: now + 36e5 }; await writeJSON(ACC, a);
@@ -141,10 +141,10 @@ export async function accountsApi(req, res, path) {
     }
     if (op === 'reset' && req.method === 'POST') {
       const b = await body(req, 1e4), pw = String(b.password || ''), h = sha(String(b.token || ''));
-      if (pw.length < 6 || pw.length > 200) return send(res, 400, { error: 'Passwort: mindestens 6 Zeichen.' });
-      if (limited('reset-ip:' + clientIp(req), 20, 36e5)) return send(res, 429, { error: 'Zu viele Versuche. Bitte später nochmal.' });
+      if (pw.length < 6 || pw.length > 200) return send(res, 400, { error: 'Password: at least 6 characters.' });
+      if (limited('reset-ip:' + clientIp(req), 20, 36e5)) return send(res, 429, { error: 'Too many attempts. Please try again later.' });
       return await withAcc(async a => { const r = a.resets?.[h], u = r && r.exp > Date.now() && Object.hasOwn(a.users, r.key) ? a.users[r.key] : null;
-        if (!u) return send(res, 400, { error: 'Der Link ist abgelaufen oder wurde schon benutzt. Bitte „Passwort vergessen?“ nochmal antippen.' });
+        if (!u) return send(res, 400, { error: 'The link has expired or was already used. Please tap “Forgot password?” again.' });
         delete a.resets[h]; setPw(u, pw); for (const [k, v] of Object.entries(a.tokens)) if (v.key === r.key) delete a.tokens[k]; // every device has to log in again with the new password
         hits.delete('pw:' + r.key); return send(res, 200, { token: await login(a, u), name: u.name }); });
     }
@@ -152,42 +152,42 @@ export async function accountsApi(req, res, path) {
       const b = await body(req, 1e4), pw = String(b.password || ''); let name = String(b.name || '').trim().replace(/\s+/g, ' ');
       const viaMail = op === 'login' && name.includes('@'), email = normMail(op === 'register' ? b.email : viaMail ? name : '');
       if (viaMail) { const a0 = await readJSON(ACC, { users: {} }), hit = byMail(a0, email); name = hit ? hit[1].name : 'unbekannt'; }
-      if (name.length < 2 || name.length > 24 || !/^[\p{L}\p{N} ._-]+$/u.test(name)) return send(res, 400, { error: 'Name: 2–24 Zeichen (Buchstaben, Zahlen, Leerzeichen, . _ -).' });
-      if (pw.length < 3) return send(res, 400, { error: 'Passwort: mindestens 3 Zeichen.' });
-      const ip = clientIp(req), slow = { error: 'Zu viele Versuche. Bitte in ein paar Minuten nochmal.' };
+      if (name.length < 2 || name.length > 24 || !/^[\p{L}\p{N} ._-]+$/u.test(name)) return send(res, 400, { error: 'Name: 2–24 characters (letters, digits, spaces, . _ -).' });
+      if (pw.length < 3) return send(res, 400, { error: 'Password: at least 3 characters.' });
+      const ip = clientIp(req), slow = { error: 'Too many attempts. Please try again in a few minutes.' };
       if (limited('ip:' + ip, 40, 10 * 60e3)) return send(res, 429, slow); // logins + registrations per address
       return await withAcc(async a => {
         const k = name.toLowerCase(), u = Object.hasOwn(a.users, k) ? a.users[k] : null;
         if (op === 'register') {
-          if (pw.length < 6 || pw.length > 200) return send(res, 400, { error: 'Passwort: mindestens 6 Zeichen.' }); // new accounts only, old short passwords still log in
+          if (pw.length < 6 || pw.length > 200) return send(res, 400, { error: 'Password: at least 6 characters.' }); // new accounts only, old short passwords still log in
           const inv = await inviteCode();
-          if (inv && !sameText(b.invite || '', inv)) return send(res, 403, { invite: true, error: b.invite ? 'Der Einladungscode stimmt nicht.' : 'Für ein neues Konto brauchst du den Einladungscode von Freddy.' });
-          if (u) return send(res, 409, { error: `Den Namen „${u.name}“ gibt es schon.` });
-          if (!EMAIL.test(email)) return send(res, 400, { error: 'Bitte eine gültige E-Mail-Adresse eingeben (für „Passwort vergessen“).' });
-          if (b.password2 != null && String(b.password2) !== pw) return send(res, 400, { error: 'Die beiden Passwörter sind nicht gleich.' });
-          if (byMail(a, email)) return send(res, 409, { error: 'Mit dieser E-Mail gibt es schon ein Konto. „Passwort vergessen?“ hilft weiter.' });
-          if (limited('reg:' + ip, 5, 36e5) || limited('reg', 30, 36e5)) return send(res, 429, { error: 'Gerade wurden sehr viele Konten angelegt. Bitte später nochmal.' });
+          if (inv && !sameText(b.invite || '', inv)) return send(res, 403, { invite: true, error: b.invite ? 'The invitation code is wrong.' : 'You need the invitation code from Freddy for a new account.' });
+          if (u) return send(res, 409, { error: `The name “${u.name}” is already taken.` });
+          if (!EMAIL.test(email)) return send(res, 400, { error: 'Please enter a valid email address (for “Forgot password”).' });
+          if (b.password2 != null && String(b.password2) !== pw) return send(res, 400, { error: 'The two passwords do not match.' });
+          if (byMail(a, email)) return send(res, 409, { error: 'There is already an account with this email. “Forgot password?” helps.' });
+          if (limited('reg:' + ip, 5, 36e5) || limited('reg', 30, 36e5)) return send(res, 429, { error: 'A lot of accounts were created just now. Please try again later.' });
           const salt = randomBytes(12).toString('hex');
           a.users[k] = { name, email, salt, hash: hash(pw, salt), id: randomBytes(8).toString('hex'), created: Date.now() };
           const tk = await login(a, a.users[k]); mailLater(email, welcomeMail(name, await baseUrl(req)));
           return send(res, 200, { token: tk, name });
         }
         if ((hits.get('pw:' + k) || []).filter(t => Date.now() - t < 10 * 60e3).length >= 10) return send(res, 429, slow); // 10 wrong passwords per name in 10 minutes
-        if (!u || !timingSafeEqual(Buffer.from(hash(pw, u.salt), 'hex'), Buffer.from(u.hash, 'hex'))) { limited('pw:' + k, 10, 10 * 60e3); return send(res, 401, { error: 'Name oder Passwort stimmt nicht.' }); }
+        if (!u || !timingSafeEqual(Buffer.from(hash(pw, u.salt), 'hex'), Buffer.from(u.hash, 'hex'))) { limited('pw:' + k, 10, 10 * 60e3); return send(res, 401, { error: 'Name or password is wrong.' }); }
         return send(res, 200, { token: await login(a, u), name: u.name });
       });
     }
     const a = await readJSON(ACC, { users: {}, tokens: {} }), t0 = Object.hasOwn(a.tokens, token) ? a.tokens[token] : null, t = t0 && t0.at > Date.now() - TOKEN_DAYS * 864e5 ? t0 : null, u = t && Object.hasOwn(a.users, t.key) ? a.users[t.key] : null;
-    if (!u) return send(res, 401, { error: 'Nicht angemeldet.' });
+    if (!u) return send(res, 401, { error: 'Not signed in.' });
     const dir = userDir(u.id);
     if (op === 'logout' && req.method === 'POST') return await withAcc(async a => { delete a.tokens[token]; await writeJSON(ACC, a); return send(res, 200, { ok: true }); });
     if (op === 'me') { const s = await readJSON(join(dir, 'settings.json'), null); return send(res, 200, { name: u.name, email: u.email || '', settings: s?.settings || null, settingsAt: s?.at || 0 }); }
     if (op === 'email' && req.method === 'PUT') { /* add or change the address (accounts from before 16.11. have none) */
       const b = await body(req, 1e4), e = normMail(b.email);
-      if (!EMAIL.test(e)) return send(res, 400, { error: 'Bitte eine gültige E-Mail-Adresse eingeben.', keep: true });
-      if (!timingSafeEqual(Buffer.from(hash(String(b.password || ''), u.salt), 'hex'), Buffer.from(u.hash, 'hex'))) { limited('pw:' + t.key, 10, 10 * 60e3); return send(res, 401, { error: 'Passwort stimmt nicht.', keep: true }); }
-      return await withAcc(async a => { const other = byMail(a, e); if (other && other[0] !== t.key) return send(res, 409, { error: 'Diese E-Mail gehört schon zu einem anderen Konto.', keep: true });
-        if (!a.users[t.key]) return send(res, 401, { error: 'Nicht angemeldet.' }); a.users[t.key].email = e; await writeJSON(ACC, a); return send(res, 200, { ok: true, email: e }); }); }
+      if (!EMAIL.test(e)) return send(res, 400, { error: 'Please enter a valid email address.', keep: true });
+      if (!timingSafeEqual(Buffer.from(hash(String(b.password || ''), u.salt), 'hex'), Buffer.from(u.hash, 'hex'))) { limited('pw:' + t.key, 10, 10 * 60e3); return send(res, 401, { error: 'Wrong password.', keep: true }); }
+      return await withAcc(async a => { const other = byMail(a, e); if (other && other[0] !== t.key) return send(res, 409, { error: 'This email already belongs to another account.', keep: true });
+        if (!a.users[t.key]) return send(res, 401, { error: 'Not signed in.' }); a.users[t.key].email = e; await writeJSON(ACC, a); return send(res, 200, { ok: true, email: e }); }); }
     if (op === 'settings' && req.method === 'PUT') { const b = await body(req, 1e6); await writeJSON(join(dir, 'settings.json'), { settings: b.settings || {}, at: +b.at || Date.now() }); return send(res, 200, { ok: true }); }
     if (op === 'board') { const rows = await board(a); return send(res, 200, { week: weekKey(), rows: rows.map(r => ({ ...r, me: r.key === t.key })) }); }
     if (op === 'story' && req.method === 'PUT') { /* only this week; per figure the higher value wins, so a second device with an empty ledger never wipes the points */
@@ -198,10 +198,10 @@ export async function accountsApi(req, res, path) {
     const sm = op.match(/^segs\/(.{1,80})$/);
     if (sm) return send(res, 200, { segs: await segBoard(a, decodeURIComponent(sm[1])), me: u.name });
     const pm = op.match(/^profile\/(.{1,40})$/);
-    if (pm) { const v = a.users[decodeURIComponent(pm[1]).toLowerCase()]; return v ? send(res, 200, await profile(v)) : send(res, 404, { error: 'Unbekannter Fahrer.' }); }
+    if (pm) { const v = a.users[decodeURIComponent(pm[1]).toLowerCase()]; return v ? send(res, 200, await profile(v)) : send(res, 404, { error: 'Unknown rider.' }); }
     if (op === 'delete' && req.method === 'POST') { /* the whole account: login, settings, all rides, the wager points (wishes stay, they belong to everyone) */
       const b = await body(req, 1e4);
-      if (!timingSafeEqual(Buffer.from(hash(String(b.password || ''), u.salt), 'hex'), Buffer.from(u.hash, 'hex'))) return send(res, 401, { error: 'Passwort stimmt nicht.', keep: true });
+      if (!timingSafeEqual(Buffer.from(hash(String(b.password || ''), u.salt), 'hex'), Buffer.from(u.hash, 'hex'))) return send(res, 401, { error: 'Wrong password.', keep: true });
       return await withAcc(async a => { delete a.users[t.key]; for (const [k, v] of Object.entries(a.tokens)) if (v.key === t.key) delete a.tokens[k];
         await writeJSON(ACC, a); await rm(dir, { recursive: true, force: true }); boardCache = null; boardGen++; return send(res, 200, { ok: true }); }); }
     if (op === 'wishes' || op.startsWith('wishes/')) return await wishes(req, res, op, u);
@@ -209,19 +209,19 @@ export async function accountsApi(req, res, path) {
     const km = op.match(/^kraft\/([\w-]{1,64})$/); /* strength workouts (kraft.html): one file per session, same idea as rides */
     if (km) {
       const f = join(dir, 'kraft', km[1] + '.json');
-      if (req.method === 'PUT') { if (await count(join(dir, 'kraft')) >= MAX_FILES) return send(res, 507, { error: 'Speicher für dieses Konto ist voll.' }); await writeJSON(f, await body(req, 2e6)); return send(res, 200, { ok: true }); }
+      if (req.method === 'PUT') { if (await count(join(dir, 'kraft')) >= MAX_FILES) return send(res, 507, { error: 'Storage for this account is full.' }); await writeJSON(f, await body(req, 2e6)); return send(res, 200, { ok: true }); }
       if (req.method === 'DELETE') { await unlink(f).catch(() => {}); return send(res, 200, { ok: true }); }
-      const r = await readJSON(f, null); return r ? send(res, 200, r) : send(res, 404, { error: 'nicht gefunden' });
+      const r = await readJSON(f, null); return r ? send(res, 200, r) : send(res, 404, { error: 'not found' });
     }
     if (op === 'rides') { const f = await readdir(join(dir, 'rides')).catch(() => []); return send(res, 200, { ids: f.filter(x => x.endsWith('.json')).map(x => x.slice(0, -5)) }); }
     const m = op.match(/^rides\/([\w-]{1,64})$/);
     if (m) {
       const f = join(dir, 'rides', m[1] + '.json');
-      if (req.method === 'PUT') { if (await full(join(dir, 'rides'))) return send(res, 507, { error: 'Speicher für dieses Konto ist voll.' }); await writeJSON(f, await body(req)); boardCache = null; boardGen++; return send(res, 200, { ok: true }); }
+      if (req.method === 'PUT') { if (await full(join(dir, 'rides'))) return send(res, 507, { error: 'Storage for this account is full.' }); await writeJSON(f, await body(req)); boardCache = null; boardGen++; return send(res, 200, { ok: true }); }
       if (req.method === 'DELETE') { await unlink(f).catch(() => {}); sums.delete(f); boardCache = null; boardGen++; return send(res, 200, { ok: true }); }
-      const r = await readJSON(f, null); return r ? send(res, 200, r) : send(res, 404, { error: 'nicht gefunden' });
+      const r = await readJSON(f, null); return r ? send(res, 200, r) : send(res, 404, { error: 'not found' });
     }
-    return send(res, 404, { error: 'unbekannt' });
+    return send(res, 404, { error: 'unknown' });
   } catch (e) { return send(res, 500, { error: String(e.message || e) }); }
 }
 
@@ -237,18 +237,18 @@ async function wishes(req, res, op, u) {
   if (op === 'wishes' && req.method === 'GET') return out((await readJSON(WISH, { list: [] })).list);
   if (op === 'wishes' && req.method === 'POST') {
     const b = await body(req, 1e4), text = String(b.text || '').trim().replace(/\s+/g, ' ').slice(0, 500);
-    if (text.length < 3) return send(res, 400, { error: 'Bitte einen Wunsch eintragen.' });
-    return withWishes(async W => { if (W.list.filter(w => w.key === me && Date.now() - w.at < 864e5).length >= 30) return send(res, 429, { error: 'Heute schon 30 Wünsche, morgen wieder.' });
+    if (text.length < 3) return send(res, 400, { error: 'Please enter a wish.' });
+    return withWishes(async W => { if (W.list.filter(w => w.key === me && Date.now() - w.at < 864e5).length >= 30) return send(res, 429, { error: 'Already 30 wishes today, more tomorrow.' });
       W.list.push({ id: randomBytes(6).toString('hex'), key: me, by: u.name, text, at: Date.now(), votes: [me], status: 'neu' }); await writeJSON(WISH, W); return out(W.list); });
   }
-  const m = op.match(/^wishes\/([0-9a-f]{12})(\/vote)?$/); if (!m) return send(res, 404, { error: 'unbekannt' });
+  const m = op.match(/^wishes\/([0-9a-f]{12})(\/vote)?$/); if (!m) return send(res, 404, { error: 'unknown' });
   return withWishes(async W => {
-    const w = W.list.find(x => x.id === m[1]); if (!w) return send(res, 404, { error: 'Wunsch nicht gefunden.' });
+    const w = W.list.find(x => x.id === m[1]); if (!w) return send(res, 404, { error: 'Wish not found.' });
     if (m[2] && req.method === 'POST') { const i = w.votes.indexOf(me); i < 0 ? w.votes.push(me) : w.votes.splice(i, 1); }
-    else if (req.method === 'DELETE') { if (w.key !== me && !admin) return send(res, 403, { error: 'Nur eigene Wünsche löschen.' }); W.list = W.list.filter(x => x !== w); }
-    else if (req.method === 'PUT') { if (!admin) return send(res, 403, { error: 'Nur Freddy setzt den Status.' }); const b = await body(req, 1e4);
+    else if (req.method === 'DELETE') { if (w.key !== me && !admin) return send(res, 403, { error: 'You can only delete your own wishes.' }); W.list = W.list.filter(x => x !== w); }
+    else if (req.method === 'PUT') { if (!admin) return send(res, 403, { error: 'Only Freddy sets the status.' }); const b = await body(req, 1e4);
       if (STATUS.includes(b.status)) w.status = b.status; if (typeof b.note === 'string') w.note = b.note.trim().slice(0, 300); }
-    else return send(res, 405, { error: 'nicht erlaubt' });
+    else return send(res, 405, { error: 'not allowed' });
     await writeJSON(WISH, W); return out(W.list);
   });
 }

@@ -445,7 +445,7 @@ export class RideSession {
     q('#hGrade2').textContent = fmtNum(g, 1);
     q('#hTime').textContent = fmtTime(this.elapsed);
     const tag = q('#hGradeTag'); tag.className = 'grade-tag ' + (g > 0.5 ? 'up' : g < -0.5 ? 'down' : 'flat');
-    if (this.source) q('#hTrainer').textContent = this.source === 'trainer' ? `Trainer ${fmtNum(this._trainerGrade(), 1)} %` : 'Ohne Trainer · ↑ ↓ Watt';
+    if (this.source) q('#hTrainer').textContent = this.source === 'trainer' ? `Trainer ${fmtNum(this._trainerGrade(), 1)} %` : 'No trainer · ↑ ↓ watts';
     // climb info
     const cur = this.climbs.find(c => this.d >= c.from && this.d < c.to);
     const next = this.climbs.find(c => c.from > this.d);
@@ -491,7 +491,7 @@ export class RideSession {
     if (!this.workout) return;
     const w = this.wNow = workoutAt(this.workout, this.elapsed, this.ftp);
     if (this.erg) this.state.trainer.setPower(w.done || w.step?.free ? null : w.target); // a test block is ridden freely
-        if (w.done && !this.wDone) { this.wDone = true; this._flash?.('Training geschafft!'); this.coach?.say('done', 0); }
+        if (w.done && !this.wDone) { this.wDone = true; this._flash?.('Workout done!'); this.coach?.say('done', 0); }
     this._coachTick(w, dt);
   }
 
@@ -672,18 +672,18 @@ export class RideSession {
       this._wName = this.workout.name + ' (ended early)'; this.workout = null; this.wNow = null;
       if (this.erg) this.state.trainer.setPower(null);
       q('#hWork')?.remove(); q('.metric.power')?.classList.remove('z-lo', 'z-ok', 'z-hi');
-      this._flash('Workout beendet · frei weiterfahren');
+      this._flash('Workout ended · ride on freely');
     };
   }
 
   _workoutHUD(pShow) {
     const w = this.wNow, q = this.q; if (!this.workout || !w || !q('#hWork')) return;
-    if (w.done) { q('#hWStep').textContent = 'Geschafft – frei weiterfahren'; q('#hWT').textContent = '✓'; q('#hWLeft').textContent = ''; q('#hWNext').textContent = ''; }
+    if (w.done) { q('#hWStep').textContent = 'Done – ride on freely'; q('#hWT').textContent = '✓'; q('#hWLeft').textContent = ''; q('#hWNext').textContent = ''; }
     else {
       q('#hWStep').textContent = w.step.label || 'Block';
       q('#hWT').textContent = w.target;
       q('#hWLeft').textContent = fmtTime(Math.ceil(w.left));
-      q('#hWNext').textContent = w.next ? `Danach: ${w.next.label || 'Block'} · ${w.nextTarget} W` : 'Letzter Block';
+      q('#hWNext').textContent = w.next ? `Next: ${w.next.label || 'Block'} · ${w.nextTarget} W` : 'Last block';
       const pw = q('.metric.power'); pw.classList.remove('z-lo', 'z-ok', 'z-hi');
       pw.classList.add(pShow < w.target * 0.95 ? 'z-lo' : pShow > w.target * 1.05 ? 'z-hi' : 'z-ok');
     }
@@ -926,9 +926,9 @@ export class RideSession {
       this._wireVoice(); this._wireGroupChip(); }
     if (box) { box.innerHTML = `<div class="label">Group open</div><h2 class="display" style="letter-spacing:.12em">${esc(g.code)}</h2>
       <p style="margin:6px 0 14px;opacity:.85">Friends tap “Ride together” in RIDEFRAME and enter the code, or open the link. They start right next to you.</p>
-      <div class="row-actions padmenu"><button class="btn" id="pgOn">Weiterfahren</button><button class="btn ghost" id="pgLink">Link kopieren</button></div>`;
+      <div class="row-actions padmenu"><button class="btn" id="pgOn">Ride on</button><button class="btn ghost" id="pgLink">Copy link</button></div>`;
       box.querySelector('#pgOn').onclick = () => this._resume();
-      box.querySelector('#pgLink').onclick = e => navigator.clipboard?.writeText(g.link).then(() => { e.target.textContent = 'Link kopiert ✓'; }, () => { e.target.textContent = g.link; });
+      box.querySelector('#pgLink').onclick = e => navigator.clipboard?.writeText(g.link).then(() => { e.target.textContent = 'Link copied ✓'; }, () => { e.target.textContent = g.link; });
       this._padFocus(0); }
   }
   /** the group chip: the code copies the link, a click on a rider jumps to him */
@@ -1036,7 +1036,7 @@ export class RideSession {
   }
   _segCompare(st) { // at the top: against last time and the other players
     const rows = [];
-    if (st.last) rows.push(`<div><span>Letztes Mal</span><b class="${st.t <= st.last ? 'ahead' : 'behind'}">${st.t <= st.last ? '−' : '+'}${fmtTime(Math.abs(st.t - st.last))}</b></div>`);
+    if (st.last) rows.push(`<div><span>Last time</span><b class="${st.t <= st.last ? 'ahead' : 'behind'}">${st.t <= st.last ? '−' : '+'}${fmtTime(Math.abs(st.t - st.last))}</b></div>`);
     for (const x of (st.field || []).slice(0, 3)) rows.push(`<div><span>${esc(x.name)}</span><b class="${st.t <= x.t ? 'ahead' : 'behind'}">${fmtTime(x.t)}</b></div>`);
     if (st.field?.length) rows.push(`<div class="rank">Rank ${st.rank} of ${st.field.length + 1}</div>`);
     return rows.length ? `<div class="segcmp">${rows.join('')}</div>` : '';
