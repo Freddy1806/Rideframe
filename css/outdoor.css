@@ -53,3 +53,6 @@ button.obig { width: 100%; text-align: left; color: inherit; font: inherit; }
 :root[data-theme="light"] .omapbtn { background: #fffd; color: #151515; border-color: #0002; }
 :root[data-theme="light"] .leaflet-control-attribution { background: #fffa !important; color: #555 !important; }
 :root[data-theme="light"] .leaflet-control-attribution a { color: #333 !important; }
+.opg { display: flex; gap: 8px; flex-wrap: wrap; }
+.opg button { width: 44px; height: 44px; border-radius: 10px; border: 1px solid var(--line-2); font-weight: 900; color: var(--muted); }
+.opg button.on { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); }

@@ -23,6 +23,8 @@ let S = { riderKg: 75, ftp: 250 }, O = { tiles: RUN ? ['time', 'dist', 'avgPace'
 // data pages like Cadence (Freddy 16.11.): 4, 6 or 9 fields per page, up to 3 pages to swipe, big field and map size selectable
 const PAGE2 = RUN ? ['pace', 'lapTime', 'lapDist', 'hr', 'wall', 'avgPace', 'gain', 'kcal', 'clock'] : ['power', 'avgPower', 'np', 'cad', 'hr', 'lapTime', 'lapDist', 'wall', 'clock'];
 const pages = () => { if (!O.pages) O.pages = [O.tiles]; return O.pages; }, curPage = () => pages()[Math.min(O.pg || 0, pages().length - 1)];
+// every page has its own layout (Freddy 16.11.: up to 6 screens, each one configured on its own): field count, map size, big value
+const cfg = (i = Math.min(O.pg || 0, pages().length - 1)) => ((O.pcfg ||= [])[i] ||= { n: O.n, map: O.map, big: O.big });
 const hub = new SensorHub();
 const live = { power: 0, cad: 0, hr: 0, fix: null, acc: null, gpsErr: '' };
 let R = fresh(), view = params.has('list') ? 'list' : 'ride', map = null, line = null, dot = null, follow = true, wake = null, watch = null;
@@ -173,11 +175,11 @@ function render() {
       <button class="ppill ${nSens() ? 'on' : ''}" id="oSens"><i></i>Sensoren${nSens() ? ' ' + nSens() : ''}</button>
       <button class="pgear" id="oSet" title="Einstellungen">${icon('gear', 'gico')}</button></header>
     ${live.gpsErr ? `<div class="pnote">${esc(live.gpsErr)}</div>` : ''}
-    ${O.map === 'off' ? '' : `<div class="omap ${O.map === 'big' ? 'big' : ''}" id="oMap"><button class="omapbtn" id="oFollow" title="Auf mich zentrieren">◎</button><button class="omapbtn r" id="oBig" title="Karte größer/kleiner">${O.map === 'big' ? '▴' : '▾'}</button></div>`}
+    ${cfg().map === 'off' ? '' : `<div class="omap ${cfg().map === 'big' ? 'big' : ''}" id="oMap"><button class="omapbtn" id="oFollow" title="Auf mich zentrieren">◎</button><button class="omapbtn r" id="oBig" title="Karte größer/kleiner">${cfg().map === 'big' ? '▴' : '▾'}</button></div>`}
     <div class="oseg" id="oSeg" hidden></div>
-    ${O.big === 'off' ? '' : O.big === 'main' || !M[O.big] ? `<button class="pbig obig" id="oBigF"><div class="label">${RUN ? 'Pace' : 'Tempo'}</div><div class="pbigv"><b id="oSpd">${RUN ? '–:––' : '0,0'}</b><small>${RUN ? 'min/km' : 'km/h'}</small></div></button>`
-      : `<button class="pbig obig" id="oBigF"><div class="label">${M[O.big].l}</div><div class="pbigv"><b data-k="${O.big}">–</b><small>${M[O.big].u}</small></div></button>`}
-    <section class="ptiles n${O.n}" id="oTiles">${tilesOf(curPage()).map((k, i) => `<button class="ptile" data-t="${i}"><span class="label">${M[k]?.l || k}</span><b data-k="${k}">–</b><small>${M[k]?.u || ''}</small></button>`).join('')}</section>
+    ${cfg().big === 'off' ? '' : cfg().big === 'main' || !M[cfg().big] ? `<button class="pbig obig" id="oBigF"><div class="label">${RUN ? 'Pace' : 'Tempo'}</div><div class="pbigv"><b id="oSpd">${RUN ? '–:––' : '0,0'}</b><small>${RUN ? 'min/km' : 'km/h'}</small></div></button>`
+      : `<button class="pbig obig" id="oBigF"><div class="label">${M[cfg().big].l}</div><div class="pbigv"><b data-k="${cfg().big}">–</b><small>${M[cfg().big].u}</small></div></button>`}
+    <section class="ptiles n${cfg().n}" id="oTiles">${tilesOf(curPage()).map((k, i) => `<button class="ptile" data-t="${i}"><span class="label">${M[k]?.l || k}</span><b data-k="${k}">–</b><small>${M[k]?.u || ''}</small></button>`).join('')}</section>
     ${pages().length > 1 ? `<div class="odots">${pages().map((_, i) => `<button data-pg="${i}" class="${i === (O.pg || 0) ? 'on' : ''}" aria-label="Seite ${i + 1}"></button>`).join('')}</div>` : ''}
     <footer class="pfoot">${R.state === 'run' ? `<button class="btn ghost" id="oPause">Pause</button><button class="btn ghost" id="oLap">Runde</button><button class="btn ghost" id="oPocket" title="Bildschirm schwarz, Aufzeichnung läuft weiter">Sperren</button>`
       : `${R.state === 'ready' ? '<button class="btn ghost" id="oList">Fahrten</button>' : ''}<button class="btn" id="oStart">${R.state === 'pause' ? 'Weiter' : 'Start'}</button>${R.state === 'pause' ? '<button class="btn ghost" id="oEnd">Beenden</button>' : ''}`}</footer>`;
@@ -186,7 +188,7 @@ function render() {
   on('#oStart', start); on('#oPause', pause); on('#oLap', lap); on('#oEnd', endSheet); on('#oList', () => { view = 'list'; render(); }); on('#oSet', settingsSheet);
   on('#oSens', sensorSheet); on('#oPocket', pocket);
   on('#oFollow', () => { follow = true; if (live.fix && map) map.setView(live.fix.pt, Math.max(map.getZoom(), 15)); });
-  on('#oBig', () => { O.map = O.map === 'big' ? 'small' : 'big'; saveSettings(); render(); });
+  on('#oBig', () => { cfg().map = cfg().map === 'big' ? 'small' : 'big'; saveSettings(); render(); });
   on('#oBigF', bigSheet);
   el.querySelectorAll('[data-pg]').forEach(b => b.onclick = () => { O.pg = +b.dataset.pg; saveSettings(); render(); });
   swipe($('#oTiles'));
@@ -246,7 +248,7 @@ function sensorSheet() {
   $('#sDone', s).onclick = () => { s.remove(); render(); };
 }
 /** the fields of one page, filled up or cut to the chosen count */
-function tilesOf(p) { const fill = [...pages()[0], ...PAGE2, ...Object.keys(M)].filter(k => !p.includes(k)); while (p.length < O.n) p.push(fill.shift()); return p.slice(0, O.n); }
+function tilesOf(p) { const fill = [...pages()[0], ...PAGE2, ...Object.keys(M)].filter(k => !p.includes(k)); while (p.length < cfg().n) p.push(fill.shift()); return p.slice(0, cfg().n); }
 /** swipe left/right over the fields = next/previous page */
 function swipe(x) {
   if (!x || pages().length < 2) return; let sx = null, sy = 0;
@@ -261,22 +263,27 @@ function tileSheet(i) {
 }
 function bigSheet() {
   const opts = [['main', RUN ? 'Pace (aktuell)' : 'Tempo (aktuell)'], ...Object.entries(M).filter(([k]) => k !== (RUN ? 'pace' : 'speed')).map(([k, m]) => [k, m.l]), ['off', 'Kein großes Feld']];
-  const s = sheet(`<div class="label">Großes Feld: Wert wählen</div><div class="ppick">${opts.map(([k, l]) => `<button data-k2="${k}" class="${(O.big || 'main') === k ? 'on' : ''}">${l}</button>`).join('')}</div>`);
-  s.querySelectorAll('[data-k2]').forEach(b => b.onclick = () => { O.big = b.dataset.k2; saveSettings(); s.remove(); render(); });
+  const s = sheet(`<div class="label">Großes Feld: Wert wählen</div><div class="ppick">${opts.map(([k, l]) => `<button data-k2="${k}" class="${(cfg().big || 'main') === k ? 'on' : ''}">${l}</button>`).join('')}</div>`);
+  s.querySelectorAll('[data-k2]').forEach(b => b.onclick = () => { cfg().big = b.dataset.k2; saveSettings(); s.remove(); render(); });
 }
 function settingsSheet() {
   const s = sheet(`<div class="label">Einstellungen</div>
-    <h3 class="ksec">Datenseiten</h3><p class="hint">Feld oder große Zahl antippen, um den Wert zu wechseln.</p>
-    <div class="olbl">Felder pro Seite</div><div class="pseg" id="sN">${[4, 6, 9].map(n => `<button data-v="${n}" class="${O.n === n ? 'on' : ''}">${n}</button>`).join('')}</div>
-    <div class="olbl">Anzahl Seiten (wischen)</div><div class="pseg" id="sP">${[1, 2, 3].map(n => `<button data-v="${n}" class="${pages().length === n ? 'on' : ''}">${n}</button>`).join('')}</div>
-    <div class="olbl">Karte</div><div class="pseg" id="sM">${[['big', 'Groß'], ['small', 'Klein'], ['off', 'Aus']].map(([k, l]) => `<button data-v="${k}" class="${O.map === k ? 'on' : ''}">${l}</button>`).join('')}</div>
+    <h3 class="ksec">Bildschirme</h3><p class="hint">Bis zu 6 Bildschirme zum Wischen, jeder mit eigenen Werten. Feld oder große Zahl antippen, um den Wert zu wechseln.</p>
+    <div class="opg" id="sPg">${pages().map((_, i) => `<button data-v="${i}" class="${i === (O.pg || 0) ? 'on' : ''}">${i + 1}</button>`).join('')}${pages().length < 6 ? '<button data-add="1" title="Bildschirm hinzufügen">+</button>' : ''}</div>
+    <div class="olbl">Bildschirm ${(O.pg || 0) + 1}: Felder</div><div class="pseg" id="sN">${[4, 6, 9].map(n => `<button data-v="${n}" class="${cfg().n === n ? 'on' : ''}">${n}</button>`).join('')}</div>
+    <div class="olbl">Bildschirm ${(O.pg || 0) + 1}: Karte</div><div class="pseg" id="sM">${[['big', 'Groß'], ['small', 'Klein'], ['off', 'Aus']].map(([k, l]) => `<button data-v="${k}" class="${cfg().map === k ? 'on' : ''}">${l}</button>`).join('')}</div>
+    <div class="olbl">Bildschirm ${(O.pg || 0) + 1}: große Zahl</div><div class="pseg" id="sB" style="grid-template-columns:1fr 1fr">${[['on', 'An'], ['off', 'Aus']].map(([k, l]) => `<button data-v="${k}" class="${(cfg().big === 'off') === (k === 'off') ? 'on' : ''}">${l}</button>`).join('')}</div>
+    ${pages().length > 1 ? `<button class="btn ghost ksmall" id="sDelPg" style="align-self:flex-start">Bildschirm ${(O.pg || 0) + 1} löschen</button>` : ''}
     <h3 class="ksec">Aufzeichnung</h3>
     <label class="prow">Auto-Pause<input id="sAp" type="checkbox" class="toggle" ${O.autoPause ? 'checked' : ''}></label>
     ${window.__rfNative ? '' : `<p class="hint">Handy in die Tasche? „Sperren“ schaltet den Bildschirm dunkel, die Aufzeichnung läuft weiter.</p>`}
     <div class="pfoot"><button class="btn" id="sOk">Fertig</button></div>`);
   const seg = (id, f) => $(id, s).querySelectorAll('[data-v]').forEach(b => b.onclick = () => { f(b.dataset.v); $(id, s).querySelectorAll('button').forEach(x => x.classList.toggle('on', x === b)); saveSettings(); render(); });
-  seg('#sN', v => { O.n = +v; }); seg('#sM', v => { O.map = v; });
-  seg('#sP', v => { const p = pages(); while (p.length < +v) p.push(p.length === 1 ? [...PAGE2] : [...PAGE2].reverse()); p.length = +v; O.pg = Math.min(O.pg || 0, p.length - 1); });
+  const again = () => { s.remove(); render(); settingsSheet(); };
+  seg('#sN', v => { cfg().n = +v; }); seg('#sM', v => { cfg().map = v; }); seg('#sB', v => { cfg().big = v === 'off' ? 'off' : cfg().big === 'off' ? 'main' : cfg().big; });
+  $('#sPg', s).querySelectorAll('[data-v]').forEach(b => b.onclick = () => { O.pg = +b.dataset.v; saveSettings(); again(); });
+  const add = $('[data-add]', s); if (add) add.onclick = () => { const p = pages(); p.push(p.length % 2 ? [...PAGE2] : [...pages()[0]]); O.pg = p.length - 1; O.pcfg[O.pg] = { n: 6, map: p.length === 2 ? 'off' : 'small', big: 'main' }; saveSettings(); again(); };
+  const del = $('#sDelPg', s); if (del) del.onclick = () => { const i = Math.min(O.pg || 0, pages().length - 1); pages().splice(i, 1); (O.pcfg ||= []).splice(i, 1); O.pg = Math.max(0, i - 1); saveSettings(); again(); };
   $('#sAp', s).onchange = e => { O.autoPause = e.target.checked; saveSettings(); };
   $('#sOk', s).onclick = () => { O.autoPause = $('#sAp', s).checked; saveSettings(); s.remove(); };
 }
