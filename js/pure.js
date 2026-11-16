@@ -42,26 +42,28 @@ const lapNow = () => R.lap ? { t: R.moving - R.lap.t, d: R.d - R.lap.d, w: R.lap
 const shown = () => { const n = Math.max(1, Math.min(P.smooth, live.buf.length)); return live.buf.length ? live.buf.slice(-n).reduce((a, b) => a + b, 0) / n : live.power; };
 const ZONES = [[55, 'Z1', '#6b7480'], [75, 'Z2', '#2f8fe0'], [90, 'Z3', '#2fb36b'], [105, 'Z4', '#f2b630'], [120, 'Z5', '#ff8a1f'], [150, 'Z6', '#ff4f3c'], [1e9, 'Z7', '#c43cff']];
 const zoneOf = w => ZONES.find(z => w / ftp() * 100 < z[0]);
+const noData = () => !trainer.connected && !DEMO && !R.pw.length; // nothing connected, nothing recorded: '–' instead of a fake 0
+const nd = f => () => noData() ? '–' : f();
 const M = {
-  cad: { l: 'Cadence', u: 'rpm', v: () => Math.round(live.cad) },
+  cad: { l: 'Cadence', u: 'rpm', v: nd(() => Math.round(live.cad)) },
   hr: { l: 'Heart rate', u: 'bpm', v: () => live.hr || '–' },
   time: { l: 'Time', u: '', v: () => fmtTime(R.moving) },
   wall: { l: 'Elapsed', u: '', v: () => fmtTime(R.wall) },
   dist: { l: 'Distance', u: 'km', v: () => fmtNum(R.d / 1000, 2) },
-  speed: { l: 'Speed', u: 'km/h', v: () => fmtNum(R.v * 3.6, 1) },
+  speed: { l: 'Speed', u: 'km/h', v: nd(() => fmtNum(R.v * 3.6, 1)) },
   avgSpeed: { l: 'Avg speed', u: 'km/h', v: () => fmtNum(R.moving ? R.d / R.moving * 3.6 : 0, 1) },
-  avg: { l: 'Avg power', u: 'W', v: () => Math.round(avgP()) },
-  np: { l: 'NP', u: 'W', v: () => Math.round(NP()) },
-  max: { l: 'Max power', u: 'W', v: () => R.max },
+  avg: { l: 'Avg power', u: 'W', v: nd(() => Math.round(avgP())) },
+  np: { l: 'NP', u: 'W', v: nd(() => Math.round(NP())) },
+  max: { l: 'Max power', u: 'W', v: nd(() => R.max) },
   kj: { l: 'Work', u: 'kJ', v: () => Math.round(R.kj) },
   kcal: { l: 'Calories', u: 'kcal', v: () => Math.round(R.kj * 1.1) },
   tss: { l: 'TSS', u: '', v: () => Math.round(R.moving * NP() * IF() / (ftp() * 3600) * 100) },
   if: { l: 'IF', u: '', v: () => fmtNum(IF(), 2) },
-  wkg: { l: 'W/kg', u: '', v: () => fmtNum(shown() / (S.riderKg || 75), 1) },
-  pct: { l: '% FTP', u: '%', v: () => Math.round(shown() / ftp() * 100) },
-  zone: { l: 'Zone', u: '', v: () => zoneOf(shown())[1] },
+  wkg: { l: 'W/kg', u: '', v: nd(() => fmtNum(shown() / (S.riderKg || 75), 1)) },
+  pct: { l: '% FTP', u: '%', v: nd(() => Math.round(shown() / ftp() * 100)) },
+  zone: { l: 'Zone', u: '', v: nd(() => zoneOf(shown())[1]) },
   lapTime: { l: 'Lap time', u: '', v: () => fmtTime(lapNow().t) },
-  lapAvg: { l: 'Lap avg', u: 'W', v: () => Math.round(lapNow().w) },
+  lapAvg: { l: 'Lap avg', u: 'W', v: nd(() => Math.round(lapNow().w)) },
   lapDist: { l: 'Lap km', u: 'km', v: () => fmtNum(lapNow().d / 1000, 2) },
   laps: { l: 'Lap', u: '', v: () => R.laps.length + 1 },
   best5: { l: 'Best 5 min', u: 'W', v: () => bestAvg(R.pw, 300) || '–' },
@@ -162,7 +164,7 @@ function render() {
   ${!bleOk && !DEMO ? `<div class="pnote">${BT_HELP}</div>` : ''}
   <section class="pbig" id="pBig">
     <div class="label">Power ${P.smooth > 1 ? `· ${P.smooth} s` : ''}</div>
-    <div class="pbigv"><b id="pPow">0</b><small>W</small></div>
+    <div class="pbigv"><b id="pPow">–</b><small>W</small></div>
     <div class="pbigs"><span id="pTarget"></span><span id="pZone"></span></div>
     <div class="pzbar"><i id="pZbar"></i></div>
   </section>
@@ -207,9 +209,9 @@ function wire() {
 function paint() {
   if (R.state === 'done' || !$('#pPow')) return;
   const w = shown(), z = zoneOf(w), t = targetW();
-  $('#pPow').textContent = Math.round(w);
+  $('#pPow').textContent = noData() ? '–' : Math.round(w); $('#pPow').classList.toggle('nd', noData());
   $('#pTarget').textContent = t != null ? `Target ${t} W` : P.mode === 'grade' ? `Grade ${fmtNum(P.grade, 1)} %` : '';
-  $('#pZone').textContent = `${z[1]} · ${Math.round(w / ftp() * 100)} % FTP`;
+  $('#pZone').textContent = noData() ? '' : `${z[1]} · ${Math.round(w / ftp() * 100)} % FTP`;
   $('#pZbar').style.cssText = `width:${Math.min(100, w / ftp() / 1.5 * 100)}%;background:${z[2]}`;
   $('#pBig').style.setProperty('--z', z[2]);
   if (t !== paint.t) { paint.t = t; paint.at = performance.now(); } // red frame only once the trainer had time to reach a new target

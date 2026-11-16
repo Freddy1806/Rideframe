@@ -18,6 +18,7 @@ body.pure { overflow: hidden; height: 100dvh; }
 .pbig.off { border-color: #ff6b6b; }
 .pbigv { display: flex; align-items: baseline; gap: 8px; line-height: .9; margin-top: 4px; }
 .pbigv b { font-size: clamp(72px, 24vw, 150px); font-weight: 900; font-stretch: 112%; letter-spacing: -.04em; font-variant-numeric: tabular-nums; }
+.pbigv b.nd { color: var(--muted); }
 .pbigv small { font-size: 22px; font-weight: 800; color: var(--muted); }
 .pbigs { display: flex; justify-content: space-between; gap: 10px; font-size: 14px; font-weight: 700; color: var(--muted); margin-top: 6px; }
 .pbigs span:first-child { color: var(--paper); }
