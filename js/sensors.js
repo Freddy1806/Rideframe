@@ -3,6 +3,7 @@
 // every device (several bikes): next time it reconnects on its own where the browser allows it (Chrome getDevices),
 // otherwise one tap on the remembered device opens the chooser again.
 import { db } from './db.js';
+import { pickDevice } from './trainer.js';
 
 const HRS = 0x180d, HRM = 0x2a37, CPS = 0x1818, CPM = 0x2a63, CSC = 0x1816, CSCM = 0x2a5b, FTMS = 0x1826, IBD = 0x2ad2;
 const NAMES = ['HRM', 'Polar', 'TICKR', 'Wahoo', 'KICKR', 'ELEMNT', 'Garmin', 'HRM-Pro', 'COOSPO', 'Coospo', 'CooSpo', 'Magene', 'Suunto', 'Decathlon', 'XOSS', 'iGPSPORT',
@@ -21,7 +22,7 @@ export class SensorHub extends EventTarget {
 
   /** one chooser for every kind of sensor */
   async pair() {
-    const dev = await navigator.bluetooth.requestDevice({ filters: [{ services: [HRS] }, { services: [CPS] }, { services: [CSC] }, { services: [FTMS] }, ...NAMES.map(namePrefix => ({ namePrefix }))],
+    const dev = await pickDevice({ filters: [{ services: [HRS] }, { services: [CPS] }, { services: [CSC] }, { services: [FTMS] }, ...NAMES.map(namePrefix => ({ namePrefix }))],
       optionalServices: [HRS, CPS, CSC, FTMS, 'battery_service'] });
     await this._open(dev);
   }
