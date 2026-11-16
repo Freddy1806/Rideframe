@@ -80,7 +80,7 @@ function measure(minGap) { // runs in the page
       const r = box.getBoundingClientRect(), s = getComputedStyle(box), bl = parseFloat(s.borderLeftWidth) || 0, br = parseFloat(s.borderRightWidth) || 0;
       const gl = shown.left - r.left - bl, gr = r.right - br - shown.right, gt = tr.top - r.top, gb = r.bottom - tr.bottom;
       if (gl < minGap - .5 || gr < minGap - .5) { bad.push(`zu nah am Rand (${Math.round(Math.min(gl, gr))} px): „${txt.slice(0, 40)}“ in ${name(box)}`); seen.add(key); }
-      else if (gt < -1 || gb < -1) { bad.push(`ragt oben/unten raus: „${txt.slice(0, 40)}“ in ${name(box)}`); seen.add(key); }
+      else if ((gt < -1 || gb < -1) && !/auto|scroll/.test(s.overflowY)) { bad.push(`ragt oben/unten raus: „${txt.slice(0, 40)}“ in ${name(box)}`); seen.add(key); }
     }
   }
   return [...new Set(bad)];

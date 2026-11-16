@@ -131,7 +131,7 @@ function histView() {
 function exView() {
   const used = new Set(list.flatMap(s => (s.ex || []).map(x => x.k)));
   const all = exercises().sort((a, b) => used.has(b.k) - used.has(a.k) || a.n.localeCompare(b.n, 'de'));
-  return `<input class="ksearch" id="kFind" placeholder="Übung suchen …" autocomplete="off">
+  return `<input class="ksearch" id="kFind" placeholder="Übung suchen …" autocomplete="off"><button class="btn ghost" id="kNewEx" style="margin-bottom:8px">+ Eigene Übung anlegen</button>
     <div id="kExList">${all.map(e => { const b = used.has(e.k) ? bests(e.k) : null;
       return `<div class="kcard kexrow" data-ex="${e.k}" data-n="${esc(e.n.toLowerCase())}"><div><b>${esc(e.n)}</b><span>${esc(e.g || '')}${b ? ` · ${b.n}× gemacht` : ''}</span></div>
         <span class="kbest">${b ? e.t === 'time' ? b.sec + ' s' : e.t === 'bw' ? b.reps + ' Wdh' : fmtNum(b.rm, 1) + ' kg' : ''}</span></div>`; }).join('')}</div>`;
@@ -140,6 +140,7 @@ function exView() {
 function wireMain() {
   const on = (s, f) => el.querySelectorAll(s).forEach(b => b.onclick = e => f(b, e));
   on('#kNew', () => begin({ name: defaultName(), ex: [] }));
+  on('#kNewEx', async () => { const k = await newExercise($('#kFind')?.value.trim() || ''); if (k) { render(); exSheet(k); } });
   on('[data-tpl]', (b, e) => { if (e.target.dataset.tdel) return; const t = tpls[+b.dataset.tpl]; begin({ name: t.name, ex: t.ex.map(x => ({ k: x.k, n: exOf(x.k).n, t: exOf(x.k).t, sets: fromPrev(x.k, x.n || 3) })) }); });
   on('[data-tdel]', b => { if (!confirm('Vorlage löschen?')) return; tpls.splice(+b.dataset.tdel, 1); saveTpls(); render(); });
   on('[data-again]', b => { const s = list.find(x => x.id === b.dataset.again); begin({ name: s.name, ex: s.ex.map(x => ({ k: x.k, n: x.n, t: x.t, sets: fromPrev(x.k, x.sets.filter(y => y.done).length || 3) })) }); });
@@ -223,18 +224,33 @@ function exMenu(i) {
   $('#mNote', s).onclick = () => { const n = prompt('Notiz zur Übung', x.note || ''); if (n != null) { x.note = n.trim(); saveDraft(); } s.remove(); render(); };
   $('#mDel', s).onclick = () => { if (x.sets.some(y => y.done) && !confirm('Übung mit abgehakten Sätzen entfernen?')) return; W.ex.splice(i, 1); saveDraft(); s.remove(); render(); };
 }
+/** create your own exercise (Freddy 16.11.: "komische Thai-Übungen anlegen können"): name, kind and muscle group; resolves with its key */
+function newExercise(name = '') {
+  return new Promise(done => {
+    const groups = [...new Set(CATALOG.map(e => e.g).filter(Boolean))].sort((a, b) => a.localeCompare(b, 'de'));
+    const s = sheet(`<div class="label">Eigene Übung anlegen</div>
+      <input class="ksearch" id="nName" placeholder="Name, z. B. Thai-Kicks am Sandsack" value="${esc(name)}" autocomplete="off" maxlength="60">
+      <div class="olbl">Wie wird gezählt?</div><div class="pseg" id="nT">${[['w', 'Gewicht × Wdh'], ['bw', 'Körpergewicht'], ['time', 'Zeit']].map(([k, n], i) => `<button data-t="${k}" class="${i ? '' : 'on'}">${n}</button>`).join('')}</div>
+      <div class="olbl">Muskelgruppe</div><select id="nG" class="ksearch"><option>Eigene</option>${groups.map(g => `<option>${esc(g)}</option>`).join('')}</select>
+      <div class="pfoot"><button class="btn ghost" id="nX">Abbrechen</button><button class="btn" id="nOk">Anlegen</button></div>`);
+    let typ = 'w'; const f = $('#nName', s); setTimeout(() => f.focus(), 60);
+    s.querySelectorAll('[data-t]').forEach(b => b.onclick = () => { typ = b.dataset.t; s.querySelectorAll('[data-t]').forEach(x => x.classList.toggle('on', x === b)); });
+    $('#nX', s).onclick = () => { s.remove(); done(null); };
+    $('#nOk', s).onclick = async () => { const n = f.value.trim(); if (!n) return f.focus();
+      const dup = exercises().find(e => e.n.toLowerCase() === n.toLowerCase()); if (dup) { s.remove(); return done(dup.k); }
+      const e = { k: 'my_' + uid().slice(0, 8), n, t: typ, g: $('#nG', s).value || 'Eigene' }; mine.push(e); await db.kvSet('kraftEx', mine).catch(() => {}); s.remove(); done(e.k); };
+  });
+}
 function pickExercise(done) {
   const used = new Set(list.flatMap(s => (s.ex || []).map(x => x.k)));
   const all = exercises().sort((a, b) => used.has(b.k) - used.has(a.k) || a.g.localeCompare(b.g, 'de') || a.n.localeCompare(b.n, 'de'));
   const s = sheet(`<div class="label">Übung hinzufügen</div><input class="ksearch" id="pFind" placeholder="Suchen oder neue Übung eintippen …" autocomplete="off">
     <div class="kpick">${all.map(e => `<button data-k="${e.k}" data-n="${esc(e.n.toLowerCase())}"><b>${esc(e.n)}</b><small>${esc(e.g || '')}${used.has(e.k) ? ' · schon gemacht' : ''}</small></button>`).join('')}</div>
-    <div id="pNew" hidden class="knew"><div class="label">Neue Übung</div><div class="pseg">${[['w', 'Gewicht'], ['bw', 'Körpergewicht'], ['time', 'Zeit']].map(([k, n], i) => `<button data-t="${k}" class="${i ? '' : 'on'}">${n}</button>`).join('')}</div><button class="btn" id="pMake">Anlegen</button></div>`);
+    <button class="btn ghost" id="pMake" style="margin-top:10px">+ Eigene Übung anlegen</button>`);
   const f = $('#pFind', s); setTimeout(() => f.focus(), 60);
-  let typ = 'w';
-  s.querySelectorAll('[data-t]').forEach(b => b.onclick = () => { typ = b.dataset.t; s.querySelectorAll('[data-t]').forEach(x => x.classList.toggle('on', x === b)); });
-  f.oninput = () => { const q = f.value.trim().toLowerCase(); let n = 0; s.querySelectorAll('.kpick [data-k]').forEach(b => { b.hidden = q && !b.dataset.n.includes(q); n += !b.hidden; }); $('#pNew', s).hidden = !q || s.querySelector(`.kpick [data-n="${CSS.escape(q)}"]`); };
+  f.oninput = () => { const q = f.value.trim().toLowerCase(); let n = 0; s.querySelectorAll('.kpick [data-k]').forEach(b => { b.hidden = q && !b.dataset.n.includes(q); n += !b.hidden; }); };
   s.querySelectorAll('.kpick [data-k]').forEach(b => b.onclick = () => { s.remove(); done(b.dataset.k); });
-  $('#pMake', s).onclick = () => { const n = f.value.trim(); if (!n) return; const e = { k: 'my_' + uid().slice(0, 8), n, t: typ, g: 'Eigene' }; mine.push(e); db.kvSet('kraftEx', mine).catch(() => {}); s.remove(); done(e.k); };
+  $('#pMake', s).onclick = async () => { const n = f.value.trim(); s.remove(); const k = await newExercise(n); if (k) done(k); };
 }
 
 // rest timer: starts after every checked set; vibrates at the end (no sound)
@@ -319,11 +335,24 @@ function exSheet(k) {
   const s = sheet(`<div class="label">${esc(e.g || 'Übung')}</div><h2 class="display" style="font-size:28px;margin:8px 0 12px">${esc(e.n)}</h2>
     ${h.length ? `<div class="pseg kmseg" style="grid-template-columns:repeat(${metrics.length},1fr)">${metrics.map(([k2, n]) => `<button data-m="${k2}">${n}</button>`).join('')}</div><div id="kChart"></div>
     <div class="psum">${e.t === 'w' ? `<div><span>Bestes 1RM</span><b>${fmtNum(b.rm, 1)} kg</b></div><div><span>Schwerstes</span><b>${fmtNum(b.kg, 1)} kg</b></div><div><span>Bestes Volumen</span><b>${kgTxt(b.vol)}</b></div>` : e.t === 'bw' ? `<div><span>Meiste Wdh</span><b>${b.reps}</b></div>` : `<div><span>Längste Zeit</span><b>${b.sec} s</b></div>`}<div><span>Gemacht</span><b>${b.n}×</b></div></div>
+    ${progress(e, h)}
     <div class="label" style="margin:14px 0 6px">Verlauf</div><div class="kdet">${h.slice().reverse().slice(0, 30).map(p => `<div><span>${dayTxt(p.date)}</span><span>${p.sets.map(y => setTxt(e.t, y)).join(' · ')}</span></div>`).join('')}</div>`
     : '<p class="hint">Noch keine Sätze mit dieser Übung. Nach dem ersten Workout siehst du hier deinen Verlauf als Kurve.</p>'}`);
   const draw = () => { s.querySelectorAll('[data-m]').forEach(x => x.classList.toggle('on', x.dataset.m === m)); const mm = metrics.find(x => x[0] === m); $('#kChart', s).innerHTML = chart(h.map(p => [p.date, p[m]]), mm[2]); };
   s.querySelectorAll('[data-m]').forEach(x => x.onclick = () => { m = x.dataset.m; draw(); });
   if (h.length) draw();
+}
+/** how the exercise developed: since the first time, over the last 4 weeks, and how often (Freddy 16.11.: "zu jeder Übung sehen, wie man sich verbessert hat") */
+function progress(e, h) {
+  const key = e.t === 'w' ? 'rm' : e.t === 'bw' ? 'reps' : 'sec', unit = e.t === 'w' ? 'kg' : e.t === 'bw' ? 'Wdh' : 's', pts = h.filter(p => p[key] > 0);
+  if (pts.length < 2) return '<p class="hint" style="margin-top:10px">Nach dem zweiten Mal siehst du hier, wie viel du dich verbessert hast.</p>';
+  const first = pts[0][key], last = pts[pts.length - 1][key], t4 = Date.now() - 28 * 864e5, before = pts.filter(p => p.date < t4), base4 = before.length ? before[before.length - 1][key] : null;
+  const diff = (a, b) => { const d = b - a, pc = a ? d / a * 100 : 0, cls = d > 0 ? 'up' : d < 0 ? 'down' : ''; return `<b class="kdelta ${cls}">${d > 0 ? '+' : d < 0 ? '−' : '±'}${fmtNum(Math.abs(d), unit === 'kg' ? 1 : 0)} ${unit}</b><small>${d > 0 ? '+' : d < 0 ? '−' : ''}${fmtNum(Math.abs(pc), 0)} %</small>`; };
+  const weeks = Math.max(1, (pts[pts.length - 1].date - pts[0].date) / (7 * 864e5)), n4 = pts.filter(p => p.date >= t4).length;
+  return `<div class="label" style="margin:14px 0 6px">Fortschritt${e.t === 'w' ? ' (geschätztes 1RM)' : ''}</div><div class="psum kprog">
+    <div><span>Seit dem ersten Mal</span>${diff(first, last)}</div>
+    <div><span>Letzte 4 Wochen</span>${base4 != null ? diff(base4, last) : '<b>–</b><small>noch zu neu</small>'}</div>
+    <div><span>Einheiten</span><b>${pts.length}</b><small>${n4} in 4 Wochen · ${fmtNum(pts.length / weeks, 1)} pro Woche</small></div></div>`;
 }
 function chart(pts, unit) {
   pts = pts.filter(p => p[1] > 0);

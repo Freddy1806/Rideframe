@@ -93,3 +93,7 @@
 .wdl { font-size: 10px; font-weight: 700; color: var(--muted); white-space: nowrap; }
 .kstats .wd { display: block; font-style: normal; font-size: 11px; font-weight: 700; color: var(--muted); margin-top: 2px; white-space: nowrap; font-variant-numeric: tabular-nums; }
 .kstats .wd.up { color: #2fbf71; } .kstats .wd.down { color: #e5484d; }
+.kprog small { display: block; font-size: 11px; color: var(--muted); font-weight: 700; margin-top: 2px; }
+.kdelta.up { color: #2fbf71; } .kdelta.down { color: #e5484d; }
+select.ksearch { appearance: none; -webkit-appearance: none; }
+.olbl { font-size: 13px; font-weight: 700; color: var(--muted); margin: 4px 0 -2px; }
