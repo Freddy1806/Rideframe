@@ -1,5 +1,6 @@
 # Builds the RIDEFRAME Android app (folder app/, Capacitor) and publishes the APK on the release "android-test".
-# Test phase: signed with the runner's debug key, so a new build may need the old app removed before installing.
+# The APK is for direct installs (debug key of the runner, a new build may need the old app removed first).
+# The .aab for Google Play is built unsigned and signed afterwards with the upload key, which never goes into the repo.
 name: Android-App bauen
 on:
   push:
@@ -20,10 +21,11 @@ jobs:
         with: { node-version: '22' }
       - run: npm ci
       - run: npx cap sync android
-      - run: cd android && chmod +x gradlew && ./gradlew assembleDebug --no-daemon
-      - run: cp android/app/build/outputs/apk/debug/app-debug.apk RIDEFRAME.apk
+      # versionCode counts up with every build, so Google Play accepts each upload as a newer version
+      - run: cd android && chmod +x gradlew && ./gradlew assembleDebug bundleRelease --no-daemon -PrfVersionCode=$((100 + ${{ github.run_number }})) -PrfVersionName=1.0.${{ github.run_number }}
+      - run: cp android/app/build/outputs/apk/debug/app-debug.apk RIDEFRAME.apk && cp android/app/build/outputs/bundle/release/app-release.aab RIDEFRAME-unsigned.aab
       - name: APK veröffentlichen
         env: { GH_TOKEN: '${{ github.token }}' }
         run: |
           gh release view android-test >/dev/null 2>&1 || gh release create android-test --title "RIDEFRAME Android (Test)" --notes "Testversion der Android-App. Auf dem Handy herunterladen und installieren." --prerelease
-          gh release upload android-test RIDEFRAME.apk --clobber
+          gh release upload android-test RIDEFRAME.apk RIDEFRAME-unsigned.aab --clobber
