@@ -1,6 +1,6 @@
 // RIDEFRAME Pure: the phone mode. No map, no video, no world: connect the trainer, set watts (ERG), a grade or a workout,
 // and read every number big, like a bike computer. Portrait first. Rides land in the same history (routeId 'pure').
-import { Trainer, HeartRate } from './trainer.js';
+import { Trainer, HeartRate, BT_HELP } from './trainer.js';
 import { db, uid } from './db.js';
 import { fmtTime, fmtNum, esc, bestAvg } from './util.js';
 import { allWorkouts, workoutById, workoutAt, workoutDuration, workoutSVG, setMyWorkouts } from './workouts.js';
@@ -134,7 +134,7 @@ function record() {
 
 // ---------------- screen ----------------
 const el = document.getElementById('pure');
-function flash(t) { const f = $('#pflash'); if (!f) return; f.textContent = t; f.classList.add('on'); clearTimeout(flash.t); flash.t = setTimeout(() => f.classList.remove('on'), 3500); }
+function flash(t, ms = 3500) { const f = $('#pflash'); if (!f) return; f.textContent = t; f.classList.add('on'); clearTimeout(flash.t); flash.t = setTimeout(() => f.classList.remove('on'), ms); }
 async function lockScreen() { try { wake = await navigator.wakeLock?.request('screen'); } catch {} }
 document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible' && R.state === 'run') lockScreen(); });
 window.addEventListener('beforeunload', e => { if (R.samples.length && R.state !== 'done') { e.preventDefault(); e.returnValue = ''; } });
@@ -159,7 +159,7 @@ function render() {
     <button class="ppill ${hrStrap.connected ? 'on' : ''}" id="pHr"><i></i>Puls</button>
     <button class="pgear" id="pSetBtn" title="Einstellungen">${icon('gear', 'gico')}</button>
   </header>
-  ${!bleOk && !DEMO ? `<div class="pnote">Bluetooth ist hier nicht verfügbar, der Trainer lässt sich nicht verbinden.</div>` : ''}
+  ${!bleOk && !DEMO ? `<div class="pnote">${BT_HELP}</div>` : ''}
   <section class="pbig" id="pBig">
     <div class="label">Leistung ${P.smooth > 1 ? `· ${P.smooth} s` : ''}</div>
     <div class="pbigv"><b id="pPow">0</b><small>W</small></div>
@@ -180,8 +180,9 @@ function render() {
 }
 
 function wire() {
-  $('#pTr').onclick = async () => { if (DEMO) return; try { await trainer.connect(); trainer.setSim({ riderKg: S.riderKg, bikeKg: S.bikeKg, crr: .004, cw: .51 }); applyTrainer(); } catch (e) { if (e.name !== 'NotFoundError') flash(e.message || String(e)); } render(); };
-  $('#pHr').onclick = async () => { try { await hrStrap.connect(); } catch (e) { if (e.name !== 'NotFoundError') flash(e.message || String(e)); } render(); };
+  // the message comes AFTER render(): render rebuilds the page and would wipe it (Freddy 16.11.: "der Button reagiert gar nicht" on the iPhone)
+  $('#pTr').onclick = async () => { if (DEMO) return; let err = ''; try { await trainer.connect(); trainer.setSim({ riderKg: S.riderKg, bikeKg: S.bikeKg, crr: .004, cw: .51 }); applyTrainer(); } catch (e) { if (e.name !== 'NotFoundError') err = e.message || String(e); } render(); if (err) flash(err, 9000); };
+  $('#pHr').onclick = async () => { let err = ''; try { await hrStrap.connect(); } catch (e) { if (e.name !== 'NotFoundError') err = e.message || String(e); } render(); if (err) flash(err, 9000); };
   $('#pSetBtn').onclick = settingsSheet;
   el.querySelectorAll('[data-m]').forEach(b => b.onclick = () => setMode(b.dataset.m));
   el.querySelectorAll('[data-d]').forEach(b => b.onclick = () => {

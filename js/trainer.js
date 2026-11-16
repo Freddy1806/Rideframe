@@ -7,6 +7,18 @@ const CPS = 0x1818, CPM = 0x2a63;
 const WAHOO_CP = 'a026e005-0a7d-4ab3-97fa-f1500f9feb8b';
 const HRS = 0x180d, HRM = 0x2a37;
 
+/** what to tell people where the browser has no Bluetooth (every iPhone browser except Bluefy; Firefox) */
+export const BT_HELP = /iPhone|iPad|iPod/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1)
+  ? 'Am iPhone erlaubt Apple kein Bluetooth im Browser. Öffne RIDEFRAME im kostenlosen Browser „Bluefy“ oder am Laptop in Chrome.'
+  : 'Dieser Browser kann kein Bluetooth. Bitte Chrome oder Edge nehmen.';
+/** the device chooser. Some browsers (Bluefy on the iPhone) reject long filter lists: then show every device nearby instead of failing silently */
+export async function pickDevice(o) {
+  if (!navigator.bluetooth) throw new Error(BT_HELP);
+  try { return await navigator.bluetooth.requestDevice(o); }
+  catch (e) { if (o.acceptAllDevices || ['NotFoundError', 'SecurityError', 'AbortError', 'NotAllowedError'].includes(e.name)) throw e;
+    return await navigator.bluetooth.requestDevice({ acceptAllDevices: true, optionalServices: o.optionalServices || [] }); }
+}
+
 export class Trainer extends EventTarget {
   constructor() {
     super();
@@ -20,7 +32,7 @@ export class Trainer extends EventTarget {
   emit(type, detail) { this.dispatchEvent(new CustomEvent(type, { detail })); }
 
   async connect() {
-    this.device = await navigator.bluetooth.requestDevice({
+    this.device = await pickDevice({
       filters: [{ services: [FTMS] }, { services: [CPS] }, { namePrefix: 'KICKR' }],
       optionalServices: [FTMS, CPS, WAHOO_CP, 'a026ee01-0a7d-4ab3-97fa-f1500f9feb8b', 0x180a],
     });
@@ -156,7 +168,7 @@ export class HeartRate extends EventTarget {
   async connect(all = false) {
     // straps only advertise while worn (moist electrodes) and often hide the HR service in their advert: also match common names
     const names = ['HRM', 'Polar', 'TICKR', 'Wahoo', 'Garmin', 'COOSPO', 'Coospo', 'Magene', 'Suunto', 'Decathlon', 'Kalenji', 'XOSS', 'iGPSPORT', 'H10', 'H9', 'Verity', 'Forerunner', 'fenix', 'Apple Watch', 'Whoop', 'WHOOP', 'Amazfit', 'Scosche', 'Rhythm', 'CooSpo', 'Heart'];
-    this.device = await navigator.bluetooth.requestDevice(all ? { acceptAllDevices: true, optionalServices: [HRS, 'battery_service'] }
+    this.device = await pickDevice(all ? { acceptAllDevices: true, optionalServices: [HRS, 'battery_service'] }
       : { filters: [{ services: [HRS] }, ...names.map(namePrefix => ({ namePrefix }))], optionalServices: [HRS, 'battery_service'] });
     this.device.addEventListener('gattserverdisconnected', () => this._lost());
     await this._open();
@@ -196,7 +208,7 @@ export class HeartRate extends EventTarget {
 const CSC = 0x1816, CSCM = 0x2a5b;
 export class CadenceSensor extends EventTarget {
   async connect() {
-    this.device = await navigator.bluetooth.requestDevice({ filters: [{ services: [CSC] }], optionalServices: [CSC, 'battery_service'] });
+    this.device = await pickDevice({ filters: [{ services: [CSC] }], optionalServices: [CSC, 'battery_service'] });
     this.device.addEventListener('gattserverdisconnected', () => this._lost());
     await this._open();
   }

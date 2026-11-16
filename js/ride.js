@@ -1140,6 +1140,7 @@ export class RideSession {
       const [{ makeShareImage }, { account }] = await Promise.all([import('./shareimg.js'), import('./account.js')]);
       return makeShareImage({ ...(await shareOpts()), who: account()?.name || '' });
     });
+    if (!rec.unsaved && this.state.settings?.autoStrava) setTimeout(() => o.querySelector('#fStrava')?.click(), 400); // settings: upload on its own, as in the phone modes
   }
 
   async _end(save) {
