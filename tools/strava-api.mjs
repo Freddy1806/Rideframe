@@ -2,7 +2,7 @@
 // The Strava app secret never reaches the browser: it lives in <data>/strava.json on the host:
 //   { "client_id": "12345", "client_secret": "…", "public_url": "https://mac-mini-….ts.net" }
 // Each browser that connects gets a random key (kept in its localStorage); the host keeps that rider's Strava tokens.
-import { readFile, writeFile, mkdir } from 'node:fs/promises';
+import { readFile, writeFile, mkdir, readdir } from 'node:fs/promises';
 import { randomBytes } from 'node:crypto';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
@@ -10,11 +10,12 @@ import { join } from 'node:path';
 const DATA = process.env.RIDEFRAME_DATA || join(homedir(), 'RIDEFRAME_data');
 const CFG = join(DATA, 'strava.json'), TOK = join(DATA, 'strava_tokens.json');
 const API = 'https://www.strava.com/api/v3';
+const imgDay = new Map(); // strava key -> { d: day, n: share images today }
 const pending = new Map(); // oauth state -> time
 const claims = new Map(), stateClaim = new Map(); // installed phone app (iOS): the login runs in a separate browser with its own storage, so the app fetches its key by a one-time claim code
 
 const readJSON = async (f, d) => { try { return JSON.parse(await readFile(f, 'utf8')); } catch { return d; } };
-async function saveTokens(t) { await mkdir(DATA, { recursive: true }); await writeFile(TOK, JSON.stringify(t, null, 1)); }
+async function saveTokens(t) { await mkdir(DATA, { recursive: true }); await writeFile(TOK, JSON.stringify(t, null, 1), { mode: 0o600 }); } // Strava logins of the riders: readable by the host user only
 const send = (res, code, obj) => { res.writeHead(code, { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' }); res.end(JSON.stringify(obj)); };
 const html = (res, body) => { res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-store' }); res.end(`<!doctype html><meta charset="utf-8"><meta name="viewport" content="width=device-width"><body style="font:18px system-ui;background:#0b0b0b;color:#f4f4ef;display:grid;place-items:center;height:90vh;text-align:center">${body}`); };
 async function body(req, max = 20e6) {
@@ -56,14 +57,15 @@ export async function stravaApi(req, res, path) {
       const t = key && (await readJSON(TOK, {}))[key];
       return send(res, 200, { configured, connected: !!t, athlete: t?.athlete || null }), true;
     }
-    const cm = op.match(/^claim\/([a-f0-9]{16,64})$/);
-    if (cm) { const v = claims.get(cm[1]); if (v) claims.delete(cm[1]); return send(res, 200, { key: v?.key || null }), true; }
+    const cm = op.match(/^claim\/([a-f0-9]{32,64})$/); // one-time, 5 minutes: only the app that started this login knows the code
+    if (cm) { const v = claims.get(cm[1]); if (v) claims.delete(cm[1]); return send(res, 200, { key: v && Date.now() - v.t < 5 * 60e3 ? v.key : null }), true; }
     if (!configured) return send(res, 503, { error: 'Strava ist auf diesem Server noch nicht eingerichtet.' }), true;
     if (op === 'connect') {
       const state = randomBytes(12).toString('hex'); pending.set(state, Date.now());
-      { const c = new URL(req.url, 'http://x').searchParams.get('claim') || ''; if (/^[a-f0-9]{16,64}$/.test(c)) stateClaim.set(state, c); }
+      { const c = new URL(req.url, 'http://x').searchParams.get('claim') || ''; if (/^[a-f0-9]{32,64}$/.test(c)) stateClaim.set(state, c); }
+      if (pending.size > 2000) { pending.clear(); stateClaim.clear(); } // someone hammering the link never fills the memory
       for (const [c, v] of claims) if (Date.now() - v.t > 15 * 60e3) claims.delete(c);
-      for (const [s, t] of pending) if (Date.now() - t > 15 * 60e3) pending.delete(s);
+      for (const [s, t] of pending) if (Date.now() - t > 15 * 60e3) { pending.delete(s); stateClaim.delete(s); }
       const u = new URL('https://www.strava.com/oauth/authorize');
       u.search = new URLSearchParams({ client_id: cfg.client_id, response_type: 'code', redirect_uri: baseUrl(req, cfg) + '/api/strava/callback', approval_prompt: 'auto', scope: 'activity:write,read', state });
       res.writeHead(302, { Location: u.toString() }); res.end(); return true;
@@ -77,7 +79,7 @@ export async function stravaApi(req, res, path) {
       const r = await fetch('https://www.strava.com/oauth/token', { method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ client_id: cfg.client_id, client_secret: cfg.client_secret, code: q.get('code'), grant_type: 'authorization_code' }) });
       const j = await r.json();
-      if (!r.ok) return html(res, 'Strava hat die Verbindung abgelehnt: ' + String(j.message || r.status).replace(/</g, '')
+      if (!r.ok) return html(res, 'Strava hat die Verbindung abgelehnt: ' + String(j.message || r.status).replace(/[<>&"']/g, '')
         + (r.status === 403 ? '<br><small>Neue Strava-Apps erlauben anfangs nur den Besitzer der App.</small>' : '')), true;
       const k = randomBytes(24).toString('hex'), all = await readJSON(TOK, {});
       all[k] = { access_token: j.access_token, refresh_token: j.refresh_token, expires_at: j.expires_at, athlete: { id: j.athlete?.id, name: [j.athlete?.firstname, j.athlete?.lastname].filter(Boolean).join(' ') }, at: Date.now() };
@@ -91,6 +93,9 @@ export async function stravaApi(req, res, path) {
       const b = await body(req, 8e6), m = String(b.jpg || '').match(/^data:image\/jpeg;base64,(.+)$/);
       if (!m) return send(res, 400, { error: 'kein Bild' }), true;
       const id = randomBytes(12).toString('hex'); await mkdir(join(DATA, 'shares'), { recursive: true });
+      const day = new Date().toDateString(), n = imgDay.get(key); // 40 share images per rider and day, 5000 on the host in total
+      if ((n?.d === day && n.n >= 40) || (await readdir(join(DATA, 'shares')).catch(() => [])).length >= 5000) return send(res, 429, { error: 'Zu viele Bilder für heute.' }), true;
+      imgDay.set(key, { d: day, n: n?.d === day ? n.n + 1 : 1 }); if (imgDay.size > 5000) imgDay.clear();
       await writeFile(join(DATA, 'shares', id + '.jpg'), Buffer.from(m[1], 'base64'));
       return send(res, 200, { url: baseUrl(req, cfg) + '/api/strava/image/' + id + '.jpg' }), true;
     }

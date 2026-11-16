@@ -12,7 +12,7 @@ async function api(path, opt = {}) {
   const r = await fetch('/api/account/' + path, { cache: 'no-store', ...opt, headers: { 'Content-Type': 'application/json', 'X-RF-Token': acc?.token || '', ...(opt.headers || {}) } });
   const j = await r.json().catch(() => ({}));
   if (r.status === 401 && acc && path !== 'login' && !j.keep) { acc = null; store(null); }
-  if (!r.ok) throw new Error(j.error || 'Server antwortet nicht');
+  if (!r.ok) throw Object.assign(new Error(j.error || 'Server antwortet nicht'), { invite: !!j.invite });
   return j;
 }
 export async function accountsAvailable() {
@@ -111,6 +111,7 @@ export function accountModal(state, onChange, { first = false } = {}) {
       <div class="form">
         <div class="field"><div style="min-width:90px">Name</div><input type="text" id="aName" maxlength="24" autocomplete="username" autocapitalize="off" spellcheck="false"></div>
         <div class="field"><div style="min-width:90px">Passwort</div><input type="password" id="aPw" autocomplete="current-password"></div>
+        <div class="field" id="aInvRow" hidden><div style="min-width:90px">Einladung</div><input type="text" id="aInv" maxlength="60" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="Code von Freddy"></div>
       </div>
       <p id="aErr" style="color:var(--accent);min-height:20px;margin-top:10px"></p>
       <div class="actions"><button class="btn ghost" id="aSkip" style="margin-right:auto">${first ? 'Ohne Konto weiter' : 'Abbrechen'}</button><button class="btn ghost" id="aNew">Neues Konto</button><button class="btn" id="aIn">Anmelden</button></div></div>`;
@@ -123,12 +124,13 @@ export function accountModal(state, onChange, { first = false } = {}) {
       if (!name || !password) return err('Bitte Name und Passwort eingeben.');
       m.querySelectorAll('button').forEach(b => b.disabled = true); err(op === 'register' ? 'Konto wird angelegt …' : 'Anmelden …');
       try {
-        const j = await api(op, { method: 'POST', body: JSON.stringify({ name, password }) });
+        const j = await api(op, { method: 'POST', body: JSON.stringify({ name, password, invite: $('#aInv').value.trim() || undefined }) });
         acc = { token: j.token, name: j.name }; store(acc);
         err('Fahrten werden abgeglichen …');
         await syncAccount(state, op === 'login');
         onChange?.(); close();
-      } catch (e) { err(e.message); m.querySelectorAll('button').forEach(b => b.disabled = false); }
+      } catch (e) { err(e.message); m.querySelectorAll('button').forEach(b => b.disabled = false);
+        if (e.invite) { $('#aInvRow').hidden = false; $('#aInv').focus(); } } // this host only takes new riders with an invitation code
     };
     $('#aIn').onclick = () => go('login'); $('#aNew').onclick = () => go('register');
     $('#aPw').onkeydown = e => { if (e.key === 'Enter') go('login'); };
