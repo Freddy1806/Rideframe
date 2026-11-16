@@ -1,0 +1,9 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">RIDEFRAME</string>
+    <string name="title_activity_main">RIDEFRAME</string>
+    <string name="package_name">de.freddy.rideframe</string>
+    <string name="custom_url_scheme">de.freddy.rideframe</string>
+    <string name="capacitor_background_geolocation_notification_channel_name">Fahrt-Aufzeichnung</string>
+    <string name="capacitor_background_geolocation_notification_icon">ic_launcher_foreground</string>
+</resources>

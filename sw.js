@@ -2,7 +2,7 @@
 // Network first, so every deploy shows up right away; the cache only answers when there is no connection (out on the bike).
 // The 3D world (assets/, audio/, videos) and the API are never touched here.
 const C = 'rf-shell-v1';
-const SHELL = ['handy.html', 'outdoor.html', 'kraft.html', 'pure.html', 'app.webmanifest', 'css/app.css', 'css/pure.css', 'css/kraft.css', 'css/outdoor.css', 'css/handy.css',
+const SHELL = ['handy.html', 'outdoor.html', 'kraft.html', 'pure.html', 'app.webmanifest', 'css/app.css', 'css/pure.css', 'css/kraft.css', 'css/outdoor.css', 'css/handy.css', 'js/native.js',
   'js/handy.js', 'js/outdoor.js', 'js/kraft.js', 'js/pure.js', 'js/db.js', 'js/util.js', 'js/account.js', 'js/trainer.js', 'js/stravaup.js', 'js/tcx.js', 'js/track.js',
   'js/workouts.js', 'js/physics.js', 'vendor/leaflet/leaflet.js', 'vendor/leaflet/leaflet.css', 'fonts/archivo-latin.woff2', 'img/icon-192.png', 'img/icon-180.png', 'img/icon.svg'];
 self.addEventListener('install', e => { e.waitUntil(caches.open(C).then(c => Promise.all(SHELL.map(u => c.add(u).catch(() => {})))).then(() => self.skipWaiting())); });

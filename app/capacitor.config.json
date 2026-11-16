@@ -1,0 +1,17 @@
+{
+  "appId": "de.freddy.rideframe",
+  "appName": "RIDEFRAME",
+  "webDir": "www",
+  "server": {
+    "url": "https://mac-mini-von-gary.tailcde074.ts.net/handy.html",
+    "androidScheme": "https",
+    "allowNavigation": [
+      "mac-mini-von-gary.tailcde074.ts.net"
+    ]
+  },
+  "android": {
+    "backgroundColor": "#0b0b0b",
+    "useLegacyBridge": true,
+    "allowMixedContent": false
+  }
+}
