@@ -19,7 +19,8 @@ async function load() {
 }
 const modeOf = r => r.routeId === 'run' || r.sport === 'run' ? 'run' : r.routeId === 'outdoor' ? 'ride' : r.routeId === 'pure' ? 'trainer' : 'world';
 const day = t => new Date(t).toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short' });
-const pace = (d, s) => d > 0 ? (x => `${Math.floor(x / 60)}:${String(Math.round(x % 60)).padStart(2, '0')} min/km`)(s / d * 1000) : '';
+const pace = (d, s) => d > 0 ? (x => `${Math.floor(x / 60)}:${String(Math.round(x % 60)).padStart(2, '0')} /km`)(s / d * 1000) : '';
+const kmTxt = r => `${fmtNum(r.distance / 1000, 1)} km`;
 
 function render() {
   const R2 = twoWeeks(rides), K2 = twoWeeks(kraft, k => k.start || k.date), nb = l => l.filter(r => modeOf(r) !== 'run').length, nr = l => l.filter(r => modeOf(r) === 'run').length, km = l => Math.round(l.reduce((a, r) => a + r.distance, 0) / 1000);
@@ -40,9 +41,9 @@ function render() {
 /** the last activities of all modes, newest first */
 function recent() {
   const all = [...rides.map(r => ({ t: r.date, m: modeOf(r), name: r.workout && r.routeId !== 'demo' && ['outdoor', 'run', 'pure'].includes(r.routeId) ? r.workout : r.routeName || MODES[modeOf(r)].short,
-    val: modeOf(r) === 'run' ? `${fmtNum(r.distance / 1000, 1)} km · ${pace(r.distance, r.duration)}` : `${fmtNum(r.distance / 1000, 1)} km · ${fmtTime(r.duration)}` })),
-    ...kraft.map(k => ({ t: k.start || k.date, m: 'kraft', name: k.name, val: fmtTime(k.dur || 0) }))].sort((a, b) => b.t - a.t).slice(0, 6);
-  return all.map(x => `<a class="hrow" href="${x.m === 'world' ? './?desktop' : MODES[x.m].href + (x.m === 'kraft' || x.m === 'trainer' ? '' : (MODES[x.m].href.includes('?') ? '&' : '?') + 'list')}" style="--mc:${MODES[x.m].color};--mcl:${MODES[x.m].light}">${icon(x.m, 'rico')}<div><b>${esc(x.name)}</b><small>${day(x.t)}</small></div><span>${x.val}</span></a>`);
+    val: (modeOf(r) === 'run' ? [kmTxt(r), pace(r.distance, r.duration), fmtTime(r.duration)] : [kmTxt(r), fmtTime(r.duration), r.avgPower > 0 && `${r.avgPower} W avg`]).filter(Boolean).join(' · ') })),
+    ...kraft.map(k => { const n = (k.ex || []).reduce((a, x) => a + x.sets.filter(y => y.done).length, 0); return { t: k.start || k.date, m: 'kraft', name: k.name, val: `${fmtTime(k.dur || 0)} · ${n} ${n === 1 ? 'set' : 'sets'}` }; })].sort((a, b) => b.t - a.t).slice(0, 6);
+  return all.map(x => `<a class="hrow" href="${x.m === 'world' ? './?desktop' : MODES[x.m].href + (x.m === 'kraft' || x.m === 'trainer' ? '' : (MODES[x.m].href.includes('?') ? '&' : '?') + 'list')}" style="--mc:${MODES[x.m].color};--mcl:${MODES[x.m].light}">${icon(x.m, 'rico')}<div><b>${esc(x.name)}</b><small>${x.val}</small></div><span>${day(x.t)}</span></a>`);
 }
 async function save() { const st = (await db.kvGet('settings').catch(() => null)) || {}; Object.assign(st, { theme: S.theme, modeColors: S.modeColors, accent: S.accent, autoStrava: S.autoStrava, kraftRest: S.kraftRest }); await db.kvSet('settings', st).catch(() => {}); }
 function settings() {
