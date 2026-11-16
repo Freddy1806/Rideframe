@@ -18,6 +18,7 @@ const P = {
   world: '<path d="m2 19 6-10 4 6 3-4 7 8z"/><circle cx="17" cy="6" r="2"/>',
   kraft: '<path d="M3 9v6M6 7v10M18 7v10M21 9v6M6 12h12"/>',
   gear: '<path d="M4 6h9M17 6h3M4 12h3M11 12h9M4 18h11M19 18h1"/><circle cx="15" cy="6" r="2"/><circle cx="9" cy="12" r="2"/><circle cx="17" cy="18" r="2"/>',
+  user: '<circle cx="12" cy="8" r="4"/><path d="M4 21c0-4.4 3.6-7 8-7s8 2.6 8 7"/>',
   home: '<path d="M3 11 12 4l9 7M5 10v10h14V10"/>',
 };
 export const icon = (k, cls = 'mico') => `<svg class="${cls}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${P[k] || ''}</svg>`;

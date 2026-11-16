@@ -43,6 +43,8 @@ const SCREENS = [
   ['kraft-workout', '/kraft.html', async p => { await p.click('[data-again]'); }],
   ['kraft-ende', '/kraft.html', async p => { await p.click('[data-again]'); await p.click('.kex[data-i="0"] [data-chk="0"]'); await p.click('#kFin'); }],
   ['rollentrainer', '/pure.html', null],
+  ['profil', '/profil.html', null],
+  ['profil-daten', '/profil.html', p => p.click('#fSet')],
 ];
 const DESK = [ // the main app with its top bar (account pill, tabs) on tablet, laptop and TV widths
   ['app-strecken', '/?desktop&noprofile', null],

@@ -6,7 +6,7 @@ import { fmtTime, fmtNum, esc, twoWeeks, weekStat } from './util.js';
 import { MODES, ACCENTS, icon, applyTheme } from './theme.js';
 
 const el = document.getElementById('handy'), $ = (s, r = document) => r.querySelector(s);
-let S = {}, acc = null, rides = [], kraft = [], installEvt = null;
+let S = {}, acc = null, rides = [], kraft = [], installEvt = null, pic = null;
 window.addEventListener('beforeinstallprompt', e => { e.preventDefault(); installEvt = e; render(); });
 
 async function load() {
@@ -14,6 +14,7 @@ async function load() {
   applyTheme(S, null);
   rides = (await db.all('rides').catch(() => [])).filter(r => r.routeId !== 'demo').sort((a, b) => b.date - a.date);
   kraft = (await db.kvGet('kraft').catch(() => null)) || [];
+  pic = await db.kvGet('profilePic').catch(() => null);
   try { acc = (await import('./account.js')).account(); } catch {}
 }
 const modeOf = r => r.routeId === 'run' || r.sport === 'run' ? 'run' : r.routeId === 'outdoor' ? 'ride' : r.routeId === 'pure' ? 'trainer' : 'world';
@@ -29,6 +30,7 @@ function render() {
     ${installEvt && !window.__rfNative ? `<button class="btn ghost" id="hInstall">Als App installieren</button>` : ''}
     <section class="hweek"><div class="hwhead"><span class="label">Diese Woche</span><span class="wdl">▲▼ zur Vorwoche</span></div><div class="kstats">
       ${weekStat(nb(R2.cur), nb(R2.prev), 'Fahrten')}${weekStat(nr(R2.cur), nr(R2.prev), 'Läufe')}${weekStat(km(R2.cur), km(R2.prev), 'km')}${weekStat(K2.cur.length, K2.prev.length, 'Kraft')}</div></section>
+    <a class="hprof" href="profil.html">${pic ? `<img src="${pic}" alt="">` : icon('user', 'hpi')}<span><b>Mein Profil</b><small>Fitness, Bestwerte, Statistik</small></span><i>›</i></a>
     <nav class="hmodes">${['ride', 'run', 'trainer', 'world', 'kraft'].map(card).join('')}</nav>
     ${rides.length || kraft.length ? `<h3 class="ksec">Zuletzt</h3>${recent().join('')}` : ''}`;
   $('#hAcc').onclick = async () => { const a = await import('./account.js'); await a.accountModal({ settings: S }, async () => { await load(); render(); }); };

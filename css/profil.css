@@ -1,0 +1,19 @@
+/* RIDEFRAME profile page */
+#profil { min-height: 100dvh; max-width: 620px; margin: 0 auto; padding: env(safe-area-inset-top) 14px calc(env(safe-area-inset-bottom) + 28px); display: flex; flex-direction: column; gap: 12px; }
+.fhead { display: flex; gap: 14px; align-items: center; }
+.fhead > div { flex: 1; min-width: 0; } .fhead h1 { font-size: 24px; font-weight: 900; font-stretch: 112%; overflow-wrap: anywhere; line-height: 1.1; }
+.fhead p { font-size: 13px; color: var(--muted); font-weight: 700; margin-top: 4px; } .fhead small { font-size: 11px; color: var(--muted); }
+.favatar { width: 84px; height: 84px; border-radius: 50%; flex: none; overflow: hidden; background: var(--ink-3); border: 2px solid var(--accent); display: grid; place-items: center; padding: 0; }
+.favatar img { width: 100%; height: 100%; object-fit: cover; display: block; } .favatar span { font-size: 34px; font-weight: 900; color: var(--accent); }
+.fbar { height: 6px; border-radius: 3px; background: var(--line-2); margin: 8px 0 4px; overflow: hidden; } .fbar i { display: block; height: 100%; background: var(--accent); border-radius: 3px; }
+.kstats.k3 { grid-template-columns: repeat(3, minmax(0, 1fr)) !important; } .kstats .wd { white-space: normal; }
+.fpm { margin-top: 10px; width: 100%; height: auto; } .fpm .fatl { fill: none; stroke: var(--muted); stroke-width: 1.5; stroke-dasharray: 3 3; }
+.fleg { display: flex; gap: 14px; flex-wrap: wrap; font-size: 11px; color: var(--muted); font-weight: 700; margin-top: 4px; } .fleg i { display: inline-block; width: 14px; height: 3px; border-radius: 2px; margin-right: 5px; vertical-align: middle; background: var(--accent); } .fleg i.l2 { background: var(--muted); }
+.fest { display: flex; flex-direction: column; } .fest .hint, #profil .hint { font-size: 12px; margin-top: 8px; }
+.prow2 { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 0 10px; padding: 10px 0; border-bottom: 1px solid var(--line); align-items: baseline; }
+.prow2 span { font-weight: 700; font-size: 14px; } .prow2 b { font-size: 17px; font-weight: 900; font-variant-numeric: tabular-nums; text-align: right; } .prow2 small { grid-column: 1 / -1; font-size: 11.5px; color: var(--muted); }
+.fsug { display: flex; gap: 10px; align-items: center; justify-content: space-between; background: color-mix(in srgb, var(--accent) 12%, transparent); border-radius: 10px; padding: 10px 12px; margin: 8px 0; font-size: 13px; }
+.fsug span { min-width: 0; }
+.ftot { display: flex; flex-direction: column; } .ftrow { display: flex; gap: 12px; align-items: center; padding: 10px 2px; border-bottom: 1px solid var(--line); color: inherit; text-decoration: none; --c: var(--mc); }
+:root[data-theme="light"] .ftrow { --c: var(--mcl); } .ftrow div { min-width: 0; } .ftrow b { display: block; font-size: 15px; } .ftrow small { font-size: 12px; color: var(--muted); }
+#profil .psheetin .prow { grid-template-columns: minmax(0, 1fr) 110px 28px; }
