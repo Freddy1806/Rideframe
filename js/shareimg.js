@@ -43,20 +43,20 @@ export async function makeShareImage({ rec, route, track, photo, pose, pb, who }
   g.fillStyle = acc; g.beginPath(); g.roundRect(48, 44, 46, 46, 9); g.fill();
   g.fillStyle = INK; g.beginPath(); g.moveTo(57, 81); g.lineTo(71, 60); g.lineTo(80, 70); g.lineTo(87, 56); g.lineTo(94 - 8, 81); g.closePath(); g.fill();
   g.fillStyle = PAPER; g.font = font(900, 34, 'expanded'); g.textBaseline = 'middle'; g.fillText('RIDEFRAME', 110, 68);
-  if (pb) { g.font = font(900, 24, 'expanded'); const t = 'NEUE BESTZEIT', tw = g.measureText(t).width; g.fillStyle = acc; g.beginPath(); g.roundRect(W - 48 - tw - 36, 46, tw + 36, 44, 22); g.fill(); g.fillStyle = INK; g.fillText(t, W - 48 - tw - 18, 69); }
+  if (pb) { g.font = font(900, 24, 'expanded'); const t = 'NEW BEST TIME', tw = g.measureText(t).width; g.fillStyle = acc; g.beginPath(); g.roundRect(W - 48 - tw - 36, 46, tw + 36, 44, 22); g.fill(); g.fillStyle = INK; g.fillText(t, W - 48 - tw - 18, 69); }
   // route name over the bottom of the photo
   g.textBaseline = 'alphabetic'; g.fillStyle = MUTED; g.font = font(800, 24, 'expanded');
   g.fillText([new Date(rec.date).toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' }), who].filter(Boolean).join(' · ').toUpperCase(), 48, PH - 92);
-  g.fillStyle = PAPER; let fs = 64; g.font = font(900, fs, 'expanded'); const name = route.name || 'Fahrt';
+  g.fillStyle = PAPER; let fs = 64; g.font = font(900, fs, 'expanded'); const name = route.name || 'Ride';
   while (g.measureText(name).width > W - 96 && fs > 30) g.font = font(900, fs -= 4, 'expanded');
   g.fillText(name, 48, PH - 30);
   // map left, numbers right
   const mx = 32, my = PH + 24, mw = 500, mh = H - PH - 56;
   g.fillStyle = '#161616'; g.beginPath(); g.roundRect(mx, my, mw, mh, 14); g.fill();
   const from = rec.startD || 0, to = Math.min(track.length, from + rec.distance);
-  if (!drawMap(g, mx, my, mw, mh, track, pose, from, to, acc)) { g.fillStyle = MUTED; g.font = font(700, 22); g.fillText('Keine Karte', mx + 40, my + mh / 2); }
-  const stats = [['Distanz', fmtKm(rec.distance), 'km'], ['Zeit', fmtTime(rec.duration), ''], ['Ø Leistung', fmtNum(rec.avgPower), 'W'],
-    ['Höhenmeter', fmtNum(rec.gain), 'hm'], ['Ø Tempo', fmtNum(rec.distance / Math.max(1, rec.duration) * 3.6, 1), 'km/h'], ['Arbeit', fmtNum(rec.avgPower * rec.duration / 1000), 'kJ']];
+  if (!drawMap(g, mx, my, mw, mh, track, pose, from, to, acc)) { g.fillStyle = MUTED; g.font = font(700, 22); g.fillText('No map', mx + 40, my + mh / 2); }
+  const stats = [['Distance', fmtKm(rec.distance), 'km'], ['Time', fmtTime(rec.duration), ''], ['Avg power', fmtNum(rec.avgPower), 'W'],
+    ['Climb', fmtNum(rec.gain), 'm'], ['Avg speed', fmtNum(rec.distance / Math.max(1, rec.duration) * 3.6, 1), 'km/h'], ['Work', fmtNum(rec.avgPower * rec.duration / 1000), 'kJ']];
   const sx = mx + mw + 44, colW = (W - sx - 32) / 2, rowH = mh / 3;
   stats.forEach(([l, v, u], i) => {
     const x = sx + (i % 2) * colW, y = my + Math.floor(i / 2) * rowH + 50;
@@ -79,9 +79,9 @@ export async function shareModal(opts) {
   const url = URL.createObjectURL(blob);
   const m = document.createElement('div'); m.className = 'modal sharebox';
   const canShare = !!navigator.canShare?.({ files: [file] });
-  m.innerHTML = `<div class="box"><img src="${url}" alt="Bild zum Teilen">
-    <div class="actions">${canShare ? '<button class="btn ghost" id="sShare">Teilen</button>' : ''}<button class="btn ghost" id="sSave">Speichern</button><button class="btn" id="sOk">Fertig</button></div>
-    <p class="hint">Tipp: Auf Strava kannst du das Bild in der Fahrt unter „Bearbeiten“ als Foto hinzufügen.</p></div>`;
+  m.innerHTML = `<div class="box"><img src="${url}" alt="Image to share">
+    <div class="actions">${canShare ? '<button class="btn ghost" id="sShare">Share</button>' : ''}<button class="btn ghost" id="sSave">Save</button><button class="btn" id="sOk">Done</button></div>
+    <p class="hint">Tip: on Strava you can add the image to the ride as a photo under “Edit”.</p></div>`;
   document.body.append(m);
   const close = () => { m.remove(); URL.revokeObjectURL(url); };
   m.querySelector('#sOk').onclick = close;

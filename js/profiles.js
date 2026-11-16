@@ -18,24 +18,24 @@ export const faceImg = (look, cls = 'face') => `<img class="${cls}" alt="" data-
 
 export async function profileModal(key, routeName) {
   const m = document.createElement('div'); m.className = 'modal profile';
-  m.innerHTML = '<div class="box"><p class="dim">Lädt …</p></div>'; document.body.append(m);
+  m.innerHTML = '<div class="box"><p class="dim">Loading …</p></div>'; document.body.append(m);
   const close = () => m.remove(); m.addEventListener('click', e => { if (e.target === m) close(); });
-  let p; try { p = await loadProfile(key); } catch (e) { m.querySelector('.box').innerHTML = `<p>${esc(e.message)}</p><div class="actions"><button class="btn" id="pOk">Schließen</button></div>`; m.querySelector('#pOk').onclick = close; return; }
+  let p; try { p = await loadProfile(key); } catch (e) { m.querySelector('.box').innerHTML = `<p>${esc(e.message)}</p><div class="actions"><button class="btn" id="pOk">Close</button></div>`; m.querySelector('#pOk').onclick = close; return; }
   const mine = !!account() && account().name === p.name; // your own profile: rides can be deleted here too (Freddy 12.11.: 1-min / 0-km junk)
-  const rn = r => r.routeId === 'pure' ? (r.workout ? 'Training · ' + r.workout : 'Training') : r.routeId === 'outdoor' ? 'Draußen' + (r.workout ? ' · ' + r.workout : '') : routeName?.(r.routeId) || r.routeName || 'Eigene Strecke';
-  m.querySelector('.box').innerHTML = `<div class="phead">${faceImg(p.look, 'face big')}<div><div class="label">Fahrer</div><h2 class="display">${esc(p.name)}</h2>
-      <div class="meta">${p.since ? 'dabei seit ' + new Date(p.since).toLocaleDateString('en-GB') : ''}</div></div></div>
-    <div class="pstats"><div><b>${num(p.count)}</b><span>Fahrten</span></div><div><b>${num(p.km, 1)}</b><span>km</span></div><div><b>${num(p.hm)}</b><span>Höhenmeter</span></div><div><b>${hms(p.dur)}</b><span>im Sattel</span></div></div>
-    ${p.rides.length ? `<div class="plist"><table class="table"><tr><th class="label">Datum</th><th class="label">Strecke</th><th class="label">Zeit</th><th class="label">km</th><th class="label">Hm</th><th class="label">Ø W</th>${mine ? '<th></th>' : ''}</tr>
-      ${p.rides.map(r => `<tr data-id="${esc(r.id || '')}"><td>${new Date(r.date).toLocaleDateString('en-GB')}</td><td>${esc(rn(r))}${r.complete ? '' : ' <span class="dim">(abgebrochen)</span>'}</td><td>${hms(r.dur)}</td><td>${num(r.km, 1)}</td><td>${num(r.hm)}</td><td>${r.pw ? num(r.pw) : '–'}</td>${mine && r.id ? '<td><button class="btn ghost small pdel" title="Fahrt löschen">✕</button></td>' : mine ? '<td></td>' : ''}</tr>`).join('')}</table></div>`
-      : '<p class="dim">Noch keine Fahrten.</p>'}
-    <div class="actions"><button class="btn" id="pOk">Schließen</button></div>`;
+  const rn = r => r.routeId === 'pure' ? (r.workout ? 'Workout · ' + r.workout : 'Workout') : r.routeId === 'outdoor' ? 'Outdoors' + (r.workout ? ' · ' + r.workout : '') : routeName?.(r.routeId) || r.routeName || 'Own route';
+  m.querySelector('.box').innerHTML = `<div class="phead">${faceImg(p.look, 'face big')}<div><div class="label">Rider</div><h2 class="display">${esc(p.name)}</h2>
+      <div class="meta">${p.since ? 'member since ' + new Date(p.since).toLocaleDateString('en-GB') : ''}</div></div></div>
+    <div class="pstats"><div><b>${num(p.count)}</b><span>Rides</span></div><div><b>${num(p.km, 1)}</b><span>km</span></div><div><b>${num(p.hm)}</b><span>m climbing</span></div><div><b>${hms(p.dur)}</b><span>in the saddle</span></div></div>
+    ${p.rides.length ? `<div class="plist"><table class="table"><tr><th class="label">Date</th><th class="label">Route</th><th class="label">Time</th><th class="label">km</th><th class="label">Climb</th><th class="label">Avg W</th>${mine ? '<th></th>' : ''}</tr>
+      ${p.rides.map(r => `<tr data-id="${esc(r.id || '')}"><td>${new Date(r.date).toLocaleDateString('en-GB')}</td><td>${esc(rn(r))}${r.complete ? '' : ' <span class="dim">(stopped)</span>'}</td><td>${hms(r.dur)}</td><td>${num(r.km, 1)}</td><td>${num(r.hm)}</td><td>${r.pw ? num(r.pw) : '–'}</td>${mine && r.id ? '<td><button class="btn ghost small pdel" title="Delete ride">✕</button></td>' : mine ? '<td></td>' : ''}</tr>`).join('')}</table></div>`
+      : '<p class="dim">No rides yet.</p>'}
+    <div class="actions"><button class="btn" id="pOk">Close</button></div>`;
   m.querySelector('#pOk').onclick = close; fillFaces(m);
   m.querySelectorAll('.pdel').forEach(b => b.onclick = async () => {
     const tr = b.closest('tr'), r = p.rides.find(x => x.id === tr.dataset.id); if (!r) return;
-    if (!confirm(`Fahrt vom ${new Date(r.date).toLocaleDateString('en-GB')} (${num(r.km, 1)} km, ${hms(r.dur)}) endgültig löschen?`)) return;
+    if (!confirm(`Delete the ride from ${new Date(r.date).toLocaleDateString('en-GB')} (${num(r.km, 1)} km, ${hms(r.dur)}) for good?`)) return;
     b.disabled = true;
-    try { await deleteRideRemote(r.id); await db.del('rides', r.id).catch(() => {}); } catch (e) { b.disabled = false; alert('Löschen ging nicht: ' + e.message); return; }
+    try { await deleteRideRemote(r.id); await db.del('rides', r.id).catch(() => {}); } catch (e) { b.disabled = false; alert('Delete failed: ' + e.message); return; }
     tr.remove(); import('./app.js').then(a => a.ridesChanged?.());
   });
 }
