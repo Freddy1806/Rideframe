@@ -2,10 +2,13 @@
 // 1) FTMS (Fitness Machine Service, KICKR since 2020 firmware, also Tacx/Elite/Saris)
 // 2) Fallback: Wahoo legacy trainer characteristic inside the Cycling Power service
 // Plus optional heart-rate strap.
-const FTMS = 0x1826, IBD = 0x2ad2, FTMS_CP = 0x2ad9, FTMS_STATUS = 0x2ada;
-const CPS = 0x1818, CPM = 0x2a63;
+// every UUID as a full lowercase 128-bit string: Bluefy on the iPhone cannot parse 16-bit numbers or names like BAT
+// and then rejects the whole device search with a bare code (Freddy 16.11.: a white "2")
+export const U = n => `0000${n.toString(16).padStart(4, '0')}-0000-1000-8000-00805f9b34fb`;
+const FTMS = U(0x1826), IBD = U(0x2ad2), FTMS_CP = U(0x2ad9), FTMS_STATUS = U(0x2ada);
+const CPS = U(0x1818), CPM = U(0x2a63), BAT = U(0x180f), BATL = U(0x2a19);
 const WAHOO_CP = 'a026e005-0a7d-4ab3-97fa-f1500f9feb8b';
-const HRS = 0x180d, HRM = 0x2a37;
+const HRS = U(0x180d), HRM = U(0x2a37);
 
 /** what to tell people where the browser has no Bluetooth (every iPhone browser except Bluefy; Firefox) */
 export const BT_HELP = /iPhone|iPad|iPod/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1)
@@ -21,7 +24,9 @@ export async function pickDevice(o) {
 /** Bluefy rejects with bare codes like "2" (Freddy 16.11.): say at which step it failed, so the message means something */
 export function btError(step, e) {
   if (e?.name === 'NotFoundError') return e; // the chooser was closed: nothing to report
-  const raw = e?.message || String(e), err = new Error(`${step} failed (${raw}). Close other apps that use the trainer, wake it by pedalling, then try again.`);
+  const raw = e?.message || String(e), bare = !e?.name || /^\d*$/.test(raw); // no proper error: a wrapper browser like Bluefy
+  const err = new Error(bare && step === 'Device list' ? `The browser refused the Bluetooth search (code ${raw}). iPhone: Settings → Privacy & Security → Bluetooth → allow Bluefy, switch Bluetooth on, then reopen Bluefy.`
+    : `${step} failed (${raw}). Close other apps that use the device, wake it up, then try again.`);
   err.step = step; return err;
 }
 
@@ -40,7 +45,7 @@ export class Trainer extends EventTarget {
   async connect() {
     this.device = await pickDevice({
       filters: [{ services: [FTMS] }, { services: [CPS] }, { namePrefix: 'KICKR' }],
-      optionalServices: [FTMS, CPS, WAHOO_CP, 'a026ee01-0a7d-4ab3-97fa-f1500f9feb8b', 0x180a],
+      optionalServices: [FTMS, CPS, WAHOO_CP, 'a026ee01-0a7d-4ab3-97fa-f1500f9feb8b', U(0x180a)],
     });
     this.device.addEventListener('gattserverdisconnected', () => { this.emit('status', 'disconnected'); this._reconnect(); });
     await this._setup();
@@ -181,8 +186,8 @@ export class HeartRate extends EventTarget {
   async connect(all = false) {
     // straps only advertise while worn (moist electrodes) and often hide the HR service in their advert: also match common names
     const names = ['HRM', 'Polar', 'TICKR', 'Wahoo', 'Garmin', 'COOSPO', 'Coospo', 'Magene', 'Suunto', 'Decathlon', 'Kalenji', 'XOSS', 'iGPSPORT', 'H10', 'H9', 'Verity', 'Forerunner', 'fenix', 'Apple Watch', 'Whoop', 'WHOOP', 'Amazfit', 'Scosche', 'Rhythm', 'CooSpo', 'Heart'];
-    this.device = await pickDevice(all ? { acceptAllDevices: true, optionalServices: [HRS, 'battery_service'] }
-      : { filters: [{ services: [HRS] }, ...names.map(namePrefix => ({ namePrefix }))], optionalServices: [HRS, 'battery_service'] });
+    this.device = await pickDevice(all ? { acceptAllDevices: true, optionalServices: [HRS, BAT] }
+      : { filters: [{ services: [HRS] }, ...names.map(namePrefix => ({ namePrefix }))], optionalServices: [HRS, BAT] });
     this.device.addEventListener('gattserverdisconnected', () => this._lost());
     await this._open();
   }
@@ -200,7 +205,7 @@ export class HeartRate extends EventTarget {
     });
     await c.startNotifications();
     this.battery = null; // battery level, if the strap tells it: an empty battery is the most common reason a strap vanishes
-    try { const b = await (await srv.getPrimaryService('battery_service')).getCharacteristic('battery_level'); this.battery = (await b.readValue()).getUint8(0); } catch {}
+    try { const b = await (await srv.getPrimaryService(BAT)).getCharacteristic(BATL); this.battery = (await b.readValue()).getUint8(0); } catch {}
     this.dispatchEvent(new Event('change'));
   }
   /** strap dropped (out of range, sweat, battery): try to get it back a few times */
@@ -218,10 +223,10 @@ export class HeartRate extends EventTarget {
 
 /** Bluetooth speed/cadence sensor (Cycling Speed and Cadence service, e.g. Garmin, Wahoo RPM, Magene S3+): cadence for
  *  rides outside (outdoor.html). Emits 'cad' (rpm) and 'speed' (m/s, wheel 2.105 m) and 'change'. */
-const CSC = 0x1816, CSCM = 0x2a5b;
+const CSC = U(0x1816), CSCM = U(0x2a5b);
 export class CadenceSensor extends EventTarget {
   async connect() {
-    this.device = await pickDevice({ filters: [{ services: [CSC] }], optionalServices: [CSC, 'battery_service'] });
+    this.device = await pickDevice({ filters: [{ services: [CSC] }], optionalServices: [CSC, BAT] });
     this.device.addEventListener('gattserverdisconnected', () => this._lost());
     await this._open();
   }

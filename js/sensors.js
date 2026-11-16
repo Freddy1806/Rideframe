@@ -3,9 +3,9 @@
 // every device (several bikes): next time it reconnects on its own where the browser allows it (Chrome getDevices),
 // otherwise one tap on the remembered device opens the chooser again.
 import { db } from './db.js';
-import { pickDevice } from './trainer.js';
+import { pickDevice, U } from './trainer.js';
 
-const HRS = 0x180d, HRM = 0x2a37, CPS = 0x1818, CPM = 0x2a63, CSC = 0x1816, CSCM = 0x2a5b, FTMS = 0x1826, IBD = 0x2ad2;
+const HRS = U(0x180d), HRM = U(0x2a37), CPS = U(0x1818), CPM = U(0x2a63), CSC = U(0x1816), CSCM = U(0x2a5b), FTMS = U(0x1826), IBD = U(0x2ad2), BAT = U(0x180f), BATL = U(0x2a19);
 const NAMES = ['HRM', 'Polar', 'TICKR', 'Wahoo', 'KICKR', 'ELEMNT', 'Garmin', 'HRM-Pro', 'COOSPO', 'Coospo', 'CooSpo', 'Magene', 'Suunto', 'Decathlon', 'XOSS', 'iGPSPORT',
   'Favero', 'ASSIOMA', 'Assioma', 'Stages', '4iiii', 'SRM', 'Quarq', 'Rally', 'Vector', 'PowerTap', 'Rotor', 'SIGEYI', 'Shimano', 'Verity', 'H10', 'H9', 'Forerunner', 'fenix', 'Edge', 'RPM', 'Whoop', 'WHOOP', 'Amazfit'];
 const WHAT = { hr: 'Heart rate', power: 'Power', cad: 'Cadence', speed: 'Speed' };
@@ -23,7 +23,7 @@ export class SensorHub extends EventTarget {
   /** one chooser for every kind of sensor */
   async pair() {
     const dev = await pickDevice({ filters: [{ services: [HRS] }, { services: [CPS] }, { services: [CSC] }, { services: [FTMS] }, ...NAMES.map(namePrefix => ({ namePrefix }))],
-      optionalServices: [HRS, CPS, CSC, FTMS, 'battery_service'] });
+      optionalServices: [HRS, CPS, CSC, FTMS, BAT] });
     await this._open(dev);
   }
   /** reconnect remembered devices without a chooser (Chrome with getDevices); returns how many came back */
@@ -49,7 +49,7 @@ export class SensorHub extends EventTarget {
     else if (await sub(FTMS, IBD, v => this._ibd(v))) { roles.add('power'); roles.add('cad'); } // Wahoo KICKR & other smart trainers
     if (await sub(CSC, CSCM, v => this._csc(v, rec))) { roles.add('cad'); roles.add('speed'); }
     if (!roles.size) { dev.gatt.disconnect(); this.devs.delete(dev.id); throw new Error(`“${dev.name || 'Device'}” sends neither heart rate nor power nor cadence. On a watch, first turn on “broadcast heart rate”.`); }
-    try { rec.battery = (await (await (await srv.getPrimaryService('battery_service')).getCharacteristic('battery_level')).readValue()).getUint8(0); } catch {}
+    try { rec.battery = (await (await (await srv.getPrimaryService(BAT)).getCharacteristic(BATL)).readValue()).getUint8(0); } catch {}
     rec.roles = [...roles];
     if (!rec.wired) { rec.wired = true; dev.addEventListener('gattserverdisconnected', () => this._lost(rec)); }
     const k = this.known.find(x => x.id === dev.id), entry = { id: dev.id, name: dev.name || 'Sensor', roles: rec.roles, at: Date.now() };
