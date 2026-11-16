@@ -8,7 +8,7 @@ import { MeshBasicMaterial as THREE_Basic } from 'three';
 const $ = s => document.getElementById(s);
 const rid = new URLSearchParams(location.search).get('route');
 const track = (rid && makeBuiltinTrack(rid)) || (rid && rid !== 'coast' && await loadRealTrack(rid)) || makeCoastTrack(), L = track.length;
-$('rname').textContent = track.name || 'Felsenküste';
+$('rname').textContent = track.name || 'Rocky Coast';
 await prepareWorld(track);
 track.__sunset = new URLSearchParams(location.search).get('sunset') === '1';
 const world = new WorldScene($('gl'), track);

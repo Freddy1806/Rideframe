@@ -41,7 +41,7 @@
   }
   class Service {
     constructor(dev, uuid, chars) { this._dev = dev; this.uuid = uuid; this._chars = chars || []; this.isPrimary = true; }
-    async getCharacteristic(u) { u = uuid(u); const c = this._chars.find(x => x.uuid.toLowerCase() === u); if (!c) throw new DOMException('Merkmal nicht gefunden', 'NotFoundError');
+    async getCharacteristic(u) { u = uuid(u); const c = this._chars.find(x => x.uuid.toLowerCase() === u); if (!c) throw new DOMException('Characteristic not found', 'NotFoundError');
       const ch = new Characteristic(this._dev, this, u); ch.properties = c.properties || {}; return ch; }
     async getCharacteristics() { return this._chars.map(c => { const ch = new Characteristic(this._dev, this, c.uuid.toLowerCase()); ch.properties = c.properties || {}; return ch; }); }
   }
@@ -52,7 +52,7 @@
           await BLE.connect({ deviceId: dev.id, timeout: 15000 }); dev.gatt.connected = true; dev._svcs = null; remember(dev); return dev.gatt; },
         disconnect() { dev.gatt.connected = false; BLE.disconnect({ deviceId: dev.id }).catch(() => {}); },
         async getPrimaryServices() { return (await dev._services()).map(s => new Service(dev, s.uuid.toLowerCase(), s.characteristics)); },
-        async getPrimaryService(u) { u = uuid(u); const s = (await dev._services()).find(x => x.uuid.toLowerCase() === u); if (!s) throw new DOMException('Dienst nicht gefunden', 'NotFoundError'); return new Service(dev, u, s.characteristics); } };
+        async getPrimaryService(u) { u = uuid(u); const s = (await dev._services()).find(x => x.uuid.toLowerCase() === u); if (!s) throw new DOMException('Service not found', 'NotFoundError'); return new Service(dev, u, s.characteristics); } };
     }
     async _services() { return this._svcs || (this._svcs = (await BLE.getServices({ deviceId: this.id })).services || []); }
     async watchAdvertisements() { // reconnect when the sensor wakes up: retry connecting quietly every few seconds
@@ -79,7 +79,7 @@
   const geo = Object.create(navigator.geolocation || {});
   geo.watchPosition = (ok, fail) => {
     const id = next++;
-    BG.addWatcher({ backgroundTitle: 'RIDEFRAME zeichnet auf', backgroundMessage: 'GPS läuft, auch mit ausgeschaltetem Bildschirm.', requestPermissions: true, stale: false, distanceFilter: 0 }, (l, err) => {
+    BG.addWatcher({ backgroundTitle: 'RIDEFRAME is recording', backgroundMessage: 'GPS keeps running, even with the screen off.', requestPermissions: true, stale: false, distanceFilter: 0 }, (l, err) => {
       if (err) { fail?.({ code: err.code === 'NOT_AUTHORIZED' ? 1 : 2, message: err.message }); return; }
       if (l) ok({ timestamp: l.time || Date.now(), coords: { latitude: l.latitude, longitude: l.longitude, accuracy: l.accuracy, altitude: l.altitude, altitudeAccuracy: l.altitudeAccuracy, speed: l.speed, heading: l.bearing } });
     }).then(w => { if (watches.has(id)) watches.set(id, w); else BG.removeWatcher({ id: w }).catch(() => {}); }, e => fail?.({ code: 2, message: e.message }));

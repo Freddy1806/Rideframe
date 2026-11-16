@@ -41,8 +41,8 @@ export class Voice {
       this.hasMic = false; this.mic = null;
       const denied = e?.name === 'NotAllowedError' || e?.name === 'SecurityError';
       this.onMessage?.(denied
-        ? 'Mikrofon nicht erlaubt. Du hörst die anderen trotzdem. Zum Sprechen: links neben der Adresse das Mikrofon erlauben und den Sprachchat neu einschalten.'
-        : 'Kein Mikrofon gefunden. Du hörst die anderen trotzdem.');
+        ? 'Microphone not allowed. You can still hear the others. To talk: allow the microphone left of the address bar and turn voice chat on again.'
+        : 'No microphone found. You can still hear the others.');
     }
     if (!this.on) { this._stopTracks(); return this; } // stopped while the browser was asking
     // without a mic the call still needs an outgoing stream: a silent one
@@ -171,9 +171,9 @@ export class Voice {
 
 /** German status line for the UI */
 export function voiceStatus(v) {
-  if (!v?.on) return 'Sprachchat aus';
+  if (!v?.on) return 'Voice chat off';
   const n = [...v.peers.values()].filter(p => p.stream).length;
-  const who = n ? `${n} ${n === 1 ? 'Person' : 'Personen'} verbunden` : 'wartet auf die anderen';
-  if (!v.hasMic) return 'Nur zuhören · ' + who;
-  return (v.ptt ? (v.talking ? 'Du sprichst' : 'T halten zum Sprechen') : v.muted ? 'Stumm (T)' : 'Mikro an (T = stumm)') + ' · ' + who;
+  const who = n ? `${n} ${n === 1 ? 'person' : 'people'} connected` : 'waiting for the others';
+  if (!v.hasMic) return 'Listening only · ' + who;
+  return (v.ptt ? (v.talking ? 'Talking' : 'Hold T to talk') : v.muted ? 'Muted (T)' : 'Mic on (T = mute)') + ' · ' + who;
 }

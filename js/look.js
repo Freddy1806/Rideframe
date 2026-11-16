@@ -3,14 +3,14 @@ export const SKINS = ['#f6d7c3', '#e9b896', '#d39a6f', '#a96f45', '#7a4a2c', '#4
 export const HAIRCOL = ['#1d1612', '#4a2f1f', '#8a5a33', '#d9b36a', '#f1e3b0', '#b8401f', '#9aa0a6', '#e8e8e8', '#ff4fb0', '#3fa9ff'];
 export const COLORS = ['#ff5a1f', '#e0452b', '#ffd23f', '#2fb36b', '#18b5c4', '#2f7fd8', '#6b4bd6', '#e84393', '#1b1d22', '#f4f4ef'];
 export const OPTIONS = {
-  body: [['m', 'Mann'], ['f', 'Frau']],
-  hair: [['kurz', 'Kurz'], ['lang', 'Lang'], ['zopf', 'Zopf'], ['dutt', 'Dutt'], ['irokese', 'Irokese'], ['afro', 'Afro'], ['vokuhila', 'Vokuhila'], ['glatze', 'Glatze']],
-  beard: [['none', 'Ohne'], ['bart', 'Vollbart'], ['schnauzer', 'Schnauzer'], ['stoppeln', 'Stoppeln']],
-  glasses: [['none', 'Ohne'], ['sport', 'Sportbrille'], ['retro', 'Retro rund'], ['sonne', '80er Sonnenbrille']],
-  outfit: [['team', 'Team-Trikot'], ['neon80', '80er Neon'], ['retro', 'Retro Wolle'], ['hawaii', 'Hawaii'], ['anzug', 'Business'],
-    ['superheld', 'Superheld'], ['banane', 'Banane'], ['wikinger', 'Wikinger'], ['tutu', 'Ballett'], ['dino', 'Dino']],
-  helmet: [['aero', 'Aero-Helm'], ['klassisch', 'Helm'], ['cap', 'Radmütze'], ['stirnband', '80er Stirnband'], ['keiner', 'Ohne']],
-  shoes: [['rennrad', 'Radschuhe'], ['sneaker', 'Sneaker'], ['clogs', 'Clogs'], ['socken', 'Nur Socken']],
+  body: [['m', 'Man'], ['f', 'Woman']],
+  hair: [['kurz', 'Short'], ['lang', 'Long'], ['zopf', 'Braid'], ['dutt', 'Bun'], ['irokese', 'Mohawk'], ['afro', 'Afro'], ['vokuhila', 'Mullet'], ['glatze', 'Bald']],
+  beard: [['none', 'None'], ['bart', 'Full beard'], ['schnauzer', 'Moustache'], ['stoppeln', 'Stubble']],
+  glasses: [['none', 'None'], ['sport', 'Sport glasses'], ['retro', 'Round retro'], ['sonne', '80s sunglasses']],
+  outfit: [['team', 'Team jersey'], ['neon80', '80s neon'], ['retro', 'Retro wool'], ['hawaii', 'Hawaii'], ['anzug', 'Business'],
+    ['superheld', 'Superhero'], ['banane', 'Banana'], ['wikinger', 'Viking'], ['tutu', 'Ballet'], ['dino', 'Dino']],
+  helmet: [['aero', 'Aero helmet'], ['klassisch', 'Helmet'], ['cap', 'Cycling cap'], ['stirnband', '80s headband'], ['keiner', 'None']],
+  shoes: [['rennrad', 'Cycling shoes'], ['sneaker', 'Sneakers'], ['clogs', 'Clogs'], ['socken', 'Just socks']],
 };
 export const DEFAULT_LOOK = { body: 'm', height: 1, build: 0.4, skin: 1, hair: 'kurz', hairColor: 1, beard: 'none', glasses: 'sport', outfit: 'team', c1: 0, c2: 8, helmet: 'aero', shoes: 'rennrad', shoeColor: 9 };
 

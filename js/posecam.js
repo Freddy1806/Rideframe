@@ -10,7 +10,7 @@ const exists = async u => { try { return (await fetch(u, { method: 'HEAD' })).ok
 
 /** drag factor per posture (CdA): tuck ~16 % less, standing ~12 % more */
 export const POSTURE_K = { aero: 0.84, upright: 1, standing: 1.12, unknown: 1 };
-export const POSTURE_NAME = { aero: 'Aero-Haltung', upright: 'Aufrecht', standing: 'Wiegetritt', unknown: '' };
+export const POSTURE_NAME = { aero: 'Aero position', upright: 'Upright', standing: 'Out of the saddle', unknown: '' };
 
 export function poseCamSupported() { return !!navigator.mediaDevices?.getUserMedia; }
 
@@ -56,7 +56,7 @@ export class PoseCam {
     const vals = [], t0 = performance.now();
     await new Promise(res => { const step = () => { this.tick(); if (this.head != null && this.miss === 0) vals.push(this.head);
       performance.now() - t0 < ms ? requestAnimationFrame(step) : res(); }; step(); });
-    if (vals.length < 4) throw new Error('Kein Körper im Bild');
+    if (vals.length < 4) throw new Error('No body in view');
     vals.sort((a, b) => a - b);
     this.calib = { ...(this.calib || {}), [which]: vals[Math.floor(vals.length / 2)] };
     return this.calib;

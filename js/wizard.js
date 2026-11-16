@@ -32,10 +32,10 @@ export class Wizard {
   }
   card(d) {
     const s = this.state;
-    if (s === 'ann' || s === 'near') return { title: 'Ein Zauberer erwartet dich', big: `${Math.max(0, Math.round((this.at - d) / 10) * 10)} m`, sub: `Seine Prüfung: ${this.W} W für ${WIZ.hold} s` };
-    if (s === 'cast') return { title: 'Die Prüfung des Zauberers', big: `${Math.ceil(WIZ.hold - this.t)} s`, sub: `Ziel ${this.W} W · Ø ${Math.round(this.avg || 0)} W`, bar: this.t / WIZ.hold, lead: (this.avg || 0) >= this.W * 0.97 };
-    if (s === 'fly') return { title: 'Bestanden!', big: 'Du fliegst', sub: 'Der Zauberer schenkt dir den Himmel' };
-    if (s === 'hell') return { title: 'Durchgefallen', big: `${Math.ceil((WIZ.hell - this.t) / 60)} min Hölle`, sub: 'Fahr dich hier wieder raus', bar: this.t / WIZ.hell, lead: false };
+    if (s === 'ann' || s === 'near') return { title: 'A Wizard awaits you', big: `${Math.max(0, Math.round((this.at - d) / 10) * 10)} m`, sub: `His test: ${this.W} W for ${WIZ.hold} s` };
+    if (s === 'cast') return { title: 'The Wizard’s test', big: `${Math.ceil(WIZ.hold - this.t)} s`, sub: `Target ${this.W} W · avg ${Math.round(this.avg || 0)} W`, bar: this.t / WIZ.hold, lead: (this.avg || 0) >= this.W * 0.97 };
+    if (s === 'fly') return { title: 'Passed!', big: 'You fly', sub: 'The Wizard gives you the sky' };
+    if (s === 'hell') return { title: 'Failed', big: `${Math.ceil((WIZ.hell - this.t) / 60)} min of hell`, sub: 'Ride your way back out', bar: this.t / WIZ.hell, lead: false };
     return null;
   }
 }

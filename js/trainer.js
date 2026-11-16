@@ -165,7 +165,7 @@ export class HeartRate extends EventTarget {
     const srv = await this.device.gatt.connect();
     let s;
     try { s = await srv.getPrimaryService(HRS); }
-    catch { this.device.gatt.disconnect(); throw new Error(`„${this.device.name || 'Gerät'}“ sendet keinen Puls (kein Herzfrequenz-Dienst). Bei Uhren erst „Herzfrequenz übertragen/senden“ einschalten.`); }
+    catch { this.device.gatt.disconnect(); throw new Error(`“${this.device.name || 'Device'}” sends no heart rate (no heart rate service). On a watch, first turn on “broadcast heart rate”.`); }
     const c = await s.getCharacteristic(HRM);
     c.addEventListener('characteristicvaluechanged', e => {
       const dv = e.target.value; const f = dv.getUint8(0);

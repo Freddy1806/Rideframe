@@ -4,8 +4,8 @@
 import { STEP } from './track.js';
 
 const UP = 2.5, DOWN = -2.5;
-const SPRINT_NAMES = ['Möwen-Sprint', 'Ortsschild-Sprint', 'Hafenmauer-Sprint', 'Fischmarkt-Sprint', 'Ritter-Sprint', 'Zauberer-Sprint', 'Schafherden-Sprint', 'Glockenturm-Sprint', 'Wikinger-Sprint', 'Rückenwind-Sprint', 'Dorfplatz-Sprint', 'Drachen-Sprint'];
-export const SEG_KIND = { climb: { icon: '▲', label: 'Anstieg' }, descent: { icon: '▼', label: 'Abfahrt' }, flat: { icon: '▬', label: 'Flachstück' }, sprint: { icon: '⚡', label: 'Sprint' } };
+const SPRINT_NAMES = ['Seagull Sprint', 'Town Sign Sprint', 'Harbour Wall Sprint', 'Fish Market Sprint', 'Knight Sprint', 'Wizard Sprint', 'Sheep Flock Sprint', 'Bell Tower Sprint', 'Viking Sprint', 'Tailwind Sprint', 'Village Square Sprint', 'Dragon Sprint'];
+export const SEG_KIND = { climb: { icon: '▲', label: 'Climb' }, descent: { icon: '▼', label: 'Descent' }, flat: { icon: '▬', label: 'Flat' }, sprint: { icon: '⚡', label: 'Sprint' } };
 
 /** [{ id, kind, name, from, to, len, avg (%) }] sorted by start */
 export function findSegments(track) {
@@ -28,11 +28,11 @@ export function findSegments(track) {
   const out = []; let nc = 0, nd = 0, nf = 0;
   for (const r of runs) {
     const from = r.a * STEP, to = Math.min(track.length, r.b * STEP), len = to - from, dh = ele(r.b) - ele(r.a);
-    if (r.k === 'climb' && len >= 400 && dh >= 15) out.push({ kind: 'climb', from, to, len, avg: dh / len * 100, name: nameAt((from + to) / 2, `Anstieg ${++nc}`) });
+    if (r.k === 'climb' && len >= 400 && dh >= 15) out.push({ kind: 'climb', from, to, len, avg: dh / len * 100, name: nameAt((from + to) / 2, `Climb ${++nc}`) });
     else if (r.k === 'descent' && len >= 400 && dh <= -15) out.push({ kind: 'descent', from, to, len, avg: dh / len * 100, name: `Abfahrt ${++nd}` });
     else if (r.k === 'flat' && len >= 1200) { // long flats in pieces of at most ~5 km
       const parts = Math.ceil(len / 5000), pl = len / parts;
-      for (let p = 0; p < parts; p++) { const a = from + p * pl, b = a + pl; out.push({ kind: 'flat', from: a, to: b, len: pl, avg: (track.ele[Math.min(n - 1, Math.round(b / STEP))] - track.ele[Math.round(a / STEP)]) / pl * 100, name: nameAt((a + b) / 2, `Flachstück ${++nf}`) + (parts > 1 ? ` ${p + 1}/${parts}` : '') }); }
+      for (let p = 0; p < parts; p++) { const a = from + p * pl, b = a + pl; out.push({ kind: 'flat', from: a, to: b, len: pl, avg: (track.ele[Math.min(n - 1, Math.round(b / STEP))] - track.ele[Math.round(a / STEP)]) / pl * 100, name: nameAt((a + b) / 2, `Flat ${++nf}`) + (parts > 1 ? ` ${p + 1}/${parts}` : '') }); }
     }
   }
   // sprints: 300 m on the flat or slightly downhill, every ~6 km, away from the start, finish and other segment starts

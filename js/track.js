@@ -35,7 +35,7 @@ export function gaussianSmooth(arr, sigma) {
 /** points: [{t (s, global video time), lat, lon, alt, speed?}] */
 export function buildTrack(points) {
   points = points.filter(p => isFinite(p.lat) && isFinite(p.lon)).sort((a, b) => a.t - b.t);
-  if (points.length < 5) throw new Error('Zu wenige GPS-Punkte. Hatte die GoPro GPS-Empfang?');
+  if (points.length < 5) throw new Error('Too few GPS points. Did the GoPro have GPS reception?');
   let pts = binByTime(points, 0.5);
   // drop teleports (> 40 m/s)
   const clean = [pts[0]];
@@ -57,7 +57,7 @@ export function buildTrack(points) {
     dist.push(dist[i - 1] + d);
   }
   const length = dist[dist.length - 1];
-  if (length < 20) throw new Error('Die Strecke ist kürzer als 20 m.');
+  if (length < 20) throw new Error('The route is shorter than 20 m.');
   // resample on a fixed distance grid
   const n = Math.floor(length / STEP) + 1;
   const time = [], lat = [], lon = [], altRaw = [];
@@ -115,7 +115,7 @@ export async function improveElevation(track, onProgress) {
     const chunk = idx.slice(s, s + 100);
     const url = `https://api.open-meteo.com/v1/elevation?latitude=${chunk.map(i => track.lat[i].toFixed(6)).join(',')}&longitude=${chunk.map(i => track.lon[i].toFixed(6)).join(',')}`;
     const res = await fetch(url);
-    if (!res.ok) throw new Error('Höhendienst nicht erreichbar');
+    if (!res.ok) throw new Error('Elevation service not reachable');
     const j = await res.json();
     vals.push(...j.elevation);
     onProgress?.(Math.min(1, (s + 100) / idx.length));
@@ -158,7 +158,7 @@ export function distAtTime(track, t) {
 export function parseGPX(text) {
   const doc = new DOMParser().parseFromString(text, 'application/xml');
   const pts = [...doc.getElementsByTagName('trkpt')];
-  if (!pts.length) throw new Error('Keine Trackpunkte in der GPX-Datei.');
+  if (!pts.length) throw new Error('No track points in the GPX file.');
   let t0 = null;
   return pts.map((p, i) => {
     const time = p.getElementsByTagName('time')[0]?.textContent;

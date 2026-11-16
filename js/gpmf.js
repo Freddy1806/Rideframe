@@ -162,7 +162,7 @@ function parsePayload(dv, start, end) {
  */
 export async function readGoProGPS(file, onProgress) {
   const moovRef = await findTopBox(file, 'moov');
-  if (!moovRef) throw new Error('Keine gültige MP4-Datei (moov fehlt).');
+  if (!moovRef) throw new Error('Not a valid MP4 file (moov missing).');
   const buf = await file.slice(moovRef.start, moovRef.start + moovRef.size).arrayBuffer();
   const dv = new DataView(buf);
   const moov = { body: moovRef.header, end: moovRef.size };

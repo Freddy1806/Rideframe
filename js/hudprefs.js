@@ -1,17 +1,17 @@
 // What the ride screen shows: every HUD element can be switched on or off, plus ready-made layouts.
 // Stored in settings.hud = { preset, show: { key: bool } }. Used by the ride (live, key I + "Anzeige" button) and the settings page.
 export const HUD_ITEMS = [
-  ['power', 'Leistung'], ['wkg', 'W/kg'], ['speed', 'Tempo'], ['cad', 'Trittfrequenz'], ['hr', 'Puls'], ['dist', 'Distanz'],
-  ['grade', 'Steigung (Zahl)'], ['gradeTag', 'Steigung groß in der Mitte'], ['profile', 'Höhenprofil'], ['map', 'Streckenkarte'],
-  ['time', 'Zeit'], ['gear', 'Gang'], ['route', 'Streckenname'], ['buttons', 'Knöpfe (Kamera, Lenker, Musik)'],
+  ['power', 'Power'], ['wkg', 'W/kg'], ['speed', 'Speed'], ['cad', 'Cadence'], ['hr', 'Heart rate'], ['dist', 'Distance'],
+  ['grade', 'Grade (number)'], ['gradeTag', 'Big grade in the middle'], ['profile', 'Elevation profile'], ['map', 'Route map'],
+  ['time', 'Time'], ['gear', 'Gear'], ['route', 'Route name'], ['buttons', 'Buttons (camera, bars, music)'],
 ];
 const ALL = Object.fromEntries(HUD_ITEMS.map(([k]) => [k, true]));
 export const HUD_PRESETS = {
-  voll: { name: 'Alles', show: { ...ALL, wkg: false } },
-  kompakt: { name: 'Kompakt', show: { power: true, speed: true, hr: true, dist: true, gradeTag: true, profile: true, map: true, time: true } },
-  training: { name: 'Training', show: { power: true, wkg: true, cad: true, hr: true, gradeTag: false, time: true, gear: true } },
-  pur: { name: 'Pur', show: { power: true, gradeTag: true } },
-  kino: { name: 'Nur Landschaft', show: {} },
+  voll: { name: 'Everything', show: { ...ALL, wkg: false } },
+  kompakt: { name: 'Compact', show: { power: true, speed: true, hr: true, dist: true, gradeTag: true, profile: true, map: true, time: true } },
+  training: { name: 'Workout', show: { power: true, wkg: true, cad: true, hr: true, gradeTag: false, time: true, gear: true } },
+  pur: { name: 'Pure', show: { power: true, gradeTag: true } },
+  kino: { name: 'Landscape only', show: {} },
 };
 export const HUD_ORDER = ['voll', 'kompakt', 'training', 'pur', 'kino'];
 
@@ -37,7 +37,7 @@ export function applyHud(root, prefs) {
 
 /** the switches (settings page and the in-ride panel share this markup) */
 export function hudControlsHTML(prefs) {
-  return `<div class="hudpresets">${[...HUD_ORDER, 'eigen'].map(k => `<button class="avchip ${prefs.preset === k ? 'on' : ''}" data-hp="${k}">${k === 'eigen' ? 'Eigene' : HUD_PRESETS[k].name}</button>`).join('')}</div>
+  return `<div class="hudpresets">${[...HUD_ORDER, 'eigen'].map(k => `<button class="avchip ${prefs.preset === k ? 'on' : ''}" data-hp="${k}">${k === 'eigen' ? 'Custom' : HUD_PRESETS[k].name}</button>`).join('')}</div>
     <div class="hudchecks">${HUD_ITEMS.map(([k, t]) => `<label><input type="checkbox" data-hk="${k}" ${prefs.show[k] ? 'checked' : ''}> ${t}</label>`).join('')}</div>`;
 }
 

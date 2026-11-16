@@ -63,7 +63,7 @@ export class Riders {
       }
       if (!e.obj) {
         e.obj = makeRider(r.look, { ghost: r.ghost });
-        if (!r.self) e.obj.add(e.tag = tag(r.name || 'Fahrer', e.color));
+        if (!r.self) e.obj.add(e.tag = tag(r.name || 'Rider', e.color));
         this.scene.add(e.obj); e.key = key;
       }
       if (r.d !== e.d) e.at = performance.now() / 1000; // a fresh position from the network (friends send ~2 per second)
