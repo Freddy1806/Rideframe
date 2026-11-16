@@ -60,7 +60,7 @@ async function boot() {
   // real Lofoten roads on their real terrain, present once the Mac has built them (assets/dem/<id>.json + .bin)
   const REAL = { kueste60: 'real coast road · almost flat, gently rolling', reine_aa: 'Lofoten classic · fishing villages, bridges, tunnels' };
   await Promise.all(Object.entries(REAL).map(async ([id, what], k) => { const real = await loadRealTrack(id); if (!real) return;
-    BUILTIN[id] = () => ({ id, name: real.name || id, place: `${(real.length / 1000).toFixed(0)} km ${what} · ${real.gain} m climb`, source: 'demo', parts: [], track: real, createdAt: 2 + k, thumb: demoThumb(real, 1200) }); }));
+    BUILTIN[id] = () => ({ id, name: ({ kueste60: 'Coast Road' })[id] || real.name || id, place: `${(real.length / 1000).toFixed(0)} km ${what} · ${real.gain} m climb`, source: 'demo', parts: [], track: real, createdAt: 2 + k, thumb: demoThumb(real, 1200) }); }));
   await reload();
   await loadShared();
   if (params.has('seed')) await seedDemoRides();
