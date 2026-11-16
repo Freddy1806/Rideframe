@@ -178,7 +178,14 @@ function render() {
       : `<button class="btn" id="pStart">${R.state === 'pause' ? 'Resume' : 'Start'}</button>${R.state === 'pause' ? '<button class="btn ghost" id="pEnd">Finish</button>' : ''}`}
   </footer>
   <div class="pflash" id="pflash"></div>`;
-  wire(); paint();
+  wire(); paint(); fitRO.disconnect(); fitRO.observe($('.ptiles'));
+}
+// portrait: the tile rows fill the free height exactly; when not all fit, they shrink to whole rows that scroll (no half-cut row, no empty band)
+const fitRO = new ResizeObserver(() => fitTiles());
+function fitTiles() {
+  const t = $('.ptiles'); if (!t) return; if (!matchMedia('(orientation: portrait)').matches) return void (t.style.gridAutoRows = '');
+  const cs = getComputedStyle(t), g = parseFloat(cs.rowGap) || 8, n = Math.ceil(t.children.length / cs.gridTemplateColumns.split(' ').length), H = t.clientHeight, fit = Math.max(1, Math.min(n, Math.floor((H + g) / (58 + g))));
+  t.style.gridAutoRows = Math.floor((H - (fit - 1) * g) / fit) + 'px';
 }
 
 function wire() {
