@@ -38,11 +38,11 @@ const ACCENTS = { orange: '#ff5a1f', volt: '#d9ff3f', violet: '#8b6cff' };
 // ---------------- built-in routes (no video) ----------------
 const builtins = {};
 const BUILTIN = {
-  coast: () => { const track = makeCoastTrack(); return { id: 'coast', name: 'Felsenküste', place: 'Schwellen-Intervalle · 4 Anstiege 8–12 min · Mittelalter-Dörfer am Meer', source: 'demo', parts: [], track, createdAt: 1, thumb: demoThumb(track, 1200) }; },
-  demo: () => { const track = makeDemoTrack(); return { id: 'demo', name: 'Passo Demo', place: 'Eingebaute Demo-Strecke · ohne Video', source: 'demo', parts: [], track, createdAt: 0, thumb: demoThumb(track) }; },
+  coast: () => { const track = makeCoastTrack(); return { id: 'coast', name: 'Rocky Coast', place: 'Threshold intervals · 4 climbs of 8–12 min · medieval villages by the sea', source: 'demo', parts: [], track, createdAt: 1, thumb: demoThumb(track, 1200) }; },
+  demo: () => { const track = makeDemoTrack(); return { id: 'demo', name: 'Passo Demo', place: 'Built-in demo route · no video', source: 'demo', parts: [], track, createdAt: 0, thumb: demoThumb(track) }; },
 };
 Object.entries(DESIGNED).forEach(([id, D], k) => { BUILTIN[id] = () => { const track = makeBuiltinTrack(id);
-  return { id, name: D.name, place: `${D.place} · ${(track.length / 1000).toFixed(0)} km · ${track.gain} Hm`, source: 'demo', parts: [], track, createdAt: 1.1 + k * 0.1, thumb: demoThumb(track, 1200) }; }; });
+  return { id, name: D.name, place: `${D.place} · ${(track.length / 1000).toFixed(0)} km · ${track.gain} m climb`, source: 'demo', parts: [], track, createdAt: 1.1 + k * 0.1, thumb: demoThumb(track, 1200) }; }; });
 function getBuiltin(id) { return builtins[id] ||= BUILTIN[id](); }
 function getDemoRoute() { return getBuiltin('demo'); }
 
@@ -58,9 +58,9 @@ async function boot() {
   if (params.get('accent')) state.settings.accent = params.get('accent');
   applyAccent();
   // real Lofoten roads on their real terrain, present once the Mac has built them (assets/dem/<id>.json + .bin)
-  const REAL = { kueste60: 'echte Küstenstraße · fast flach, leicht wellig', reine_aa: 'Lofoten-Klassiker · Fischerdörfer, Brücken, Tunnel' };
+  const REAL = { kueste60: 'real coast road · almost flat, gently rolling', reine_aa: 'Lofoten classic · fishing villages, bridges, tunnels' };
   await Promise.all(Object.entries(REAL).map(async ([id, what], k) => { const real = await loadRealTrack(id); if (!real) return;
-    BUILTIN[id] = () => ({ id, name: real.name || id, place: `${(real.length / 1000).toFixed(0)} km ${what} · ${real.gain} Hm`, source: 'demo', parts: [], track: real, createdAt: 2 + k, thumb: demoThumb(real, 1200) }); }));
+    BUILTIN[id] = () => ({ id, name: real.name || id, place: `${(real.length / 1000).toFixed(0)} km ${what} · ${real.gain} m climb`, source: 'demo', parts: [], track: real, createdAt: 2 + k, thumb: demoThumb(real, 1200) }); }));
   await reload();
   await loadShared();
   if (params.has('seed')) await seedDemoRides();
@@ -99,7 +99,7 @@ async function showVersion() {
   setInterval(async () => {
     const now = await read();
     if (now && now !== mine && !document.querySelector('.ride')) {
-      tag.textContent = 'Update ' + now + ' · neu laden'; tag.classList.add('new'); tag.title = 'Neue Version auf dem Server, klicken zum Laden';
+      tag.textContent = 'Update ' + now + ' · reload'; tag.classList.add('new'); tag.title = 'New version on the server, click to load';
       tag.onclick = () => location.reload();
     }
   }, 10 * 60e3);
@@ -114,14 +114,14 @@ async function reload() {
 export async function ridesChanged() { await reload(); if (state.view === 'history') history(); }
 
 export async function saveSettings() { await db.kvSet('settings', state.settings); settingsChanged(state.settings); }
-function updateAccPill() { const a = account(), p = $('#accPill'); p.classList.toggle('on', !!a); p.querySelector('.t').textContent = a ? a.name : 'Anmelden'; }
+function updateAccPill() { const a = account(), p = $('#accPill'); p.classList.toggle('on', !!a); p.querySelector('.t').textContent = a ? a.name : 'Sign in'; }
 async function accountChanged() { updateAccPill(); applyAccent(); await reload(); go(state.view); }
 function applyAccent() {
   document.documentElement.style.setProperty('--accent', ACCENTS[state.settings.accent] || ACCENTS.orange);
 }
 
 export function allRoutes() { return [...state.routes, ...Object.keys(BUILTIN).filter(id => id !== 'demo' || new URLSearchParams(location.search).has('demo')).map(getBuiltin)]; } /* Passo Demo hidden from the list (Freddy 12.11.); it stays as an internal fallback (routeById, ?view=ride default, ?demo shows it) */
-const routeName = id => id === 'pure' ? 'Pure (Handy)' : id === 'outdoor' ? 'Draußen' : routeById(id)?.name;
+const routeName = id => id === 'pure' ? 'Pure (phone)' : id === 'outdoor' ? 'Outdoors' : routeById(id)?.name;
 export function routeById(id) { return BUILTIN[id] ? getBuiltin(id) : state.routes.find(r => r.id === id); }
 export function ridesFor(id) { return state.rides.filter(r => r.routeId === id); }
 export function bestRide(id) { return ridesFor(id).filter(r => r.complete).sort((a, b) => a.duration - b.duration)[0]; }
@@ -143,9 +143,9 @@ export function go(view, arg) {
 /** own workouts in the routes feed (Freddy 16.11.): start right here, build and edit in the Training tab */
 function myWorkoutsRow() {
   const my = allWorkouts().filter(w => w.mine);
-  return `<div class="mywk"><div class="mywkhead"><h2 class="section">Meine Workouts</h2><button class="btn ghost small" data-wtab="1">${my.length ? 'Bearbeiten' : '+ Workout bauen'}</button></div>
-    ${my.length ? `<div class="wgrid">${my.map(w => `<div class="panel wcard"><div class="label">${Math.round(workoutDuration(w) / 60)} min</div><h3>${esc(w.name)}</h3>${workoutSVG(w)}<button class="btn small" data-wgo="${w.id}">Starten ▸</button></div>`).join('')}</div>`
-      : '<p class="hint">Bau dir im Tab Training eigene Blöcke oder pass ein Standard-Workout an. Sie erscheinen dann hier.</p>'}</div>`;
+  return `<div class="mywk"><div class="mywkhead"><h2 class="section">My workouts</h2><button class="btn ghost small" data-wtab="1">${my.length ? 'Edit' : '+ Build workout'}</button></div>
+    ${my.length ? `<div class="wgrid">${my.map(w => `<div class="panel wcard"><div class="label">${Math.round(workoutDuration(w) / 60)} min</div><h3>${esc(w.name)}</h3>${workoutSVG(w)}<button class="btn small" data-wgo="${w.id}">Start ▸</button></div>`).join('')}</div>`
+      : '<p class="hint">Build your own blocks in the Training tab or adjust a standard workout. They will then show up here.</p>'}</div>`;
 }
 function library() {
   const routes = allRoutes();
@@ -153,11 +153,11 @@ function library() {
   <section class="view">
     <div class="view-head">
       <div>
-        <div class="label">Bibliothek</div>
-        <h1 class="display" style="margin-top:14px">Deine<br>Strecken</h1>
-        <div class="meta">${routes.length} ${routes.length === 1 ? 'Strecke' : 'Strecken'} · ${fmtKm(routes.reduce((s, r) => s + r.track.length, 0))} km · ${fmtNum(routes.reduce((s, r) => s + r.track.gain, 0))} Höhenmeter</div>
+        <div class="label">Library</div>
+        <h1 class="display" style="margin-top:14px">Your<br>routes</h1>
+        <div class="meta">${routes.length} ${routes.length === 1 ? 'route' : 'routes'} · ${fmtKm(routes.reduce((s, r) => s + r.track.length, 0))} km · ${fmtNum(routes.reduce((s, r) => s + r.track.gain, 0))} m climbing</div>
       </div>
-      <div class="libacts"><button class="btn ghost" id="wishBtnLib" hidden>Wunschliste</button><button class="btn ghost" id="lookBtnLib">Mein Fahrer</button><button class="btn ghost" id="groupBtnLib">Zusammen fahren</button><button class="btn" id="uploadBtn">＋ Strecke hochladen</button></div>
+      <div class="libacts"><button class="btn ghost" id="wishBtnLib" hidden>Wish list</button><button class="btn ghost" id="lookBtnLib">My rider</button><button class="btn ghost" id="groupBtnLib">Ride together</button><button class="btn" id="uploadBtn">＋ Upload route</button></div>
     </div>
     <div id="board" hidden></div>
     ${myWorkoutsRow()}
@@ -165,8 +165,8 @@ function library() {
       ${routes.map(card).join('')}
       <button class="add-card" id="addCard">
         <div class="plus">+</div>
-        <div><h3 class="display">GoPro-Video<br>hierher ziehen</h3>
-        <p>MP4 direkt aus der GoPro mit GPS. Mehrere Kapitel (GX01…, GX02…) einfach zusammen auswählen. Optional mit GPX-Datei.</p></div>
+        <div><h3 class="display">Drop a GoPro<br>video here</h3>
+        <p>MP4 straight from the GoPro with GPS. Select several chapters (GX01…, GX02…) together. Optionally with a GPX file.</p></div>
       </button>
     </div>
   </section>`;
@@ -181,7 +181,7 @@ function library() {
 }
 
 /* friends leaderboard: every account on this host, this week (Monday to Sunday) */
-const BOARD_SORT = { km: ['km', 'km'], hm: ['Hm', 'Höhenmeter'], pts: ['Punkte', 'Wette'] };
+const BOARD_SORT = { km: ['km', 'km'], hm: ['Climb', 'Climbing'], pts: ['Points', 'Bet'] };
 async function showBoard() {
   if (!account()) return;
   const { loadBoard } = await import('./account.js'), { faceImg, fillFaces, profileModal } = await import('./profiles.js'), b = await loadBoard(), el = $('#board');
@@ -191,10 +191,10 @@ async function showBoard() {
     const k = state.settings.boardSort || 'km', val = r => k === 'km' ? r.km : k === 'hm' ? r.hm : tot(r);
     const rows = [...b.rows].sort((x, y) => val(y) - val(x) || y.km - x.km);
     el.innerHTML = `<div class="board">
-      <div class="board-head"><div class="label">Rangliste diese Woche <button class="betinfo" id="betInfoBtn" title="Was bedeuten die blauen, gelben und roten Punkte?">?</button></div>
+      <div class="board-head"><div class="label">Leaderboard this week <button class="betinfo" id="betInfoBtn" title="What do the blue, yellow and red points mean?">?</button></div>
         <div class="board-tabs">${Object.entries(BOARD_SORT).map(([id, [t]]) => `<button class="${id === k ? 'on' : ''}" data-k="${id}">${t}</button>`).join('')}</div></div>
-      <table><tbody>${rows.map((r, i) => `<tr class="${r.me ? 'me' : ''}" data-key="${esc(r.key || '')}" title="Profil ansehen"><td class="rank">${i + 1}</td><td class="nm"><span class="who">${faceImg(r.look)}${esc(r.name)}</span></td>
-        <td>${fmtNum(r.km, 1)} km</td><td>${fmtNum(r.hm)} Hm</td><td class="dim">${r.days} ${r.days === 1 ? 'Tag' : 'Tage'}</td>
+      <table><tbody>${rows.map((r, i) => `<tr class="${r.me ? 'me' : ''}" data-key="${esc(r.key || '')}" title="View profile"><td class="rank">${i + 1}</td><td class="nm"><span class="who">${faceImg(r.look)}${esc(r.name)}</span></td>
+        <td>${fmtNum(r.km, 1)} km</td><td>${fmtNum(r.hm)} m</td><td class="dim">${r.days} ${r.days === 1 ? 'day' : 'days'}</td>
         <td class="pts">${r.pts ? `<span class="wz">${r.pts.wizard}</span><span class="kg">${r.pts.king}</span><span class="dv">${r.pts.devil}</span>` : '<span class="dim">–</span>'}</td></tr>`).join('')}</tbody></table></div>`;
     el.querySelector('#betInfoBtn')?.addEventListener('click', () => import('./story.js').then(m => m.betInfo()));
     el.querySelectorAll('.board-tabs button').forEach(x => x.onclick = () => { state.settings.boardSort = x.dataset.k; saveSettings(); draw(); });
@@ -217,10 +217,10 @@ function card(r) {
       <h3>${esc(r.name)}</h3>
       <div class="place">${esc(r.place || '')}</div>
       <div class="stats">
-        <div class="stat"><div class="label">Distanz</div><div class="v">${fmtKm(t.length)}<small>km</small></div></div>
-        <div class="stat"><div class="label">Anstieg</div><div class="v">${fmtNum(t.gain)}<small>hm</small></div></div>
+        <div class="stat"><div class="label">Distance</div><div class="v">${fmtKm(t.length)}<small>km</small></div></div>
+        <div class="stat"><div class="label">Climb</div><div class="v">${fmtNum(t.gain)}<small>m</small></div></div>
         <div class="stat"><div class="label">Max</div><div class="v">${fmtNum(t.maxGrade, 1)}<small>%</small></div></div>
-        <div class="stat"><div class="label">Fahrten</div><div class="v">${ridesFor(r.id).length}</div></div>
+        <div class="stat"><div class="label">Rides</div><div class="v">${ridesFor(r.id).length}</div></div>
       </div>
     </div>
   </div>`;
@@ -235,34 +235,34 @@ function detail(id) {
   const best = ranked[0];
   main.innerHTML = `
   <section class="view">
-    <button class="back" id="back">← Alle Strecken</button>
+    <button class="back" id="back">← All routes</button>
     <div class="detail">
       <div>
         <div class="hero" style="background-image:url('${r.thumb || ''}')"></div>
         <div class="profile-wrap">
-          <div class="label" style="margin-bottom:14px">Höhenprofil · ${t.eleSource === 'dem' ? 'Geländemodell' : 'GPS-Höhe'}</div>
+          <div class="label" style="margin-bottom:14px">Elevation profile · ${t.eleSource === 'dem' ? 'terrain model' : 'GPS altitude'}</div>
           <canvas id="detailProfile"></canvas>
         </div>
       </div>
       <div>
-        <div class="label">${esc(r.place || 'Strecke')}</div>
+        <div class="label">${esc(r.place || 'Route')}</div>
         <h1 class="display" style="margin-top:14px">${esc(r.name)}</h1>
         <div class="bigstats">
-          <div><div class="label">Distanz</div><div class="v">${fmtKm(t.length)}<small>km</small></div></div>
-          <div><div class="label">Anstieg</div><div class="v">${fmtNum(t.gain)}<small>hm</small></div></div>
-          <div><div class="label">Max. Steigung</div><div class="v">${fmtNum(t.maxGrade, 1)}<small>%</small></div></div>
-          <div><div class="label">Bestzeit</div><div class="v ${best ? 'accent' : ''}">${best ? fmtTime(best.duration) : '–'}</div></div>
-          <div><div class="label">${r.source === 'demo' ? 'Dauer ca.' : 'Video'}</div><div class="v">${fmtTime(t.duration)}</div></div>
-          <div><div class="label">Fahrten</div><div class="v">${rides.length}</div></div>
+          <div><div class="label">Distance</div><div class="v">${fmtKm(t.length)}<small>km</small></div></div>
+          <div><div class="label">Climb</div><div class="v">${fmtNum(t.gain)}<small>m</small></div></div>
+          <div><div class="label">Max grade</div><div class="v">${fmtNum(t.maxGrade, 1)}<small>%</small></div></div>
+          <div><div class="label">Best time</div><div class="v ${best ? 'accent' : ''}">${best ? fmtTime(best.duration) : '–'}</div></div>
+          <div><div class="label">${r.source === 'demo' ? 'Approx. time' : 'Video'}</div><div class="v">${fmtTime(t.duration)}</div></div>
+          <div><div class="label">Rides</div><div class="v">${rides.length}</div></div>
         </div>
         <div class="row-actions">
-          <button class="btn" id="rideBtn">Losfahren ▸</button>
-          <button class="btn ghost" id="groupBtn">Zusammen fahren</button>
-          ${t.world ? '<a class="btn ghost" href="preview.html?route=' + id + '" style="text-decoration:none">Vorschau ▸</a>' : ''}
+          <button class="btn" id="rideBtn">Ride ▸</button>
+          <button class="btn ghost" id="groupBtn">Ride together</button>
+          ${t.world ? '<a class="btn ghost" href="preview.html?route=' + id + '" style="text-decoration:none">Preview ▸</a>' : ''}
           <div class="field" style="border:0;padding:0;gap:10px">
-            <span class="label">Gegner</span>
+            <span class="label">Opponent</span>
             <select id="ghostSel" style="width:auto">
-              <option value="best">Bestzeit</option><option value="last">Letzte Fahrt</option><option value="none">Keiner</option>
+              <option value="best">Best time</option><option value="last">Last ride</option><option value="none">None</option>
               ${sharedFor(id).map(x => `<option value="s:${x.id}">${esc(x.rider)} · ${fmtTime(x.duration)}</option>`).join('')}
             </select>
           </div>
@@ -270,38 +270,38 @@ function detail(id) {
         <div class="panel workout-pick" style="margin-top:22px">
           <div class="field" style="border:0;padding:0;gap:10px;flex-wrap:wrap;justify-content:flex-start">
             <span class="label" style="min-width:130px">Training</span>
-            <select id="workSel" style="width:auto"><option value="">Freie Fahrt (Steigung der Strecke)</option>${allWorkouts().map(w => `<option value="${w.id}">${w.mine ? '★ ' : ''}${esc(w.name)} · ${Math.round(workoutDuration(w) / 60)} min</option>`).join('')}</select>
-            <label style="display:flex;gap:8px;align-items:center;margin-left:auto" title="Der Trainer hält die Zielwatt selbst, egal wie steil die Strecke ist"><input type="checkbox" class="toggle" id="ergChk" ${state.settings.erg !== false ? 'checked' : ''}> ERG (Trainer hält die Watt)</label>
+            <select id="workSel" style="width:auto"><option value="">Free ride (route gradient)</option>${allWorkouts().map(w => `<option value="${w.id}">${w.mine ? '★ ' : ''}${esc(w.name)} · ${Math.round(workoutDuration(w) / 60)} min</option>`).join('')}</select>
+            <label style="display:flex;gap:8px;align-items:center;margin-left:auto" title="The trainer holds the target watts itself, however steep the route is"><input type="checkbox" class="toggle" id="ergChk" ${state.settings.erg !== false ? 'checked' : ''}> ERG (trainer holds the watts)</label>
           </div>
           <div id="workInfo"></div>
-          <div class="field" id="chRow" style="border:0;padding:10px 0 0;gap:10px;flex-wrap:wrap;justify-content:flex-start" title="Unterwegs fordern dich Ritter, Oma, Möwe, Seeadler oder ein Kind zu kurzen Rennen heraus. Annehmen: einfach antreten (oder K). Nie im Training.">
+          <div class="field" id="chRow" style="border:0;padding:10px 0 0;gap:10px;flex-wrap:wrap;justify-content:flex-start" title="Along the way a knight, a granny, a gull, a sea eagle or a kid challenges you to short races. To accept, just attack (or press K). Never during a workout.">
             <span class="label" style="min-width:130px">Challenges</span>
-            <select id="chSel" style="width:auto">${[0, 2, 3, 4, 6, 8].map(n => `<option value="${n}">${n ? n + ' pro Fahrt' : 'aus'}</option>`).join('')}</select>
+            <select id="chSel" style="width:auto">${[0, 2, 3, 4, 6, 8].map(n => `<option value="${n}">${n ? n + ' per ride' : 'off'}</option>`).join('')}</select>
           </div>
-          <div class="field" style="border:0;padding:10px 0 0;gap:10px;flex-wrap:wrap;justify-content:flex-start" title="Niedrigere Stufen laden weniger Modelle: weniger Arbeitsspeicher, schnellerer Start, flüssiger auf schwächeren Laptops. Beim Zusammenfahren wählt jeder seine eigene Stufe.">
-            <span class="label" style="min-width:130px">Grafik</span>
-            <select id="wmSel" style="width:auto">${[['voll', '4 · Voll belebt'], ['ruhig', '3 · Weniger Menschen und Tiere'], ['natur', '2 · Kaum Menschen und Tiere'], ['leer', '1 · Nur Landschaft']].map(([v, t]) => `<option value="${v}">${t}</option>`).join('')}</select>
+          <div class="field" style="border:0;padding:10px 0 0;gap:10px;flex-wrap:wrap;justify-content:flex-start" title="Lower levels load fewer models: less memory, faster start, smoother on weaker laptops. When riding together everyone picks their own level.">
+            <span class="label" style="min-width:130px">Graphics</span>
+            <select id="wmSel" style="width:auto">${[['voll', '4 · Full life'], ['ruhig', '3 · Fewer people and animals'], ['natur', '2 · Hardly any people or animals'], ['leer', '1 · Landscape only']].map(([v, t]) => `<option value="${v}">${t}</option>`).join('')}</select>
           </div>
-          <div class="field" style="border:0;padding:10px 0 0;gap:10px;flex-wrap:wrap;justify-content:flex-start" title="Die Sonne geht während der Fahrt unter: zur Hälfte der Strecke am Horizont, am Ende Dämmerung">
-            <span class="label" style="min-width:130px">Licht</span>
-            <select id="lightSel" style="width:auto"><option value="sunset">Sonnenuntergang während der Fahrt</option><option value="fest">Abendsonne (bleibt)</option></select>
+          <div class="field" style="border:0;padding:10px 0 0;gap:10px;flex-wrap:wrap;justify-content:flex-start" title="The sun sets during the ride: on the horizon at halfway, dusk at the end">
+            <span class="label" style="min-width:130px">Light</span>
+            <select id="lightSel" style="width:auto"><option value="sunset">Sunset during the ride</option><option value="fest">Evening sun (stays)</option></select>
           </div>
-          <div class="field" style="border:0;padding:10px 0 0;gap:10px;flex-wrap:wrap;justify-content:flex-start" title="Am Ziel geht es wieder am Start los, bis alle Runden gefahren sind (nicht in der Gruppenfahrt)">
-            <span class="label" style="min-width:130px">Runden</span>
-            <select id="lapSel" style="width:auto">${[1, 2, 3, 4, 5, 10].map(n => `<option value="${n}">${n === 1 ? '1 Runde' : n + ' Runden'} · ${fmtKm(t.length * n)} km</option>`).join('')}</select>
+          <div class="field" style="border:0;padding:10px 0 0;gap:10px;flex-wrap:wrap;justify-content:flex-start" title="At the finish you start again from the start until all laps are done (not in group rides)">
+            <span class="label" style="min-width:130px">Laps</span>
+            <select id="lapSel" style="width:auto">${[1, 2, 3, 4, 5, 10].map(n => `<option value="${n}">${n === 1 ? '1 lap' : n + ' laps'} · ${fmtKm(t.length * n)} km</option>`).join('')}</select>
           </div>
         </div>
         ${t.intervals?.length ? intervalPlan(t) : ''}
         ${segmentTable(t, ridesFor(r.id))}
-        <h2 class="section" style="margin-top:44px">Deine Zeiten</h2>
+        <h2 class="section" style="margin-top:44px">Your times</h2>
         ${ranked.length ? `<table class="table">
-          <tr><th class="label">#</th><th class="label">Datum</th><th class="label">Zeit</th><th class="label">Ø Watt</th><th class="label">Ø km/h</th><th class="label"></th></tr>
-          ${ranked.slice(0, 8).map((x, i) => `<tr class="${i === 0 ? 'pb' : ''}"><td class="rank">${i + 1}</td><td>${new Date(x.date).toLocaleDateString('en-GB')}</td><td>${fmtTime(x.duration)}</td><td>${x.avgPower} W</td><td>${fmtNum(x.distance / x.duration * 3.6, 1)}</td><td><button class="btn ghost small share" data-id="${x.id}" title="Als Datei an Freunde schicken, sie fahren gegen dich">Teilen</button></td></tr>`).join('')}
-        </table>` : '<div class="empty">Noch keine komplette Fahrt. Die erste Zeit wird deine Bestzeit.</div>'}
+          <tr><th class="label">#</th><th class="label">Date</th><th class="label">Time</th><th class="label">Avg W</th><th class="label">Avg km/h</th><th class="label"></th></tr>
+          ${ranked.slice(0, 8).map((x, i) => `<tr class="${i === 0 ? 'pb' : ''}"><td class="rank">${i + 1}</td><td>${new Date(x.date).toLocaleDateString('en-GB')}</td><td>${fmtTime(x.duration)}</td><td>${x.avgPower} W</td><td>${fmtNum(x.distance / x.duration * 3.6, 1)}</td><td><button class="btn ghost small share" data-id="${x.id}" title="Send as a file to friends so they can race against you">Share</button></td></tr>`).join('')}
+        </table>` : '<div class="empty">No complete ride yet. Your first time will be your best time.</div>'}
         <div class="row-actions" style="margin-top:32px">
-          ${r.source !== 'demo' ? `<button class="btn ghost small" id="renameBtn">Umbenennen</button>
-          ${r.track.eleSource !== 'dem' ? '<button class="btn ghost small" id="eleBtn">Höhendaten verbessern</button>' : ''}
-          <button class="btn danger small" id="delBtn">Löschen</button>` : ''}
+          ${r.source !== 'demo' ? `<button class="btn ghost small" id="renameBtn">Rename</button>
+          ${r.track.eleSource !== 'dem' ? '<button class="btn ghost small" id="eleBtn">Improve elevation data</button>' : ''}
+          <button class="btn danger small" id="delBtn">Delete</button>` : ''}
         </div>
       </div>
     </div>
@@ -309,7 +309,7 @@ function detail(id) {
   $('#back').onclick = () => go('library');
   $('#ghostSel').value = state.settings.ghost; if (!$('#ghostSel').value) $('#ghostSel').value = 'best';
   $('#groupBtn').onclick = () => groupModal({ routeId: id, startRide });
-  const showWork = () => { const w = workoutById(state.settings.workout); $('#workInfo').innerHTML = w ? `<p style="margin:6px 0">${esc(w.what)} Ziel-Watt aus deiner FTP (${state.settings.ftp || 200} W).</p>${workoutSVG(w)}` : ''; $('#rideBtn').textContent = w ? 'Training starten ▸' : 'Losfahren ▸'; $('#chRow').hidden = !!w; };
+  const showWork = () => { const w = workoutById(state.settings.workout); $('#workInfo').innerHTML = w ? `<p style="margin:6px 0">${esc(w.what)} Target watts from your FTP (${state.settings.ftp || 200} W).</p>${workoutSVG(w)}` : ''; $('#rideBtn').textContent = w ? 'Start workout ▸' : 'Ride ▸'; $('#chRow').hidden = !!w; };
   $('#workSel').value = workoutById(state.settings.workout) ? state.settings.workout : ''; showWork();
   $('#workSel').onchange = e => { state.settings.workout = e.target.value; saveSettings(); showWork(); };
   $('#ergChk').onchange = e => { state.settings.erg = e.target.checked; saveSettings(); };
@@ -325,23 +325,23 @@ function detail(id) {
     startTest: id => { state.settings.workout = id; saveSettings(); startRide(routeById('kueste60') ? 'kueste60' : 'demo'); },
     deleteRides: async list => { const { deleteRideRemote } = await import('./account.js'); let n = 0;
       for (const x of list) { try { await deleteRideRemote(x.id); await db.del('rides', x.id); db.kvDel('photo:' + x.id).catch(() => {}); n++; } catch (e) { toast('Server: ' + e.message); break; } }
-      await reload(); toast(`${n} ${n === 1 ? 'Fahrt' : 'Fahrten'} gelöscht`); } });
+      await reload(); toast(`${n} ${n === 1 ? 'ride' : 'rides'} deleted`); } });
   main.querySelectorAll('.share').forEach(b => b.onclick = () => shareRide(rides.find(r => r.id === b.dataset.id)));
   $('#ghostSel').onchange = e => { state.settings.ghost = e.target.value; saveSettings(); };
   $('#rideBtn').onclick = () => startRide(id);
   const prof = $('#detailProfile');
   requestAnimationFrame(() => drawDetailProfile(prof, t));
   if ($('#renameBtn')) $('#renameBtn').onclick = async () => {
-    const name = prompt('Name der Strecke', r.name); if (!name) return;
+    const name = prompt('Route name', r.name); if (!name) return;
     r.name = name; await db.put('routes', r); detail(id);
   };
   if ($('#delBtn')) $('#delBtn').onclick = async () => {
-    if (!confirm(`„${r.name}“ mit Video und allen Fahrten löschen?`)) return;
+    if (!confirm(`Delete “${r.name}” with its video and all rides?`)) return;
     await db.deleteRoute(id); await reload(); go('library');
   };
   if ($('#eleBtn')) $('#eleBtn').onclick = async () => {
-    try { r.track = await improveElevation(r.track); await db.put('routes', r); toast('Höhendaten aus Geländemodell übernommen'); detail(id); }
-    catch (e) { toast('Ging nicht: ' + e.message); }
+    try { r.track = await improveElevation(r.track); await db.put('routes', r); toast('Elevation taken from the terrain model'); detail(id); }
+    catch (e) { toast('Did not work: ' + e.message); }
   };
 }
 
@@ -355,50 +355,50 @@ function history() {
   const longest = rides.slice().sort((a, b) => b.distance - a.distance)[0];
   main.innerHTML = `
   <section class="view">
-    <div class="view-head"><div><div class="label">Verlauf</div><h1 class="display" style="margin-top:14px">Fahrten &amp;<br>Rekorde</h1></div></div>
+    <div class="view-head"><div><div class="label">History</div><h1 class="display" style="margin-top:14px">Rides &amp;<br>records</h1></div></div>
     <h2 class="section">Training</h2>
     ${dashboardHTML(rides, state.settings)}
-    <h2 class="section">Rekorde</h2>
+    <h2 class="section">Records</h2>
     <div class="records">
-      <div class="record"><div class="label">Beste 20 Minuten</div><div class="v">${best20 || '–'}<small>W</small></div><div class="s">${best20Ride ? esc(routeName(best20Ride.routeId) || '') + ' · ' + new Date(best20Ride.date).toLocaleDateString('en-GB') : 'Fahre mind. 20 Minuten'}</div></div>
-      <div class="record"><div class="label">Gesamt</div><div class="v">${fmtKm(totalKm)}<small>km</small></div><div class="s">${rides.length} ${rides.length === 1 ? 'Fahrt' : 'Fahrten'} · ${(t => t >= 3600 ? `${Math.floor(t / 3600)} h ${Math.round(t % 3600 / 60)} min` : `${Math.round(t / 60)} min`)(rides.reduce((s, r) => s + r.duration, 0))}</div></div>
-      <div class="record"><div class="label">Meiste Höhenmeter</div><div class="v">${mostGain ? fmtNum(mostGain.gain) : '–'}<small>hm</small></div><div class="s">${mostGain ? esc(routeName(mostGain.routeId) || '') : ''}</div></div>
-      <div class="record"><div class="label">Längste Fahrt</div><div class="v">${longest ? fmtKm(longest.distance) : '–'}<small>km</small></div><div class="s">${longest ? fmtTime(longest.duration) : ''}</div></div>
+      <div class="record"><div class="label">Best 20 minutes</div><div class="v">${best20 || '–'}<small>W</small></div><div class="s">${best20Ride ? esc(routeName(best20Ride.routeId) || '') + ' · ' + new Date(best20Ride.date).toLocaleDateString('en-GB') : 'Ride at least 20 minutes'}</div></div>
+      <div class="record"><div class="label">Total</div><div class="v">${fmtKm(totalKm)}<small>km</small></div><div class="s">${rides.length} ${rides.length === 1 ? 'ride' : 'rides'} · ${(t => t >= 3600 ? `${Math.floor(t / 3600)} h ${Math.round(t % 3600 / 60)} min` : `${Math.round(t / 60)} min`)(rides.reduce((s, r) => s + r.duration, 0))}</div></div>
+      <div class="record"><div class="label">Most climbing</div><div class="v">${mostGain ? fmtNum(mostGain.gain) : '–'}<small>m</small></div><div class="s">${mostGain ? esc(routeName(mostGain.routeId) || '') : ''}</div></div>
+      <div class="record"><div class="label">Longest ride</div><div class="v">${longest ? fmtKm(longest.distance) : '–'}<small>km</small></div><div class="s">${longest ? fmtTime(longest.duration) : ''}</div></div>
     </div>
-    <h2 class="section">Alle Fahrten</h2>
+    <h2 class="section">All rides</h2>
     ${rides.length ? `<table class="table">
-      <tr><th class="label">Datum</th><th class="label">Strecke</th><th class="label">Zeit</th><th class="label">Distanz</th><th class="label">Höhenmeter</th><th class="label">Ø Watt</th><th class="label">Ø km/h</th><th class="label"></th><th class="label"></th></tr>
-      ${rides.map(x => { const pb = x.routeId !== 'pure' && x.routeId !== 'outdoor' && bestRide(x.routeId)?.id === x.id; return `<tr class="${pb ? 'pb' : ''}"><td>${new Date(x.date).toLocaleString('en-GB', { dateStyle: 'short', timeStyle: 'short' })}</td><td>${esc((routeName(x.routeId) || 'Gelöschte Strecke') + ((x.routeId === 'pure' || x.routeId === 'outdoor') && x.workout ? ' · ' + x.workout : ''))}</td><td>${fmtTime(x.duration)}</td><td>${fmtKm(x.distance)} km</td><td>${fmtNum(x.gain)} hm</td><td>${x.avgPower} W</td><td>${fmtNum(x.distance / x.duration * 3.6, 1)}</td><td>${pb ? 'BESTZEIT' : x.complete ? '' : '<span style="color:var(--muted)">abgebrochen</span>'}</td><td style="white-space:nowrap"><button class="btn ghost small strava" data-id="${x.id}">Strava</button> <button class="btn ghost small share" data-id="${x.id}">Teilen</button> <button class="btn ghost small rimg" data-id="${x.id}" title="Bild zur Fahrt machen">Bild</button> <button class="btn ghost small rdel" data-id="${x.id}" title="Fahrt löschen">✕</button></td></tr>`; }).join('')}
-    </table>` : '<div class="empty">Noch keine Fahrten. Wähle eine Strecke und fahr los.</div>'}
+      <tr><th class="label">Date</th><th class="label">Route</th><th class="label">Time</th><th class="label">Distance</th><th class="label">Climb</th><th class="label">Avg W</th><th class="label">Avg km/h</th><th class="label"></th><th class="label"></th></tr>
+      ${rides.map(x => { const pb = x.routeId !== 'pure' && x.routeId !== 'outdoor' && bestRide(x.routeId)?.id === x.id; return `<tr class="${pb ? 'pb' : ''}"><td>${new Date(x.date).toLocaleString('en-GB', { dateStyle: 'short', timeStyle: 'short' })}</td><td>${esc((routeName(x.routeId) || 'Deleted route') + ((x.routeId === 'pure' || x.routeId === 'outdoor') && x.workout ? ' · ' + x.workout : ''))}</td><td>${fmtTime(x.duration)}</td><td>${fmtKm(x.distance)} km</td><td>${fmtNum(x.gain)} m</td><td>${x.avgPower} W</td><td>${fmtNum(x.distance / x.duration * 3.6, 1)}</td><td>${pb ? 'BEST TIME' : x.complete ? '' : '<span style="color:var(--muted)">stopped</span>'}</td><td style="white-space:nowrap"><button class="btn ghost small strava" data-id="${x.id}">Strava</button> <button class="btn ghost small share" data-id="${x.id}">Share</button> <button class="btn ghost small rimg" data-id="${x.id}" title="Make a picture of the ride">Image</button> <button class="btn ghost small rdel" data-id="${x.id}" title="Delete ride">✕</button></td></tr>`; }).join('')}
+    </table>` : '<div class="empty">No rides yet. Pick a route and start riding.</div>'}
   </section>`;
   wireDashboard(main, { state, saveSettings, toast, rerender: history,
     startTest: id => { state.settings.workout = id; saveSettings(); startRide(routeById('kueste60') ? 'kueste60' : 'demo'); },
     deleteRides: async list => { const { deleteRideRemote } = await import('./account.js'); let n = 0;
       for (const x of list) { try { await deleteRideRemote(x.id); await db.del('rides', x.id); db.kvDel('photo:' + x.id).catch(() => {}); n++; } catch (e) { toast('Server: ' + e.message); break; } }
-      await reload(); toast(`${n} ${n === 1 ? 'Fahrt' : 'Fahrten'} gelöscht`); } });
+      await reload(); toast(`${n} ${n === 1 ? 'ride' : 'rides'} deleted`); } });
   main.querySelectorAll('.share').forEach(b => b.onclick = () => shareRide(rides.find(r => r.id === b.dataset.id)));
   main.querySelectorAll('.rdel').forEach(b => b.onclick = async () => { const x = rides.find(r => r.id === b.dataset.id); if (!x) return;
-    if (!confirm(`Fahrt vom ${new Date(x.date).toLocaleString('en-GB', { dateStyle: 'short', timeStyle: 'short' })} (${fmtKm(x.distance)} km) endgültig löschen?`)) return;
+    if (!confirm(`Delete the ride from ${new Date(x.date).toLocaleString('en-GB', { dateStyle: 'short', timeStyle: 'short' })} (${fmtKm(x.distance)} km) for good?`)) return;
     try { const { deleteRideRemote } = await import('./account.js'); await deleteRideRemote(x.id); } catch (e) { toast('Server: ' + e.message); return; }
-    await db.del('rides', x.id); db.kvDel('photo:' + x.id).catch(() => {}); await reload(); history(); toast('Fahrt gelöscht'); });
+    await db.del('rides', x.id); db.kvDel('photo:' + x.id).catch(() => {}); await reload(); history(); toast('Ride deleted'); });
   main.querySelectorAll('.rimg').forEach(b => b.onclick = async () => { // share image later, also for older rides (then without photo: sky + route name)
-    const x = rides.find(r => r.id === b.dataset.id), r = x && routeById(x.routeId); if (!r?.track) return toast('Die Strecke dieser Fahrt gibt es nicht mehr.');
+    const x = rides.find(r => r.id === b.dataset.id), r = x && routeById(x.routeId); if (!r?.track) return toast('The route of this ride no longer exists.');
     const t = b.textContent; b.disabled = true; b.textContent = '…';
     try { const photo = await db.kvGet('photo:' + x.id).catch(() => null), { shareModal } = await import('./shareimg.js');
       await shareModal({ rec: x, route: r, track: r.track, photo: photo || null, pose: null, pb: x.routeId !== 'pure' && bestRide(x.routeId)?.id === x.id }); }
-    catch (e) { toast('Bild ging nicht: ' + (e.message || e), 5000); }
+    catch (e) { toast('Image failed: ' + (e.message || e), 5000); }
     b.disabled = false; b.textContent = t; });
-  main.querySelectorAll('.strava').forEach(b => b.onclick = () => { const x = rides.find(r => r.id === b.dataset.id); if (x?.samples?.length) { const r = routeById(x.routeId), t = r?.track; stravaButton(b, x, routeName(x.routeId) || 'Fahrt', routeFns(t)); } else toast('Diese Fahrt hat keine Messwerte.'); });
+  main.querySelectorAll('.strava').forEach(b => b.onclick = () => { const x = rides.find(r => r.id === b.dataset.id); if (x?.samples?.length) { const r = routeById(x.routeId), t = r?.track; stravaButton(b, x, routeName(x.routeId) || 'Ride', routeFns(t)); } else toast('This ride has no recorded data.'); });
 }
 
 // ---- form controls: stepper (− value +) with optional "no answer", segmented switch ----
 function stepper(id, value, { step = 1, min = 0, max = 9999, unit = '', optional = false } = {}) {
   const none = value == null || value === '';
   return `<div class="stepper-wrap"><div class="stepper ${none ? 'off' : ''}" data-step="${step}" data-min="${min}" data-max="${max}" id="${id}">
-    <button type="button" class="sb" data-d="-1" aria-label="weniger">−</button>
+    <button type="button" class="sb" data-d="-1" aria-label="less">−</button>
     <span class="sv"><input type="text" inputmode="decimal" value="${none ? '' : String(value)}" placeholder="–">${unit ? `<small>${unit}</small>` : ''}</span>
-    <button type="button" class="sb" data-d="1" aria-label="mehr">+</button></div>
-    ${optional ? `<button type="button" class="nochip ${none ? 'on' : ''}" data-for="${id}">Keine Angabe</button>` : ''}</div>`;
+    <button type="button" class="sb" data-d="1" aria-label="more">+</button></div>
+    ${optional ? `<button type="button" class="nochip ${none ? 'on' : ''}" data-for="${id}">Not set</button>` : ''}</div>`;
 }
 function wireStepper(root, id, onChange, fallback) {
   const el = root.querySelector('#' + id), inp = el.querySelector('input'), chip = root.querySelector(`.nochip[data-for="${id}"]`);
@@ -416,29 +416,29 @@ function wireSeg(root, id, onChange) {
   const el = root.querySelector('#' + id);
   el.querySelectorAll('button').forEach(b => b.onclick = () => { el.querySelectorAll('button').forEach(x => x.classList.toggle('on', x === b)); onChange(b.dataset.v); });
 }
-const SHIFT_OPTS = [['real', 'Echt am Rad'], ['virtual', 'Virtuell']];
-const UE_WEATHER_OPTS = [['auto', 'Auto'], ['clear', 'Klar'], ['fog', 'Nebel'], ['rain', 'Regen'], ['storm', 'Gewitter'], ['clearing', 'Regenbogen'], ['dramatic', 'Dramatisch']];
-const VIEW_OPTS = [['0', 'Fahrer'], ['1', 'Verfolger'], ['2', 'Rückblick']];
+const SHIFT_OPTS = [['real', 'On the bike'], ['virtual', 'Virtual']];
+const UE_WEATHER_OPTS = [['auto', 'Auto'], ['clear', 'Clear'], ['fog', 'Fog'], ['rain', 'Rain'], ['storm', 'Thunderstorm'], ['clearing', 'Rainbow'], ['dramatic', 'Dramatic']];
+const VIEW_OPTS = [['0', 'Rider'], ['1', 'Chase'], ['2', 'Look back']];
 
 function shiftHint(m) {
   return m === 'virtual'
-    ? 'Rad bleibt in einem Gang. Du schaltest in der App, der KICKR ändert dafür den Widerstand.'
-    : 'Du schaltest ganz normal am Rad. Der KICKR macht nur den Widerstand der Steigung, deine Trittfrequenz bestimmst du selbst.';
+    ? 'The bike stays in one gear. You shift in the app and the KICKR changes the resistance.'
+    : 'You shift on the bike as usual. The KICKR only sets the resistance of the gradient; you choose your own cadence.';
 }
 
 function profileModal() {
   const s = state.settings, tmp = { riderKg: s.riderKg, bikeKg: s.bikeKg, ftp: s.ftp, cadence: s.cadence, shiftMode: s.shiftMode };
   const m = document.createElement('div'); m.className = 'modal';
-  m.innerHTML = `<div class="box"><div class="label">Willkommen</div><h2 class="display">Dein Profil</h2>
-    <p>Damit Tempo am Berg und Intervall-Ziele stimmen. Was du nicht weißt, lässt du einfach leer. Alles später in den Einstellungen änderbar.</p>
+  m.innerHTML = `<div class="box"><div class="label">Welcome</div><h2 class="display">Your profile</h2>
+    <p>So that climbing speed and interval targets are right. Leave anything you do not know empty. You can change everything later in Settings.</p>
     <div class="form">
-      <div class="field"><div>Körpergewicht</div>${stepper('pKg', s.riderKg, { step: 0.5, min: 30, max: 200, unit: 'kg' })}</div>
-      <div class="field"><div>Radgewicht</div>${stepper('pBike', s.bikeKg, { step: 0.1, min: 4, max: 30, unit: 'kg' })}</div>
-      <div class="field"><div>FTP<div class="hint">Schwellenleistung. Ohne Angabe gibt es keine Watt-Ziele.</div></div>${stepper('pFtp', s.ftp, { step: 5, min: 80, max: 600, unit: 'W', optional: true })}</div>
-      <div class="field"><div>Lieblings-Trittfrequenz<div class="hint">Für Schalt-Tipps.</div></div>${stepper('pCad', s.cadence, { step: 1, min: 50, max: 130, unit: 'rpm', optional: true })}</div>
-      <div class="field"><div>Schaltung</div>${seg('pShift', s.shiftMode, SHIFT_OPTS)}</div>
+      <div class="field"><div>Body weight</div>${stepper('pKg', s.riderKg, { step: 0.5, min: 30, max: 200, unit: 'kg' })}</div>
+      <div class="field"><div>Bike weight</div>${stepper('pBike', s.bikeKg, { step: 0.1, min: 4, max: 30, unit: 'kg' })}</div>
+      <div class="field"><div>FTP<div class="hint">Threshold power. Without it there are no watt targets.</div></div>${stepper('pFtp', s.ftp, { step: 5, min: 80, max: 600, unit: 'W', optional: true })}</div>
+      <div class="field"><div>Preferred cadence<div class="hint">For shifting tips.</div></div>${stepper('pCad', s.cadence, { step: 1, min: 50, max: 130, unit: 'rpm', optional: true })}</div>
+      <div class="field"><div>Shifting</div>${seg('pShift', s.shiftMode, SHIFT_OPTS)}</div>
     </div>
-    <div class="actions"><button class="btn" id="pOk">Speichern</button></div></div>`;
+    <div class="actions"><button class="btn" id="pOk">Save</button></div></div>`;
   document.body.append(m);
   wireStepper(m, 'pKg', v => tmp.riderKg = v, 75); wireStepper(m, 'pBike', v => tmp.bikeKg = v, 8.5);
   wireStepper(m, 'pFtp', v => tmp.ftp = v, 250); wireStepper(m, 'pCad', v => tmp.cadence = v, 90);
@@ -449,10 +449,10 @@ function profileModal() {
 function intervalPlan(t) {
   const s = state.settings, w = Math.min(...t.intervals.map(c => c.watt ?? 1)), lo = Math.round(s.ftp * w * .95), hi = Math.round(s.ftp * Math.max(...t.intervals.map(c => c.watt ?? 1)) * 1.05);
   const thr = w >= 1, mins = t.intervals.map(c => c.minutes), span = Math.min(...mins) === Math.max(...mins) ? `${mins[0]}` : `${Math.min(...mins)}–${Math.max(...mins)}`;
-  const goal = s.ftp ? `Ziel: ${lo}–${hi} W (${thr ? '95–105 %' : `${Math.round(w * 95)}–${Math.round(Math.max(...t.intervals.map(c => c.watt ?? 1)) * 105)} %`} deiner FTP von ${s.ftp} W).` : 'Trag in den Einstellungen deine FTP ein, dann zeigt die App dir Watt-Ziele.';
-  return `<h2 class="section" style="margin-top:44px">Intervall-Plan</h2>
-  <p class="hint" style="margin:6px 0 14px">Jeder Anstieg ist so gebaut, dass er ${thr ? 'bei Schwelle' : 'im Sweet Spot'} ${span} Minuten dauert. ${goal} Dazwischen ${thr ? 'Abfahrt und flache Straße' : 'kurze flache Stücke'} zum Erholen.</p>
-  <table class="table"><tr><th class="label">#</th><th class="label">Anstieg</th><th class="label">ab km</th><th class="label">Länge</th><th class="label">Ø</th><th class="label">Dauer ca.</th></tr>
+  const goal = s.ftp ? `Target: ${lo}–${hi} W (${thr ? '95–105 %' : `${Math.round(w * 95)}–${Math.round(Math.max(...t.intervals.map(c => c.watt ?? 1)) * 105)} %`} of your FTP of ${s.ftp} W).` : 'Enter your FTP in Settings and the app will show you watt targets.';
+  return `<h2 class="section" style="margin-top:44px">Interval plan</h2>
+  <p class="hint" style="margin:6px 0 14px">Each climb is built to take ${span} minutes ${thr ? 'at threshold' : 'in the sweet spot'}. ${goal} In between, ${thr ? 'descents and flat road' : 'short flat sections'} to recover.</p>
+  <table class="table"><tr><th class="label">#</th><th class="label">Climb</th><th class="label">From km</th><th class="label">Length</th><th class="label">Avg</th><th class="label">Approx. time</th></tr>
   ${t.intervals.map((c, i) => `<tr><td class="rank">${i + 1}</td><td>${esc(c.name)}</td><td>${fmtKm(c.from)}</td><td>${fmtKm(c.to - c.from)} km</td><td>${fmtNum(c.grade, 1)} %</td><td>${c.minutes} min</td></tr>`).join('')}
   </table>`;
 }
@@ -462,68 +462,68 @@ function settings() {
   const s = state.settings;
   main.innerHTML = `
   <section class="view">
-    <div class="view-head"><div><div class="label">Setup</div><h1 class="display" style="margin-top:14px">Einstel&shy;lungen</h1></div></div>
+    <div class="view-head"><div><div class="label">Setup</div><h1 class="display" style="margin-top:14px">Settings</h1></div></div>
     <div class="settings">
-      <div class="panel"><h3>Fahrer</h3>
-        <label class="field"><div>Körpergewicht<div class="hint">Wichtig für realistisches Tempo am Berg.</div></div>${stepper('riderKg', s.riderKg, { step: 0.5, min: 30, max: 200, unit: 'kg' })}</label>
-        <label class="field"><div>Radgewicht</div>${stepper('bikeKg', s.bikeKg, { step: 0.1, min: 4, max: 30, unit: 'kg' })}</label>
-        <label class="field"><div>FTP<div class="hint">Schwellenleistung in Watt. Daraus kommen die Zielbereiche in den Intervallen.</div></div>${stepper('ftp', s.ftp, { step: 5, min: 80, max: 600, unit: 'W', optional: true })}</label>
-        <label class="field"><div>Lieblings-Trittfrequenz<div class="hint">Die App sagt dir, wann du leichter oder schwerer schalten solltest.</div></div>${stepper('cadence', s.cadence, { step: 1, min: 50, max: 130, unit: 'rpm', optional: true })}</label>
+      <div class="panel"><h3>Rider</h3>
+        <label class="field"><div>Body weight<div class="hint">Important for realistic climbing speed.</div></div>${stepper('riderKg', s.riderKg, { step: 0.5, min: 30, max: 200, unit: 'kg' })}</label>
+        <label class="field"><div>Bike weight</div>${stepper('bikeKg', s.bikeKg, { step: 0.1, min: 4, max: 30, unit: 'kg' })}</label>
+        <label class="field"><div>FTP<div class="hint">Threshold power in watts. The interval target ranges come from it.</div></div>${stepper('ftp', s.ftp, { step: 5, min: 80, max: 600, unit: 'W', optional: true })}</label>
+        <label class="field"><div>Preferred cadence<div class="hint">The app tells you when to shift easier or harder.</div></div>${stepper('cadence', s.cadence, { step: 1, min: 50, max: 130, unit: 'rpm', optional: true })}</label>
       </div>
-      <div class="panel"><h3>Schaltung</h3>
-        <label class="field"><div>Modus<div class="hint" id="shiftHint">${shiftHint(s.shiftMode)}</div></div>
+      <div class="panel"><h3>Shifting</h3>
+        <label class="field"><div>Mode<div class="hint" id="shiftHint">${shiftHint(s.shiftMode)}</div></div>
           ${seg('shiftMode', s.shiftMode, SHIFT_OPTS)}</label>
-        <label class="field"><div>Kettenblätter</div><input type="text" id="chainrings" value="${esc(s.chainrings)}" style="width:110px"></label>
-        <label class="field"><div>Kassette</div><select id="cassette" style="width:auto">${Object.keys(CASSETTES).map(k => `<option ${k === s.cassette ? 'selected' : ''}>${k}</option>`).join('')}</select></label>
-        <label class="field" id="realGearRow" ${s.shiftMode === 'virtual' ? '' : 'hidden'}><div>Gang am Rad (bleibt fest)<div class="hint">Leg diesen Gang am Rad ein und schalte nur noch virtuell: Tasten Q/E, Gamepad LB/RB, später Di2-Knöpfe.</div></div><input type="text" id="realGear" value="${esc(s.realGear)}" style="width:110px"></label>
-        <label class="field"><div>Radumfang<div class="hint">mm, 700×28c = 2136, 700×25c = 2105</div></div>${stepper('wheel', s.wheel, { step: 1, min: 1500, max: 2400, unit: 'mm' })}</label>
-        <div class="field"><div>Gänge<div class="hint">${gearsFrom(s).map(g => g.f + '×' + g.r).join(' · ')}</div></div></div>
+        <label class="field"><div>Chainrings</div><input type="text" id="chainrings" value="${esc(s.chainrings)}" style="width:110px"></label>
+        <label class="field"><div>Cassette</div><select id="cassette" style="width:auto">${Object.keys(CASSETTES).map(k => `<option ${k === s.cassette ? 'selected' : ''}>${k}</option>`).join('')}</select></label>
+        <label class="field" id="realGearRow" ${s.shiftMode === 'virtual' ? '' : 'hidden'}><div>Gear on the bike (stays fixed)<div class="hint">Put the bike in this gear and shift only virtually: keys Q/E, gamepad LB/RB, later Di2 buttons.</div></div><input type="text" id="realGear" value="${esc(s.realGear)}" style="width:110px"></label>
+        <label class="field"><div>Wheel circumference<div class="hint">mm, 700×28c = 2136, 700×25c = 2105</div></div>${stepper('wheel', s.wheel, { step: 1, min: 1500, max: 2400, unit: 'mm' })}</label>
+        <div class="field"><div>Gears<div class="hint">${gearsFrom(s).map(g => g.f + '×' + g.r).join(' · ')}</div></div></div>
       </div>
       <div class="panel"><h3>Trainer</h3>
-        <label class="field"><div>Realismus Steigung <b id="diffV">${s.difficulty}%</b><div class="hint">100 % = echte Steigung. 50 % = Steigungen fühlen sich halb so steil an.</div></div><input type="range" id="difficulty" min="0" max="100" step="5" value="${s.difficulty}"></label>
-        <label class="field"><div>Abfahrten <b id="downV">${s.downhill}%</b><div class="hint">Wie stark der Trainer bergab entlastet.</div></div><input type="range" id="downhill" min="0" max="100" step="5" value="${s.downhill}"></label>
-        <div class="field"><div>Controller testen<div class="hint">Z. B. Di2-Zusatzknöpfe (D-FLY), Zwift Click, Gamepad. Zeigt, was die Knöpfe senden.</div></div><button class="btn ghost small" id="ctBtn">Testen</button></div>
-        <div class="field"><div>Herzfrequenz-Gurt<div class="hint">Optional, per Bluetooth.</div></div><div style="display:flex;gap:8px"><button class="btn ghost small" id="hrAll" title="Wenn der Gurt in der normalen Suche fehlt">Alle Geräte</button><button class="btn ghost small" id="hrBtn">${state.hr?.connected ? 'Verbunden' : 'Verbinden'}</button></div></div>
+        <label class="field"><div>Gradient realism <b id="diffV">${s.difficulty}%</b><div class="hint">100 % = real gradient. 50 % = climbs feel half as steep.</div></div><input type="range" id="difficulty" min="0" max="100" step="5" value="${s.difficulty}"></label>
+        <label class="field"><div>Descents <b id="downV">${s.downhill}%</b><div class="hint">How much the trainer eases off downhill.</div></div><input type="range" id="downhill" min="0" max="100" step="5" value="${s.downhill}"></label>
+        <div class="field"><div>Test controller<div class="hint">E.g. Di2 extra buttons (D-FLY), Zwift Click, gamepad. Shows what the buttons send.</div></div><button class="btn ghost small" id="ctBtn">Test</button></div>
+        <div class="field"><div>Heart rate strap<div class="hint">Optional, via Bluetooth.</div></div><div style="display:flex;gap:8px"><button class="btn ghost small" id="hrAll" title="If the strap is missing in the normal search">All devices</button><button class="btn ghost small" id="hrBtn">${state.hr?.connected ? 'Connected' : 'Connect'}</button></div></div>
       </div>
-      <div class="panel"><h3>Video &amp; Daten</h3>
-        <label class="field"><div>Video-Ton aus</div><input type="checkbox" class="toggle" id="muteVideo" ${s.muteVideo ? 'checked' : ''}></label>
-        <label class="field"><div>Höhendaten verbessern<div class="hint">Beim Import Höhe aus Geländemodell holen (Open-Meteo). GoPro-Höhe ist ungenau.</div></div><input type="checkbox" class="toggle" id="improveEle" ${s.improveEle ? 'checked' : ''}></label>
-        <div class="field"><div>Speicher<div class="hint" id="usage">…</div></div></div>
+      <div class="panel"><h3>Video &amp; data</h3>
+        <label class="field"><div>Mute video sound</div><input type="checkbox" class="toggle" id="muteVideo" ${s.muteVideo ? 'checked' : ''}></label>
+        <label class="field"><div>Improve elevation data<div class="hint">On import, take elevation from a terrain model (Open-Meteo). GoPro altitude is inaccurate.</div></div><input type="checkbox" class="toggle" id="improveEle" ${s.improveEle ? 'checked' : ''}></label>
+        <div class="field"><div>Storage<div class="hint" id="usage">…</div></div></div>
       </div>
-      <div class="panel"><h3>Eigene Musik</h3>
-        <div class="field"><div>Musikordner auf diesem Rechner<div class="hint" id="ownMusicV">Deine eigenen Songs statt der Spielmusik. Unterordner bestimmen, wann sie laufen: welt, regen, intervall, training, flug, hoelle, fest, hochzeit, kirchenfest, beerdigung. Die Songs bleiben auf deinem Rechner.</div></div><div style="display:flex;gap:8px"><button class="btn ghost small" id="ownMusicBtn">Ordner wählen</button><button class="btn ghost small" id="ownMusicOff" hidden>Entfernen</button></div></div>
+      <div class="panel"><h3>Your own music</h3>
+        <div class="field"><div>Music folder on this computer<div class="hint" id="ownMusicV">Your own songs instead of the game music. Subfolders decide when they play (folder names stay German): welt (world), regen (rain), intervall, training, flug (flight), hoelle (hell), fest (festival), hochzeit (wedding), kirchenfest (church fair), beerdigung (funeral). The songs stay on your computer.</div></div><div style="display:flex;gap:8px"><button class="btn ghost small" id="ownMusicBtn">Choose folder</button><button class="btn ghost small" id="ownMusicOff" hidden>Remove</button></div></div>
       </div>
-      <div class="panel"><h3>Sprachchat beim Zusammenfahren</h3>
-        <label class="field"><div>Push-to-Talk<div class="hint">Aus = offenes Mikro, Taste T schaltet stumm. An = du wirst nur gehört, solange du T (oder den Knopf „Mikro“) gedrückt hältst.</div></div><input type="checkbox" class="toggle" id="voicePtt" ${s.voicePtt ? 'checked' : ''}></label>
-        <label class="field"><div>Lautstärke der anderen <b id="voiceVolV">${s.voiceVol ?? 100}%</b><div class="hint">Wie laut du deine Freunde hörst. Die Musik wird leiser, solange jemand spricht.</div></div><input type="range" id="voiceVol" min="0" max="100" step="5" value="${s.voiceVol ?? 100}"></label>
+      <div class="panel"><h3>Voice chat when riding together</h3>
+        <label class="field"><div>Push-to-Talk<div class="hint">Off = open mic, key T mutes. On = you are only heard while you hold T (or the “Mic” button).</div></div><input type="checkbox" class="toggle" id="voicePtt" ${s.voicePtt ? 'checked' : ''}></label>
+        <label class="field"><div>Volume of the others <b id="voiceVolV">${s.voiceVol ?? 100}%</b><div class="hint">How loud you hear your friends. The music gets quieter while someone speaks.</div></div><input type="range" id="voiceVol" min="0" max="100" step="5" value="${s.voiceVol ?? 100}"></label>
       </div>
-      <div class="panel"><h3>Dein Fahrer</h3>
-        <div class="field"><div>Aussehen<div class="hint">Typ, Größe, Statur, Gesicht, Frisur, Outfits (auch 80er und richtig lustige) und Schuhe. Sehen deine Freunde beim Zusammenfahren, du selbst in der Verfolger-Kamera (Taste V).</div></div><button class="btn ghost small" id="lookBtn">Fahrer gestalten</button></div>
+      <div class="panel"><h3>Your rider</h3>
+        <div class="field"><div>Look<div class="hint">Type, height, build, face, hair, outfits (including 80s and really funny ones) and shoes. Your friends see it when riding together, you see it in the chase camera (key V).</div></div><button class="btn ghost small" id="lookBtn">Design rider</button></div>
       </div>
-      <div class="panel"><h3>Anzeige während der Fahrt</h3>
-        <div class="hint" style="margin-bottom:6px">Wähle eine Vorlage oder stell selbst zusammen, was du siehst. Während der Fahrt: Taste I wechselt die Vorlage, der Knopf „Anzeige“ öffnet diese Auswahl.</div>
+      <div class="panel"><h3>Display while riding</h3>
+        <div class="hint" style="margin-bottom:6px">Pick a preset or choose what you see yourself. While riding: key I switches the preset, the “Display” button opens this choice.</div>
         <div id="hudBox">${hudControlsHTML(hudPrefs(s))}</div>
       </div>
-      <div class="panel"><h3>Ansicht 3D-Welt</h3>
-        <label class="field"><div>Sichtfeld <b id="fovV">${fovOf(s)}°</b><div class="hint">Wie bei Minecraft: nach rechts weiter, nach links näher dran. Normal 80°, 95–130° = sehr weit. Während der Fahrt: Tasten [ und ] oder Knopf „Sicht“.</div></div><input type="range" id="fov" min="${FOV_MIN}" max="${FOV_MAX}" step="1" value="${fovOf(s)}"></label>
-        <label class="field"><div>In Unreal fahren (Beta)<div class="hint">Die Fahrt läuft weiter hier (Trainer, Gruppe, Training), das Bild zeigt die Unreal-App in der schönen Grafik. Sobald sie verbunden ist, zeichnet der Browser keine eigene 3D-Welt mehr.</div></div><input type="checkbox" class="toggle" id="ueBridge" ${s.ueBridge ? 'checked' : ''}></label>
-        <label class="field"><div>Wetter in Unreal<div class="hint">Auto = das Wetter wechselt je nach Streckenabschnitt. Sonst bleibt es die ganze Fahrt so.</div></div>${seg('ueWeather', s.ueWeather || 'auto', UE_WEATHER_OPTS)}</label>
-        <label class="field"><div>Gruppe bleibt zusammen<div class="hint">In der Gruppenfahrt bekommt, wer zurückfällt, unsichtbaren Rückenwind, damit ihr euch nicht aus den Augen verliert. Aus = jeder fährt nur mit seiner eigenen Kraft.</div></div><input type="checkbox" class="toggle" id="together" ${s.together !== false ? 'checked' : ''}></label>
-        <label class="field"><div>Haltung per Kamera<div class="hint" id="poseV">Die Kamera vor dem Rad erkennt, ob du aufrecht, in Aero-Haltung oder im Wiegetritt fährst: Aero spart Luftwiderstand, Wiegetritt kostet etwas. Das Bild bleibt auf deinem Rechner. Für beste Erkennung einmal kalibrieren.</div></div><div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap"><button class="btn ghost small" id="poseUp" type="button">Aufrecht kalibrieren</button><button class="btn ghost small" id="poseAero" type="button">Aero kalibrieren</button><input type="checkbox" class="toggle" id="poseCam" ${s.poseCam ? 'checked' : ''}></div></label>
-        <label class="field"><div>Lenker im Bild<div class="hint">Rennlenker mit Griffen und Unterarmen in der Fahrersicht. Aus = nur freie Sicht. Während der Fahrt: Taste H oder Knopf „Lenker“.</div></div><input type="checkbox" class="toggle" id="cockpit" ${s.cockpit !== false ? 'checked' : ''}></label>
-        <label class="field"><div>Kamera<div class="hint">Während der Fahrt umschalten mit Taste V oder dem Kamera-Knopf.</div></div>${seg('view3d', String(s.view3d || 0), VIEW_OPTS)}</label>
+      <div class="panel"><h3>3D world view</h3>
+        <label class="field"><div>Field of view <b id="fovV">${fovOf(s)}°</b><div class="hint">Like in Minecraft: right is wider, left is closer. Normal 80°, 95–130° = very wide. While riding: keys [ and ] or the “View” button.</div></div><input type="range" id="fov" min="${FOV_MIN}" max="${FOV_MAX}" step="1" value="${fovOf(s)}"></label>
+        <label class="field"><div>Ride in Unreal (beta)<div class="hint">The ride keeps running here (trainer, group, workout); the picture shows the Unreal app with the nicer graphics. Once it is connected, the browser stops drawing its own 3D world.</div></div><input type="checkbox" class="toggle" id="ueBridge" ${s.ueBridge ? 'checked' : ''}></label>
+        <label class="field"><div>Weather in Unreal<div class="hint">Auto = the weather changes with the section of the route. Otherwise it stays the same for the whole ride.</div></div>${seg('ueWeather', s.ueWeather || 'auto', UE_WEATHER_OPTS)}</label>
+        <label class="field"><div>Keep the group together<div class="hint">In a group ride, whoever falls behind gets an invisible tailwind so you do not lose each other. Off = everyone rides on their own power only.</div></div><input type="checkbox" class="toggle" id="together" ${s.together !== false ? 'checked' : ''}></label>
+        <label class="field"><div>Position via camera<div class="hint" id="poseV">The camera in front of the bike detects whether you ride upright, in an aero position or out of the saddle: aero saves drag, standing costs a little. The image stays on your computer. Calibrate once for the best detection.</div></div><div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap"><button class="btn ghost small" id="poseUp" type="button">Calibrate upright</button><button class="btn ghost small" id="poseAero" type="button">Calibrate aero</button><input type="checkbox" class="toggle" id="poseCam" ${s.poseCam ? 'checked' : ''}></div></label>
+        <label class="field"><div>Handlebars in view<div class="hint">Drop bars with hoods and forearms in the rider view. Off = clear view only. While riding: key H or the “Bars” button.</div></div><input type="checkbox" class="toggle" id="cockpit" ${s.cockpit !== false ? 'checked' : ''}></label>
+        <label class="field"><div>Camera<div class="hint">Switch while riding with key V or the camera button.</div></div>${seg('view3d', String(s.view3d || 0), VIEW_OPTS)}</label>
       </div>
       <div class="panel"><h3>Design</h3>
-        <div class="field"><div>Akzentfarbe</div><div class="swatches">${Object.entries(ACCENTS).map(([k, c]) => `<button class="swatch ${s.accent === k ? 'on' : ''}" data-acc="${k}" style="background:${c}"></button>`).join('')}</div></div>
+        <div class="field"><div>Accent colour</div><div class="swatches">${Object.entries(ACCENTS).map(([k, c]) => `<button class="swatch ${s.accent === k ? 'on' : ''}" data-acc="${k}" style="background:${c}"></button>`).join('')}</div></div>
       </div>
-      <div class="panel"><h3>Quellen</h3>
-        <div class="field"><div>Gelände Lofoten<div class="hint">Höhenmodell DTM 10 © Kartverket, CC BY 4.0. Fernes Gelände: Terrain Tiles (Mapzen / AWS Open Data).</div></div></div>
-        <div class="field"><div>Küstenweg<div class="hint">Straßenverlauf © OpenStreetMap-Mitwirkende, ODbL 1.0. Gelände © Kartverket, CC BY 4.0. Satellitenbild Sentinel-2 cloudless © EOX, CC BY 4.0.</div></div></div>
-        <div class="field"><div>Satellitenfarben<div class="hint">Sentinel-2 cloudless – https://s2maps.eu by EOX IT Services GmbH (Contains modified Copernicus Sentinel data 2016), CC BY 4.0.</div></div></div>
-        <div class="field"><div>3D-Grafik<div class="hint">three.js (MIT). Boden-Texturen Poly Haven (CC0). Figuren und Gebäude teils Quaternius (CC0), teils eigene Blender- und KI-Modelle.</div></div></div>
+      <div class="panel"><h3>Sources</h3>
+        <div class="field"><div>Lofoten terrain<div class="hint">Elevation model DTM 10 © Kartverket, CC BY 4.0. Distant terrain: Terrain Tiles (Mapzen / AWS Open Data).</div></div></div>
+        <div class="field"><div>Coast road<div class="hint">Road course © OpenStreetMap contributors, ODbL 1.0. Terrain © Kartverket, CC BY 4.0. Satellite image Sentinel-2 cloudless © EOX, CC BY 4.0.</div></div></div>
+        <div class="field"><div>Satellite colours<div class="hint">Sentinel-2 cloudless – https://s2maps.eu by EOX IT Services GmbH (Contains modified Copernicus Sentinel data 2016), CC BY 4.0.</div></div></div>
+        <div class="field"><div>3D graphics<div class="hint">three.js (MIT). Ground textures Poly Haven (CC0). Figures and buildings partly Quaternius (CC0), partly own Blender and AI models.</div></div></div>
       </div>
       <div class="panel"><h3>Version</h3>
-        <div class="field"><div>RIDEFRAME <span class="num" id="gameVer">…</span><div class="hint">Browser und Unreal-Ansicht haben immer dieselbe Nummer. Passen sie nicht zusammen, meldet sich Unreal.</div></div></div>
+        <div class="field"><div>RIDEFRAME <span class="num" id="gameVer">…</span><div class="hint">The browser and the Unreal view always have the same number. If they do not match, Unreal tells you.</div></div></div>
       </div>
     </div>
   </section>`;
@@ -536,23 +536,23 @@ function settings() {
   import('./ownmusic.js').then(async om => { // own music folder: pick, show what is in it, forget
     const v = $('#ownMusicV'), btn = $('#ownMusicBtn'), off = $('#ownMusicOff'); if (!v) return;
     const show = i => { off.hidden = !i; if (!i) return;
-      v.textContent = i.locked ? `Ordner „${i.name}“ · zum Freigeben auf „Ordner wählen“ klicken` : `Ordner „${i.name}“ · ${i.n} Songs${i.moods.length ? ' · eigene Musik für: ' + i.moods.join(', ') : ''}`; };
-    if (!om.ownMusicSupported()) { btn.disabled = true; v.textContent = 'Geht nur in Chrome oder Edge.'; return; }
+      v.textContent = i.locked ? `Folder “${i.name}” · click “Choose folder” to unlock it` : `Folder “${i.name}” · ${i.n} songs${i.moods.length ? ' · own music for: ' + i.moods.join(', ') : ''}`; };
+    if (!om.ownMusicSupported()) { btn.disabled = true; v.textContent = 'Only works in Chrome or Edge.'; return; }
     show(await om.ownMusicInfo());
     btn.onclick = async () => { // a known but locked folder: just unlock it; otherwise pick a (new) one
       const before = await om.ownMusicInfo(); if (before?.locked) { const c = await om.ownMusicInfo(true); if (c && !c.locked) return show(c); }
       const p = await om.pickOwnMusic(); if (p) show(p); };
-    off.onclick = async () => { await om.forgetOwnMusic(); off.hidden = true; v.textContent = 'Kein eigener Ordner, es läuft die Spielmusik.'; };
+    off.onclick = async () => { await om.forgetOwnMusic(); off.hidden = true; v.textContent = 'No own folder, the game music plays.'; };
   });
   $('#cockpit').onchange = e => { s.cockpit = e.target.checked; saveSettings(); };
   $('#together').onchange = e => { s.together = e.target.checked; saveSettings(); };
   { const pv = $('#poseV'), cal = async which => { // 3-2-1, then 2.5 s of that posture in front of the camera
       const m = await import('./posecam.js'); const pc = new m.PoseCam(s.poseCalib || null);
-      try { pv.textContent = 'Kamera startet …'; await pc.start();
-        for (const k of [3, 2, 1]) { pv.textContent = `${which === 'up' ? 'Aufrecht' : 'Aero'} hinsetzen … ${k}`; await new Promise(r => setTimeout(r, 1000)); }
-        pv.textContent = 'Halten …'; s.poseCalib = await pc.calibrate(which); saveSettings();
-        pv.textContent = s.poseCalib.up != null && s.poseCalib.aero != null ? 'Kalibriert: aufrecht und Aero gespeichert.' : `${which === 'up' ? 'Aufrecht' : 'Aero'} gespeichert, jetzt noch ${which === 'up' ? 'Aero' : 'aufrecht'}.`;
-      } catch (e) { pv.textContent = 'Kamera ging nicht: ' + (e?.message || e); } finally { pc.stop(); } };
+      try { pv.textContent = 'Camera starting …'; await pc.start();
+        for (const k of [3, 2, 1]) { pv.textContent = `Sit ${which === 'up' ? 'upright' : 'in aero'} … ${k}`; await new Promise(r => setTimeout(r, 1000)); }
+        pv.textContent = 'Hold …'; s.poseCalib = await pc.calibrate(which); saveSettings();
+        pv.textContent = s.poseCalib.up != null && s.poseCalib.aero != null ? 'Calibrated: upright and aero saved.' : `${which === 'up' ? 'Upright' : 'Aero'} saved, now do ${which === 'up' ? 'aero' : 'upright'}.`;
+      } catch (e) { pv.textContent = 'Camera failed: ' + (e?.message || e); } finally { pc.stop(); } };
     $('#poseUp').onclick = e => { e.preventDefault(); cal('up'); }; $('#poseAero').onclick = e => { e.preventDefault(); cal('aero'); };
     $('#poseCam').onchange = e => { s.poseCam = e.target.checked; saveSettings(); }; }
   $('#ueBridge').onchange = e => { s.ueBridge = e.target.checked; saveSettings(); };
@@ -563,7 +563,7 @@ function settings() {
   $('#cassette').onchange = e => { s.cassette = e.target.value; saveSettings(); settings(); };
   const valid = { chainrings: v => parseRings(v), realGear: v => { const m = String(v).match(/^\s*(\d+)\s*[x×/\- ]\s*(\d+)\s*$/); return !!m && +m[1] >= 20 && +m[1] <= 60 && +m[2] >= 9 && +m[2] <= 40; } };
   const txt = (id) => $('#' + id).addEventListener('change', e => {
-    if (!valid[id](e.target.value)) { toast(id === 'chainrings' ? 'Kettenblätter bitte als Zahlen, z. B. 50,34' : 'Gang bitte so: 50x17', 3500); e.target.value = s[id]; return; }
+    if (!valid[id](e.target.value)) { toast(id === 'chainrings' ? 'Chainrings as numbers please, e.g. 50,34' : 'Gear like this please: 50x17', 3500); e.target.value = s[id]; return; }
     s[id] = e.target.value; saveSettings(); settings(); });
   txt('chainrings'); txt('realGear');
   $('#difficulty').oninput = e => { s.difficulty = +e.target.value; $('#diffV').textContent = s.difficulty + '%'; saveSettings(); };
@@ -575,43 +575,43 @@ function settings() {
   main.querySelectorAll('.swatch').forEach(b => b.onclick = () => { s.accent = b.dataset.acc; applyAccent(); saveSettings(); settings(); });
   $('#hrBtn').onclick = () => connectHR(false); $('#hrAll').onclick = () => connectHR(true);
   $('#ctBtn').onclick = openControllerTest;
-  db.usage().then(u => { if (u) $('#usage').textContent = `${fmtNum(u.usage / 1e9, 1)} GB belegt von ${fmtNum(u.quota / 1e9, 0)} GB verfügbar`; });
+  db.usage().then(u => { if (u) $('#usage').textContent = `${fmtNum(u.usage / 1e9, 1)} GB used of ${fmtNum(u.quota / 1e9, 0)} GB available`; });
 }
 
 // ---------------- trainer ----------------
 async function connectTrainer() {
   const t = state.trainer;
-  if (!Trainer.supported()) return toast('Bluetooth geht nur in Chrome oder Edge.', 4000);
-  if (t.connected) { if (confirm('Trainer trennen?')) t.disconnect(); return; }
+  if (!Trainer.supported()) return toast('Bluetooth only works in Chrome or Edge.', 4000);
+  if (t.connected) { if (confirm('Disconnect trainer?')) t.disconnect(); return; }
   try { await t.connect(); await t.setSim({ riderKg: state.settings.riderKg, bikeKg: state.settings.bikeKg, crr: 0.004, cw: 0.51 }); }
-  catch (e) { if (e.name !== 'NotFoundError') toast('Verbindung fehlgeschlagen: ' + e.message, 4000); updateTrainerPill(); }
+  catch (e) { if (e.name !== 'NotFoundError') toast('Connection failed: ' + e.message, 4000); updateTrainerPill(); }
 }
 function updateTrainerPill() {
   const t = state.trainer, pill = $('#trainerPill');
   const on = t.connected;
   pill.classList.toggle('on', on);
-  pill.querySelector('.t').innerHTML = on ? `✓ ${esc(t.device.name || 'Trainer')} verbunden <span class="sub">${t.mode === 'ftms' ? 'FTMS' : t.mode === 'wahoo' ? 'Wahoo' : 'nur Watt'}</span>` : 'KICKR verbinden';
-  pill.title = on ? 'Verbunden. Klicken zum Trennen.' : 'Trainer per Bluetooth verbinden';
+  pill.querySelector('.t').innerHTML = on ? `✓ ${esc(t.device.name || 'Trainer')} connected <span class="sub">${t.mode === 'ftms' ? 'FTMS' : t.mode === 'wahoo' ? 'Wahoo' : 'watts only'}</span>` : 'Connect KICKR';
+  pill.title = on ? 'Connected. Click to disconnect.' : 'Connect trainer via Bluetooth';
 }
 function updateHrPill() { // heart rate strap: its own Bluetooth connection, runs alongside the KICKR
   const h = state.hr, on = !!h?.connected, pill = $('#hrPill');
   pill.classList.toggle('on', on);
-  const bat = h?.battery != null ? ` · Akku ${h.battery} %` : '';
-  pill.querySelector('.t').textContent = on ? (h.hr ? `♥ ${h.hr}${bat}` : `♥ verbunden, wartet auf Puls${bat}`) : h?.device && !h.closing ? 'Puls: Verbindung weg …' : 'Puls verbinden';
-  if (on && h.battery != null && h.battery <= 15 && !h._warned) { h._warned = true; toast(`Pulsgurt-Akku nur noch ${h.battery} %. Batterie bald wechseln (meist CR2032).`, 6000); }
+  const bat = h?.battery != null ? ` · battery ${h.battery} %` : '';
+  pill.querySelector('.t').textContent = on ? (h.hr ? `♥ ${h.hr}${bat}` : `♥ connected, waiting for HR${bat}`) : h?.device && !h.closing ? 'HR: connection lost …' : 'Connect HR';
+  if (on && h.battery != null && h.battery <= 15 && !h._warned) { h._warned = true; toast(`HR strap battery only ${h.battery} %. Replace the battery soon (usually CR2032).`, 6000); }
 }
 async function connectHR(all) {
   if (all instanceof Event) all = false;
-  if (!navigator.bluetooth) return toast('Bluetooth geht nur in Chrome oder Edge (nicht Safari/Firefox).', 6000);
-  if (state.hr?.connected) { if (confirm('Pulsgurt trennen?')) { state.hr.disconnect(); updateHrPill(); } return; }
+  if (!navigator.bluetooth) return toast('Bluetooth only works in Chrome or Edge (not Safari/Firefox).', 6000);
+  if (state.hr?.connected) { if (confirm('Disconnect HR strap?')) { state.hr.disconnect(); updateHrPill(); } return; }
   state.hr?.disconnect?.();
-  try { state.hr = new HeartRate(); state.hr.addEventListener('hr', updateHrPill); state.hr.addEventListener('change', updateHrPill); state.hr.addEventListener('reconnected', () => toast('Pulsgurt wieder verbunden'));
-    await state.hr.connect(!!all); updateHrPill(); toast('Pulsgurt verbunden' + (state.hr.battery != null ? ` · Akku ${state.hr.battery} %` : '')); if (document.querySelector('#hrBtn')) settings(); }
+  try { state.hr = new HeartRate(); state.hr.addEventListener('hr', updateHrPill); state.hr.addEventListener('change', updateHrPill); state.hr.addEventListener('reconnected', () => toast('HR strap reconnected'));
+    await state.hr.connect(!!all); updateHrPill(); toast('HR strap connected' + (state.hr.battery != null ? ` · battery ${state.hr.battery} %` : '')); if (document.querySelector('#hrBtn')) settings(); }
   catch (e) {
-    if (e.name === 'NotFoundError' && /adapter|Bluetooth/i.test(e.message) && !/User cancelled|chooser/i.test(e.message)) return toast('Bluetooth ist aus oder Chrome darf es nicht nutzen (Mac: Systemeinstellungen > Datenschutz > Bluetooth > Chrome erlauben).', 8000);
-    if (e.name !== 'NotFoundError') return toast('Pulsgurt: ' + e.message, 7000);
+    if (e.name === 'NotFoundError' && /adapter|Bluetooth/i.test(e.message) && !/User cancelled|chooser/i.test(e.message)) return toast('Bluetooth is off or Chrome is not allowed to use it (Mac: System Settings > Privacy > Bluetooth > allow Chrome).', 8000);
+    if (e.name !== 'NotFoundError') return toast('HR strap: ' + e.message, 7000);
     // nothing picked: most often the strap is asleep (not worn) or still paired with a watch/phone/bike computer
-    if (!all) toast('Kein Gurt gewählt? Gurt anlegen, Elektroden anfeuchten (er sendet nur getragen) und Bluetooth an Uhr/Handy/Radcomputer kurz aus. In den Einstellungen gibt es „Alle Geräte“.', 7000);
+    if (!all) toast('No strap chosen? Put the strap on, wet the electrodes (it only sends while worn) and briefly turn off Bluetooth on your watch/phone/bike computer. Settings also has “All devices”.', 7000);
   }
 }
 
@@ -627,17 +627,17 @@ async function importFiles(files) {
   files = await importShared(files); if (!files.length) return;
   const videos = files.filter(f => /\.(mp4|mov)$/i.test(f.name)).sort((a, b) => gpChapterKey(a.name).localeCompare(gpChapterKey(b.name)));
   const gpx = files.find(f => /\.gpx$/i.test(f.name));
-  if (!videos.length) return toast('Bitte ein Video (MP4) auswählen.');
+  if (!videos.length) return toast('Please choose a video (MP4).');
   const modal = document.createElement('div'); modal.className = 'modal';
-  modal.innerHTML = `<div class="box"><div class="label">Import</div><h2 class="display" style="margin-top:10px">Strecke wird<br>eingelesen</h2>
-    <p id="impStep">GPS-Daten lesen…</p><div class="bar"><div id="impBar"></div></div><p id="impInfo" class="num"></p></div>`;
+  modal.innerHTML = `<div class="box"><div class="label">Import</div><h2 class="display" style="margin-top:10px">Reading<br>the route</h2>
+    <p id="impStep">Reading GPS data…</p><div class="bar"><div id="impBar"></div></div><p id="impInfo" class="num"></p></div>`;
   document.body.append(modal);
   const setP = (txt, p) => { modal.querySelector('#impStep').textContent = txt; modal.querySelector('#impBar').style.width = Math.round(p * 100) + '%'; };
   try {
     const parts = []; let offset = 0; let points = []; let fps = 0;
     for (let i = 0; i < videos.length; i++) {
       const f = videos[i];
-      const info = await readGoProGPS(f, p => setP(`GPS lesen: ${f.name}`, (i + p) / videos.length * 0.5));
+      const info = await readGoProGPS(f, p => setP(`Reading GPS: ${f.name}`, (i + p) / videos.length * 0.5));
       const duration = info.duration || await probeDuration(f);
       fps = fps || info.fps;
       parts.push({ file: f, name: f.name, duration, offset });
@@ -645,19 +645,19 @@ async function importFiles(files) {
       offset += duration;
     }
     if (gpx) points = parseGPX(await gpx.text());
-    if (points.length < 5) throw new Error('In dem Video sind keine GPS-Daten. Bei der GoPro GPS einschalten oder eine GPX-Datei dazu legen.');
-    setP('Strecke berechnen…', 0.55);
+    if (points.length < 5) throw new Error('This video has no GPS data. Turn on GPS on the GoPro or add a GPX file.');
+    setP('Calculating route…', 0.55);
     let track = buildTrack(points);
     if (state.settings.improveEle) {
-      try { track = await improveElevation(track, p => setP('Höhendaten aus Geländemodell…', 0.55 + p * 0.15)); } catch { /* offline: keep GPS altitude */ }
+      try { track = await improveElevation(track, p => setP('Elevation from terrain model…', 0.55 + p * 0.15)); } catch { /* offline: keep GPS altitude */ }
     }
-    setP('Vorschaubild…', 0.72);
+    setP('Preview image…', 0.72);
     const thumb = await makeThumb(parts[0].file, Math.min(parts[0].duration * 0.15, 30));
     const place = await guessPlace(track).catch(() => '');
-    modal.querySelector('#impInfo').textContent = `${fmtKm(track.length)} km · ${fmtNum(track.gain)} hm · ${fmtTime(track.duration)} Video · ${Math.round(fps)} fps`;
+    modal.querySelector('#impInfo').textContent = `${fmtKm(track.length)} km · ${fmtNum(track.gain)} m climb · ${fmtTime(track.duration)} video · ${Math.round(fps)} fps`;
     const name = await askName(modal, videos[0].name.replace(/\.[^.]+$/, ''), place);
     if (name === null) { modal.remove(); return; }
-    setP('Video speichern (kann bei großen Dateien dauern)…', 0.8);
+    setP('Saving video (can take a while for large files)…', 0.8);
     const route = { id: uid(), name, place, createdAt: Date.now(), source: 'gopro', fps, thumb, track, parts: [] };
     for (const p of parts) {
       const videoId = uid();
@@ -665,11 +665,11 @@ async function importFiles(files) {
       route.parts.push({ videoId, name: p.name, duration: p.duration, offset: p.offset });
     }
     await db.put('routes', route);
-    setP('Fertig', 1);
+    setP('Done', 1);
     await reload(); modal.remove(); go('detail', route.id);
   } catch (e) {
     console.error(e);
-    modal.querySelector('.box').innerHTML = `<div class="label">Import</div><h2 class="display" style="margin-top:10px">Hat nicht<br>geklappt</h2><p>${esc(e.message)}</p><div class="actions"><button class="btn small">OK</button></div>`;
+    modal.querySelector('.box').innerHTML = `<div class="label">Import</div><h2 class="display" style="margin-top:10px">That did<br>not work</h2><p>${esc(e.message)}</p><div class="actions"><button class="btn small">OK</button></div>`;
     modal.querySelector('button').onclick = () => modal.remove();
   }
 }
@@ -678,10 +678,10 @@ function askName(modal, def, place) {
   return new Promise(res => {
     const box = modal.querySelector('.box');
     const info = modal.querySelector('#impInfo').textContent;
-    box.innerHTML = `<div class="label">Fast fertig</div><h2 class="display" style="margin-top:10px">Wie heißt<br>die Strecke?</h2><p class="num">${info}</p>
+    box.innerHTML = `<div class="label">Almost done</div><h2 class="display" style="margin-top:10px">What is the<br>route called?</h2><p class="num">${info}</p>
       <div class="field" style="border:0;margin-top:18px"><input type="text" id="nm" value="${esc(place ? place.split(',')[0] : def)}"></div>
       <div class="bar"><div id="impBar" style="width:75%"></div></div><p id="impStep"></p><p id="impInfo"></p>
-      <div class="actions"><button class="btn ghost small" id="cancel">Abbrechen</button><button class="btn small" id="ok">Speichern</button></div>`;
+      <div class="actions"><button class="btn ghost small" id="cancel">Cancel</button><button class="btn small" id="ok">Save</button></div>`;
     box.querySelector('#nm').select();
     box.querySelector('#ok').onclick = () => res(box.querySelector('#nm').value.trim() || def);
     box.querySelector('#cancel').onclick = () => res(null);
@@ -704,7 +704,7 @@ function makeThumb(file, at) {
 }
 async function guessPlace(track) {
   const i = Math.floor(track.lat.length / 2);
-  const r = await fetch(`https://nominatim.openstreetmap.org/reverse?format=json&zoom=12&accept-language=de&lat=${track.lat[i]}&lon=${track.lon[i]}`);
+  const r = await fetch(`https://nominatim.openstreetmap.org/reverse?format=json&zoom=12&accept-language=en&lat=${track.lat[i]}&lon=${track.lon[i]}`);
   const j = await r.json(); const a = j.address || {};
   return [a.village || a.town || a.city || a.municipality || a.county, a.state, a.country].filter(Boolean).join(', ');
 }
@@ -739,8 +739,8 @@ boot();
 function segmentTable(t, rides) {
   const segs = findSegments(t); if (!segs.length) return '';
   const best = segmentBests(rides);
-  return `<h2 class="section" style="margin-top:44px">Segmente</h2>
-    <table class="table segtable"><tr><th class="label"></th><th class="label">Segment</th><th class="label">Ab km</th><th class="label">Länge</th><th class="label">Ø</th><th class="label">Deine Bestzeit</th></tr>
+  return `<h2 class="section" style="margin-top:44px">Segments</h2>
+    <table class="table segtable"><tr><th class="label"></th><th class="label">Segment</th><th class="label">From km</th><th class="label">Length</th><th class="label">Avg</th><th class="label">Your best</th></tr>
     ${segs.map(s => { const b = best[s.id], k = SEG_KIND[s.kind];
       return `<tr><td class="segk ${s.kind}" title="${k.label}">${k.icon}</td><td>${esc(s.name)}</td><td>${fmtKm(s.from)}</td><td>${s.len >= 1000 ? fmtKm(s.len) + ' km' : Math.round(s.len) + ' m'}</td><td>${fmtNum(s.avg, 1)} %</td><td>${b ? `${fmtTime(b.t)} · ${b.w} W` : '–'}</td></tr>`; }).join('')}
     </table>`;
