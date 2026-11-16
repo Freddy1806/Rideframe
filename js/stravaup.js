@@ -6,7 +6,15 @@ const KEY = 'rf_strava_key';
 const getKey = () => { try { return localStorage.getItem(KEY) || ''; } catch { return ''; } };
 const hdr = () => ({ 'X-Strava-Key': getKey() });
 
+const PEND = 'rf_strava_claim';
+/** a login that left this page (popup blocked: iPhone after an await, installed home-screen app) comes back through its one-time claim code */
+async function claimPending() {
+  let p; try { p = JSON.parse(localStorage.getItem(PEND) || 'null'); } catch {} if (!p) return;
+  if (Date.now() - p.t > 15 * 60e3) return localStorage.removeItem(PEND);
+  try { const j = await (await fetch('/api/strava/claim/' + p.c, { cache: 'no-store' })).json(); if (j.key) { localStorage.setItem(KEY, j.key); localStorage.removeItem(PEND); } } catch {}
+}
 export async function stravaStatus() {
+  await claimPending();
   try { const r = await fetch('/api/strava/status', { headers: hdr(), cache: 'no-store' }); return r.ok ? await r.json() : { configured: false }; }
   catch { return { configured: false }; }
 }
@@ -15,7 +23,7 @@ export async function stravaStatus() {
 export function stravaConnect() {
   const before = getKey(), claim = [...crypto.getRandomValues(new Uint8Array(16))].map(b => b.toString(16).padStart(2, '0')).join('');
   const w = window.open('/api/strava/connect?claim=' + claim, 'strava', 'width=620,height=760');
-  if (!w) { location.href = '/api/strava/connect'; return Promise.resolve(false); }
+  if (!w) { try { localStorage.setItem(PEND, JSON.stringify({ c: claim, t: Date.now() })); } catch {} location.href = '/api/strava/connect?claim=' + claim; return Promise.resolve(false); } // popup blocked: log in in this tab, the key is fetched by the claim code when the app is opened again
   let asking = false; // the installed iPhone app logs in in a separate browser: fetch the key by the claim code
   const ask = async () => { if (asking) return; asking = true; try { const j = await (await fetch('/api/strava/claim/' + claim, { cache: 'no-store' })).json(); if (j.key) localStorage.setItem(KEY, j.key); } catch {} asking = false; };
   return new Promise(res => {

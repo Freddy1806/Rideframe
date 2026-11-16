@@ -55,12 +55,17 @@ function settings() {
       <div class="hsw" ${S.modeColors !== false ? 'hidden' : ''}>${Object.entries(ACCENTS).map(([k, c]) => `<button data-ac="${k}" class="${(S.accent || 'orange') === k ? 'on' : ''}" style="background:${c[0]}" aria-label="${k}"></button>`).join('')}</div>
       <h3 class="ksec">Strava</h3>
       <label class="prow">Upload automatically after saving<input id="tSt" type="checkbox" class="toggle" ${S.autoStrava ? 'checked' : ''}></label>
+      <div class="prow" id="tStrava"><span>Strava account</span><button class="btn ghost ksmall" id="tConn">Connect</button></div>
       <h3 class="ksec">Strength: rest between sets</h3><div class="pseg" id="tRest">${[60, 90, 120, 180].map(n => `<button data-rest="${n}" class="${(+S.kraftRest || 90) === n ? 'on' : ''}">${n < 120 ? n + ' s' : n / 60 + ' min'}</button>`).join('')}</div>
       <h3 class="ksec">More</h3>
       <a class="hrow hlink" href="profil.html"><div><b>My data</b><small>Weight, FTP, heart rate, export</small></div><i>›</i></a>
       <a class="hrow hlink" href="datenschutz.html"><div><b>Privacy</b></div><i>›</i></a>
       <div class="pfoot"><button class="btn" id="tOk">Done</button></div></div>`;
     $('#tSt', s).onchange = e => { S.autoStrava = e.target.checked; save(); };
+    // the tap opens Strava's login directly (no await before it, otherwise the iPhone blocks the window)
+    import('./stravaup.js').then(async m => { const b = $('#tConn', s); if (!b) return; const show = st => { if (!st.configured) $('#tStrava', s).hidden = true; else if (st.connected) { b.textContent = 'Connected ✓'; b.disabled = true; } };
+      b.onclick = async () => { b.textContent = 'Waiting …'; const ok = await m.stravaConnect(); b.textContent = 'Connect'; if (ok) show(await m.stravaStatus()); };
+      show(await m.stravaStatus()); });
     s.querySelectorAll('[data-rest]').forEach(b => b.onclick = () => { S.kraftRest = +b.dataset.rest; save(); draw(); });
     s.querySelectorAll('[data-th]').forEach(b => b.onclick = () => { S.theme = b.dataset.th; applyTheme(S, null); save(); draw(); });
     $('#tMc', s).onchange = e => { S.modeColors = e.target.checked; save(); draw(); render(); };
