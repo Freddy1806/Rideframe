@@ -71,6 +71,12 @@ function bests(k, without = null) {
   const h = history(k).filter(p => p.id !== without);
   return { rm: Math.max(0, ...h.map(p => p.rm)), kg: Math.max(0, ...h.map(p => p.kg)), reps: Math.max(0, ...h.map(p => p.reps)), sec: Math.max(0, ...h.map(p => p.sec)), vol: Math.max(0, ...h.map(p => p.vol)), n: h.length };
 }
+const beats = (x, y, b) => b.n && ((x.t === 'w' && e1rm(+y.kg, +y.r) > b.rm + .01) || (x.t === 'bw' && +y.r > b.reps) || (x.t === 'time' && +y.s > b.sec));
+/** flags every set that beats the earlier best (y.pr, shown as 🏆 in the history) and counts the exercises with a record */
+function markPrs(w) {
+  let prs = 0; for (const x of w.ex) { const b = bests(x.k); let hit = false; for (const y of x.sets) { if (beats(x, y, b)) { y.pr = true; hit = true; } else delete y.pr; } if (hit) prs++; }
+  if (prs) w.prs = prs; else delete w.prs;
+}
 /** the sets of the last session that had this exercise ("Vorher" column) */
 function prevSets(k, without = null) {
   for (const s of list) { if (s.id === without) continue; const x = (s.ex || []).find(y => y.k === k); if (x?.sets.some(y => y.done)) return x.sets.filter(y => y.done); }
@@ -209,8 +215,7 @@ async function quickSave(R, said) {
   for (const x of R.ex) { if (x.neu) { const e = { k: 'my_' + uid().slice(0, 8), n: x.n, t: x.t, g: 'Custom' }; mine.push(e); x.k = e.k; made = true; } delete x.neu; delete x.total; }
   if (made) await db.kvSet('kraftEx', mine).catch(() => {});
   const w = { id: uid(), name: defaultName(), start: now - dur * 1000, date: now, dur, quick: true, note: said.slice(0, 300), ex: R.ex };
-  let prs = 0; for (const x of w.ex) { const b = bests(x.k); if (!b.n) continue; for (const y of x.sets) if ((x.t === 'w' && e1rm(+y.kg, +y.r) > b.rm + .01) || (x.t === 'bw' && +y.r > b.reps) || (x.t === 'time' && +y.s > b.sec)) { prs++; break; } }
-  if (prs) w.prs = prs;
+  markPrs(w);
   list.unshift(w); await saveList(); import('./account.js').then(a => a.pushKraft?.(w)).catch(() => {});
   tab = 'hist'; render(); sessionSheet(w); flash('Logged.'); if (S.autoStrava) toStrava(w);
 }
@@ -249,7 +254,7 @@ function exBlock(x, i) {
   return `<section class="kcard kex" data-i="${i}"><div class="kexh"><button class="kexn" data-chart="${x.k}">${esc(nm(x))}</button><button class="kx" data-xmenu="${i}">⋯</button></div>
     ${x.note ? `<div class="hint">${esc(x.note)}</div>` : ''}
     <div class="kset khead ${x.t}"><span>Set</span><span>Previous</span>${cols.map(c => `<span>${c}</span>`).join('')}<span>✓</span></div>
-    ${x.sets.map((s, j) => { const pv = prev[j] || prev[prev.length - 1]; return `<div class="kset ${x.t} ${s.done ? 'done' : ''}" data-j="${j}"><span class="kno" data-smenu="${j}">${s.warm ? 'W' : j + 1 - x.sets.slice(0, j).filter(y => y.warm).length}</span>
+    ${x.sets.map((s, j) => { const pv = prev[j] || prev[prev.length - 1]; return `<div class="kset ${x.t} ${s.done ? 'done' : ''}" data-j="${j}"><span class="kno${s.done && s.pr ? ' pr' : ''}" data-smenu="${j}">${s.warm ? 'W' : j + 1 - x.sets.slice(0, j).filter(y => y.warm).length}</span>
       <button class="kprev" data-fill="${j}">${prev[j] ? prevTxt(x.t, prev[j]) : '–'}</button>
       ${x.t === 'time' ? `<input inputmode="numeric" data-f="s" value="${s.s ?? ''}" placeholder="${pv?.s ?? ''}">`
         : `<input inputmode="decimal" data-f="kg" value="${s.kg === '' || s.kg == null ? '' : String(s.kg)}" placeholder="${pv ? String(pv.kg ?? '') : ''}"><input inputmode="numeric" data-f="r" value="${s.r ?? ''}" placeholder="${pv?.r ?? ''}">`}
@@ -270,8 +275,9 @@ function wireWork() {
       const j = +b.dataset.chk, s = x.sets[j], row = b.closest('.kset');
       row.querySelectorAll('input').forEach(inp => { if (inp.value === '' && inp.placeholder !== '') { inp.value = inp.placeholder; s[inp.dataset.f] = +inp.placeholder.replace(',', '.'); } }); // empty = same as last time
       if (!s.done && (x.t === 'time' ? !(+s.s > 0) : !(+s.r > 0))) return flash(x.t === 'time' ? 'Enter the seconds first.' : 'Enter the reps first.');
-      s.done = !s.done; saveDraft();
-      if (s.done) { const b0 = bests(x.k), rm = e1rm(+s.kg, +s.r); if (b0.n && ((x.t === 'w' && rm > b0.rm + .01) || (x.t === 'bw' && +s.r > b0.reps) || (x.t === 'time' && +s.s > b0.sec))) flash('🏆 New record!'); if (!s.warm) startRest(); }
+      s.done = !s.done;
+      delete s.pr; if (s.done) { if (beats(x, s, bests(x.k))) { s.pr = true; flash('🏆 New record!'); } if (!s.warm) startRest(); }
+      saveDraft();
       render();
     });
     sec.querySelector('[data-addset]').onclick = () => { const l = x.sets[x.sets.length - 1]; x.sets.push({ kg: l?.kg ?? '', r: l?.r ?? '', s: l?.s ?? '', done: false }); saveDraft(); render(); };
@@ -351,8 +357,7 @@ function finishSheet() {
   $('#fBack', s).onclick = () => s.remove();
   const save = async () => {
     const w = { ...W, date: Date.now(), dur: Math.round((Date.now() - W.start) / 1000), ex: W.ex.map(x => ({ ...x, sets: x.sets.filter(y => y.done).map(({ done, ...y }) => ({ ...y, done: true })) })).filter(x => x.sets.length) };
-    let prs = 0; for (const x of w.ex) { const b = bests(x.k); if (!b.n) continue; for (const y of x.sets) if ((x.t === 'w' && e1rm(+y.kg, +y.r) > b.rm + .01) || (x.t === 'bw' && +y.r > b.reps) || (x.t === 'time' && +y.s > b.sec)) { prs++; break; } }
-    if (prs) w.prs = prs;
+    markPrs(w);
     if ($('#fTpl', s).checked) { tpls = tpls.filter(t => t.name !== w.name); tpls.unshift({ name: w.name, ex: w.ex.map(x => ({ k: x.k, n: x.sets.length })) }); saveTpls(); }
     list.unshift(w); await saveList(); import('./account.js').then(a => a.pushKraft?.(w)).catch(() => {});
     W = null; rest = null; db.kvDel('kraftDraft').catch(() => {}); try { wake?.release(); } catch {}
@@ -386,7 +391,7 @@ function sessionSheet(w) {
   const s = sheet(`<div class="label">${dayTxt(w.start || w.date)} · ${new Date(w.start || w.date).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })}</div>
     <h2 class="display" style="font-size:30px;margin:8px 0 12px">${esc(w.name)}</h2>
     <div class="psum"><div><span>Time</span><b>${fmtTime(w.dur || 0)}</b></div><div><span>Sets</span><b>${doneSets(w)}</b></div><div><span>Volume</span><b>${kgTxt(sessVol(w))}</b></div>${w.prs ? `<div><span>Records</span><b>🏆 ${w.prs}</b></div>` : ''}</div>
-    ${(w.ex || []).map(x => `<div class="kdet"><b data-chart="${x.k}">${esc(nm(x))} ›</b>${x.sets.map((y, j) => `<div><span>${y.warm ? 'W' : j + 1}</span><span>${setTxt(x.t, y)}</span><span>${x.t === 'w' ? fmtNum(e1rm(+y.kg, +y.r), 1) + ' kg 1RM' : ''}</span></div>`).join('')}</div>`).join('')}
+    ${(w.ex || []).map(x => `<div class="kdet"><b data-chart="${x.k}">${esc(nm(x))} ›</b>${x.sets.map((y, j) => `<div><span>${y.warm ? 'W' : j + 1}</span><span>${setTxt(x.t, y)}${y.pr ? ' 🏆' : ''}</span><span>${x.t === 'w' ? fmtNum(e1rm(+y.kg, +y.r), 1) + ' kg 1RM' : ''}</span></div>`).join('')}</div>`).join('')}
     <div class="pfoot col"><button class="btn" id="dAgain">Do it again</button>${w.strava ? `<a class="btn ghost" href="${esc(w.strava)}" target="_blank">View on Strava</a>` : '<button class="btn ghost" id="dStrava">Upload to Strava</button>'}
       <button class="btn danger" id="dDel">Delete</button></div>`);
   s.querySelectorAll('[data-chart]').forEach(b => b.onclick = () => exSheet(b.dataset.chart));
