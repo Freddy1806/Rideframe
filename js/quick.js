@@ -13,13 +13,15 @@ const WORDS = { ein: 1, eine: 1, einen: 1, one: 1, zwei: 2, two: 2, drei: 3, thr
 // what people say instead of the catalogue name
 const ALIAS = { push: ['liegestutz', 'pushup', 'push-up', 'push up'], pull: ['klimmzug', 'klimmzuge', 'pullup', 'pull-up', 'pull up'], chin: ['chinup', 'chin-up'], situp: ['situp', 'sit-up', 'sit up', 'crunch'],
   burpee: ['burpee'], dip: ['dips', 'dip'], plank: ['plank', 'unterarmstutz'], airsquat: ['kniebeuge', 'squat'], bench: ['bankdruck', 'bench'], dead: ['kreuzheb', 'deadlift'], ohp: ['schulterdruck', 'overhead press'],
-  lunge: ['ausfallschritt', 'lunge'], curl: ['bizeps', 'curl'], row: ['rudern'], lat: ['latzug', 'latziehen'], legpress: ['beinpresse'], wallsit: ['wandsitz'], sideplank: ['seitstutz', 'side plank'] };
+  lunge: ['ausfallschritt', 'lunge'], curl: ['bizeps', 'curl'], row: ['rudern', 'barbell row', 'row'], lat: ['latzug', 'latziehen'], legpress: ['beinpresse'], wallsit: ['wandsitz'], sideplank: ['seitstutz', 'side plank'] };
 const stem = n => norm(n).replace(/\(.*?\)/g, '').trim();
-const FILL = /\b(ich|habe|hab|gerade|eben|jetzt|heute|gemacht|geschafft|trainiert|ungefahr|circa|ca|etwa|noch|dann|danach|i|did|just|have|done|about|for|mit|with|je|a|the|x|mal|wdh|wiederholungen|reps|satze|satz|sets|set|insgesamt|gesamt|lang|training|workout|dauer)\b/g;
+const DE = { squat: 'Kniebeugen (Langhantel)', dead: 'Kreuzheben', rdl: 'Rumänisches Kreuzheben', bench: 'Bankdrücken', incline: 'Schrägbankdrücken (Kurzhantel)', ohp: 'Schulterdrücken', row: 'Rudern (Langhantel)', lat: 'Latzug', cable: 'Rudern am Kabel', legpress: 'Beinpresse', lunge: 'Ausfallschritte', legcurl: 'Beinbeuger', legext: 'Beinstrecker', calf: 'Wadenheben', curl: 'Bizepscurls', tri: 'Trizepsdrücken (Kabel)', lateral: 'Seitheben', pull: 'Klimmzüge', push: 'Liegestütze', legraise: 'Beinheben hängend', airsquat: 'Kniebeugen ohne Gewicht', sideplank: 'Seitstütz', wallsit: 'Wandsitzen' };
+const names = e => [stem(e.n), ...(DE[e.k] ? [stem(DE[e.k])] : [])];
+const FILL = /\b(ich|habe|hab|gerade|eben|jetzt|heute|gemacht|geschafft|trainiert|ungefahr|circa|ca|etwa|noch|dann|danach|i|did|just|have|done|about|for|mit|with|je|a|the|x|mal|wdh|wiederholungen|reps|satze|satz|sets|set|insgesamt|gesamt|lang|training|workout|dauer|trained|worked|out|today|around|roughly|approx|total|in)\b/g;
 
 function findEx(seg, exs, hasKg) {
   let hit = null, len = 0;
-  for (const e of exs) for (const name of [stem(e.n), ...(ALIAS[e.k] || [])]) {
+  for (const e of exs) for (const name of [...names(e), ...(ALIAS[e.k] || [])]) {
     if (name.length < 3) continue; const short = name.length > 6 ? name.replace(/(en|e|n|s)$/, '') : name;
     if (seg.includes(short) && short.length > len) { hit = e; len = short.length; }
   }
@@ -42,7 +44,7 @@ export function parseQuick(text, exs) {
     if ((m = seg.match(/(\d+)\s*(?:x|×|\*|mal|satze|satz|sets|set)\s*(?:a|mit|je|zu|of|with)?\s*(\d+)/))) { sets = +m[1]; reps = +m[2]; seg = seg.replace(m[0], ' '); }
     else if ((m = seg.match(/(\d+)/))) { reps = +m[1]; sets = 1; seg = seg.replace(m[0], ' '); }
     const rest0 = seg.replace(FILL, ' ').replace(/[^a-z\- ]/g, ' ').replace(/\s+/g, ' ').trim();
-    const e = findEx(seg, exs, kg > 0) || (rest0.length >= 4 && exs.find(y => stem(y.n).startsWith(rest0))) || null, rest = seg.replace(FILL, ' ').replace(/[^a-z\- ]/g, ' ').replace(/\s+/g, ' ').trim();
+    const e = findEx(seg, exs, kg > 0) || (rest0.length >= 4 && exs.find(y => names(y).some(n => n.startsWith(rest0)))) || null, rest = seg.replace(FILL, ' ').replace(/[^a-z\- ]/g, ' ').replace(/\s+/g, ' ').trim();
     if (!e && sec && !reps && rest.length < 3) { out.dur += sec; continue; }              // "45 Minuten trainiert"
     if (!e && !reps && !sec) { if (rest.length > 2) out.miss.push(rest); continue; }
     const x = e ? { k: e.k, n: e.n, t: e.t } : rest.length > 2 ? { k: '', n: orig(rest), t: sec && !reps ? 'time' : kg ? 'w' : 'bw', neu: true } : null;
@@ -58,7 +60,7 @@ export function parseQuick(text, exs) {
 const MODEL = 'claude-opus-5-5';
 /** the same result through the Claude API with the user's own key; throws a readable German message */
 export async function aiQuick(text, exs, key = aiKey()) {
-  if (!key) throw new Error('Kein KI-Schlüssel hinterlegt.');
+  if (!key) throw new Error('No AI key saved.');
   const schema = { type: 'object', additionalProperties: false, required: ['exercises', 'duration_minutes'], properties: {
     duration_minutes: { type: 'number', description: 'Total training time in minutes, 0 when not said' },
     exercises: { type: 'array', items: { type: 'object', additionalProperties: false, required: ['key', 'name', 'kind', 'sets'], properties: {
@@ -72,10 +74,10 @@ export async function aiQuick(text, exs, key = aiKey()) {
   try { r = await fetch('https://api.anthropic.com/v1/messages', { method: 'POST',
     headers: { 'content-type': 'application/json', 'x-api-key': key, 'anthropic-version': '2026-10-21', 'anthropic-dangerous-direct-browser-access': 'true' },
     body: JSON.stringify({ model: MODEL, max_tokens: 4000, system: sys, messages: [{ role: 'user', content: text }], output_config: { effort: 'low', format: { type: 'json_schema', schema } } }) });
-  } catch { throw new Error('KI nicht erreichbar. Bist du online?'); }
-  if (!r.ok) throw new Error(r.status === 401 ? 'Der KI-Schlüssel wird nicht angenommen.' : r.status === 429 ? 'KI-Limit erreicht, später nochmal.' : `KI-Fehler ${r.status}.`);
-  const j = await r.json(); if (j.stop_reason === 'refusal' || j.stop_reason === 'max_tokens') throw new Error('Die KI hat keine vollständige Antwort gegeben.');
-  let d; try { d = JSON.parse((j.content || []).filter(b => b.type === 'text').map(b => b.text).join('')); } catch { throw new Error('Die KI-Antwort war nicht lesbar.'); }
+  } catch { throw new Error('AI not reachable. Are you online?'); }
+  if (!r.ok) throw new Error(r.status === 401 ? 'The AI key was not accepted.' : r.status === 429 ? 'AI limit reached, try again later.' : `AI error ${r.status}.`);
+  const j = await r.json(); if (j.stop_reason === 'refusal' || j.stop_reason === 'max_tokens') throw new Error('The AI did not give a complete answer.');
+  let d; try { d = JSON.parse((j.content || []).filter(b => b.type === 'text').map(b => b.text).join('')); } catch { throw new Error('The AI answer was not readable.'); }
   const out = { ex: [], dur: Math.round((+d.duration_minutes || 0) * 60), miss: [] };
   for (const x of d.exercises || []) { const e = exs.find(y => y.k === x.key), t = e ? e.t : x.kind;
     const sets = (x.sets || []).slice(0, 20).map(s => t === 'time' ? { kg: '', r: '', s: Math.round(+s.seconds || 0), done: true } : { kg: +s.kg || '', r: Math.round(+s.reps || 0) || '', s: '', done: true }).filter(s => s.s || s.r);

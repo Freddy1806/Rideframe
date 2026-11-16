@@ -33,7 +33,7 @@ const paceTxt = s => `${Math.floor(s / 60)}:${String(Math.round(s % 60)).padStar
 /** uploads one ride; onState(text) gets progress. Returns the Strava activity URL. */
 export async function stravaUpload(rec, name, eleAt, onState = () => {}, imageUrl = '') {
   onState('Wird hochgeladen …');
-  const km = (rec.distance / 1000).toFixed(1).replace('.', ',');
+  const km = (rec.distance / 1000).toFixed(1);
   const r = await fetch('/api/strava/upload', { method: 'POST', headers: { ...hdr(), 'Content-Type': 'application/json' },
     body: JSON.stringify({ tcx: toTCX(rec, name, eleAt), name: `RIDEFRAME · ${name}`, external_id: 'rideframe-' + rec.id,
       outdoor: !!rec.outdoor, description: rec.sport === 'run' ? `${km} km · ${rec.gain} hm${rec.distance > 0 ? ` · Ø ${paceTxt(rec.duration / rec.distance * 1000)} /km` : ''}\nGelaufen mit RIDEFRAME.` : rec.outdoor ? `${km} km · ${rec.gain} hm${rec.avgPower ? ` · Ø ${rec.avgPower} W` : ''}\nDraußen aufgezeichnet mit RIDEFRAME.`

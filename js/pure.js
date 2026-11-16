@@ -68,7 +68,7 @@ const M = {
   best20: { l: 'Beste 20 min', u: 'W', v: () => bestAvg(R.pw, 1200) || '–' },
   hrMax: { l: 'Max Puls', u: 'bpm', v: () => R.hrMax || '–' },
   target: { l: 'Ziel', u: 'W', v: () => targetW() ?? '–' },
-  clock: { l: 'Uhrzeit', u: '', v: () => new Date().toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' }) },
+  clock: { l: 'Uhrzeit', u: '', v: () => new Date().toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' }) },
 };
 
 // ---------------- control ----------------

@@ -51,7 +51,7 @@ export function vo2(acts, P, days = 180) {
     const efforts = [[a.distance, a.duration]]; const k = a.kmSplits || [];
     for (const n of [3, 5, 10]) for (let i = 0; i + n <= k.length; i++) efforts.push([n * 1000, k.slice(i, i + n).reduce((x, y) => x + y, 0)]);
     for (const [d, t] of efforts) { const tm = t / 60, v = d / tm, c = -4.6 + 0.182258 * v + 0.000104 * v * v, pct = 0.8 + 0.1894393 * Math.exp(-0.012778 * tm) + 0.2989558 * Math.exp(-0.1932605 * tm), x = c / pct;
-      if (tm >= 6 && (!run || x > run.v)) run = { v: x, pm: 4, from: `${(d / 1000).toFixed(1).replace('.', ',')} km in ${Math.floor(tm)}:${String(Math.round(t % 60)).padStart(2, '0')}` }; }
+      if (tm >= 6 && (!run || x > run.v)) run = { v: x, pm: 4, from: `${(d / 1000).toFixed(1)} km in ${Math.floor(tm)}:${String(Math.round(t % 60)).padStart(2, '0')}` }; }
   }
   return { bike, run };
 }

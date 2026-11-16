@@ -1,9 +1,9 @@
 <!doctype html>
-<html lang="de">
+<html lang="en">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<title>RIDEFRAME · Neues Passwort</title>
+<title>RIDEFRAME · New password</title>
 <meta name="theme-color" content="#0b0b0b">
 <meta name="referrer" content="no-referrer">
 <link rel="icon" href="img/icon.svg" type="image/svg+xml">
@@ -21,13 +21,13 @@
 </head>
 <body>
 <main class="rbox">
-  <div class="label">RIDEFRAME · Konto</div>
-  <h1 class="display">Neues Passwort</h1>
-  <p id="rTxt">Leg ein neues Passwort fest (mindestens 6 Zeichen). Danach bist du angemeldet; auf anderen Geräten meldest du dich mit dem neuen Passwort neu an.</p>
+  <div class="label">RIDEFRAME · Account</div>
+  <h1 class="display">New password</h1>
+  <p id="rTxt">Choose a new password (at least 6 characters). You will then be signed in; on other devices, sign in again with the new password.</p>
   <form id="rForm" class="form">
-    <div class="field"><div style="min-width:110px">Passwort</div><input type="password" id="rPw" autocomplete="new-password" required></div>
-    <div class="field"><div style="min-width:110px">Wiederholen</div><input type="password" id="rPw2" autocomplete="new-password" required></div>
-    <button class="btn" id="rGo" type="submit">Passwort speichern</button>
+    <div class="field"><div style="min-width:110px">Password</div><input type="password" id="rPw" autocomplete="new-password" required></div>
+    <div class="field"><div style="min-width:110px">Repeat</div><input type="password" id="rPw2" autocomplete="new-password" required></div>
+    <button class="btn" id="rGo" type="submit">Save password</button>
   </form>
   <p id="rErr"></p>
 </main>
@@ -36,20 +36,20 @@
   const tok = new URLSearchParams(location.hash.slice(1)).get('t') || '';
   history.replaceState(null, '', location.pathname);
   const $ = s => document.querySelector(s), err = t => { $('#rErr').textContent = t; };
-  if (!/^[0-9a-f]{64}$/.test(tok)) { $('#rForm').hidden = true; err('Dieser Link ist unvollständig. Bitte in der App nochmal „Passwort vergessen?“ antippen.'); }
+  if (!/^[0-9a-f]{64}$/.test(tok)) { $('#rForm').hidden = true; err('This link is incomplete. Please tap “Forgot password?” in the app again.'); }
   $('#rForm').onsubmit = async e => {
     e.preventDefault();
     const pw = $('#rPw').value, pw2 = $('#rPw2').value;
-    if (pw.length < 6) return err('Passwort: mindestens 6 Zeichen.');
-    if (pw !== pw2) return err('Die beiden Passwörter sind nicht gleich.');
-    $('#rGo').disabled = true; err('Wird gespeichert …');
+    if (pw.length < 6) return err('Password: at least 6 characters.');
+    if (pw !== pw2) return err('The two passwords do not match.');
+    $('#rGo').disabled = true; err('Saving …');
     try {
       const r = await fetch('/api/account/reset', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ token: tok, password: pw }) });
       const j = await r.json().catch(() => ({}));
-      if (!r.ok) throw new Error(j.error || 'Server antwortet nicht');
+      if (!r.ok) throw new Error(j.error || 'Server not responding');
       try { localStorage.setItem('rf_account', JSON.stringify({ token: j.token, name: j.name })); } catch {}
-      $('#rForm').hidden = true; $('#rTxt').textContent = `Fertig, ${j.name}! Dein neues Passwort gilt ab sofort.`;
-      err(''); const a = document.createElement('a'); a.className = 'btn'; a.href = 'handy.html'; a.textContent = 'Zu RIDEFRAME'; $('main').append(a);
+      $('#rForm').hidden = true; $('#rTxt').textContent = `Done, ${j.name}! Your new password is active now.`;
+      err(''); const a = document.createElement('a'); a.className = 'btn'; a.href = 'handy.html'; a.textContent = 'Go to RIDEFRAME'; $('main').append(a);
     } catch (x) { err(x.message); $('#rGo').disabled = false; }
   };
 </script>

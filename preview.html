@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="de"><head><meta charset="utf-8"><title>RIDEFRAME Vorschau</title>
+<html lang="en"><head><meta charset="utf-8"><title>RIDEFRAME Preview</title>
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <link rel="icon" href="img/icon.svg" type="image/svg+xml">
 <link rel="stylesheet" href="css/app.css">
@@ -23,11 +23,11 @@ html,body{margin:0;height:100%;background:#000;overflow:hidden;color:#f4f4ef;fon
 #pvload small{font-weight:400;font-size:14px;opacity:.6;text-transform:none;letter-spacing:0}
 </style></head><body>
 <canvas id="gl"></canvas>
-<div id="pvload">Strecke wird aufgebaut …<small>Berge, Wasser und Dörfer entstehen, dauert beim ersten Mal ca. 10 Sekunden</small></div>
-<div class="pv-top"><a href="index.html">← Zurück</a><span class="tag">VORSCHAU</span><span id="rname" style="font-weight:900;font-size:18px"></span></div>
+<div id="pvload">Building the route …<small>Mountains, water and villages are being created; takes about 10 seconds the first time</small></div>
+<div class="pv-top"><a href="index.html">← Back</a><span class="tag">PREVIEW</span><span id="rname" style="font-weight:900;font-size:18px"></span></div>
 <div class="pv-info"><div class="seg" id="seg"></div><div class="num" id="num"></div></div>
 <div class="pv-bar"><canvas id="prof"></canvas>
-<div class="pv-ctl"><button id="play">▶ Abspielen</button><span style="opacity:.6;margin:0 4px 0 10px">Tempo</span><button data-s="10">10×</button><button data-s="30" class="on">30×</button><button data-s="60">60×</button><button data-s="120">120×</button>
-<span class="hint">Mausrad oder Trackpad = vor/zurück · Klick ins Profil = springen · Leertaste = Play/Pause · ← → = 500 m</span></div></div>
+<div class="pv-ctl"><button id="play">▶ Play</button><span style="opacity:.6;margin:0 4px 0 10px">Speed</span><button data-s="10">10×</button><button data-s="30" class="on">30×</button><button data-s="60">60×</button><button data-s="120">120×</button>
+<span class="hint">Mouse wheel or trackpad = forward/back · Click profile = jump · Space = play/pause · ← → = 500 m</span></div></div>
 <script type="module" src="js/world/preview.js"></script>
 </body></html>

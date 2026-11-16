@@ -3,7 +3,7 @@ export function fmtTime(s) {
   const h = Math.floor(s / 3600), m = Math.floor(s % 3600 / 60), sec = s % 60;
   return h ? `${h}:${String(m).padStart(2, '0')}:${String(sec).padStart(2, '0')}` : `${m}:${String(sec).padStart(2, '0')}`;
 }
-export const fmtNum = (v, d = 0) => (v ?? 0).toLocaleString('de-DE', { minimumFractionDigits: d, maximumFractionDigits: d });
+export const fmtNum = (v, d = 0) => (v ?? 0).toLocaleString('en-GB', { minimumFractionDigits: d, maximumFractionDigits: d });
 export const fmtKm = m => fmtNum(m / 1000, m < 100000 ? 1 : 0);
 export const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 /** best average of values over a window of n samples (1 sample = 1 s) */

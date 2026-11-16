@@ -13,8 +13,8 @@
     { "src": "img/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any maskable" }
   ],
   "shortcuts": [
-    { "name": "Draußen fahren", "url": "outdoor.html" },
-    { "name": "Kraft", "url": "kraft.html" },
-    { "name": "Rollentrainer", "url": "pure.html" }
+    { "name": "Ride outdoors", "url": "outdoor.html" },
+    { "name": "Strength", "url": "kraft.html" },
+    { "name": "Indoor trainer", "url": "pure.html" }
   ]
 }

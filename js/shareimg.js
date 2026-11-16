@@ -46,7 +46,7 @@ export async function makeShareImage({ rec, route, track, photo, pose, pb, who }
   if (pb) { g.font = font(900, 24, 'expanded'); const t = 'NEUE BESTZEIT', tw = g.measureText(t).width; g.fillStyle = acc; g.beginPath(); g.roundRect(W - 48 - tw - 36, 46, tw + 36, 44, 22); g.fill(); g.fillStyle = INK; g.fillText(t, W - 48 - tw - 18, 69); }
   // route name over the bottom of the photo
   g.textBaseline = 'alphabetic'; g.fillStyle = MUTED; g.font = font(800, 24, 'expanded');
-  g.fillText([new Date(rec.date).toLocaleDateString('de-DE', { day: 'numeric', month: 'long', year: 'numeric' }), who].filter(Boolean).join(' · ').toUpperCase(), 48, PH - 92);
+  g.fillText([new Date(rec.date).toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' }), who].filter(Boolean).join(' · ').toUpperCase(), 48, PH - 92);
   g.fillStyle = PAPER; let fs = 64; g.font = font(900, fs, 'expanded'); const name = route.name || 'Fahrt';
   while (g.measureText(name).width > W - 96 && fs > 30) g.font = font(900, fs -= 4, 'expanded');
   g.fillText(name, 48, PH - 30);

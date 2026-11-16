@@ -3,7 +3,7 @@
 import { account, accountModal, wishApi } from './account.js';
 
 const esc = s => String(s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
-const day = t => new Date(t).toLocaleDateString('de-DE', { day: 'numeric', month: 'numeric' });
+const day = t => new Date(t).toLocaleDateString('en-GB', { day: 'numeric', month: 'numeric' });
 
 export async function wishModal(state, onAccount) {
   if (!account()) { await accountModal(state, onAccount); if (!account()) return; }

@@ -155,7 +155,7 @@ const M = {
   kcal: { l: 'Kalorien', u: 'kcal', v: () => RUN ? Math.round(R.d / 1000 * (S.riderKg || 75)) : R.kj ? Math.round(R.kj * 1.1) : Math.round(R.moving / 3600 * 8 * (S.riderKg || 75)) },
   lapTime: { l: 'Rundenzeit', u: '', v: () => fmtTime(R.moving - R.lapAt.t) },
   lapDist: { l: 'Rundenstrecke', u: 'km', v: () => fmtNum((R.d - R.lapAt.d) / 1000, 2) },
-  clock: { l: 'Uhrzeit', u: '', v: () => new Date().toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' }) },
+  clock: { l: 'Uhrzeit', u: '', v: () => new Date().toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' }) },
   gps: { l: 'GPS ±', u: 'm', v: () => live.acc != null ? Math.round(live.acc) : '–' },
 };
 
@@ -322,7 +322,7 @@ async function listView() {
     <section class="kcard"><div class="hwhead"><span class="label">Diese Woche</span><span class="wdl">▲▼ zur Vorwoche</span></div><div class="kstats">${weekStat(w.length, pw.length, W.acts)}${weekStat(Math.round(sum(w, r => r.distance) / 1000), Math.round(sum(pw, r => r.distance) / 1000), 'km')}
       ${weekStat(sum(w, r => r.gain), sum(pw, r => r.gain), 'Anstieg (m)')}${weekStat(sum(w, r => r.duration), sum(pw, r => r.duration), 'Zeit', fmtTime)}</div>
       <div class="hint" style="margin-top:8px">Insgesamt ${rides.length} ${rides.length === 1 ? W.act : W.acts} · ${fmtNum(tot / 1000, 0)} km ${W.where}</div></section>
-    ${rides.length ? rides.map(r => `<div class="kcard orow" data-id="${r.id}">${shape(r)}<div class="oinfo"><b>${esc(r.workout || W.dflt)}</b><span>${new Date(r.date).toLocaleDateString('de-DE', { weekday: 'short', day: 'numeric', month: 'short', year: 'numeric' })}</span>
+    ${rides.length ? rides.map(r => `<div class="kcard orow" data-id="${r.id}">${shape(r)}<div class="oinfo"><b>${esc(r.workout || W.dflt)}</b><span>${new Date(r.date).toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short', year: 'numeric' })}</span>
       <div class="khm"><span>${fmtNum(r.distance / 1000, 1)} km</span><span>${fmtTime(r.duration)}</span><span>${r.gain} m Anstieg</span><span>${RUN ? pace(r.duration ? r.distance / r.duration : 0) + ' min/km' : fmtNum(r.duration ? r.distance / r.duration * 3.6 : 0, 1) + ' km/h'}</span></div></div></div>`).join('')
       : `<p class="hint">${W.none}</p>`}`;
   $('#oBack').onclick = () => { view = 'ride'; render(); };
@@ -339,7 +339,7 @@ function shape(r, w = 64, h = 64) {
 function detail(r) {
   if (!r) return;
   const pts = (r.samples || []).filter(s => s[6] != null), hrs = r.samples.map(s => s[5]).filter(Boolean);
-  const s = sheet(`<div class="label">${new Date(r.date).toLocaleString('de-DE', { dateStyle: 'full', timeStyle: 'short' })}</div><h2 class="display" style="font-size:28px;margin:6px 0 10px">${esc(r.workout || W.dflt)}</h2>
+  const s = sheet(`<div class="label">${new Date(r.date).toLocaleString('en-GB', { dateStyle: 'full', timeStyle: 'short' })}</div><h2 class="display" style="font-size:28px;margin:6px 0 10px">${esc(r.workout || W.dflt)}</h2>
     <div class="omap det" id="dMap"></div>
     <div class="psum"><div><span>Strecke</span><b>${fmtNum(r.distance / 1000, 2)} km</b></div><div><span>${W.time}</span><b>${fmtTime(r.duration)}</b></div>
       ${RUN ? `<div><span>Ø Pace</span><b>${pace(r.duration ? r.distance / r.duration : 0)} min/km</b></div><div><span>Schnellster km</span><b>${r.kmSplits?.length ? fmtTime(Math.min(...r.kmSplits)) : '–'}</b></div>` : `<div><span>Ø Tempo</span><b>${fmtNum(r.duration ? r.distance / r.duration * 3.6 : 0, 1)} km/h</b></div><div><span>Max Tempo</span><b>${fmtNum(r.maxSpeed || 0, 1)} km/h</b></div>`}

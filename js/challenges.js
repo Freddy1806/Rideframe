@@ -84,4 +84,4 @@ export class Challenges {
     return { kind: 'race', name: x.c.name, W: x.W, left: Math.max(0, x.finish - d), lead: d - x.opp >= 0 };
   }
 }
-const fmtD = m => m >= 1000 ? (m / 1000).toFixed(m % 1000 ? 1 : 0).replace('.', ',') + ' km' : Math.round(m) + ' m';
+const fmtD = m => m >= 1000 ? (m / 1000).toFixed(m % 1000 ? 1 : 0) + ' km' : Math.round(m) + ' m';

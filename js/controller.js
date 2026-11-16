@@ -35,7 +35,7 @@ export function openControllerTest() {
     <pre id="ctLog" style="margin-top:18px;height:340px;overflow:auto;background:#000;border:1px solid var(--line-2);border-radius:4px;padding:12px;font:12px/1.5 ui-monospace,Menlo,monospace;white-space:pre-wrap"></pre></div>`;
   document.body.append(m);
   const logEl = m.querySelector('#ctLog');
-  const log = s => { logEl.textContent += `${new Date().toLocaleTimeString('de-DE')}.${String(Date.now() % 1000).padStart(3, '0')}  ${s}\n`; logEl.scrollTop = 1e9; };
+  const log = s => { logEl.textContent += `${new Date().toLocaleTimeString('en-GB')}.${String(Date.now() % 1000).padStart(3, '0')}  ${s}\n`; logEl.scrollTop = 1e9; };
   let device, raf;
   m.querySelector('#ctClose').onclick = () => { cancelAnimationFrame(raf); device?.gatt?.disconnect(); document.removeEventListener('keydown', onKey); m.remove(); };
   m.querySelector('#ctCopy').onclick = () => navigator.clipboard?.writeText(logEl.textContent);

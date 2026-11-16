@@ -63,7 +63,7 @@ function render() {
     <h3 class="ksec">Bestwerte</h3>
     <section class="kcard fest">
       ${row('Beste 20 min', best20 ? `${Math.round(best20)} W` : '–')}${row('Längste Fahrt', longest ? `${fmtNum(longest.distance / 1000, 1)} km` : '–')}
-      ${[1, 5, 10].map(n => row(`Laufen ${n} km`, RB[n] ? paceT(RB[n].t) + (RB[n].t >= 3600 ? '' : ' min') : '–', RB[n] ? new Date(RB[n].date).toLocaleDateString('de-DE') : '')).join('')}
+      ${[1, 5, 10].map(n => row(`Laufen ${n} km`, RB[n] ? paceT(RB[n].t) + (RB[n].t >= 3600 ? '' : ' min') : '–', RB[n] ? new Date(RB[n].date).toLocaleDateString('en-GB') : '')).join('')}
       ${top.map(([n, v]) => row(esc(n), `${fmtNum(v, 1)} kg`, 'geschätztes 1RM')).join('')}</section>
 
     <h3 class="ksec">Gesamt</h3>

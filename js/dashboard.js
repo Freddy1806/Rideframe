@@ -4,9 +4,9 @@
 import { usable, pmc, powerCurve, weekly, estimateFTP } from './stats.js';
 
 const esc = s => String(s ?? '').replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
-const n0 = v => Math.round(v || 0).toLocaleString('de-DE');
-const n1 = v => (v || 0).toLocaleString('de-DE', { minimumFractionDigits: 1, maximumFractionDigits: 1 });
-const dshort = t => new Date(t).toLocaleDateString('de-DE', { day: 'numeric', month: 'numeric' });
+const n0 = v => Math.round(v || 0).toLocaleString('en-GB');
+const n1 = v => (v || 0).toLocaleString('en-GB', { minimumFractionDigits: 1, maximumFractionDigits: 1 });
+const dshort = t => new Date(t).toLocaleDateString('en-GB', { day: 'numeric', month: 'numeric' });
 let W = 640; const PAD = { l: 38, r: 10, t: 10, b: 22 };
 
 /** rides that are junk: under 3 minutes or (almost) no distance */
@@ -28,7 +28,7 @@ const path = pts => pts.map(([x, y], i) => `${i ? 'L' : 'M'}${x.toFixed(1)},${y.
 function pmcSVG(days) {
   const h = 200, n = days.length, hi = Math.max(20, ...days.map(d => Math.max(d.ctl, d.atl))) * 1.1;
   const y = v => PAD.t + (1 - v / hi) * (h - PAD.t - PAD.b);
-  const ticks = days.map((d, i) => [d, i]).filter(([d]) => new Date(d.t).getDate() === 1).map(([d, i]) => `<text x="${sx(i, n)}" y="${h - 6}" class="ax" text-anchor="middle">${new Date(d.t).toLocaleDateString('de-DE', { month: 'short' })}</text>`).join('');
+  const ticks = days.map((d, i) => [d, i]).filter(([d]) => new Date(d.t).getDate() === 1).map(([d, i]) => `<text x="${sx(i, n)}" y="${h - 6}" class="ax" text-anchor="middle">${new Date(d.t).toLocaleDateString('en-GB', { month: 'short' })}</text>`).join('');
   const hit = days.map((d, i) => `<rect x="${sx(i, n) - W / n / 2}" y="${PAD.t}" width="${W / n}" height="${h - PAD.t - PAD.b}" class="hit"><title>${dshort(d.t)} · Fitness ${n0(d.ctl)} · Ermüdung ${n0(d.atl)} · Form ${n0(d.tsb)}${d.load ? ` · Belastung ${n0(d.load)}` : ''}</title></rect>`).join('');
   // form: same unit, own small chart under it (no second axis)
   const fh = 140, fm = Math.max(10, ...days.map(d => Math.abs(d.tsb))) * 1.1, fy = v => PAD.t + (1 - (v + fm) / (2 * fm)) * (fh - PAD.t - PAD.b);
@@ -45,7 +45,7 @@ function curveSVG(cv) {
   const h = 200, n = cv.length, hi = Math.max(100, ...cv.map(c => c.all)) * 1.1, y = v => PAD.t + (1 - v / hi) * (h - PAD.t - PAD.b);
   const all = cv.filter(c => c.all).map(c => [sx(cv.indexOf(c), n), y(c.all)]), now = cv.filter(c => c.now).map(c => [sx(cv.indexOf(c), n), y(c.now)]);
   const dots = cv.map((c, i) => `${c.all ? `<circle cx="${sx(i, n)}" cy="${y(c.all)}" r="4" class="d2"/>` : ''}${c.now ? `<circle cx="${sx(i, n)}" cy="${y(c.now)}" r="4" class="d1"/>` : ''}
-      <rect x="${sx(i, n) - 30}" y="${PAD.t}" width="60" height="${h - PAD.t - PAD.b}" class="hit"><title>${c.label}: Bestwert ${c.all ? n0(c.all) + ' W' + (c.date ? ' (' + new Date(c.date).toLocaleDateString('de-DE') + ')' : '') : '–'} · letzte 6 Wochen ${c.now ? n0(c.now) + ' W' : '–'}</title></rect>
+      <rect x="${sx(i, n) - 30}" y="${PAD.t}" width="60" height="${h - PAD.t - PAD.b}" class="hit"><title>${c.label}: Bestwert ${c.all ? n0(c.all) + ' W' + (c.date ? ' (' + new Date(c.date).toLocaleDateString('en-GB') + ')' : '') : '–'} · letzte 6 Wochen ${c.now ? n0(c.now) + ' W' : '–'}</title></rect>
       <text x="${sx(i, n)}" y="${h - 6}" class="ax" text-anchor="middle">${c.label}</text>`).join('');
   return `<svg viewBox="0 0 ${W} ${h}" class="dchart" role="img" aria-label="Leistungskurve">${axisY(0, hi, h)}<path d="${path(all)}" class="l2"/><path d="${path(now)}" class="l1"/>${dots}</svg>`;
 }
@@ -80,7 +80,7 @@ export function dashboardHTML(allRides, settings) {
   const rides = usable(allRides), ftp = settings.ftp || 0, junk = junkRides(allRides);
   const clean = junk.length ? `<div class="djunk"><span>${junk.length} ${junk.length === 1 ? 'kurzer Versuch' : 'kurze Versuche'} (unter 3 min oder fast 0 km)</span><button class="btn ghost small" id="dJunk">Alle löschen</button></div>` : '';
   const tests = `<div class="dtest"><div><div class="label">Fitnesstest</div><p>Misst deine FTP neu. Danach kannst du den Wert mit einem Klick übernehmen, alle Ziel-Watt passen sich an.</p>
-      ${(() => { const t = allRides.filter(r => r.ftpTest).sort((a, b) => b.date - a.date)[0]; return t ? `<p class="dim">Letzter Test: ${new Date(t.date).toLocaleDateString('de-DE')} · ${t.ftpTest} W</p>` : ''; })()}</div>
+      ${(() => { const t = allRides.filter(r => r.ftpTest).sort((a, b) => b.date - a.date)[0]; return t ? `<p class="dim">Letzter Test: ${new Date(t.date).toLocaleDateString('en-GB')} · ${t.ftpTest} W</p>` : ''; })()}</div>
       <div class="dbtns"><button class="btn small" data-test="ramp">Rampentest · ca. 25 min</button><button class="btn ghost small" data-test="ftp20">20-min-Test · ca. 60 min</button></div></div>`;
   if (!rides.length) return `<div class="dash">${tests}${clean}<div class="empty">Noch keine Fahrt mit Wattwerten. Nach der ersten Fahrt siehst du hier Fitness, Form und deine Leistungskurve.</div></div>`;
   const days = pmc(rides, ftp || 200), today = days[days.length - 1], wkAgo = days[days.length - 8] || days[0];
@@ -108,7 +108,7 @@ export function wireDashboard(main, { state, saveSettings, startTest, deleteRide
   main.querySelectorAll('[data-test]').forEach(b => b.onclick = () => startTest(b.dataset.test));
   main.querySelector('#dJunk')?.addEventListener('click', async () => {
     const j = junkRides(state.rides); if (!j.length) return;
-    if (!confirm(`${j.length} kurze ${j.length === 1 ? 'Fahrt' : 'Fahrten'} endgültig löschen?\n\n` + j.slice(0, 12).map(r => `${new Date(r.date).toLocaleString('de-DE', { dateStyle: 'short', timeStyle: 'short' })} · ${Math.round((r.duration || 0) / 60)} min · ${((r.distance || 0) / 1000).toFixed(1)} km`).join('\n') + (j.length > 12 ? `\n… und ${j.length - 12} weitere` : ''))) return;
+    if (!confirm(`${j.length} kurze ${j.length === 1 ? 'Fahrt' : 'Fahrten'} endgültig löschen?\n\n` + j.slice(0, 12).map(r => `${new Date(r.date).toLocaleString('en-GB', { dateStyle: 'short', timeStyle: 'short' })} · ${Math.round((r.duration || 0) / 60)} min · ${((r.distance || 0) / 1000).toFixed(1)} km`).join('\n') + (j.length > 12 ? `\n… und ${j.length - 12} weitere` : ''))) return;
     await deleteRides(j); rerender();
   });
 }

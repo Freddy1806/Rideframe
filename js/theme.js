@@ -2,11 +2,11 @@
 // plus light / dark / like the system. Used by handy, outdoor (ride + run), kraft and pure.
 // Settings (kv 'settings'): theme 'auto' | 'dark' | 'light', modeColors true (own colour per mode) or false (one accent for all).
 export const MODES = {
-  ride: { name: 'Draußen fahren', short: 'Draußen', href: 'outdoor.html', color: '#ff5a1f', light: '#e04a12' },
-  run: { name: 'Laufen', short: 'Laufen', href: 'outdoor.html?sport=run', color: '#2fd3e0', light: '#0a8f9c' },
-  trainer: { name: 'Indoor-Trainer', short: 'Indoor', href: 'pure.html', color: '#8b6cff', light: '#6446e8' },
-  world: { name: 'Virtuelle Strecken', short: 'Virtuell', href: './?desktop', color: '#c6f432', light: '#5f8a00' },
-  kraft: { name: 'Kraft', short: 'Kraft', href: 'kraft.html', color: '#ff4f9a', light: '#d62c78' },
+  ride: { name: 'Ride outdoors', short: 'Ride', href: 'outdoor.html', color: '#ff5a1f', light: '#e04a12' },
+  run: { name: 'Run', short: 'Run', href: 'outdoor.html?sport=run', color: '#2fd3e0', light: '#0a8f9c' },
+  trainer: { name: 'Indoor trainer', short: 'Indoor', href: 'pure.html', color: '#8b6cff', light: '#6446e8' },
+  world: { name: 'Virtual routes', short: 'Virtual', href: './?desktop', color: '#c6f432', light: '#5f8a00' },
+  kraft: { name: 'Strength', short: 'Strength', href: 'kraft.html', color: '#ff4f9a', light: '#d62c78' },
 };
 export const ACCENTS = { orange: ['#ff5a1f', '#e04a12'], violet: ['#8b6cff', '#6446e8'], lime: ['#c6f432', '#5f8a00'], cyan: ['#2fd3e0', '#0a8f9c'], pink: ['#ff4f9a', '#d62c78'] };
 

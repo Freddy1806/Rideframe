@@ -296,7 +296,7 @@ function detail(id) {
         <h2 class="section" style="margin-top:44px">Deine Zeiten</h2>
         ${ranked.length ? `<table class="table">
           <tr><th class="label">#</th><th class="label">Datum</th><th class="label">Zeit</th><th class="label">Ø Watt</th><th class="label">Ø km/h</th><th class="label"></th></tr>
-          ${ranked.slice(0, 8).map((x, i) => `<tr class="${i === 0 ? 'pb' : ''}"><td class="rank">${i + 1}</td><td>${new Date(x.date).toLocaleDateString('de-DE')}</td><td>${fmtTime(x.duration)}</td><td>${x.avgPower} W</td><td>${fmtNum(x.distance / x.duration * 3.6, 1)}</td><td><button class="btn ghost small share" data-id="${x.id}" title="Als Datei an Freunde schicken, sie fahren gegen dich">Teilen</button></td></tr>`).join('')}
+          ${ranked.slice(0, 8).map((x, i) => `<tr class="${i === 0 ? 'pb' : ''}"><td class="rank">${i + 1}</td><td>${new Date(x.date).toLocaleDateString('en-GB')}</td><td>${fmtTime(x.duration)}</td><td>${x.avgPower} W</td><td>${fmtNum(x.distance / x.duration * 3.6, 1)}</td><td><button class="btn ghost small share" data-id="${x.id}" title="Als Datei an Freunde schicken, sie fahren gegen dich">Teilen</button></td></tr>`).join('')}
         </table>` : '<div class="empty">Noch keine komplette Fahrt. Die erste Zeit wird deine Bestzeit.</div>'}
         <div class="row-actions" style="margin-top:32px">
           ${r.source !== 'demo' ? `<button class="btn ghost small" id="renameBtn">Umbenennen</button>
@@ -360,7 +360,7 @@ function history() {
     ${dashboardHTML(rides, state.settings)}
     <h2 class="section">Rekorde</h2>
     <div class="records">
-      <div class="record"><div class="label">Beste 20 Minuten</div><div class="v">${best20 || '–'}<small>W</small></div><div class="s">${best20Ride ? esc(routeName(best20Ride.routeId) || '') + ' · ' + new Date(best20Ride.date).toLocaleDateString('de-DE') : 'Fahre mind. 20 Minuten'}</div></div>
+      <div class="record"><div class="label">Beste 20 Minuten</div><div class="v">${best20 || '–'}<small>W</small></div><div class="s">${best20Ride ? esc(routeName(best20Ride.routeId) || '') + ' · ' + new Date(best20Ride.date).toLocaleDateString('en-GB') : 'Fahre mind. 20 Minuten'}</div></div>
       <div class="record"><div class="label">Gesamt</div><div class="v">${fmtKm(totalKm)}<small>km</small></div><div class="s">${rides.length} ${rides.length === 1 ? 'Fahrt' : 'Fahrten'} · ${(t => t >= 3600 ? `${Math.floor(t / 3600)} h ${Math.round(t % 3600 / 60)} min` : `${Math.round(t / 60)} min`)(rides.reduce((s, r) => s + r.duration, 0))}</div></div>
       <div class="record"><div class="label">Meiste Höhenmeter</div><div class="v">${mostGain ? fmtNum(mostGain.gain) : '–'}<small>hm</small></div><div class="s">${mostGain ? esc(routeName(mostGain.routeId) || '') : ''}</div></div>
       <div class="record"><div class="label">Längste Fahrt</div><div class="v">${longest ? fmtKm(longest.distance) : '–'}<small>km</small></div><div class="s">${longest ? fmtTime(longest.duration) : ''}</div></div>
@@ -368,7 +368,7 @@ function history() {
     <h2 class="section">Alle Fahrten</h2>
     ${rides.length ? `<table class="table">
       <tr><th class="label">Datum</th><th class="label">Strecke</th><th class="label">Zeit</th><th class="label">Distanz</th><th class="label">Höhenmeter</th><th class="label">Ø Watt</th><th class="label">Ø km/h</th><th class="label"></th><th class="label"></th></tr>
-      ${rides.map(x => { const pb = x.routeId !== 'pure' && x.routeId !== 'outdoor' && bestRide(x.routeId)?.id === x.id; return `<tr class="${pb ? 'pb' : ''}"><td>${new Date(x.date).toLocaleString('de-DE', { dateStyle: 'short', timeStyle: 'short' })}</td><td>${esc((routeName(x.routeId) || 'Gelöschte Strecke') + ((x.routeId === 'pure' || x.routeId === 'outdoor') && x.workout ? ' · ' + x.workout : ''))}</td><td>${fmtTime(x.duration)}</td><td>${fmtKm(x.distance)} km</td><td>${fmtNum(x.gain)} hm</td><td>${x.avgPower} W</td><td>${fmtNum(x.distance / x.duration * 3.6, 1)}</td><td>${pb ? 'BESTZEIT' : x.complete ? '' : '<span style="color:var(--muted)">abgebrochen</span>'}</td><td style="white-space:nowrap"><button class="btn ghost small strava" data-id="${x.id}">Strava</button> <button class="btn ghost small share" data-id="${x.id}">Teilen</button> <button class="btn ghost small rimg" data-id="${x.id}" title="Bild zur Fahrt machen">Bild</button> <button class="btn ghost small rdel" data-id="${x.id}" title="Fahrt löschen">✕</button></td></tr>`; }).join('')}
+      ${rides.map(x => { const pb = x.routeId !== 'pure' && x.routeId !== 'outdoor' && bestRide(x.routeId)?.id === x.id; return `<tr class="${pb ? 'pb' : ''}"><td>${new Date(x.date).toLocaleString('en-GB', { dateStyle: 'short', timeStyle: 'short' })}</td><td>${esc((routeName(x.routeId) || 'Gelöschte Strecke') + ((x.routeId === 'pure' || x.routeId === 'outdoor') && x.workout ? ' · ' + x.workout : ''))}</td><td>${fmtTime(x.duration)}</td><td>${fmtKm(x.distance)} km</td><td>${fmtNum(x.gain)} hm</td><td>${x.avgPower} W</td><td>${fmtNum(x.distance / x.duration * 3.6, 1)}</td><td>${pb ? 'BESTZEIT' : x.complete ? '' : '<span style="color:var(--muted)">abgebrochen</span>'}</td><td style="white-space:nowrap"><button class="btn ghost small strava" data-id="${x.id}">Strava</button> <button class="btn ghost small share" data-id="${x.id}">Teilen</button> <button class="btn ghost small rimg" data-id="${x.id}" title="Bild zur Fahrt machen">Bild</button> <button class="btn ghost small rdel" data-id="${x.id}" title="Fahrt löschen">✕</button></td></tr>`; }).join('')}
     </table>` : '<div class="empty">Noch keine Fahrten. Wähle eine Strecke und fahr los.</div>'}
   </section>`;
   wireDashboard(main, { state, saveSettings, toast, rerender: history,
@@ -378,7 +378,7 @@ function history() {
       await reload(); toast(`${n} ${n === 1 ? 'Fahrt' : 'Fahrten'} gelöscht`); } });
   main.querySelectorAll('.share').forEach(b => b.onclick = () => shareRide(rides.find(r => r.id === b.dataset.id)));
   main.querySelectorAll('.rdel').forEach(b => b.onclick = async () => { const x = rides.find(r => r.id === b.dataset.id); if (!x) return;
-    if (!confirm(`Fahrt vom ${new Date(x.date).toLocaleString('de-DE', { dateStyle: 'short', timeStyle: 'short' })} (${fmtKm(x.distance)} km) endgültig löschen?`)) return;
+    if (!confirm(`Fahrt vom ${new Date(x.date).toLocaleString('en-GB', { dateStyle: 'short', timeStyle: 'short' })} (${fmtKm(x.distance)} km) endgültig löschen?`)) return;
     try { const { deleteRideRemote } = await import('./account.js'); await deleteRideRemote(x.id); } catch (e) { toast('Server: ' + e.message); return; }
     await db.del('rides', x.id); db.kvDel('photo:' + x.id).catch(() => {}); await reload(); history(); toast('Fahrt gelöscht'); });
   main.querySelectorAll('.rimg').forEach(b => b.onclick = async () => { // share image later, also for older rides (then without photo: sky + route name)
@@ -396,7 +396,7 @@ function stepper(id, value, { step = 1, min = 0, max = 9999, unit = '', optional
   const none = value == null || value === '';
   return `<div class="stepper-wrap"><div class="stepper ${none ? 'off' : ''}" data-step="${step}" data-min="${min}" data-max="${max}" id="${id}">
     <button type="button" class="sb" data-d="-1" aria-label="weniger">−</button>
-    <span class="sv"><input type="text" inputmode="decimal" value="${none ? '' : String(value).replace('.', ',')}" placeholder="–">${unit ? `<small>${unit}</small>` : ''}</span>
+    <span class="sv"><input type="text" inputmode="decimal" value="${none ? '' : String(value)}" placeholder="–">${unit ? `<small>${unit}</small>` : ''}</span>
     <button type="button" class="sb" data-d="1" aria-label="mehr">+</button></div>
     ${optional ? `<button type="button" class="nochip ${none ? 'on' : ''}" data-for="${id}">Keine Angabe</button>` : ''}</div>`;
 }
@@ -404,7 +404,7 @@ function wireStepper(root, id, onChange, fallback) {
   const el = root.querySelector('#' + id), inp = el.querySelector('input'), chip = root.querySelector(`.nochip[data-for="${id}"]`);
   const st = +el.dataset.step, min = +el.dataset.min, max = +el.dataset.max;
   const read = () => { const v = parseFloat(inp.value.replace(',', '.')); return isFinite(v) ? Math.max(min, Math.min(max, v)) : null; };
-  const set = v => { inp.value = v == null ? '' : String(Math.round(v * 10) / 10).replace('.', ','); el.classList.toggle('off', v == null); chip?.classList.toggle('on', v == null); onChange(v); };
+  const set = v => { inp.value = v == null ? '' : String(Math.round(v * 10) / 10); el.classList.toggle('off', v == null); chip?.classList.toggle('on', v == null); onChange(v); };
   el.querySelectorAll('.sb').forEach(b => b.onclick = () => { const v = read() ?? fallback; set(Math.max(min, Math.min(max, Math.round((v + st * +b.dataset.d) * 10) / 10))); });
   inp.onchange = () => { const v = read(); if (v == null && !chip) return set(fallback); set(v); };
   if (chip) chip.onclick = () => set(chip.classList.contains('on') ? fallback : null);
