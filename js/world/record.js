@@ -5,13 +5,13 @@ import { timeAt } from '../track.js';
 import { WorldScene, prepareWorld } from './lofoten.js';
 
 const CLIPS = [
-  { from: 150, speed: 15, sec: 14, title: 'Fischerhafen', sub: 'Start · Rorbuer am Wasser' },
-  { from: 3000, speed: 18, sec: 12, title: 'Küstenstraße', sub: 'Einrollen · 10 min' },
-  { from: 6350, speed: 13, sec: 16, title: 'Kirchturm-Rampe', sub: 'Intervall 1 · 8 min · 6 % · Serpentinen' },
-  { from: 12600, speed: 15, sec: 12, title: 'Mühlenpass', sub: 'Intervall 2 · 10 min · 5 %' },
-  { from: 20600, speed: 16, sec: 14, title: 'Klippenstraße', sub: 'Intervall 3 · 12 min · hoch über dem Meer' },
-  { from: 28700, speed: 13, sec: 16, title: 'Burgberg', sub: 'Intervall 4 · 10 min · 7 % · Burg am Gipfel' },
-  { from: 35600, speed: 16, sec: 12, title: 'Ausrollen', sub: 'Ziel an der Küste' },
+  { from: 150, speed: 15, sec: 14, title: 'Fishing harbour', sub: 'Start · rorbuer by the water' },
+  { from: 3000, speed: 18, sec: 12, title: 'Coast road', sub: 'Warm-up · 10 min' },
+  { from: 6350, speed: 13, sec: 16, title: 'Church tower ramp', sub: 'Interval 1 · 8 min · 6 % · switchbacks' },
+  { from: 12600, speed: 15, sec: 12, title: 'Mill pass', sub: 'Interval 2 · 10 min · 5 %' },
+  { from: 20600, speed: 16, sec: 14, title: 'Cliff road', sub: 'Interval 3 · 12 min · high above the sea' },
+  { from: 28700, speed: 13, sec: 16, title: 'Castle hill', sub: 'Interval 4 · 10 min · 7 % · castle at the top' },
+  { from: 35600, speed: 16, sec: 12, title: 'Cool-down', sub: 'Finish on the coast' },
 ];
 if (new URLSearchParams(location.search).has('test')) { CLIPS.splice(2); CLIPS.forEach(c => c.sec = 2); }
 const FPS = 30, W = 1920, H = 1080, FADE = 0.6;
@@ -40,11 +40,11 @@ function caption(clip, a) {
   ctx.font = '600 30px Archivo'; ctx.fillStyle = 'rgba(244,244,239,.85)'; ctx.fillText(clip.sub, 118, H - 112);
   ctx.restore();
   // wordmark
-  ctx.save(); ctx.font = '900 28px Archivo'; const wm = 'RIDEFRAME · FELSENKÜSTE', tw = ctx.measureText(wm).width;
+  ctx.save(); ctx.font = '900 28px Archivo'; const wm = 'RIDEFRAME · ROCKY COAST', tw = ctx.measureText(wm).width;
   ctx.fillStyle = 'rgba(11,11,11,.55)'; ctx.fillRect(60, 50, tw + 90, 66); // box sized to the text
   ctx.fillStyle = '#ff5a1f'; ctx.fillRect(78, 66, 34, 34);
   ctx.fillStyle = '#f4f4ef'; ctx.textBaseline = 'middle'; ctx.fillText(wm, 126, 84);
-  ctx.font = '700 18px Archivo'; ctx.fillStyle = 'rgba(244,244,239,.7)'; ctx.fillText('ZEITRAFFER-VORSCHAU', W - 300, 84);
+  ctx.font = '700 18px Archivo'; ctx.fillStyle = 'rgba(244,244,239,.7)'; ctx.fillText('TIME-LAPSE PREVIEW', W - 300, 84);
   ctx.restore();
 }
 
@@ -80,7 +80,7 @@ await prep(CLIPS[0]);
 rec.start(1000);
 for (let c = 0; c < CLIPS.length; c++) {
   const clip = CLIPS[c];
-  st.textContent = `Aufnahme ${c + 1}/${CLIPS.length}: ${clip.title}`;
+  st.textContent = `Recording ${c + 1}/${CLIPS.length}: ${clip.title}`;
   if (c) { rec.pause(); await prep(clip); rec.resume(); }
   const t0 = performance.now();
   await new Promise(res => {
@@ -97,5 +97,5 @@ const blob = new Blob(chunks, { type: mime.split(';')[0] });
 const ext = mime.startsWith('video/mp4') ? 'mp4' : 'webm';
 const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = q.get('name') || `Felsenkueste_Vorschau.${ext}`;
 document.body.append(a); a.click();
-st.textContent = `Fertig: ${(blob.size / 1e6).toFixed(1)} MB · ${ext}`;
+st.textContent = `Done: ${(blob.size / 1e6).toFixed(1)} MB · ${ext}`;
 window.__recDone = { size: blob.size, ext };

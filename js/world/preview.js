@@ -33,7 +33,7 @@ $('play').onclick = () => { playing = !playing; upd(); };
 document.querySelectorAll('[data-s]').forEach(b => b.onclick = () => {
   speed = +b.dataset.s; document.querySelectorAll('[data-s]').forEach(x => x.classList.toggle('on', x === b));
 });
-function upd() { $('play').textContent = playing ? '❚❚ Pause' : '▶ Abspielen'; $('play').classList.toggle('on', playing); }
+function upd() { $('play').textContent = playing ? '❚❚ Pause' : '▶ Play'; $('play').classList.toggle('on', playing); }
 
 // elevation profile with segment bands
 const pc = $('prof'), px = pc.getContext('2d');

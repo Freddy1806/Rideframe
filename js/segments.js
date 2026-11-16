@@ -29,7 +29,7 @@ export function findSegments(track) {
   for (const r of runs) {
     const from = r.a * STEP, to = Math.min(track.length, r.b * STEP), len = to - from, dh = ele(r.b) - ele(r.a);
     if (r.k === 'climb' && len >= 400 && dh >= 15) out.push({ kind: 'climb', from, to, len, avg: dh / len * 100, name: nameAt((from + to) / 2, `Climb ${++nc}`) });
-    else if (r.k === 'descent' && len >= 400 && dh <= -15) out.push({ kind: 'descent', from, to, len, avg: dh / len * 100, name: `Abfahrt ${++nd}` });
+    else if (r.k === 'descent' && len >= 400 && dh <= -15) out.push({ kind: 'descent', from, to, len, avg: dh / len * 100, name: `Descent ${++nd}` });
     else if (r.k === 'flat' && len >= 1200) { // long flats in pieces of at most ~5 km
       const parts = Math.ceil(len / 5000), pl = len / parts;
       for (let p = 0; p < parts; p++) { const a = from + p * pl, b = a + pl; out.push({ kind: 'flat', from: a, to: b, len: pl, avg: (track.ele[Math.min(n - 1, Math.round(b / STEP))] - track.ele[Math.round(a / STEP)]) / pl * 100, name: nameAt((a + b) / 2, `Flat ${++nf}`) + (parts > 1 ? ` ${p + 1}/${parts}` : '') }); }

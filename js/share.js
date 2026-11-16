@@ -10,8 +10,8 @@ import { esc, fmtTime, fmtKm } from './util.js';
 // ---------- name ----------
 export function riderName(ask = true) {
   let n = state.settings.riderName;
-  if (!n && ask) { try { n = (prompt('Dein Name (sehen die anderen beim Zusammenfahren)', '') || '').trim().slice(0, 20); } catch { n = ''; } if (n) { state.settings.riderName = n; saveSettings(); } }
-  return n || 'Fahrer';
+  if (!n && ask) { try { n = (prompt('Your name (others see it when riding together)', '') || '').trim().slice(0, 20); } catch { n = ''; } if (n) { state.settings.riderName = n; saveSettings(); } }
+  return n || 'Rider';
 }
 
 // ---------- shared rides (files) ----------
@@ -25,9 +25,9 @@ export function shareRide(rec) {
     duration: rec.duration, distance: rec.distance, gain: rec.gain, avgPower: rec.avgPower, startD: rec.startD || 0, complete: !!rec.complete, look: state.settings.look || null, samples: rec.samples };
   const blob = new Blob([JSON.stringify(data)], { type: 'application/json' });
   const a = document.createElement('a'); a.href = URL.createObjectURL(blob);
-  a.download = `RIDEFRAME_${(route?.name || 'Fahrt').replace(/[^\wäöüÄÖÜß-]+/g, '_')}_${data.rider.replace(/[^\wäöüÄÖÜß-]+/g, '_')}_${fmtTime(rec.duration).replace(/:/g, '-')}.rideframe`;
+  a.download = `RIDEFRAME_${(route?.name || 'Ride').replace(/[^\wäöüÄÖÜß-]+/g, '_')}_${data.rider.replace(/[^\wäöüÄÖÜß-]+/g, '_')}_${fmtTime(rec.duration).replace(/:/g, '-')}.rideframe`;
   document.body.append(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(a.href), 5000);
-  toast('Datei gespeichert. Schick sie z. B. per WhatsApp oder Mail, dein Freund zieht sie in seine RIDEFRAME-Bibliothek.', 5000);
+  toast('File saved. Send it by WhatsApp or mail, for example; your friend drops it into their RIDEFRAME library.', 5000);
 }
 
 /** files dropped or picked: .rideframe (or .json with our type). Returns the files that were not ours. */
@@ -37,16 +37,16 @@ export async function importShared(files) {
     if (!/\.(rideframe|json)$/i.test(f.name)) { rest.push(f); continue; }
     try {
       const j = JSON.parse(await f.text());
-      if (j?.type !== 'rideframe-ride' || !Array.isArray(j.samples) || !j.samples.length) throw new Error('keine RIDEFRAME-Fahrt');
+      if (j?.type !== 'rideframe-ride' || !Array.isArray(j.samples) || !j.samples.length) throw new Error('not a RIDEFRAME ride');
       const route = routeById(String(j.routeId));
-      if (!route) { toast(`Die Strecke „${j.routeName || j.routeId}“ gibt es bei dir nicht. Eigene Video-Strecken müssen beide importiert haben.`, 6000); continue; }
+      if (!route) { toast(`You don't have the route “${j.routeName || j.routeId}”. For your own video routes, both of you must have imported them.`, 6000); continue; }
       const n = v => (Number.isFinite(+v) ? +v : 0);
-      const rec = { id: uid(), rider: String(j.rider || 'Freund').slice(0, 20), routeId: route.id, date: n(j.date), duration: n(j.duration), distance: n(j.distance), gain: n(j.gain),
+      const rec = { id: uid(), rider: String(j.rider || 'Friend').slice(0, 20), routeId: route.id, date: n(j.date), duration: n(j.duration), distance: n(j.distance), gain: n(j.gain),
         avgPower: n(j.avgPower), startD: n(j.startD), complete: !!j.complete, look: j.look && typeof j.look === 'object' ? cleanLook(j.look) : null, samples: j.samples.filter(s => Array.isArray(s)).map(s => s.slice(0, 6).map(n)) };
       state.shared = [...(state.shared || []).filter(x => !(x.rider === rec.rider && x.routeId === rec.routeId && x.date === rec.date)), rec];
       await db.kvSet('shared', state.shared);
       state.settings.ghost = 's:' + rec.id; saveSettings();
-      toast(`${rec.rider} auf ${route.name} (${fmtTime(rec.duration)}) ist jetzt dein Gegner.`, 5000);
+      toast(`${rec.rider} on ${route.name} (${fmtTime(rec.duration)}) is now your opponent.`, 5000);
       if (state.view === 'detail' || state.view === 'library') import('./app.js').then(m => m.go('detail', route.id));
     } catch (e) { toast(`${f.name}: ${e.message}`); }
   }
@@ -85,8 +85,8 @@ export function groupModal({ routeId = null, code = null, startRide }) {
   document.body.append(m);
   const updVoice = () => { // only the voice bits, so speaking flags don't rebuild the whole window
     const g = group, v = g?.voice, b = m.querySelector('#gVoice'); if (!b) return;
-    b.innerHTML = MIC_SVG + (v?.on ? ' Sprachchat aus' : ' Sprachchat an'); b.classList.toggle('on', !!v?.on);
-    const mu = m.querySelector('#gMute'); mu.hidden = !v?.on || !v.hasMic || v.ptt; mu.textContent = v?.muted ? 'Mikro an' : 'Stumm (T)';
+    b.innerHTML = MIC_SVG + (v?.on ? ' Voice chat off' : ' Voice chat on'); b.classList.toggle('on', !!v?.on);
+    const mu = m.querySelector('#gMute'); mu.hidden = !v?.on || !v.hasMic || v.ptt; mu.textContent = v?.muted ? 'Mic on' : 'Mute (T)';
     m.querySelector('#gVoiceSt').textContent = voiceStatus(v);
     m.querySelectorAll('.group-list [data-pid]').forEach(r => { const pid = r.dataset.pid, sp = pid === g?.me.pid ? !!v?.speaking : !!v?.isSpeaking(pid); r.classList.toggle('speaking', sp); r.classList.toggle('invoice', pid === g?.me.pid ? !!v?.on : !!v?.connected(pid)); });
   };
@@ -95,64 +95,64 @@ export function groupModal({ routeId = null, code = null, startRide }) {
   const render = () => {
     const g = group, me = g?.me, others = g ? g.others() : [];
     if (!g) {
-      m.innerHTML = `<div class="box"><div class="label">Zusammen fahren</div><h2 class="display">Live mit<br>Freunden</h2>
-        <p>Jeder fährt zu Hause auf seinem Trainer. Ihr seht euch gegenseitig auf der Strecke und den Abstand in Metern. Ihr braucht beide RIDEFRAME und Internet.</p>
-        <label class="field"><div style="min-width:110px;white-space:nowrap">Dein Name</div><input type="text" id="gName" maxlength="20" placeholder="Name" value="${esc(state.settings.riderName || '')}"></label>
+      m.innerHTML = `<div class="box"><div class="label">Ride together</div><h2 class="display">Live with<br>friends</h2>
+        <p>Everyone rides at home on their own trainer. You see each other on the route and the gap in metres. You both need RIDEFRAME and internet.</p>
+        <label class="field"><div style="min-width:110px;white-space:nowrap">Your name</div><input type="text" id="gName" maxlength="20" placeholder="Name" value="${esc(state.settings.riderName || '')}"></label>
         <div class="actions" style="justify-content:flex-start;gap:10px;flex-wrap:wrap">
-          <button class="btn" id="gHost">Gruppe erstellen</button>
+          <button class="btn" id="gHost">Create group</button>
           <input type="text" id="gCode" placeholder="Code" maxlength="5" style="width:120px;height:48px;text-transform:lowercase;text-align:center;letter-spacing:.15em" value="${esc(code || '')}">
-          <button class="btn ghost" id="gJoin">Beitreten</button>
-          <button class="btn ghost small" id="gLook2">Aussehen</button>
-          <button class="btn ghost small" id="gClose" style="margin-left:auto">Schließen</button>
+          <button class="btn ghost" id="gJoin">Join</button>
+          <button class="btn ghost small" id="gLook2">Look</button>
+          <button class="btn ghost small" id="gClose" style="margin-left:auto">Close</button>
         </div><p id="gMsg"></p></div>`;
       m.querySelector('#gClose').onclick = close;
       m.querySelector('#gLook2').onclick = () => import('./avatar-ui.js').then(x => x.avatarModal());
       const go = async opts => {
         const nn = (m.querySelector('#gName')?.value || '').trim().slice(0, 20);
         if (nn && nn !== state.settings.riderName) { state.settings.riderName = nn; saveSettings(); }
-        name = nn || state.settings.riderName || 'Fahrer';
-        m.querySelector('#gMsg').textContent = 'Verbinde …';
+        name = nn || state.settings.riderName || 'Rider';
+        m.querySelector('#gMsg').textContent = 'Connecting …';
         const g2 = new Group({ name, look: state.settings.look, ...opts, onChange: () => render(), onError: msg => { const el = m.querySelector('#gMsg'); if (el) el.textContent = msg; else toast(msg, 5000); },
-          onStart: ({ routeId: rid, at, d }) => { const r = routeById(rid); if (!r) return toast('Diese Strecke hast du nicht.'); close(); const own = rejoinAt(g2.code, rid, null), dd = own ?? d, el = own != null ? lastGroup()?.el || 0 : 0; setTimeout(() => startRide(rid, { group: g2, ...(dd ? { at: dd } : {}), elapsed0: el, catchUp: own == null }), Math.max(0, at - Date.now())); toast('Gleich geht es los!', 3000); } });
+          onStart: ({ routeId: rid, at, d }) => { const r = routeById(rid); if (!r) return toast("You don't have this route."); close(); const own = rejoinAt(g2.code, rid, null), dd = own ?? d, el = own != null ? lastGroup()?.el || 0 : 0; setTimeout(() => startRide(rid, { group: g2, ...(dd ? { at: dd } : {}), elapsed0: el, catchUp: own == null }), Math.max(0, at - Date.now())); toast('Starting in a moment!', 3000); } });
         try { await g2.connect(); group = g2; const lg2 = opts.hostCode ? lastGroup() : null, lr = lg2?.routeId; if (g2.host && (routeId || lr)) g2.setRoute(routeId || lr);
           // host reopened his group after a reload: straight back onto the road at his own spot, the others reconnect by themselves
-          if (lg2?.d > 0 && lr && routeById(lr)) { g2.rolling = true; close(); toast('Weiter geht es, an deiner letzten Stelle', 3000); startRide(lr, { group: g2, at: lg2.d, elapsed0: lg2.el || 0 }); return; }
+          if (lg2?.d > 0 && lr && routeById(lr)) { g2.rolling = true; close(); toast('Carrying on from where you were', 3000); startRide(lr, { group: g2, at: lg2.d, elapsed0: lg2.el || 0 }); return; }
           render(); }
         catch (e) { g2.close(); m.querySelector('#gMsg').textContent = e.message; }
       };
       const lg = lastGroup(); // you hosted a group in the last hours (page reloaded): the same code again, your friends reconnect by themselves
       m.querySelector('#gHost').onclick = () => go(lg?.host ? { hostCode: lg.code } : {});
-      if (lg?.host) m.querySelector('#gHost').textContent = 'Gruppe ' + lg.code + ' wieder öffnen';
+      if (lg?.host) m.querySelector('#gHost').textContent = 'Reopen group ' + lg.code;
       else if (lg && !code) m.querySelector('#gCode').value = lg.code;
-      m.querySelector('#gJoin').onclick = () => { const c = m.querySelector('#gCode').value.trim().toLowerCase(); if (c.length === 5) go({ code: c }); else m.querySelector('#gMsg').textContent = 'Der Code hat 5 Zeichen.'; };
+      m.querySelector('#gJoin').onclick = () => { const c = m.querySelector('#gCode').value.trim().toLowerCase(); if (c.length === 5) go({ code: c }); else m.querySelector('#gMsg').textContent = 'The code has 5 characters.'; };
       if (code) m.querySelector('#gJoin').click();
       return;
     }
     const route = g.routeId ? routeById(g.routeId) : null;
-    m.innerHTML = `<div class="box"><div class="label">Zusammen fahren · ${g.host ? 'Du bist Gastgeber' : 'Beigetreten'}</div>
+    m.innerHTML = `<div class="box"><div class="label">Ride together · ${g.host ? 'You are the host' : 'Joined'}</div>
       <div class="group-code">${esc(g.code)}</div>
-      <p>${g.host ? 'Schick diesen Code deinen Freunden. Sie öffnen RIDEFRAME, klicken „Zusammen fahren“ und geben ihn ein.' : 'Warte, bis der Gastgeber startet. Der Start kommt bei allen gleichzeitig.'}</p>
-      ${g.host ? `<div class="actions" style="justify-content:flex-start;gap:8px"><button class="btn ghost small" id="gCopy">Code kopieren</button><button class="btn ghost small" id="gLink">Link kopieren</button></div>` : ''}
-      <div class="label" style="margin-top:18px">Strecke</div>
-      ${g.host ? `<select id="gRoute" style="width:100%;margin-bottom:12px">${g.routeId ? '' : '<option value="">Strecke wählen …</option>'}${allRoutes().map(r => `<option value="${esc(r.id)}" ${r.id === g.routeId ? 'selected' : ''}>${esc(r.name)} · ${fmtKm(r.track.length)} km</option>`).join('')}</select>`
-        : `<p style="color:var(--paper);font-weight:700">${route ? esc(route.name) + ' · ' + fmtKm(route.track.length) + ' km' : g.routeId ? 'Strecke „' + esc(g.routeId) + '“ fehlt bei dir' : 'Gastgeber wählt …'}</p>`}
-      <div class="label">Fahrer (${others.length + 1})</div>
-      <div class="group-list"><div data-pid="${esc(me.pid || '')}"><span><i class="spk">${SPK_SVG}</i>${esc(me.name)} (du)</span><span>${g.host ? 'Gastgeber' : ''}</span></div>${others.map(r => `<div data-pid="${esc(r.pid || '')}"><span><i class="spk">${SPK_SVG}</i>${esc(r.name)}</span><span>${r.vo ? 'Sprachchat · ' : ''}${r.riding ? 'fährt · ' + fmtKm(r.d) + ' km' : 'bereit'}</span></div>`).join('')}</div>
-      <div class="voicebar"><button class="btn ghost small" id="gVoice" title="Ihr hört euch während der Fahrt. Der Browser fragt einmal nach dem Mikrofon."></button><button class="btn ghost small" id="gMute" hidden></button><span class="vstat" id="gVoiceSt"></span></div>
+      <p>${g.host ? 'Send this code to your friends. They open RIDEFRAME, click “Ride together” and enter it.' : 'Wait for the host to start. Everyone starts at the same time.'}</p>
+      ${g.host ? `<div class="actions" style="justify-content:flex-start;gap:8px"><button class="btn ghost small" id="gCopy">Copy code</button><button class="btn ghost small" id="gLink">Copy link</button></div>` : ''}
+      <div class="label" style="margin-top:18px">Route</div>
+      ${g.host ? `<select id="gRoute" style="width:100%;margin-bottom:12px">${g.routeId ? '' : '<option value="">Choose route …</option>'}${allRoutes().map(r => `<option value="${esc(r.id)}" ${r.id === g.routeId ? 'selected' : ''}>${esc(r.name)} · ${fmtKm(r.track.length)} km</option>`).join('')}</select>`
+        : `<p style="color:var(--paper);font-weight:700">${route ? esc(route.name) + ' · ' + fmtKm(route.track.length) + ' km' : g.routeId ? 'You are missing route “' + esc(g.routeId) + '”' : 'Host is choosing …'}</p>`}
+      <div class="label">Riders (${others.length + 1})</div>
+      <div class="group-list"><div data-pid="${esc(me.pid || '')}"><span><i class="spk">${SPK_SVG}</i>${esc(me.name)} (you)</span><span>${g.host ? 'Host' : ''}</span></div>${others.map(r => `<div data-pid="${esc(r.pid || '')}"><span><i class="spk">${SPK_SVG}</i>${esc(r.name)}</span><span>${r.vo ? 'Voice chat · ' : ''}${r.riding ? 'riding · ' + fmtKm(r.d) + ' km' : 'ready'}</span></div>`).join('')}</div>
+      <div class="voicebar"><button class="btn ghost small" id="gVoice" title="You hear each other during the ride. The browser asks once for the microphone."></button><button class="btn ghost small" id="gMute" hidden></button><span class="vstat" id="gVoiceSt"></span></div>
       <div class="actions">
-        <button class="btn ghost small" id="gLeave">Gruppe verlassen</button>
-        <button class="btn ghost small" id="gLook">Aussehen ändern</button>
-        ${g.host ? `<button class="btn" id="gStart" ${route ? '' : 'disabled'}>Alle starten ▸</button>` : `<button class="btn ghost" id="gSolo" ${route ? '' : 'disabled'}>Schon mal losfahren</button>`}
+        <button class="btn ghost small" id="gLeave">Leave group</button>
+        <button class="btn ghost small" id="gLook">Change look</button>
+        ${g.host ? `<button class="btn" id="gStart" ${route ? '' : 'disabled'}>Start everyone ▸</button>` : `<button class="btn ghost" id="gSolo" ${route ? '' : 'disabled'}>Start riding already</button>`}
       </div></div>`;
     m.querySelector('#gRoute')?.addEventListener('change', e => { if (e.target.value) g.setRoute(e.target.value); });
     m.querySelector('#gLook').onclick = () => import('./avatar-ui.js').then(x => x.avatarModal({ onDone: () => render() }));
     m.querySelector('#gVoice').onclick = () => voiceToggle(g).then(updVoice);
     m.querySelector('#gMute').onclick = () => g.voice?.toggleMute();
     updVoice();
-    m.querySelector('#gLeave').onclick = () => { group?.close(); group = null; close(); toast('Gruppe verlassen'); };
-    m.querySelector('#gCopy')?.addEventListener('click', () => navigator.clipboard?.writeText(g.code).then(() => toast('Code kopiert')));
-    m.querySelector('#gLink')?.addEventListener('click', () => navigator.clipboard?.writeText(g.link).then(() => toast('Link kopiert. Klappt, wenn dein Freund RIDEFRAME auch unter dieser Adresse laufen hat.', 5000)));
-    m.querySelector('#gStart')?.addEventListener('click', () => { const at = g.start(g.routeId); close(); toast('Start in 5 Sekunden für alle', 3000); const ra = rejoinAt(g.code, g.routeId); setTimeout(() => startRide(g.routeId, { group: g, ...(ra ? { at: ra } : {}) }), Math.max(0, at - Date.now())); });
+    m.querySelector('#gLeave').onclick = () => { group?.close(); group = null; close(); toast('Left the group'); };
+    m.querySelector('#gCopy')?.addEventListener('click', () => navigator.clipboard?.writeText(g.code).then(() => toast('Code copied')));
+    m.querySelector('#gLink')?.addEventListener('click', () => navigator.clipboard?.writeText(g.link).then(() => toast('Link copied. Works if your friend runs RIDEFRAME at this address too.', 5000)));
+    m.querySelector('#gStart')?.addEventListener('click', () => { const at = g.start(g.routeId); close(); toast('Start in 5 seconds for everyone', 3000); const ra = rejoinAt(g.code, g.routeId); setTimeout(() => startRide(g.routeId, { group: g, ...(ra ? { at: ra } : {}) }), Math.max(0, at - Date.now())); });
     m.querySelector('#gSolo')?.addEventListener('click', () => { close(); const ra = rejoinAt(g.code, g.routeId); startRide(g.routeId, { group: g, ...(ra ? { at: ra } : {}) }); });
   };
   if (group?.open) { if (group.host && routeId && routeId !== group.routeId) group.setRoute(routeId); group.onChange = () => render(); }

@@ -20,16 +20,16 @@ export const COAST_DESIGN = { ftp: 259, riderKg: 87, bikeKg: 8.5 };
 //  harbour/village = houses, coast = sea on the left at road level, cliff = sea far below on the left,
 //  serp = switchbacks up a mountain flank, valley = between two slopes
 export const COAST_SEGMENTS = [
-  { kind: 'flat', min: 10, watt: 0.72, wobble: 1.2, name: 'Einrollen am Fischerhafen', land: 'coast', village: [0.03, 0.28] },
-  { kind: 'climb', min: 8, grade: 6.0, name: 'Kirchturm-Rampe', land: 'serp', top: 'church' },
-  { kind: 'recover', min: 5, name: 'Abfahrt zur Bucht', land: 'coast' },
-  { kind: 'climb', min: 10, grade: 5.0, name: 'Mühlenpass', land: 'valley', top: 'mill' },
-  { kind: 'recover', min: 5, name: 'Abfahrt durchs Dorf', land: 'coast', village: [0.15, 0.9] },
-  { kind: 'climb', min: 12, grade: 4.5, name: 'Klippenstraße', land: 'cliff', top: 'lookout' },
-  { kind: 'recover', min: 5, name: 'Abfahrt zum Strand', land: 'coast', beach: true },
-  { kind: 'climb', min: 10, grade: 7.0, name: 'Burgberg', land: 'serp', top: 'castle' },
-  { kind: 'recover', min: 4, name: 'Abfahrt zum Ziel', land: 'coast' },
-  { kind: 'flat', min: 8, watt: 0.6, wobble: 0.8, name: 'Ausrollen an der Küste', land: 'coast', village: [0.7, 1.0] },
+  { kind: 'flat', min: 10, watt: 0.72, wobble: 1.2, name: 'Warm-up at the fishing harbour', land: 'coast', village: [0.03, 0.28] },
+  { kind: 'climb', min: 8, grade: 6.0, name: 'Church tower ramp', land: 'serp', top: 'church' },
+  { kind: 'recover', min: 5, name: 'Descent to the bay', land: 'coast' },
+  { kind: 'climb', min: 10, grade: 5.0, name: 'Mill pass', land: 'valley', top: 'mill' },
+  { kind: 'recover', min: 5, name: 'Descent through the village', land: 'coast', village: [0.15, 0.9] },
+  { kind: 'climb', min: 12, grade: 4.5, name: 'Cliff road', land: 'cliff', top: 'lookout' },
+  { kind: 'recover', min: 5, name: 'Descent to the beach', land: 'coast', beach: true },
+  { kind: 'climb', min: 10, grade: 7.0, name: 'Castle hill', land: 'serp', top: 'castle' },
+  { kind: 'recover', min: 4, name: 'Descent to the finish', land: 'coast' },
+  { kind: 'flat', min: 8, watt: 0.6, wobble: 0.8, name: 'Cool-down on the coast', land: 'coast', village: [0.7, 1.0] },
 ];
 
 // heading change per 10 m sample for a switchback climb: turn east, legs east/west with hairpins, back north
@@ -55,68 +55,68 @@ export function makeCoastTrack() { return makeDesignedTrack(COAST_SEGMENTS, { se
 // ---------------- more designed routes (Freddy, plan package 7) ----------------
 // short round: two short climbs, three villages, ~30 km
 export const SHORT_SEGMENTS = [
-  { kind: 'flat', min: 14, watt: 0.7, wobble: 1.0, name: 'Hafenrunde', land: 'coast', village: [0.05, 0.4] },
-  { kind: 'climb', min: 6, grade: 5.0, name: 'Kapellenstich', land: 'serp', top: 'church' },
-  { kind: 'recover', min: 5, name: 'Abfahrt zum Fjord', land: 'coast' },
-  { kind: 'flat', min: 12, watt: 0.72, wobble: 1.4, name: 'Dorfstraße', land: 'valley', village: [0.2, 0.8] },
-  { kind: 'climb', min: 5, grade: 6.5, name: 'Mühlenbuckel', land: 'valley', top: 'mill' },
-  { kind: 'recover', min: 4, name: 'Abfahrt zum Strand', land: 'coast', beach: true },
-  { kind: 'flat', min: 10, watt: 0.62, wobble: 0.8, name: 'Ausrollen im Hafen', land: 'coast', village: [0.55, 1.0] },
+  { kind: 'flat', min: 14, watt: 0.7, wobble: 1.0, name: 'Harbour Loop', land: 'coast', village: [0.05, 0.4] },
+  { kind: 'climb', min: 6, grade: 5.0, name: 'Chapel ramp', land: 'serp', top: 'church' },
+  { kind: 'recover', min: 5, name: 'Descent to the fjord', land: 'coast' },
+  { kind: 'flat', min: 12, watt: 0.72, wobble: 1.4, name: 'Village street', land: 'valley', village: [0.2, 0.8] },
+  { kind: 'climb', min: 5, grade: 6.5, name: 'Mill hump', land: 'valley', top: 'mill' },
+  { kind: 'recover', min: 4, name: 'Descent to the beach', land: 'coast', beach: true },
+  { kind: 'flat', min: 10, watt: 0.62, wobble: 0.8, name: 'Cool-down in the harbour', land: 'coast', village: [0.55, 1.0] },
 ];
 // river valley: wide river on the left with rowing boats and anglers, ~40 km
 export const RIVER_SEGMENTS = [
-  { kind: 'flat', min: 13, watt: 0.7, wobble: 0.8, name: 'Am Fluss entlang', land: 'river', village: [0.1, 0.35] },
-  { kind: 'flat', min: 15, watt: 0.75, wobble: 1.6, name: 'Anglerufer', land: 'river' },
-  { kind: 'climb', min: 7, grade: 5.5, name: 'Weinbergrampe', land: 'valley', top: 'lookout' },
-  { kind: 'recover', min: 5, name: 'Zurück ans Ufer', land: 'river' },
-  { kind: 'flat', min: 14, watt: 0.78, wobble: 1.2, name: 'Flussdörfer', land: 'river', village: [0.3, 0.75] },
-  { kind: 'climb', min: 6, grade: 6.0, name: 'Brückenberg', land: 'serp', top: 'church' },
-  { kind: 'recover', min: 5, name: 'Abfahrt zur Mündung', land: 'river' },
-  { kind: 'flat', min: 8, watt: 0.6, wobble: 0.6, name: 'Ausrollen an der Mündung', land: 'coast', village: [0.6, 1.0] },
+  { kind: 'flat', min: 13, watt: 0.7, wobble: 0.8, name: 'Along the river', land: 'river', village: [0.1, 0.35] },
+  { kind: 'flat', min: 15, watt: 0.75, wobble: 1.6, name: "Anglers' bank", land: 'river' },
+  { kind: 'climb', min: 7, grade: 5.5, name: 'Vineyard ramp', land: 'valley', top: 'lookout' },
+  { kind: 'recover', min: 5, name: 'Back to the bank', land: 'river' },
+  { kind: 'flat', min: 14, watt: 0.78, wobble: 1.2, name: 'River villages', land: 'river', village: [0.3, 0.75] },
+  { kind: 'climb', min: 6, grade: 6.0, name: 'Bridge hill', land: 'serp', top: 'church' },
+  { kind: 'recover', min: 5, name: 'Descent to the estuary', land: 'river' },
+  { kind: 'flat', min: 8, watt: 0.6, wobble: 0.6, name: 'Cool-down at the estuary', land: 'coast', village: [0.6, 1.0] },
 ];
 // the big mountain day: ~1800 m of switchbacks, short plateaus in between, summit finish on the pass
 export const PASS_SEGMENTS = [
-  { kind: 'flat', min: 8, watt: 0.65, wobble: 0.8, name: 'Einrollen im Tal', land: 'valley', village: [0.3, 0.9] },
-  { kind: 'climb', gain: 450, grade: 6.5, watt: 0.8, name: 'Erste Kehren', land: 'serp' },
-  { kind: 'plateau', min: 4, name: 'Almboden', land: 'valley' },
-  { kind: 'climb', gain: 450, grade: 7.0, watt: 0.8, name: 'Waldkehren', land: 'serp' },
-  { kind: 'plateau', min: 5, name: 'Bergdorf', land: 'valley', village: [0.15, 0.85] },
-  { kind: 'climb', gain: 450, grade: 7.5, watt: 0.8, name: 'Felsenkehren', land: 'serp' },
-  { kind: 'plateau', min: 3, name: 'Hochalm', land: 'valley' },
-  { kind: 'climb', gain: 450, grade: 8.0, watt: 0.85, name: 'Himmelsleiter', land: 'serp', top: 'pass' },
-  { kind: 'plateau', min: 3, name: 'Passhöhe', land: 'valley' },
+  { kind: 'flat', min: 8, watt: 0.65, wobble: 0.8, name: 'Warm-up in the valley', land: 'valley', village: [0.3, 0.9] },
+  { kind: 'climb', gain: 450, grade: 6.5, watt: 0.8, name: 'First hairpins', land: 'serp' },
+  { kind: 'plateau', min: 4, name: 'Alpine meadow', land: 'valley' },
+  { kind: 'climb', gain: 450, grade: 7.0, watt: 0.8, name: 'Forest hairpins', land: 'serp' },
+  { kind: 'plateau', min: 5, name: 'Mountain village', land: 'valley', village: [0.15, 0.85] },
+  { kind: 'climb', gain: 450, grade: 7.5, watt: 0.8, name: 'Rock hairpins', land: 'serp' },
+  { kind: 'plateau', min: 3, name: 'High pasture', land: 'valley' },
+  { kind: 'climb', gain: 450, grade: 8.0, watt: 0.85, name: 'Sky Ladder', land: 'serp', top: 'pass' },
+  { kind: 'plateau', min: 3, name: 'Summit of the pass', land: 'valley' },
 ];
 // misty monastery mountain in an (original) East Asian style: bamboo, pagodas, lanterns, monks training, ~35 km
 export const TEMPLE_SEGMENTS = [
-  { kind: 'flat', min: 10, watt: 0.68, wobble: 1.0, name: 'Bambustal', land: 'river', style: 'asia', temple: [0.4, 0.8] },
-  { kind: 'climb', min: 9, grade: 6.0, name: 'Laternenweg', land: 'serp', style: 'asia', top: 'pagode' },
-  { kind: 'plateau', min: 4, name: 'Klosterhof', land: 'valley', style: 'asia', temple: [0.1, 0.9] },
-  { kind: 'climb', min: 10, grade: 7.0, name: 'Tausend Stufen', land: 'serp', style: 'asia', top: 'pagode' },
-  { kind: 'recover', min: 6, name: 'Abfahrt durch den Nebelwald', land: 'river', style: 'asia' },
-  { kind: 'climb', min: 7, grade: 5.0, name: 'Drachenrücken', land: 'valley', style: 'asia', top: 'lookout' },
-  { kind: 'recover', min: 5, name: 'Abfahrt zum Fluss', land: 'river', style: 'asia' },
-  { kind: 'flat', min: 7, watt: 0.6, wobble: 0.8, name: 'Ausrollen am Teehaus', land: 'river', style: 'asia', temple: [0.5, 1.0] },
+  { kind: 'flat', min: 10, watt: 0.68, wobble: 1.0, name: 'Bamboo valley', land: 'river', style: 'asia', temple: [0.4, 0.8] },
+  { kind: 'climb', min: 9, grade: 6.0, name: 'Lantern path', land: 'serp', style: 'asia', top: 'pagode' },
+  { kind: 'plateau', min: 4, name: 'Monastery yard', land: 'valley', style: 'asia', temple: [0.1, 0.9] },
+  { kind: 'climb', min: 10, grade: 7.0, name: 'Thousand steps', land: 'serp', style: 'asia', top: 'pagode' },
+  { kind: 'recover', min: 6, name: 'Descent through the misty forest', land: 'river', style: 'asia' },
+  { kind: 'climb', min: 7, grade: 5.0, name: "Dragon's back", land: 'valley', style: 'asia', top: 'lookout' },
+  { kind: 'recover', min: 5, name: 'Descent to the river', land: 'river', style: 'asia' },
+  { kind: 'flat', min: 7, watt: 0.6, wobble: 0.8, name: 'Cool-down at the teahouse', land: 'river', style: 'asia', temple: [0.5, 1.0] },
 ];
 
 // the long one (Freddy 12.11.: "100 km, 300-400 Hm, relativ geradeaus, an der Küste lang"): coast, beaches, fjord, villages,
 // five short waves (no interval targets, it is an endurance ride), ~100 km / ~400 Hm
 const KF = (min, name, extra = {}) => ({ kind: 'flat', min, watt: 0.7, wobble: 0.5, name, land: 'coast', ...extra });
-const KW = (gain, name, top) => [{ kind: 'climb', gain, grade: 3.5, watt: 0.8, interval: false, name, land: 'cliff', top }, { kind: 'recover', min: 3, name: 'Abfahrt ' + name.split(' ').pop(), land: 'coast' }];
+const KW = (gain, name, top) => [{ kind: 'climb', gain, grade: 3.5, watt: 0.8, interval: false, name, land: 'cliff', top }, { kind: 'recover', min: 3, name: 'Descent from ' + name, land: 'coast' }];
 export const LONG_SEGMENTS = [
-  KF(16, 'Einrollen am Fischerhafen', { village: [0.05, 0.35] }), ...KW(25, 'Leuchtturmwelle', 'lookout'),
-  KF(18, 'Strandstraße', { beach: true }), KF(14, 'Fjordufer', { land: 'river', village: [0.3, 0.7] }), ...KW(35, 'Kirchhügel', 'church'),
-  KF(20, 'Klippenblick', { land: 'cliff' }), KF(14, 'Mühlendorf', { village: [0.2, 0.8] }), ...KW(30, 'Mühlenwelle', 'mill'),
-  KF(18, 'Dünenweg', { beach: true, wobble: 0.7 }), KF(16, 'Hafenstadt', { village: [0.1, 0.9] }), ...KW(40, 'Burgwelle', 'castle'),
-  KF(24, 'Lange Küstengerade', { wobble: 0.4 }), ...KW(25, 'Letzte Welle', 'lookout'), KF(14, 'Ausrollen am Hafen', { village: [0.5, 1.0], watt: 0.62 }),
+  KF(16, 'Warm-up at the fishing harbour', { village: [0.05, 0.35] }), ...KW(25, 'Lighthouse rise', 'lookout'),
+  KF(18, 'Beach road', { beach: true }), KF(14, 'Fjord shore', { land: 'river', village: [0.3, 0.7] }), ...KW(35, 'Church hill', 'church'),
+  KF(20, 'Cliff view', { land: 'cliff' }), KF(14, 'Mill village', { village: [0.2, 0.8] }), ...KW(30, 'Mill rise', 'mill'),
+  KF(18, 'Dune path', { beach: true, wobble: 0.7 }), KF(16, 'Harbour town', { village: [0.1, 0.9] }), ...KW(40, 'Castle rise', 'castle'),
+  KF(24, 'Long coast straight', { wobble: 0.4 }), ...KW(25, 'Last rise', 'lookout'), KF(14, 'Cool-down at the harbour', { village: [0.5, 1.0], watt: 0.62 }),
 ];
 
 /** The built-in designed routes beside the Felsenküste (id -> name, subtitle, segments, seed). */
 export const DESIGNED = {
-  kurz: { name: 'Hafenrunde', place: 'Kurze Runde · 2 kurze Anstiege · Hafen und Dörfer', segs: SHORT_SEGMENTS, seed: 31 },
-  fluss: { name: 'Flusstal', place: 'Am Fluss entlang · Ruderboote und Angler · 2 Anstiege', segs: RIVER_SEGMENTS, seed: 37 },
-  pass: { name: 'Himmelsleiter', place: 'Königsetappe · 4 Serpentinen-Anstiege · Bergankunft am Pass', segs: PASS_SEGMENTS, seed: 41 },
-  lang: { name: 'Küstenklassiker', place: 'Lange Küstenrunde · fast flach, fünf kurze Wellen · Strände, Fjord, Dörfer', segs: LONG_SEGMENTS, seed: 47 },
-  kloster: { name: 'Nebelkloster', place: 'Bambus, Pagoden, Laternen · Mönche trainieren am Weg', segs: TEMPLE_SEGMENTS, seed: 43 },
+  kurz: { name: 'Harbour Loop', place: 'Short loop · 2 short climbs · harbour and villages', segs: SHORT_SEGMENTS, seed: 31 },
+  fluss: { name: 'River Valley', place: 'Along the river · rowing boats and anglers · 2 climbs', segs: RIVER_SEGMENTS, seed: 37 },
+  pass: { name: 'Sky Ladder', place: 'Queen stage · 4 switchback climbs · summit finish on the pass', segs: PASS_SEGMENTS, seed: 41 },
+  lang: { name: 'Coast Classic', place: 'Long coast loop · almost flat, five short rises · beaches, fjord, villages', segs: LONG_SEGMENTS, seed: 47 },
+  kloster: { name: 'Misty Monastery', place: 'Bamboo, pagodas, lanterns · monks training by the road', segs: TEMPLE_SEGMENTS, seed: 43 },
 };
 export function makeBuiltinTrack(id) { const D = DESIGNED[id]; if (!D) return null; return { ...makeDesignedTrack(D.segs, { seed: D.seed, hairpin: 10 }), name: D.name }; } // wider hairpins: the legs stay ~64 m apart, no terrain between them pokes through
 
@@ -227,7 +227,7 @@ export function makeRealTrack(j) {
   const places = [...(j.places || [])].sort((a, b) => a.from_m - b.from_m), segs = [];
   const seaOn = (a, b) => { let s = 0, c = 0; for (let k = Math.floor(a / STEP); k < Math.min(n, b / STEP); k++) { s += side[k] !== 0; c++; } return c && s / c > 0.4; };
   const seaSide = (a, b) => { let s = 0; for (let k = Math.floor(a / STEP); k < Math.min(n, b / STEP); k++) s += side[k]; return s < 0 ? -1 : 1; };
-  const open = (a, b) => { if (b - a > 50) segs.push({ name: 'Küstenstraße', from: a, to: b, land: seaOn(a, b) ? 'coast' : 'valley', seaSide: seaSide(a, b) }); };
+  const open = (a, b) => { if (b - a > 50) segs.push({ name: 'Coast road', from: a, to: b, land: seaOn(a, b) ? 'coast' : 'valley', seaSide: seaSide(a, b) }); };
   let at = 0;
   for (const p of places) {
     const a = Math.max(at, p.from_m - 150), b = Math.min(L, p.to_m + 150); if (b <= a) continue;

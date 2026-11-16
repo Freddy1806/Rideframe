@@ -98,12 +98,12 @@ export class StoryRide {
       const k = Math.max(0, Math.min(dd, DAY_KM_CAP * 1000 - (L.day.km + this.km) * 1000)) / 1000;
       const h = Math.max(0, Math.min(dh, DAY_HM_CAP - (L.day.hm + this.hm)));
       this.km += k; this.hm += h;
-      if (power >= 0.9 * this.ftp) { this.hiT += dt; if (this.wizMin < WIZ_MIN_CAP && this.hiT >= 60 * (this.wizMin + 1)) { this.wizMin++; this._add('wizard', 1, 'Minuten über 90 % FTP'); } }
+      if (power >= 0.9 * this.ftp) { this.hiT += dt; if (this.wizMin < WIZ_MIN_CAP && this.hiT >= 60 * (this.wizMin + 1)) { this.wizMin++; this._add('wizard', 1, 'minutes above 90 % FTP'); } }
       if (power >= 0.9 * this.ftp) this.hiRun = (this.hiRun || 0) + dt; else this.hiRun = 0;
     } else this.hiRun = 0;
     // points as you go (king: 1/km; devil: 1 per 20 Hm)
-    while (this.km >= (this._kmPaid || 0) + 1) { this._kmPaid = (this._kmPaid || 0) + 1; this._add('king', 1, 'Kilometer'); }
-    while (this.hm >= (this._hmPaid || 0) + HM_STEP) { this._hmPaid = (this._hmPaid || 0) + HM_STEP; this._add('devil', 1, 'Höhenmeter'); }
+    while (this.km >= (this._kmPaid || 0) + 1) { this._kmPaid = (this._kmPaid || 0) + 1; this._add('king', 1, 'kilometres'); }
+    while (this.hm >= (this._hmPaid || 0) + HM_STEP) { this._hmPaid = (this._hmPaid || 0) + HM_STEP; this._add('devil', 1, 'metres climbed'); }
     // the warm-up: the week's leader at 0:20 (or the three announce the new week)
     if (this.t > 20 && !this.said.has('open')) { this.said.add('open'); const ld = leaderOf(L.pts);
       if (L.newWeek) this._line(pick(['wizard', 'king', 'devil']), 'newweek'); else if (ld) this._line(ld, 'lead'); }
@@ -118,17 +118,17 @@ export class StoryRide {
     if (this.queue.length && power < 1.05 * this.ftp && this.t >= (this.quietUntil || 0)) { const q = this.queue.shift(); if (this.t < q.until) { this.say?.(q.who, q.text); this.quietUntil = this.t + 4.5; } }
   }
   // ---- events from the ride ----
-  trialPass() { this.L.life.trials++; this._add('wizard', TRIAL_PTS, 'Prüfung bestanden'); this._line('wizard', 'pass'); }
+  trialPass() { this.L.life.trials++; this._add('wizard', TRIAL_PTS, 'trial passed'); this._line('wizard', 'pass'); }
   hellIn() { this.hellT = 0; this._line('devil', 'hellIn'); }
-  hellOut() { if (this.hellT == null) return; this._hadHell = true; this.hellT = null; this.L.life.hells++; this._add('devil', HELL_PTS, 'Zoll an den Teufel (Prüfung verpasst)'); this._line('devil', 'hellOut'); }
+  hellOut() { if (this.hellT == null) return; this._hadHell = true; this.hellT = null; this.L.life.hells++; this._add('devil', HELL_PTS, 'toll to the Devil (trial missed)'); this._line('devil', 'hellOut'); }
   challenge(id, type) { const who = OWNER[id]; if (!who) return;
     this._paid ||= new Set();
-    if (type === 'accept' && this.duels < DUELS_CAP) { this.duels++; this._paid.add(id); this._add(who, 2, 'Challenge angenommen'); }
-    else if (type === 'win' && this._paid.delete(id)) this._add(who, 3, 'Challenge gewonnen'); }
+    if (type === 'accept' && this.duels < DUELS_CAP) { this.duels++; this._paid.add(id); this._add(who, 2, 'challenge accepted'); }
+    else if (type === 'win' && this._paid.delete(id)) this._add(who, 3, 'challenge won'); }
   /** ride over: book the points, return the summary for the result screen; minutes = ride time */
   finish(minutes) {
     const L = this.L;
-    if (minutes >= 20 && !L.day.rideDay) { L.day.rideDay = true; this._add('king', 10, 'Fahrtag (20 min+)'); }
+    if (minutes >= 20 && !L.day.rideDay) { L.day.rideDay = true; this._add('king', 10, 'riding day (20 min+)'); }
     for (const k of Object.keys(this.pts)) L.pts[k] = (L.pts[k] || 0) + this.pts[k];
     L.day.km += this.km; L.day.hm += this.hm;
     L.life.km += this.km; L.life.hm += this.hm; L.life.rides++; if (this.training) L.life.training++;
@@ -143,20 +143,20 @@ export class StoryRide {
 }
 
 /** "The Bet" in a few sentences (Fable 13.11.), for the info card behind the three coloured points */
-export const BET_INFO = 'Jeden Montag wetten Zauberer, König und Teufel im Wirtshaus auf dich. Wie du fährst, ist deine Stimme: Kilometer und regelmäßiges Fahren bringen dem König goldene Punkte, Höhenmeter dem Teufel rote, Watt und bestandene Prüfungen dem Zauberer blaue. Nach der Fahrt kannst du mit einer Kraft-Challenge einer der drei Figuren Extrapunkte schenken. Montags beginnt alles neu, und der Sieger färbt deine nächste Woche.';
+export const BET_INFO = 'Every Monday the Wizard, the King and the Devil sit in the inn and bet on you. How you ride is your vote: kilometres and riding regularly earn the King gold points, climbing earns the Devil red ones, watts and passed trials earn the Wizard blue ones. After the ride a strength challenge lets you give one of the three extra points. Everything starts again on Monday, and the winner colours your next week.';
 const RULES = [
-  ['king', 'König', '1 Punkt pro km · 10 für einen Fahrtag (20 min+) · Ritter-Challenges'],
-  ['devil', 'Teufel', '1 Punkt pro 20 Hm · 3 als Zoll, wenn du in der Hölle landest · Oma- und Kind-Challenges'],
-  ['wizard', 'Zauberer', '1 Punkt pro Minute über 90 % FTP · 10 für die bestandene Prüfung · Möwe und Adler'],
+  ['king', 'King', '1 point per km · 10 for a riding day (20 min+) · Knight challenges'],
+  ['devil', 'Devil', '1 point per 20 m climbed · 3 as a toll if you end up in hell · Granny and Kid challenges'],
+  ['wizard', 'Wizard', '1 point per minute above 90 % FTP · 10 for a passed trial · Gull and Eagle'],
 ];
 /** modal: what the three points mean */
 export function betInfo() {
   const m = document.createElement('div'); m.className = 'modal'; m.style.zIndex = 400;
-  m.innerHTML = `<div class="box" style="max-width:560px"><div class="label">Die Wette</div><h2 class="display" style="font-size:34px;margin:6px 0 12px">🧙 👑 😈</h2>
+  m.innerHTML = `<div class="box" style="max-width:560px"><div class="label">The Bet</div><h2 class="display" style="font-size:34px;margin:6px 0 12px">🧙 👑 😈</h2>
     <p style="line-height:1.5">${BET_INFO}</p>
     ${RULES.map(([k, n, t]) => `<div style="display:flex;gap:10px;align-items:flex-start;margin:10px 0"><i style="flex:none;width:12px;height:12px;border-radius:50%;margin-top:4px;background:${WHO[k].color}"></i><div><b>${WHO[k].icon} ${n}</b><div class="hint" style="margin-top:2px">${t}</div></div></div>`).join('')}
-    <div class="hint" style="margin-top:6px">Ein Punkt ist ungefähr eine ehrliche Minute Arbeit. Kraft nach der Fahrt zählt pro Wiederholung: ${EXERCISES.map(e => `${e.what} ${rate(e)}`).join(' · ')}. Höchstens ${STR_DAY} Punkte am Tag, an ${STR_DAYS} Tagen pro Woche.</div>
-    <div class="actions"><button class="btn" id="biOk">Verstanden</button></div></div>`;
+    <div class="hint" style="margin-top:6px">One point is about one honest minute of work. Strength after the ride counts per rep: ${EXERCISES.map(e => `${e.what} ${rate(e)}`).join(' · ')}. At most ${STR_DAY} points a day, on ${STR_DAYS} days a week.</div>
+    <div class="actions"><button class="btn" id="biOk">Got it</button></div></div>`;
   document.body.append(m); const close = () => m.remove(); m.querySelector('#biOk').onclick = close; m.onclick = e => { if (e.target === m) close(); };
 }
 
@@ -166,14 +166,14 @@ export function betInfo() {
 // plus free extras. Rates follow the same rule as the ride (1 point = about a minute of honest work incl. rests).
 const STR_DAY = 30, STR_DAYS = 4; // points a day, days a week: a strong week adds 120, about two good rides
 const EXERCISES = [ // per: reps (or minutes) for one point; who: fixed figure, extras go to a figure you pick
-  { id: 'pull', who: 'devil', what: 'Klimmzüge', per: 2 },
-  { id: 'push', who: 'wizard', what: 'Liegestütze', per: 5 },
+  { id: 'pull', who: 'devil', what: 'Pull-ups', per: 2 },
+  { id: 'push', who: 'wizard', what: 'Push-ups', per: 5 },
   { id: 'sit', who: 'king', what: 'Sit-ups', per: 8 },
   { id: 'burpee', what: 'Burpees', per: 3 },
-  { id: 'squat', what: 'Kniebeugen', per: 8 },
+  { id: 'squat', what: 'Squats', per: 8 },
   { id: 'plank', what: 'Plank', per: 0.5, unit: 'min' },
 ];
-const rate = e => e.unit === 'min' ? `${1 / e.per} P/min` : `1 P je ${e.per}`;
+const rate = e => e.unit === 'min' ? `${1 / e.per} P/min` : `1 P per ${e.per}`;
 const STRENGTH_LINES = {
   wizard: ['Hmph. Still breathing? Then try this.', 'Bah. Stronger than you look.'],
   king: ['The crown demands one more labour.', 'Splendid! We never doubted Ourselves.'],
@@ -203,14 +203,14 @@ export function storyHTML(s) {
   const left = strengthLeft(s), opt = k => `<option value="${k}">${WHO[k].icon} ${WHO[k].name}</option>`;
   const line = e => `<div class="strrow" data-ex="${e.id}" style="--fc:${e.who ? WHO[e.who].color : 'var(--line-2)'}">
       <span class="strname"><b>${e.what}</b><small>${rate(e)}</small></span>
-      ${e.who ? `<span class="strwho">${WHO[e.who].icon} ${WHO[e.who].name}</span>` : `<select class="strwho" aria-label="Für wen">${['wizard', 'king', 'devil'].map(opt).join('')}</select>`}
-      <input type="number" inputmode="decimal" min="0" step="${e.unit === 'min' ? 0.5 : 1}" placeholder="${e.unit === 'min' ? 'Minuten' : 'Anzahl'}" aria-label="${e.what}">
+      ${e.who ? `<span class="strwho">${WHO[e.who].icon} ${WHO[e.who].name}</span>` : `<select class="strwho" aria-label="For whom">${['wizard', 'king', 'devil'].map(opt).join('')}</select>`}
+      <input type="number" inputmode="decimal" min="0" step="${e.unit === 'min' ? 0.5 : 1}" placeholder="${e.unit === 'min' ? 'Minutes' : 'Reps'}" aria-label="${e.what}">
       <button class="btn small" data-add disabled>+0</button></div>`;
-  const offer = left > 0 ? `<div class="strength" id="strBox"><div class="label" style="margin:14px 0 8px">Nachspiel im Wirtshaus · Kraft für Extrapunkte · heute noch ${left} von ${STR_DAY}</div>
+  const offer = left > 0 ? `<div class="strength" id="strBox"><div class="label" style="margin:14px 0 8px">Back at the inn · strength for extra points · ${left} of ${STR_DAY} left today</div>
     <div class="strrows">${EXERCISES.filter(e => e.who).map(line).join('')}</div>
-    <details class="strmore"><summary>Andere Übung (Burpees, Kniebeugen, Plank)</summary><div class="strrows">${EXERCISES.filter(e => !e.who).map(line).join('')}</div></details>
-    <div class="hint" style="margin-top:6px">Trag ein, was du wirklich geschafft hast, in Sätzen aufteilen ist erlaubt. Jede Wiederholung zählt.</div></div>` : '';
-  return `<div class="chsum betsum" style="margin:14px 0 18px;text-align:left"><div class="label" style="margin-bottom:6px">The Bet · this week${s.leader ? ` · ${WHO[s.leader].name} leads` : ''} <button class="betinfo" title="Was bedeuten die drei Punkte?">?</button></div>${['wizard', 'king', 'devil'].map(row).join('')}${offer}</div>`;
+    <details class="strmore"><summary>Other exercise (burpees, squats, plank)</summary><div class="strrows">${EXERCISES.filter(e => !e.who).map(line).join('')}</div></details>
+    <div class="hint" style="margin-top:6px">Enter what you really did; splitting it into sets is fine. Every rep counts.</div></div>` : '';
+  return `<div class="chsum betsum" style="margin:14px 0 18px;text-align:left"><div class="label" style="margin-bottom:6px">The Bet · this week${s.leader ? ` · ${WHO[s.leader].name} leads` : ''} <button class="betinfo" title="What do the three points mean?">?</button></div>${['wizard', 'king', 'devil'].map(row).join('')}${offer}</div>`;
 }
 
 /** wires the "?" and the strength cards on the result screen */
@@ -227,7 +227,7 @@ export function wireStory(root, s) {
       L.pts[who] = (L.pts[who] || 0) + p; L.day.strength = strDay(L) + p;
       if (first) L.strWeek = { week: L.week, n: (L.strWeek?.week === L.week ? L.strWeek.n : 0) + 1 };
       saveLedger(L);
-      s.week[who] = L.pts[who]; s.ride[who] = (s.ride[who] || 0) + p; const w = (s.why[who] ||= {}), key = `Kraft: ${e.what}`; w[key] = (w[key] || 0) + p; s.leader = leaderOf(L.pts);
+      s.week[who] = L.pts[who]; s.ride[who] = (s.ride[who] || 0) + p; const w = (s.why[who] ||= {}), key = `Strength: ${e.what}`; w[key] = (w[key] || 0) + p; s.leader = leaderOf(L.pts);
       root.querySelector('.betsum').outerHTML = storyHTML(s); wireStory(root, s);
       root.querySelector('.betsum')?.insertAdjacentHTML('beforeend', `<div class="strq" style="margin-top:8px">${WHO[who].icon} „${STRENGTH_LINES[who][1]}“ · +${p} ${WHO[who].name}</div>`);
     };
