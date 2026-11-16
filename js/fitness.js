@@ -22,14 +22,14 @@ export function profileOf(S = {}, acts = []) {
 
 /** { pts, src } for one activity; src = 'Watt' | 'Puls' | 'Pace' | 'Dauer' */
 export function loadOf(a, P) {
-  const h = (a.kraft ? a.dur || 0 : a.duration || 0) / 3600; if (h <= 0) return { pts: 0, src: 'Dauer' };
-  if (a.kraft) return { pts: h * 45, src: 'Dauer' };
+  const h = (a.kraft ? a.dur || 0 : a.duration || 0) / 3600; if (h <= 0) return { pts: 0, src: 'duration' };
+  if (a.kraft) return { pts: h * 45, src: 'duration' };
   const pw = col(a, 2), hr = col(a, 5);
-  if (P.ftp && share(pw) > 0.5) { const np = normPower(pw), f = np / P.ftp; return { pts: pw.length * np * f / (P.ftp * 3600) * 100, src: 'Watt' }; }
-  if (P.ftp && a.np > 0) { const f = a.np / P.ftp; return { pts: h * f * f * 100, src: 'Watt' }; }
-  if (P.hrMax && share(hr) > 0.5) { const r = Math.max(0, (mean(hr) - P.hrRest) / (P.hrMax - P.hrRest)), f = Math.min(1.25, r / 0.85); return { pts: h * f * f * 100, src: 'Puls' }; }
-  if (sportOf(a) === 'run' && P.runThr && a.distance > 0) { const f = Math.min(1.2, a.distance / a.duration / P.runThr); return { pts: h * f * f * 100, src: 'Pace' }; }
-  return { pts: h * (sportOf(a) === 'run' ? 60 : 45), src: 'Dauer' };
+  if (P.ftp && share(pw) > 0.5) { const np = normPower(pw), f = np / P.ftp; return { pts: pw.length * np * f / (P.ftp * 3600) * 100, src: 'power' }; }
+  if (P.ftp && a.np > 0) { const f = a.np / P.ftp; return { pts: h * f * f * 100, src: 'power' }; }
+  if (P.hrMax && share(hr) > 0.5) { const r = Math.max(0, (mean(hr) - P.hrRest) / (P.hrMax - P.hrRest)), f = Math.min(1.25, r / 0.85); return { pts: h * f * f * 100, src: 'heart rate' }; }
+  if (sportOf(a) === 'run' && P.runThr && a.distance > 0) { const f = Math.min(1.2, a.distance / a.duration / P.runThr); return { pts: h * f * f * 100, src: 'pace' }; }
+  return { pts: h * (sportOf(a) === 'run' ? 60 : 45), src: 'duration' };
 }
 
 /** fitness (42 d), fatigue (7 d) and form per day over all sports */
@@ -45,7 +45,7 @@ export function pmcAll(acts, P, days = 90) {
 export function vo2(acts, P, days = 180) {
   const since = Date.now() - days * DAY, rec = acts.filter(a => !a.kraft && a.date > since);
   const p5 = Math.max(0, ...rec.filter(a => sportOf(a) !== 'run').map(a => a.best5 || best(col(a, 2), 300)));
-  const bike = p5 > 0 ? { v: 10.8 * p5 / P.kg + 7, pm: 4, from: `${Math.round(p5)} W über 5 min` } : null;
+  const bike = p5 > 0 ? { v: 10.8 * p5 / P.kg + 7, pm: 4, from: `${Math.round(p5)} W over 5 min` } : null;
   let run = null;
   for (const a of rec.filter(a => sportOf(a) === 'run' && a.distance >= 1500 && a.duration >= 360)) {
     const efforts = [[a.distance, a.duration]]; const k = a.kmSplits || [];

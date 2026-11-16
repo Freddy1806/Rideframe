@@ -61,8 +61,8 @@ export function weekly(rides, ftp, weeks = 12) {
 export function estimateFTP(rides, days = 42) {
   const since = Date.now() - days * DAY, rs = rides.filter(r => r.date >= since);
   const test = rs.filter(r => r.ftpTest).sort((a, b) => b.date - a.date)[0];
-  if (test) return { w: test.ftpTest, from: 'Test vom ' + new Date(test.date).toLocaleDateString('en-GB') };
-  const b = Math.max(0, ...rs.map(r => best(power(r), 1200))); return b ? { w: Math.round(b * 0.95), from: '95 % deiner besten 20 min' } : null;
+  if (test) return { w: test.ftpTest, from: 'test on ' + new Date(test.date).toLocaleDateString('en-GB') };
+  const b = Math.max(0, ...rs.map(r => best(power(r), 1200))); return b ? { w: Math.round(b * 0.95), from: '95 % of your best 20 min' } : null;
 }
 
 /** the result of a fitness test ride: ramp = 75 % of the best minute, 20-min test = 95 % of the best 20 minutes */
