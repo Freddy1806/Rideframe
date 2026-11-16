@@ -51,6 +51,22 @@ export function buildMy(def) {
   const what = (def.rows || []).map(r => r.t === 'i' ? `${r.n} × ${r.onMin} min ${r.onPct} % / ${r.offMin} min ${r.offPct} %` : `${r.min} min ${r.pct} %`).join(', ');
   return { id: def.id, name: def.name || 'Mein Workout', what: `Eigenes Workout: ${what || 'leer'}.`, steps: steps.length ? steps : [W(5, 50, 'Locker')], mine: true };
 }
+/** a standard workout as an editable definition (Freddy 16.11.: "2× Schwelle 20 min anpassen: Watt, Länge, mehr Runden"):
+ *  warm-up and cool-down become the switches, "Name 1/n" + pause runs become interval rows, everything else single blocks */
+export function defFrom(w) {
+  let st = w.steps.slice(); const isWarm = s => /^Ein(fahren|rollen)$/.test(s.label), isCool = s => /^Aus(fahren|rollen)$/.test(s.label);
+  const hadWarm = st.length && isWarm(st[0]); while (st.length && isWarm(st[0])) st.shift();
+  const hadCool = st.length && isCool(st[st.length - 1]); while (st.length && isCool(st[st.length - 1])) st.pop();
+  const rows = [], min = s => +(s.dur / 60).toFixed(2);
+  for (let i = 0; i < st.length; i++) {
+    const s = st[i], m = /^(.*) 1\/(\d+)$/.exec(s.label || '');
+    if (m) { const n = +m[2], off = st[i + 1] && st[i + 1].label === 'Pause' ? st[i + 1] : null, len = off ? 2 * n - 1 : n;
+      const same = st.slice(i, i + len).every((x, j) => off && j % 2 ? x.label === 'Pause' && x.dur === off.dur && x.pct === off.pct : x.dur === s.dur && x.pct === s.pct);
+      if (same) { rows.push({ t: 'i', n, onMin: min(s), onPct: s.pct, offMin: off ? min(off) : 0, offPct: off ? off.pct : 55, label: m[1] }); i += len - 1; continue; } }
+    rows.push({ t: 'b', min: min(s), pct: s.pct, label: (s.label || 'Block').replace(/ \d+\/\d+$/, '') });
+  }
+  return { id: 'my_' + Date.now().toString(36), name: w.name + ' (angepasst)', warm: hadWarm, cool: hadCool, rows };
+}
 export function setMyWorkouts(defs = []) { MY.length = 0; for (const d of defs || []) if (d && d.id) MY.push(buildMy(d)); }
 export const allWorkouts = () => [...MY, ...WORKOUTS];
 export const workoutById = id => MY.find(w => w.id === id) || WORKOUTS.find(w => w.id === id) || null;

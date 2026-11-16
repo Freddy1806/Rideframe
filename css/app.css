@@ -726,3 +726,7 @@ img.face.big{width:96px;height:96px}
   .table td:nth-child(8):empty, .table td:nth-child(9):empty { display: none; }
   .table td .btn { height: 36px; padding: 0 12px; font-size: 11px; }
 }
+/* own workouts in the routes feed + workout editor on a phone */
+.mywk { margin-bottom: 28px; } .mywkhead { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 10px; } .mywkhead h2 { margin: 0; }
+.wedbox { max-height: 92dvh; overflow-y: auto; }
+@media (max-width: 640px) { .wgrid { grid-template-columns: minmax(0, 1fr); } .wedbox .wrow { background: var(--ink-3); border-radius: 8px; padding: 10px; } .wedbox .wrow b { min-width: 100% !important; } .wedbox input[type=number] { width: 58px !important; } .wedbox input[type=text] { flex: 1 1 120px; min-width: 0; } }

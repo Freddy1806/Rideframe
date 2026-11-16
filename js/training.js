@@ -1,6 +1,6 @@
 // Training tab: all standard workouts, started with one click on the coast road, plus the workout helper
 // (5 questions -> the best workout for today).
-import { WORKOUTS, MY, buildMy, setMyWorkouts, workoutById, workoutDuration, workoutSVG } from './workouts.js';
+import { WORKOUTS, MY, buildMy, defFrom, setMyWorkouts, workoutById, workoutDuration, workoutSVG } from './workouts.js';
 import { esc } from './util.js';
 
 // what each workout is good for: goal, how hard (1-5)
@@ -78,7 +78,7 @@ const IN = 'background:var(--ink);color:var(--paper);border:1px solid var(--line
 const fmtMin = sec => { const m = Math.floor(sec / 60), s = Math.round(sec % 60); return s ? `${m}:${String(s).padStart(2, '0')} min` : `${m} min`; };
 
 /** Pro-Modus: build your own interval workout. Resolves with the saved definition (or null). */
-export function editorModal(def0, ftp) {
+export function editorModal(def0, ftp, isNew = !def0) {
   const def = JSON.parse(JSON.stringify(def0 || { id: 'my_' + Date.now().toString(36), name: 'Mein Workout', warm: true, cool: true,
     rows: [{ t: 'i', n: 5, onMin: 3, onPct: 110, offMin: 3, offPct: 55, label: 'Intervall' }] }));
   return new Promise(done => {
@@ -98,15 +98,16 @@ export function editorModal(def0, ftp) {
           <button class="btn ghost small" data-del="${i}" title="Entfernen">✕</button></div>`;
     const draw = () => {
       const w = buildMy(def), sec = workoutDuration(w);
-      m.innerHTML = `<div class="box" style="width:min(860px,94vw)"><div class="label">Pro-Modus · eigenes Workout</div>
+      m.innerHTML = `<div class="box wedbox" style="width:min(860px,94vw)"><div class="label">${def0 ? 'Workout anpassen' : 'Workout bauen'}</div>
         <h2 class="display" style="font-size:28px;margin:8px 0 12px"><input type="text" id="eName" value="${esc(def.name)}" style="font:inherit;width:100%;background:transparent;border:0;border-bottom:1px solid #fff3;color:inherit"></h2>
         <p class="hint" style="margin:0 0 8px">Der Trainer hält im ERG-Modus die Watt, die Strecke bestimmt nur das Bild. % beziehen sich auf deine FTP (${ftp} W).</p>
         <label class="tgl"><input type="checkbox" class="toggle" id="eWarm" ${def.warm !== false ? 'checked' : ''}> 10 min Einfahren</label>
         <label class="tgl"><input type="checkbox" class="toggle" id="eCool" ${def.cool !== false ? 'checked' : ''}> 5 min Ausfahren</label>
         <div id="eRows" style="margin:10px 0">${def.rows.map(row).join('') || '<p class="hint">Noch leer: füge Blöcke oder Intervalle hinzu.</p>'}</div>
-        <div style="display:flex;gap:8px;margin-bottom:10px"><button class="btn ghost small" id="eAddB">+ Block</button><button class="btn ghost small" id="eAddI">+ Intervalle</button></div>
+        <div style="display:flex;gap:8px;margin-bottom:10px;flex-wrap:wrap"><button class="btn ghost small" id="eAddB">+ Block</button><button class="btn ghost small" id="eAddI">+ Intervalle</button>
+          <span style="flex:1"></span><button class="btn ghost small" data-all="-5" title="Alle Blöcke 5 % leichter">Alles −5 %</button><button class="btn ghost small" data-all="5" title="Alle Blöcke 5 % härter">Alles +5 %</button></div>
         <div class="label">${fmtMin(sec)} gesamt</div>${workoutSVG(w)}
-        <div class="actions">${def0 ? '<button class="btn ghost" id="eDel">Löschen</button>' : ''}<button class="btn ghost" id="eX">Abbrechen</button><button class="btn" id="eSave">Speichern</button></div></div>`;
+        <div class="actions">${!isNew ? '<button class="btn ghost" id="eDel">Löschen</button>' : ''}<button class="btn ghost" id="eX">Abbrechen</button><button class="btn" id="eSave">Speichern</button></div></div>`;
       m.querySelector('#eName').oninput = e => { def.name = e.target.value; };
       m.querySelector('#eWarm').onchange = e => { def.warm = e.target.checked; draw(); };
       m.querySelector('#eCool').onchange = e => { def.cool = e.target.checked; draw(); };
@@ -114,6 +115,8 @@ export function editorModal(def0, ftp) {
       m.querySelectorAll('[data-del]').forEach(b => b.onclick = () => { def.rows.splice(+b.dataset.del, 1); draw(); });
       m.querySelector('#eAddB').onclick = () => { def.rows.push({ t: 'b', min: 10, pct: 75, label: 'Tempo' }); draw(); };
       m.querySelector('#eAddI').onclick = () => { def.rows.push({ t: 'i', n: 4, onMin: 4, onPct: 105, offMin: 3, offPct: 55, label: 'Intervall' }); draw(); };
+      m.querySelectorAll('[data-all]').forEach(b => b.onclick = () => { const d = +b.dataset.all, c = v => Math.max(30, Math.min(200, Math.round(+v + d)));
+        for (const r of def.rows) { if (r.t === 'i') r.onPct = c(r.onPct); else r.pct = c(r.pct); } draw(); });
       m.querySelector('#eX').onclick = () => close(null);
       m.querySelector('#eDel')?.addEventListener('click', () => { if (confirm(`„${def.name}“ löschen?`)) close({ del: def.id }); });
       m.querySelector('#eSave').onclick = () => { def.name = (def.name || '').trim() || 'Mein Workout'; close(def); };
@@ -131,7 +134,7 @@ export function trainingView(main, ctx) {
       <div class="meta">${WORKOUTS.length} Standard-Workouts${MY.length ? ` + ${MY.length} eigene` : ''} auf der ${coast === 'kueste60' ? 'Küstenstraße' : 'Felsenküste'} · Ziel-Watt aus deiner FTP (${ftp} W)</div></div>
       <div style="display:flex;gap:10px;flex-wrap:wrap;justify-content:flex-end"><a class="btn ghost" href="pure.html" style="text-decoration:none" title="Fürs Handy: nur Watt, Werte und Workouts, ohne Karte">Pure-Modus (Handy) ▸</a><a class="btn ghost" href="outdoor.html" style="text-decoration:none" title="Echte Fahrten draußen mit dem Handy aufzeichnen: GPS-Karte, Tempo, Höhenmeter, Puls, Watt">Draußen fahren ▸</a><a class="btn ghost" href="kraft.html" style="text-decoration:none" title="Krafttraining eintragen wie in Strong: Sätze, Gewichte, Verlauf, Rekorde">Kraft ▸</a><button class="btn" id="helperBtn">Welches Workout passt heute? ▸</button></div></div>
     <label style="display:flex;gap:8px;align-items:center;margin:0 0 18px" title="Der Trainer hält die Zielwatt selbst"><input type="checkbox" class="toggle" id="ergChk2" ${state.settings.erg !== false ? 'checked' : ''}> ERG (Trainer hält die Watt)</label>
-    <div class="view-head" style="margin-top:6px"><div><h3 style="margin:0">Meine Workouts</h3><div class="meta">Pro-Modus: eigene Intervalle bauen, unabhängig von der Strecke</div></div>
+    <div class="view-head" style="margin-top:6px"><div><h3 style="margin:0">Meine Workouts</h3><div class="meta">Eigene Blöcke bauen oder ein Standard-Workout anpassen (Watt, Länge, Runden)</div></div>
       <div><button class="btn ghost" id="newWBtn">+ Eigenes Workout bauen</button></div></div>
     <div class="wgrid" style="margin-bottom:22px">${MY.length ? MY.map(w => `<div class="panel wcard">
       <div class="label">${Math.round(workoutDuration(w) / 60)} min · eigenes</div><h3>${esc(w.name)}</h3><p>${esc(w.what)}</p>${workoutSVG(w)}
@@ -140,14 +143,14 @@ export function trainingView(main, ctx) {
     <h3 style="margin:0 0 10px">Standard-Workouts</h3>
     <div class="wgrid">${WORKOUTS.map(w => { const m = META[w.id] || {}; return `<div class="panel wcard">
       <div class="label">${Math.round(workoutDuration(w) / 60)} min · ${HARD[m.hard] || ''}</div><h3>${esc(w.name)}</h3><p>${esc(w.what)}</p>${workoutSVG(w)}
-      <button class="btn small" data-go="${w.id}">Starten ▸</button></div>`; }).join('')}</div>
+      <div style="display:flex;gap:8px"><button class="btn small" data-go="${w.id}" style="white-space:nowrap">Starten ▸</button>${m.goal === 'test' ? '' : `<button class="btn ghost small" data-adapt="${w.id}">Anpassen</button>`}</div></div>`; }).join('')}</div>
   </section>`;
   const start = id => { state.settings.workout = id; ctx.saveSettings(); ctx.startRide(coast); };
   main.querySelectorAll('[data-go]').forEach(b => b.onclick = () => start(b.dataset.go));
   main.querySelector('#ergChk2').onchange = e => { state.settings.erg = e.target.checked; ctx.saveSettings(); };
   const mine = () => (state.settings.myWorkouts ||= []);
-  const edit = async id => {
-    const res = await editorModal(id ? mine().find(d => d.id === id) : null, ftp);
+  const edit = async (id, from) => {
+    const res = from ? await editorModal(from, ftp, true) : await editorModal(id ? mine().find(d => d.id === id) : null, ftp);
     if (!res) return;
     const list = mine().filter(d => d.id !== (res.del || res.id));
     if (!res.del) { const at = mine().findIndex(d => d.id === res.id); at >= 0 ? list.splice(at, 0, res) : list.unshift(res); }
@@ -155,5 +158,6 @@ export function trainingView(main, ctx) {
   };
   main.querySelector('#newWBtn').onclick = () => edit(null);
   main.querySelectorAll('[data-edit]').forEach(b => b.onclick = () => edit(b.dataset.edit));
+  main.querySelectorAll('[data-adapt]').forEach(b => b.onclick = () => edit(null, defFrom(workoutById(b.dataset.adapt))));
   main.querySelector('#helperBtn').onclick = async () => { const id = await helperModal(); if (workoutById(id)) start(id); };
 }

@@ -140,6 +140,13 @@ export function go(view, arg) {
 }
 
 // ---------------- library ----------------
+/** own workouts in the routes feed (Freddy 16.11.): start right here, build and edit in the Training tab */
+function myWorkoutsRow() {
+  const my = allWorkouts().filter(w => w.mine);
+  return `<div class="mywk"><div class="mywkhead"><h2 class="section">Meine Workouts</h2><button class="btn ghost small" data-wtab="1">${my.length ? 'Bearbeiten' : '+ Workout bauen'}</button></div>
+    ${my.length ? `<div class="wgrid">${my.map(w => `<div class="panel wcard"><div class="label">${Math.round(workoutDuration(w) / 60)} min</div><h3>${esc(w.name)}</h3>${workoutSVG(w)}<button class="btn small" data-wgo="${w.id}">Starten ▸</button></div>`).join('')}</div>`
+      : '<p class="hint">Bau dir im Tab Training eigene Blöcke oder pass ein Standard-Workout an. Sie erscheinen dann hier.</p>'}</div>`;
+}
 function library() {
   const routes = allRoutes();
   main.innerHTML = `
@@ -153,6 +160,7 @@ function library() {
       <div class="libacts"><button class="btn ghost" id="wishBtnLib" hidden>Wunschliste</button><button class="btn ghost" id="lookBtnLib">Mein Fahrer</button><button class="btn ghost" id="groupBtnLib">Zusammen fahren</button><button class="btn" id="uploadBtn">＋ Strecke hochladen</button></div>
     </div>
     <div id="board" hidden></div>
+    ${myWorkoutsRow()}
     <div class="grid">
       ${routes.map(card).join('')}
       <button class="add-card" id="addCard">
@@ -167,6 +175,8 @@ function library() {
   $('#lookBtnLib').onclick = () => import('./avatar-ui.js').then(x => x.avatarModal());
   accountsAvailable().then(ok => { const b = $('#wishBtnLib'); if (!ok || !b) return; b.hidden = false; b.onclick = () => import('./wishes.js').then(x => x.wishModal(state, accountChanged)); }); /* wish list: only where RIDEFRAME is hosted with accounts */
   main.querySelectorAll('.card').forEach(c => c.addEventListener('click', () => go('detail', c.dataset.id)));
+  main.querySelectorAll('[data-wgo]').forEach(b => b.onclick = () => { state.settings.workout = b.dataset.wgo; saveSettings(); startRide(routeById('kueste60') ? 'kueste60' : 'demo'); });
+  main.querySelectorAll('[data-wtab]').forEach(b => b.onclick = () => go('training'));
   showBoard();
 }
 

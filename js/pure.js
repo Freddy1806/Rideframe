@@ -29,7 +29,7 @@ async function loadSettings() {
 }
 async function saveSettings() {
   const saved = (await db.kvGet('settings').catch(() => null)) || {}; // keep everything the main app stored
-  saved.pure = { ...P }; saved.ftp = S.ftp; saved.riderKg = S.riderKg; saved.bikeKg = S.bikeKg;
+  saved.pure = { ...P }; if (S.myWorkouts) saved.myWorkouts = S.myWorkouts; saved.ftp = S.ftp; saved.riderKg = S.riderKg; saved.bikeKg = S.bikeKg;
   await db.kvSet('settings', saved).catch(() => {});
 }
 
@@ -144,7 +144,8 @@ function control() {
   if (P.mode === 'grade') return `<div class="pctl"><button data-d="-1">−1</button><button data-d="-0.5">−½</button><button class="pval" id="pSet"><b>${fmtNum(P.grade, 1)}</b><small>%</small></button><button data-d="0.5">+½</button><button data-d="1">+1</button></div>`;
   const w = work();
   return `<div class="pwork"><select id="pWork">${allWorkouts().map(x => `<option value="${x.id}" ${x.id === P.workout ? 'selected' : ''}>${x.mine ? '★ ' : ''}${esc(x.name)} · ${Math.round(workoutDuration(x) / 60)} min</option>`).join('')}</select>
-    <div class="pctl small"><button data-i="-5">−5 %</button><span class="pint" id="pInt">${R.intensity} %</span><button data-i="5">+5 %</button></div></div>
+    <div class="pctl small"><button data-i="-5">−5 %</button><span class="pint" id="pInt">${R.intensity} %</span><button data-i="5">+5 %</button></div>
+    ${R.state === 'ready' ? `<div class="pwed"><button class="btn ghost ksmall" id="pWAdapt">Anpassen</button><button class="btn ghost ksmall" id="pWNew">+ Neu bauen</button></div>` : ''}</div>
     ${w ? `<div class="pwsvg" id="pWsvg">${workoutSVG(w, R.wT, 40)}</div><div class="pstep" id="pStep"></div>` : ''}`;
 }
 
@@ -190,6 +191,12 @@ function wire() {
   });
   el.querySelectorAll('[data-i]').forEach(b => b.onclick = () => { R.intensity = Math.max(50, Math.min(150, R.intensity + +b.dataset.i)); $('#pInt').textContent = R.intensity + ' %'; applyTrainer(); });
   const set = $('#pSet'); if (set) set.onclick = () => numberSheet();
+  const wed = async from => { const t = await import('./training.js'), wk = await import('./workouts.js'), cur = work();
+    const own = !from && cur?.mine ? (S.myWorkouts || []).find(d => d.id === cur.id) : null;
+    const res = from === 'new' ? await t.editorModal(null, ftp()) : own ? await t.editorModal(own, ftp()) : await t.editorModal(wk.defFrom(cur), ftp(), true);
+    if (!res) return; const list = (S.myWorkouts || []).filter(d => d.id !== (res.del || res.id)); if (!res.del) list.unshift(res);
+    S.myWorkouts = list; setMyWorkouts(list); P.workout = res.del ? allWorkouts()[0]?.id || '' : res.id; R.wT = 0; R.wDone = false; await saveSettings(); render(); applyTrainer(); };
+  const wa = $('#pWAdapt'); if (wa) wa.onclick = () => wed(); const wn = $('#pWNew'); if (wn) wn.onclick = () => wed('new');
   const ws = $('#pWork'); if (ws) ws.onchange = () => { P.workout = ws.value; R.wT = 0; R.wDone = false; saveSettings(); render(); applyTrainer(); };
   el.querySelectorAll('[data-t]').forEach(b => b.onclick = () => tileSheet(+b.dataset.t));
   const on = (id, f) => { const x = $(id); if (x) x.onclick = f; };
