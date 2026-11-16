@@ -97,3 +97,20 @@
 .kdelta.up { color: #2fbf71; } .kdelta.down { color: #e5484d; }
 select.ksearch { appearance: none; -webkit-appearance: none; }
 .olbl { font-size: 13px; font-weight: 700; color: var(--muted); margin: 4px 0 -2px; }
+/* quick entry */
+.kquick { margin-top: 8px; }
+.kqin { position: relative; }
+.kqt { height: auto; min-height: 92px; padding: 12px 54px 12px 14px; line-height: 1.35; resize: none; font-family: inherit; }
+.kqmic { position: absolute; right: 8px; top: 8px; width: 40px; height: 40px; border-radius: 50%; display: grid; place-items: center; color: var(--paper); background: var(--ink-2); border: 1px solid var(--line-2); }
+.kqmic.on { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); animation: kqp 1.2s ease-in-out infinite; }
+@keyframes kqp { 50% { opacity: .55; } }
+.kqrow { display: flex; align-items: center; gap: 10px; padding: 10px 0; border-top: 1px solid var(--line); }
+.kqrow > div:first-child { flex: 1; min-width: 0; }
+.kqrow b { display: block; font-size: 15px; overflow-wrap: anywhere; }
+.kqrow i { font-style: normal; font-size: 11px; font-weight: 700; color: var(--accent); margin-right: 8px; }
+.kqrow span { font-size: 13px; color: var(--muted); }
+.kqrow .kx { position: static; flex: none; }
+.kqstep { display: flex; align-items: center; gap: 4px; flex: none; }
+.kqstep button { width: 34px; height: 34px; border-radius: 8px; background: var(--ink-3); border: 1px solid var(--line-2); color: var(--paper); font-size: 18px; }
+.kqstep em { font-style: normal; min-width: 22px; text-align: center; font-weight: 700; }
+.kqmiss { margin-top: 8px; }

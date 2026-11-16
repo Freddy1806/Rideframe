@@ -108,6 +108,7 @@ function startView() {
       ${weekStat(sum(week, sessVol), sum(prev, sessVol), 'Volumen', kgTxt)}${weekStat(sum(week, s => s.dur || 0), sum(prev, s => s.dur || 0), 'Dauer (h)', hm)}</div>
       ${weekBars()}</section>
     <button class="btn kbig" id="kNew">Leeres Workout starten</button>
+    <button class="btn ghost kbig kquick" id="kQuick">Schnell eintragen</button>
     ${tpls.length ? `<h3 class="ksec">Vorlagen</h3><div class="kgrid">${tpls.map((t, i) => `<div class="kcard ktpl" data-tpl="${i}"><b>${esc(t.name)}</b><span>${t.ex.map(x => esc(exOf(x.k).n)).join(', ')}</span><button class="kx" data-tdel="${i}" title="Vorlage löschen">✕</button></div>`).join('')}</div>` : ''}
     ${last.length ? `<h3 class="ksec">Wiederholen</h3><div class="kgrid">${last.map(s => `<div class="kcard ktpl" data-again="${s.id}"><b>${esc(s.name)}</b><span>${dayTxt(s.start || s.date)} · ${(s.ex || []).map(x => esc(x.n)).join(', ')}</span></div>`).join('')}</div>` : ''}
     ${!list.length ? '<p class="hint" style="margin-top:18px">Noch keine Workouts. Starte ein leeres Workout, füge Übungen hinzu und hake jeden Satz ab. Beim nächsten Mal siehst du neben jedem Satz, was du letztes Mal geschafft hast.</p>' : ''}`;
@@ -140,6 +141,7 @@ function exView() {
 function wireMain() {
   const on = (s, f) => el.querySelectorAll(s).forEach(b => b.onclick = e => f(b, e));
   on('#kNew', () => begin({ name: defaultName(), ex: [] }));
+  on('#kQuick', () => quickSheet());
   on('#kNewEx', async () => { const k = await newExercise($('#kFind')?.value.trim() || ''); if (k) { render(); exSheet(k); } });
   on('[data-tpl]', (b, e) => { if (e.target.dataset.tdel) return; const t = tpls[+b.dataset.tpl]; begin({ name: t.name, ex: t.ex.map(x => ({ k: x.k, n: exOf(x.k).n, t: exOf(x.k).t, sets: fromPrev(x.k, x.n || 3) })) }); });
   on('[data-tdel]', b => { if (!confirm('Vorlage löschen?')) return; tpls.splice(+b.dataset.tdel, 1); saveTpls(); render(); });
@@ -151,6 +153,75 @@ function wireMain() {
 const defaultName = () => { const h = new Date().getHours(); return h < 11 ? 'Morgen-Workout' : h < 17 ? 'Mittags-Workout' : 'Abend-Workout'; };
 /** n new empty sets: last time's values show grey in the fields (like Strong); ✓ on an empty field takes them over */
 const fromPrev = (k, n) => [...Array(Math.max(1, n))].map(() => ({ kg: '', r: '', s: '', done: false }));
+
+// ---------------- quick entry: say or type what you did, check it, save ----------------
+async function quickSheet() {
+  const Q = await import('./quick.js'), SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+  const s = sheet(`<div class="label">Schnell eintragen</div>
+    <p class="hint">Sag oder schreib, was du gemacht hast. Du siehst danach, was verstanden wurde, und bestätigst.</p>
+    <div class="kqin"><textarea class="ksearch kqt" id="qT" rows="3" placeholder="100 Liegestütze, 50 Klimmzüge, 45 Minuten trainiert"></textarea>
+      ${SR ? '<button class="kqmic" id="qMic" title="Sprechen" aria-label="Sprechen"><svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5 11a7 7 0 0 0 14 0M12 18v3"/></svg></button>' : ''}</div>
+    <div id="qRes"></div>
+    <div class="pfoot col"><button class="btn" id="qGo">Verstehen</button><button class="btn ghost" id="qAi"></button><button class="btn ghost" id="qX">Abbrechen</button></div>`);
+  const T = $('#qT', s), res = $('#qRes', s), go = $('#qGo', s), ai = $('#qAi', s); let R = null, rec = null;
+  const aiLabel = () => ai.textContent = Q.aiKey() ? 'Eigene KI: an' : 'Eigene KI hinterlegen (optional)'; aiLabel();
+  $('#qX', s).onclick = () => { try { rec?.stop(); } catch {} s.remove(); };
+  ai.onclick = () => aiSheet(Q, aiLabel);
+  T.oninput = () => { if (R) { R = null; res.innerHTML = ''; go.textContent = 'Verstehen'; } };
+  if (SR) $('#qMic', s).onclick = e => { const b = e.currentTarget;
+    if (rec) { rec.stop(); return; }
+    rec = new SR(); rec.lang = 'de-DE'; rec.interimResults = true; rec.continuous = true; const base = T.value.trim();
+    rec.onresult = ev => { T.value = (base ? base + ', ' : '') + [...ev.results].map(r => r[0].transcript).join(' ').trim(); T.oninput(); };
+    rec.onerror = ev => { if (ev.error !== 'aborted' && ev.error !== 'no-speech') flash(ev.error === 'not-allowed' ? 'Mikrofon ist nicht erlaubt.' : 'Sprache wurde nicht erkannt.'); };
+    rec.onend = () => { rec = null; b.classList.remove('on'); };
+    try { rec.start(); b.classList.add('on'); } catch { rec = null; } };
+  const paint = () => {
+    const row = (x, i) => { const one = x.total; return `<div class="kqrow"><div><b>${esc(x.n)}</b>${x.neu ? '<i>neue Übung</i>' : ''}<span>${nSets(x.sets.length)} · ${setTxt(x.t, x.sets[0])}</span></div>
+      ${one ? `<div class="kqstep"><button data-qs="${i}" data-d="-1" aria-label="Weniger Sätze">−</button><em>${x.sets.length}</em><button data-qs="${i}" data-d="1" aria-label="Mehr Sätze">+</button></div>` : ''}
+      <button class="kx" data-qdel="${i}" title="Entfernen">✕</button></div>`; };
+    res.innerHTML = !R.ex.length ? `<p class="hint kqmiss">Ich habe keine Übung mit Zahl erkannt. Beispiel: „3 mal 10 Bankdrücken mit 80 kg, 2 Minuten Plank“.</p>` :
+      `<div class="olbl">Verstanden</div>${R.ex.map(row).join('')}
+      ${R.ex.some(x => x.total) ? '<p class="hint">Eine Gesamtzahl zählt als ein Satz. Mit − und + verteilst du sie auf mehrere Sätze.</p>' : ''}
+      <label class="prow"><span>Dauer</span><input id="qDur" type="number" inputmode="numeric" min="0" max="600" value="${R.dur ? Math.round(R.dur / 60) : ''}" placeholder="–"><span>min</span></label>
+      ${R.miss.length ? `<p class="hint kqmiss">Nicht verstanden: ${esc(R.miss.join(', '))}</p>` : ''}`;
+    go.textContent = R.ex.length ? 'Speichern' : 'Verstehen';
+    res.querySelectorAll('[data-qdel]').forEach(b => b.onclick = () => { R.ex.splice(+b.dataset.qdel, 1); paint(); });
+    res.querySelectorAll('[data-qs]').forEach(b => b.onclick = () => { const x = R.ex[+b.dataset.qs], n = Math.min(20, Math.max(1, x.sets.length + +b.dataset.d)), kg = x.sets[0].kg;
+      x.sets = [...Array(n)].map((_, j) => ({ kg, r: Math.floor(x.total / n) + (j < x.total % n ? 1 : 0), s: '', done: true })); paint(); });
+    const d = $('#qDur', s); if (d) d.oninput = () => R.dur = Math.max(0, +d.value || 0) * 60;
+  };
+  go.onclick = async () => {
+    if (R?.ex.length) { s.remove(); return quickSave(R, T.value.trim()); }
+    const txt = T.value.trim(); if (!txt) return T.focus();
+    try { rec?.stop(); } catch {}
+    if (Q.aiKey()) { go.disabled = true; go.textContent = 'KI liest …';
+      try { R = await Q.aiQuick(txt, exercises()); } catch (e) { flash(e.message + ' Ich lese es ohne KI.'); R = null; } go.disabled = false; }
+    R ||= Q.parseQuick(txt, exercises());
+    for (const x of R.ex) if (x.t === 'bw' && x.sets.length === 1 && +x.sets[0].r > 1) x.total = +x.sets[0].r;
+    paint(); if (!R.ex.length) R = null;
+  };
+  setTimeout(() => T.focus(), 60);
+}
+async function quickSave(R, said) {
+  const dur = R.dur || 0, now = Date.now(); let made = false;
+  for (const x of R.ex) { if (x.neu) { const e = { k: 'my_' + uid().slice(0, 8), n: x.n, t: x.t, g: 'Eigene' }; mine.push(e); x.k = e.k; made = true; } delete x.neu; delete x.total; }
+  if (made) await db.kvSet('kraftEx', mine).catch(() => {});
+  const w = { id: uid(), name: defaultName(), start: now - dur * 1000, date: now, dur, quick: true, note: said.slice(0, 300), ex: R.ex };
+  let prs = 0; for (const x of w.ex) { const b = bests(x.k); if (!b.n) continue; for (const y of x.sets) if ((x.t === 'w' && e1rm(+y.kg, +y.r) > b.rm + .01) || (x.t === 'bw' && +y.r > b.reps) || (x.t === 'time' && +y.s > b.sec)) { prs++; break; } }
+  if (prs) w.prs = prs;
+  list.unshift(w); await saveList(); import('./account.js').then(a => a.pushKraft?.(w)).catch(() => {});
+  tab = 'hist'; render(); sessionSheet(w); flash('Eingetragen.');
+}
+function aiSheet(Q, done) {
+  const has = !!Q.aiKey();
+  const s = sheet(`<div class="label">Eigene KI (optional)</div>
+    <p class="hint">Einfache Sätze versteht die App ohne KI. Mit deinem eigenen Claude-Schlüssel (console.anthropic.com) versteht sie auch freie Sätze. Der Schlüssel bleibt nur auf diesem Gerät. Dein Satz geht dann direkt von hier an Anthropic, die Kosten laufen über dein Konto dort.</p>
+    <input class="ksearch" id="aK" type="password" autocomplete="off" placeholder="${has ? 'Schlüssel ist hinterlegt' : 'sk-ant-…'}">
+    <div class="pfoot col"><button class="btn" id="aOk">Speichern</button>${has ? '<button class="btn ghost" id="aDel">Schlüssel entfernen</button>' : ''}<button class="btn ghost" id="aX">Abbrechen</button></div>`);
+  $('#aX', s).onclick = () => s.remove();
+  $('#aOk', s).onclick = () => { const k = $('#aK', s).value.trim(); if (!k) return $('#aK', s).focus(); Q.setAiKey(k); s.remove(); done(); flash('KI-Schlüssel gespeichert.'); };
+  const d = $('#aDel', s); if (d) d.onclick = () => { Q.setAiKey(''); s.remove(); done(); flash('KI-Schlüssel entfernt.'); };
+}
 
 // ---------------- workout ----------------
 function begin(w) {

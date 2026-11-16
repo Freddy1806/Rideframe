@@ -43,6 +43,8 @@ const SCREENS = [
   ['kraft-workout', '/kraft.html', async p => { await p.click('[data-again]'); }],
   ['kraft-ende', '/kraft.html', async p => { await p.click('[data-again]'); await p.click('.kex[data-i="0"] [data-chk="0"]'); await p.click('#kFin'); }],
   ['rollentrainer', '/pure.html', null],
+  ['kraft-schnell', '/kraft.html', async p => { await p.click('#kQuick'); await p.fill('#qT', 'Ich habe gerade 100 Liegestütze und 50 Klimmzüge gemacht, 3x10 Bankdrücken mit 80 kg, 30 Hampelmänner mit Klatschen, 2 Minuten Plank, blabla, ungefähr 45 Minuten trainiert'); await p.click('#qGo'); }],
+  ['kraft-schnell-ki', '/kraft.html', async p => { await p.click('#kQuick'); await p.click('#qAi'); }],
   ['profil', '/profil.html', null],
   ['profil-daten', '/profil.html', p => p.click('#fSet')],
 ];
