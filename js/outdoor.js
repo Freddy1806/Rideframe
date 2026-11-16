@@ -166,7 +166,7 @@ async function lockScreen() { try { wake = await navigator.wakeLock?.request('sc
 document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible' && R.state === 'run') { lockScreen(); } else if (R.state === 'run') saveDraft(); });
 window.addEventListener('beforeunload', e => { if (R.samples.length && R.state !== 'done') { saveDraft(); e.preventDefault(); e.returnValue = ''; } });
 
-const gpsTxt = () => live.gpsErr ? 'No GPS' : !live.fix ? 'GPS searching' : live.acc > 40 ? `GPS ±${Math.round(live.acc)} m` : 'GPS';
+const gpsTxt = () => live.gpsErr ? 'No GPS' : !live.fix ? 'GPS …' : live.acc > 40 ? `GPS ±${Math.round(live.acc)} m` : 'GPS';
 function render() {
   if (map) { map.remove(); map = null; line = null; dot = null; }
   if (view === 'list') return listView();
