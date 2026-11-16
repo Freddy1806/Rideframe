@@ -12,7 +12,7 @@ const seed = async p => p.evaluate(async ([long, NAME]) => { const { db } = awai
   await db.kvSet('kraft', [0, 1, 2].map(i => ({ id: 'w' + i, name: 'Oberkörper schwer und lang benannt', start: now - i * 3 * d, date: now - i * 3 * d + 3600e3, dur: 3725, prs: 2,
     ex: [{ k: 'bench', n: 'Bankdrücken', t: 'w', sets: [{ kg: 102.5, r: 10, done: true }, { kg: 100, r: 8, done: true }] }, { k: 'my_x', n: long, t: 'w', sets: [{ kg: 140, r: 12, done: true }] },
       { k: 'pull', n: 'Klimmzüge', t: 'bw', sets: [{ kg: 12.5, r: 12, done: true }] }, { k: 'plank', n: 'Plank', t: 'time', sets: [{ s: 185, done: true }] }] })));
-  await db.kvDel('outdoorDraft').catch(() => {}); await db.kvDel('runDraft').catch(() => {}); await db.kvDel('kraftDraft').catch(() => {});
+  await db.kvDel('outdoorDraft').catch(() => {}); await db.kvDel('runDraft').catch(() => {}); await db.kvDel('kraftDraft').catch(() => {}); await db.kvDel('pureDraft').catch(() => {});
   localStorage.setItem('rf_account', JSON.stringify({ token: 'x', name: NAME }));
 }, [LONG, NAME]);
 const SCREENS = [
@@ -43,6 +43,7 @@ const SCREENS = [
   ['kraft-workout', '/kraft.html', async p => { await p.click('[data-again]'); }],
   ['kraft-ende', '/kraft.html', async p => { await p.click('[data-again]'); await p.click('.kex[data-i="0"] [data-chk="0"]'); await p.click('#kFin'); }],
   ['rollentrainer', '/pure.html', null],
+  ['rollentrainer-entwurf', '/pure.html', async p => { await p.evaluate(async () => { const { db } = await import('/js/db.js'); await db.kvSet('pureDraft', { state: 'pause', moving: 3725, wall: 3800, d: 42345, samples: [[1, 5, 200, 30, 90, 140]], savedAt: Date.now() }); }); await p.reload(); await p.waitForTimeout(700); }],
   ['kraft-schnell', '/kraft.html', async p => { await p.click('#kQuick'); await p.fill('#qT', 'Ich habe gerade 100 Liegestütze und 50 Klimmzüge gemacht, 3x10 Bankdrücken mit 80 kg, 30 Hampelmänner mit Klatschen, 2 Minuten Plank, blabla, ungefähr 45 Minuten trainiert'); await p.click('#qGo'); }],
   ['kraft-schnell-ki', '/kraft.html', async p => { await p.click('#kQuick'); await p.click('#qAi'); }],
   ['profil', '/profil.html', null],
@@ -99,7 +100,7 @@ function measure(minGap) { // runs in the page
       const p = await c.newPage(); p.setDefaultTimeout(4000);
       if (!mobile) await p.route('**/api/account/**', r => r.fulfill({ status: 200, contentType: 'application/json', body: '{}' })); // signed in: the pill shows the long name
       const errs = []; p.on('pageerror', e => errs.push(e.message));
-      await p.goto(BASE + '/handy.html'); await p.evaluate(async () => { const { db } = await import('/js/db.js'); await db.kvDel('outdoorDraft'); await db.kvDel('runDraft'); await db.kvDel('kraftDraft'); }); // each screen starts clean
+      await p.goto(BASE + '/handy.html'); await p.evaluate(async () => { const { db } = await import('/js/db.js'); await db.kvDel('outdoorDraft'); await db.kvDel('runDraft'); await db.kvDel('kraftDraft'); await db.kvDel('pureDraft'); }); // each screen starts clean
       await p.goto(BASE + url); await p.waitForTimeout(mobile ? 700 : 1500);
       try { if (act) { await act(p); await p.waitForTimeout(400); } } catch (e) { errs.push('Schritt ging nicht: ' + e.message.split('\n').slice(0, 6).join(' | ')); }
       if (safari) await p.evaluate(SAFARI);

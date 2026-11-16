@@ -121,7 +121,7 @@ function start() {
   if (R.state === 'ready') { R.lap = { t: 0, d: 0, sum: 0, n: 0 }; R.startAt = Date.now(); }
   R.state = 'run'; lockScreen(); applyTrainer(); render();
 }
-function pause() { R.state = 'pause'; render(); }
+function pause() { R.state = 'pause'; render(); saveDraft(); }
 function lap() {
   if (R.state !== 'run') return;
   const l = lapNow(); R.laps.push({ t: Math.round(l.t), d: Math.round(l.d), w: Math.round(l.w) });
@@ -133,13 +133,17 @@ function record() {
     workout: w?.name || (P.mode === 'grade' ? 'Grade' : 'ERG'), avgPower: Math.round(avgP()), maxPower: Math.max(0, ...pw), best5: bestAvg(pw, 300), best20: bestAvg(pw, 1200),
     np: Math.round(NP()), kj: Math.round(R.kj), laps: R.laps.length ? [...R.laps, { t: Math.round(lapNow().t), d: Math.round(lapNow().d), w: Math.round(lapNow().w) }] : undefined, samples: R.samples };
 }
+// a reload or crash must not lose the ride: the state goes to kv every 10 s (like outdoor)
+let draftAt = 0;
+function saveDraft() { if (R.state === 'run' || R.state === 'pause') db.kvSet('pureDraft', { ...R, savedAt: Date.now() }).catch(() => {}); draftAt = performance.now(); }
+const dropDraft = () => db.kvDel('pureDraft').catch(() => {});
 
 // ---------------- screen ----------------
 const el = document.getElementById('pure');
 function flash(t, ms = 3500) { const f = $('#pflash'); if (!f) return; f.textContent = t; f.classList.add('on'); clearTimeout(flash.t); flash.t = setTimeout(() => f.classList.remove('on'), ms); }
 async function lockScreen() { try { wake = await navigator.wakeLock?.request('screen'); } catch {} }
-document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible' && R.state === 'run') lockScreen(); });
-window.addEventListener('beforeunload', e => { if (R.samples.length && R.state !== 'done') { e.preventDefault(); e.returnValue = ''; } });
+document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') { if (R.state === 'run') lockScreen(); } else saveDraft(); });
+window.addEventListener('beforeunload', e => { if (R.samples.length && R.state !== 'done') { saveDraft(); e.preventDefault(); e.returnValue = ''; } });
 
 function control() {
   if (P.mode === 'erg') return `<div class="pctl"><button data-d="-25">−25</button><button data-d="-5">−5</button><button class="pval" id="pSet"><b>${P.erg}</b><small>W</small></button><button data-d="5">+5</button><button data-d="25">+25</button></div>`;
@@ -277,9 +281,9 @@ function endSheet() {
     ${rec.laps ? `<div class="label" style="margin:14px 0 6px">Laps</div><div class="plaps">${rec.laps.map((l, i) => `<div><span>${i + 1}</span><span>${fmtTime(l.t)}</span><span>${fmtNum(l.d / 1000, 2)} km</span><b>${l.w} W</b></div>`).join('')}</div>` : ''}
     <div class="pfoot col"><button class="btn" id="eSave">Save</button><button class="btn ghost" id="eStrava">Save + Strava</button>
       <button class="btn ghost" id="eBack">Resume</button><button class="btn danger" id="eDrop">Discard</button></div>`);
-  const save = async () => { R.state = 'done'; trainer.setPower(null); await db.put('rides', rec).catch(() => {}); import('./account.js').then(a => a.pushRide?.(rec)).catch(() => {}); };
+  const save = async () => { R.state = 'done'; trainer.setPower(null); dropDraft(); await db.put('rides', rec).catch(() => {}); import('./account.js').then(a => a.pushRide?.(rec)).catch(() => {}); };
   $('#eBack', s).onclick = () => s.remove();
-  $('#eDrop', s).onclick = () => { if (!confirm('Really discard this ride?')) return; R.state = 'done'; trainer.setPower(null); location.href = './pure.html' + location.search; };
+  $('#eDrop', s).onclick = async () => { if (!confirm('Really discard this ride?')) return; R.state = 'done'; trainer.setPower(null); await dropDraft(); location.href = './pure.html' + location.search; };
   $('#eSave', s).onclick = async () => { await save(); s.remove(); doneScreen(rec); };
   if (S.autoStrava) { $('#eSave', s).onclick = () => $('#eStrava', s).click(); $('#eSave', s).textContent = 'Save + Strava'; $('#eStrava', s).hidden = true; } // settings: upload on its own
   $('#eStrava', s).onclick = async e => { await save(); await toStrava(e.target, rec); s.remove(); doneScreen(rec); };
@@ -315,6 +319,7 @@ setInterval(() => {
   tick(dt);
   if (now - bufAt >= 1000) { bufAt = now; live.buf.push(live.power); if (live.buf.length > 10) live.buf.shift(); }
   if (R.state === 'run') applyTrainer();
+  if ((R.state === 'run' || R.state === 'pause') && now - draftAt > 10000) saveDraft();
   paint();
 }, 250);
 document.addEventListener('keydown', e => {
@@ -326,5 +331,12 @@ document.addEventListener('keydown', e => {
 
 await loadSettings();
 render();
-if (DEMO && params.has('run')) start();
+const draft = await db.kvGet('pureDraft').catch(() => null);
+if (draft?.samples?.length && Date.now() - draft.savedAt < 12 * 3600e3) {
+  const s = sheet(`<div class="label">Unfinished ride</div><h2 class="display" style="font-size:26px;margin:8px 0">${fmtNum(draft.d / 1000, 2)} km · ${fmtTime(draft.moving)}</h2>
+    <p class="hint">The last ride was not finished (page reloaded or closed).</p>
+    <div class="pfoot col"><button class="btn" id="rGo">Resume ride</button><button class="btn danger" id="rDrop">Discard</button></div>`);
+  $('#rGo', s).onclick = () => { const { savedAt, ...r } = draft; Object.assign(R, r, { state: 'pause' }); s.remove(); start(); };
+  $('#rDrop', s).onclick = () => { dropDraft(); s.remove(); };
+} else { if (draft) dropDraft(); if (DEMO && params.has('run')) start(); }
 if ('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js').catch(() => {});
