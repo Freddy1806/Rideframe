@@ -15,8 +15,14 @@ export const BT_HELP = /iPhone|iPad|iPod/.test(navigator.userAgent) || (navigato
 export async function pickDevice(o) {
   if (!navigator.bluetooth) throw new Error(BT_HELP);
   try { return await navigator.bluetooth.requestDevice(o); }
-  catch (e) { if (o.acceptAllDevices || ['NotFoundError', 'SecurityError', 'AbortError', 'NotAllowedError'].includes(e.name)) throw e;
-    return await navigator.bluetooth.requestDevice({ acceptAllDevices: true, optionalServices: o.optionalServices || [] }); }
+  catch (e) { if (o.acceptAllDevices || ['NotFoundError', 'SecurityError', 'AbortError', 'NotAllowedError'].includes(e?.name)) throw btError('Device list', e);
+    try { return await navigator.bluetooth.requestDevice({ acceptAllDevices: true, optionalServices: o.optionalServices || [] }); } catch (e2) { throw btError('Device list', e2); } }
+}
+/** Bluefy rejects with bare codes like "2" (Freddy 16.11.): say at which step it failed, so the message means something */
+export function btError(step, e) {
+  if (e?.name === 'NotFoundError') return e; // the chooser was closed: nothing to report
+  const raw = e?.message || String(e), err = new Error(`${step} failed (${raw}). Close other apps that use the trainer, wake it by pedalling, then try again.`);
+  err.step = step; return err;
 }
 
 export class Trainer extends EventTarget {
@@ -49,19 +55,26 @@ export class Trainer extends EventTarget {
 
   async _setup() {
     this.emit('status', 'connecting');
+    let step = 'Connecting';
+    try { await this._setupSteps(s => step = s); } catch (e) { throw e?.step ? e : btError(step, e); }
+  }
+  async _setupSteps(at) {
     const server = await this.device.gatt.connect();
+    at('Reading the trainer');
     let ftms = null;
     try { ftms = await server.getPrimaryService(FTMS); } catch {}
     if (ftms) {
       const ibd = await ftms.getCharacteristic(IBD);
       ibd.addEventListener('characteristicvaluechanged', e => this._onIBD(e.target.value));
       await ibd.startNotifications();
-      this.cp = await ftms.getCharacteristic(FTMS_CP);
-      this.cp.addEventListener('characteristicvaluechanged', e => this._onCPResponse(e.target.value));
-      await this.cp.startNotifications();
-      await this._write([0x00]);        // request control
-      await this._write([0x07]);        // start / resume
       this.mode = 'ftms';
+      try { // control is a bonus: without it the trainer still sends watts (some browsers refuse the control point)
+        this.cp = await ftms.getCharacteristic(FTMS_CP);
+        this.cp.addEventListener('characteristicvaluechanged', e => this._onCPResponse(e.target.value));
+        await this.cp.startNotifications();
+        await this._write([0x00]);        // request control
+        await this._write([0x07]);        // start / resume
+      } catch { this.cp = null; this.mode = 'power-only'; }
     } else {
       const cps = await server.getPrimaryService(CPS);
       const m = await cps.getCharacteristic(CPM);
@@ -76,7 +89,7 @@ export class Trainer extends EventTarget {
       } catch { this.mode = 'power-only'; this.cp = null; }
     }
     this.lastGrade = null;
-    if (this.sim) await this.setSim(this.sim);
+    if (this.sim) try { await this.setSim(this.sim); } catch {}
     this.emit('status', 'connected');
   }
 
