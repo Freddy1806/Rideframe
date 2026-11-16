@@ -1,8 +1,9 @@
 // Simple player accounts, served by serve.mjs under /api/account/* (only where RIDEFRAME is hosted, e.g. the Mac mini).
-// Name + password only (Freddy's wish: no email, no security standards beyond a hashed password). Names are unique (case-insensitive).
+// Name + password, and since 16.11. an email address (Freddy: welcome mail, "Passwort vergessen"). Names and emails are unique (case-insensitive).
 // Stored in <data>/accounts.json; each account's rides in <data>/users/<id>/rides/<rideId>.json, settings (incl. the chosen rider) in settings.json.
 import { readFile, writeFile, mkdir, readdir, unlink, stat, rm, rename } from 'node:fs/promises';
-import { randomBytes, scryptSync, timingSafeEqual } from 'node:crypto';
+import { randomBytes, scryptSync, timingSafeEqual, createHash } from 'node:crypto';
+import { sendMail, welcomeMail, resetMail, mailConfig } from './mailer.mjs';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
 
@@ -52,6 +53,15 @@ async function login(a, u) {
   const token = randomBytes(24).toString('hex'); a.tokens[token] = { key: u.name.toLowerCase(), at: Date.now() };
   await writeJSON(ACC, a); return token;
 }
+
+/* ---- email (16.11.): login with name or email, welcome mail, password reset by mail ---- */
+const EMAIL = /^[^\s@]{1,64}@[^\s@]{1,190}\.[^\s@]{2,24}$/;
+const normMail = e => String(e || '').trim().toLowerCase();
+const byMail = (a, e) => e ? Object.entries(a.users).find(([, u]) => u.email === e) || null : null;
+const sha = t => createHash('sha256').update(String(t)).digest('hex');
+const baseUrl = async req => (await mailConfig())?.base || `https://${String(req.headers['x-forwarded-host'] || req.headers.host || 'localhost').split(',')[0].trim()}`;
+const mailLater = (to, [subject, text, html]) => { sendMail(to, subject, text, html).catch(e => console.warn('Mail an', to, 'ging nicht:', e.message)); };
+const setPw = (u, pw) => { u.salt = randomBytes(12).toString('hex'); u.hash = hash(pw, u.salt); };
 
 /* the week starts Monday 00:00 local time (same key as js/story.js weekKey) */
 const monday = (t = Date.now()) => { const d = new Date(t); d.setHours(0, 0, 0, 0); d.setDate(d.getDate() - ((d.getDay() + 6) % 7)); return d; };
@@ -119,8 +129,29 @@ export async function accountsApi(req, res, path) {
   const op = path.slice(13), token = req.headers['x-rf-token'] || '';
   try {
     if (op === 'ping') return send(res, 200, { ok: true });
+    if (op === 'forgot' && req.method === 'POST') { /* same answer whether the address exists or not, so nobody can test addresses */
+      const b = await body(req, 1e4), e = normMail(b.email), ip = clientIp(req), mail = !!(await mailConfig());
+      if (!EMAIL.test(e)) return send(res, 400, { error: 'Bitte deine E-Mail-Adresse eingeben.' });
+      if (limited('forgot-ip:' + ip, 10, 36e5) || limited('forgot:' + e, 3, 36e5)) return send(res, 429, { error: 'Zu viele Anfragen. Bitte in einer Stunde nochmal.' });
+      if (mail) await withAcc(async a => { const hit = byMail(a, e); if (!hit) return;
+        const tok = randomBytes(32).toString('hex'), now = Date.now(); a.resets = Object.fromEntries(Object.entries(a.resets || {}).filter(([, r]) => r.exp > now && r.key !== hit[0]));
+        a.resets[sha(tok)] = { key: hit[0], exp: now + 36e5 }; await writeJSON(ACC, a);
+        mailLater(e, resetMail(hit[1].name, `${await baseUrl(req)}/reset.html#t=${tok}`)); });
+      return send(res, 200, { ok: true, mail });
+    }
+    if (op === 'reset' && req.method === 'POST') {
+      const b = await body(req, 1e4), pw = String(b.password || ''), h = sha(String(b.token || ''));
+      if (pw.length < 6 || pw.length > 200) return send(res, 400, { error: 'Passwort: mindestens 6 Zeichen.' });
+      if (limited('reset-ip:' + clientIp(req), 20, 36e5)) return send(res, 429, { error: 'Zu viele Versuche. Bitte später nochmal.' });
+      return await withAcc(async a => { const r = a.resets?.[h], u = r && r.exp > Date.now() && Object.hasOwn(a.users, r.key) ? a.users[r.key] : null;
+        if (!u) return send(res, 400, { error: 'Der Link ist abgelaufen oder wurde schon benutzt. Bitte „Passwort vergessen?“ nochmal antippen.' });
+        delete a.resets[h]; setPw(u, pw); for (const [k, v] of Object.entries(a.tokens)) if (v.key === r.key) delete a.tokens[k]; // every device has to log in again with the new password
+        hits.delete('pw:' + r.key); return send(res, 200, { token: await login(a, u), name: u.name }); });
+    }
     if ((op === 'register' || op === 'login') && req.method === 'POST') {
-      const b = await body(req, 1e4), name = String(b.name || '').trim().replace(/\s+/g, ' '), pw = String(b.password || '');
+      const b = await body(req, 1e4), pw = String(b.password || ''); let name = String(b.name || '').trim().replace(/\s+/g, ' ');
+      const viaMail = op === 'login' && name.includes('@'), email = normMail(op === 'register' ? b.email : viaMail ? name : '');
+      if (viaMail) { const a0 = await readJSON(ACC, { users: {} }), hit = byMail(a0, email); name = hit ? hit[1].name : 'unbekannt'; }
       if (name.length < 2 || name.length > 24 || !/^[\p{L}\p{N} ._-]+$/u.test(name)) return send(res, 400, { error: 'Name: 2–24 Zeichen (Buchstaben, Zahlen, Leerzeichen, . _ -).' });
       if (pw.length < 3) return send(res, 400, { error: 'Passwort: mindestens 3 Zeichen.' });
       const ip = clientIp(req), slow = { error: 'Zu viele Versuche. Bitte in ein paar Minuten nochmal.' };
@@ -132,10 +163,14 @@ export async function accountsApi(req, res, path) {
           const inv = await inviteCode();
           if (inv && !sameText(b.invite || '', inv)) return send(res, 403, { invite: true, error: b.invite ? 'Der Einladungscode stimmt nicht.' : 'Für ein neues Konto brauchst du den Einladungscode von Freddy.' });
           if (u) return send(res, 409, { error: `Den Namen „${u.name}“ gibt es schon.` });
+          if (!EMAIL.test(email)) return send(res, 400, { error: 'Bitte eine gültige E-Mail-Adresse eingeben (für „Passwort vergessen“).' });
+          if (b.password2 != null && String(b.password2) !== pw) return send(res, 400, { error: 'Die beiden Passwörter sind nicht gleich.' });
+          if (byMail(a, email)) return send(res, 409, { error: 'Mit dieser E-Mail gibt es schon ein Konto. „Passwort vergessen?“ hilft weiter.' });
           if (limited('reg:' + ip, 5, 36e5) || limited('reg', 30, 36e5)) return send(res, 429, { error: 'Gerade wurden sehr viele Konten angelegt. Bitte später nochmal.' });
           const salt = randomBytes(12).toString('hex');
-          a.users[k] = { name, salt, hash: hash(pw, salt), id: randomBytes(8).toString('hex'), created: Date.now() };
-          return send(res, 200, { token: await login(a, a.users[k]), name });
+          a.users[k] = { name, email, salt, hash: hash(pw, salt), id: randomBytes(8).toString('hex'), created: Date.now() };
+          const tk = await login(a, a.users[k]); mailLater(email, welcomeMail(name, await baseUrl(req)));
+          return send(res, 200, { token: tk, name });
         }
         if ((hits.get('pw:' + k) || []).filter(t => Date.now() - t < 10 * 60e3).length >= 10) return send(res, 429, slow); // 10 wrong passwords per name in 10 minutes
         if (!u || !timingSafeEqual(Buffer.from(hash(pw, u.salt), 'hex'), Buffer.from(u.hash, 'hex'))) { limited('pw:' + k, 10, 10 * 60e3); return send(res, 401, { error: 'Name oder Passwort stimmt nicht.' }); }
@@ -146,7 +181,13 @@ export async function accountsApi(req, res, path) {
     if (!u) return send(res, 401, { error: 'Nicht angemeldet.' });
     const dir = userDir(u.id);
     if (op === 'logout' && req.method === 'POST') return await withAcc(async a => { delete a.tokens[token]; await writeJSON(ACC, a); return send(res, 200, { ok: true }); });
-    if (op === 'me') { const s = await readJSON(join(dir, 'settings.json'), null); return send(res, 200, { name: u.name, settings: s?.settings || null, settingsAt: s?.at || 0 }); }
+    if (op === 'me') { const s = await readJSON(join(dir, 'settings.json'), null); return send(res, 200, { name: u.name, email: u.email || '', settings: s?.settings || null, settingsAt: s?.at || 0 }); }
+    if (op === 'email' && req.method === 'PUT') { /* add or change the address (accounts from before 16.11. have none) */
+      const b = await body(req, 1e4), e = normMail(b.email);
+      if (!EMAIL.test(e)) return send(res, 400, { error: 'Bitte eine gültige E-Mail-Adresse eingeben.', keep: true });
+      if (!timingSafeEqual(Buffer.from(hash(String(b.password || ''), u.salt), 'hex'), Buffer.from(u.hash, 'hex'))) { limited('pw:' + t.key, 10, 10 * 60e3); return send(res, 401, { error: 'Passwort stimmt nicht.', keep: true }); }
+      return await withAcc(async a => { const other = byMail(a, e); if (other && other[0] !== t.key) return send(res, 409, { error: 'Diese E-Mail gehört schon zu einem anderen Konto.', keep: true });
+        if (!a.users[t.key]) return send(res, 401, { error: 'Nicht angemeldet.' }); a.users[t.key].email = e; await writeJSON(ACC, a); return send(res, 200, { ok: true, email: e }); }); }
     if (op === 'settings' && req.method === 'PUT') { const b = await body(req, 1e6); await writeJSON(join(dir, 'settings.json'), { settings: b.settings || {}, at: +b.at || Date.now() }); return send(res, 200, { ok: true }); }
     if (op === 'board') { const rows = await board(a); return send(res, 200, { week: weekKey(), rows: rows.map(r => ({ ...r, me: r.key === t.key })) }); }
     if (op === 'story' && req.method === 'PUT') { /* only this week; per figure the higher value wins, so a second device with an empty ledger never wipes the points */

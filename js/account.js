@@ -1,4 +1,4 @@
-// Player accounts on the host (tools/accounts-api.mjs): name + password, keeps settings (incl. the chosen rider) and all rides.
+// Player accounts on the host (tools/accounts-api.mjs): name + password + email (16.11.: welcome mail, "Passwort vergessen"), keeps settings (incl. the chosen rider) and all rides.
 // Without the host (zip on localhost) this stays invisible and everything lives only in this browser as before.
 import { db } from './db.js';
 
@@ -24,6 +24,8 @@ export async function accountsAvailable() {
 export async function syncAccount(state, preferServer = false) {
   if (!acc) return false;
   const me = await api('me');
+  if (acc.email !== (me.email || '')) { acc.email = me.email || ''; store(acc); }
+  if (!me.email && !emailAsked) { emailAsked = true; setTimeout(() => emailModal(), 600); } /* accounts from before 16.11.: ask once per visit */
   const localAt = (await db.kvGet('settingsAt').catch(() => 0)) || 0;
   if (me.settings && (preferServer || me.settingsAt > localAt)) {
     Object.assign(state.settings, me.settings); await db.kvSet('settings', state.settings); await db.kvSet('settingsAt', me.settingsAt);
@@ -80,6 +82,7 @@ export const wishApi = {
   set: (id, status, note) => api(`wishes/${id}`, { method: 'PUT', body: JSON.stringify({ status, note }) }),
 };
 
+let emailAsked = false;
 const esc = s => String(s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
 
 /** login / register / logout dialog; resolves when closed. onChange() after login or logout. */
@@ -89,13 +92,15 @@ export function accountModal(state, onChange, { first = false } = {}) {
     const close = () => { m.remove(); done(); };
     if (acc) {
       m.innerHTML = `<div class="box"><div class="label">Konto</div><h2 class="display">${esc(acc.name)}</h2>
-        <p>Deine Fahrten, Einstellungen und dein Fahrer werden auf dem Server gespeichert. Auf einem anderen Gerät einfach mit Name und Passwort anmelden.</p>
+        <p>Deine Fahrten, Einstellungen und dein Fahrer werden auf dem Server gespeichert. Auf einem anderen Gerät einfach mit Name (oder E-Mail) und Passwort anmelden.</p>
+        <p style="margin-top:8px">E-Mail: <b>${acc.email ? esc(acc.email) : 'noch keine'}</b> · <button class="btn ghost small" id="aMail">${acc.email ? 'Ändern' : 'Hinzufügen'}</button></p>
         <div id="aDelBox" hidden style="margin-top:12px"><p>Konto, alle Fahrten, Einstellungen und Wett-Punkte werden endgültig gelöscht, auf dem Server und auf diesem Gerät. Zur Sicherheit dein Passwort:</p>
           <div class="field"><div style="min-width:90px">Passwort</div><input type="password" id="aDelPw" autocomplete="current-password"></div>
           <p id="aErr" style="color:var(--accent);min-height:20px;margin-top:8px"></p></div>
         <div class="actions"><button class="btn ghost" id="aDel" style="margin-right:auto">Konto löschen</button><button class="btn ghost" id="aOut">Abmelden</button><button class="btn" id="aOk">Fertig</button></div></div>`;
       document.body.append(m);
       m.querySelector('#aOk').onclick = close;
+      m.querySelector('#aMail').onclick = () => { close(); emailModal(); };
       m.querySelector('#aDel').onclick = async () => {
         const box = m.querySelector('#aDelBox'); if (box.hidden) { box.hidden = false; m.querySelector('#aDel').textContent = 'Endgültig löschen'; m.querySelector('#aDelPw').focus(); return; }
         try { await api('delete', { method: 'POST', body: JSON.stringify({ password: m.querySelector('#aDelPw').value }) }); }
@@ -106,33 +111,84 @@ export function accountModal(state, onChange, { first = false } = {}) {
       m.querySelector('#aOut').onclick = async () => { await api('logout', { method: 'POST' }).catch(() => {}); acc = null; store(null); onChange?.(); close(); };
       return;
     }
-    m.innerHTML = `<div class="box"><div class="label">${first ? 'Willkommen' : 'Konto'}</div><h2 class="display">Anmelden</h2>
-      <p>Nur ein Name und ein Passwort, keine E-Mail. Dann sind deine Fahrten, Einstellungen und dein Fahrer gespeichert, auch auf anderen Geräten.</p>
+    const F = (id, label, type, extra = '') => `<div class="field" data-f="${id}"><div style="min-width:110px">${label}</div><input type="${type}" id="${id}" ${extra}></div>`;
+    m.innerHTML = `<div class="box"><div class="label">${first ? 'Willkommen' : 'Konto'}</div><h2 class="display" id="aH">Anmelden</h2>
+      <p id="aTxt"></p>
       <div class="form">
-        <div class="field"><div style="min-width:90px">Name</div><input type="text" id="aName" maxlength="24" autocomplete="username" autocapitalize="off" spellcheck="false"></div>
-        <div class="field"><div style="min-width:90px">Passwort</div><input type="password" id="aPw" autocomplete="current-password"></div>
-        <div class="field" id="aInvRow" hidden><div style="min-width:90px">Einladung</div><input type="text" id="aInv" maxlength="60" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="Code von Freddy"></div>
+        ${F('aName', 'Name', 'text', 'maxlength="60" autocomplete="username" autocapitalize="off" spellcheck="false"')}
+        ${F('aMailIn', 'E-Mail', 'email', 'maxlength="200" autocomplete="email" autocapitalize="off" spellcheck="false" inputmode="email"')}
+        ${F('aPw', 'Passwort', 'password', 'autocomplete="current-password"')}
+        ${F('aPw2', 'Wiederholen', 'password', 'autocomplete="new-password"')}
+        <div class="field" id="aInvRow" hidden><div style="min-width:110px">Einladung</div><input type="text" id="aInv" maxlength="60" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="Code von Freddy"></div>
       </div>
+      <p style="margin-top:8px"><button class="btn ghost small" id="aForgot">Passwort vergessen?</button></p>
       <p id="aErr" style="color:var(--accent);min-height:20px;margin-top:10px"></p>
-      <div class="actions"><button class="btn ghost" id="aSkip" style="margin-right:auto">${first ? 'Ohne Konto weiter' : 'Abbrechen'}</button><button class="btn ghost" id="aNew">Neues Konto</button><button class="btn" id="aIn">Anmelden</button></div></div>`;
+      <div class="actions"><button class="btn ghost" id="aSkip" style="margin-right:auto">${first ? 'Ohne Konto weiter' : 'Abbrechen'}</button><button class="btn ghost" id="aSwitch"></button><button class="btn" id="aGo"></button></div></div>`;
     document.body.append(m);
     const $ = s => m.querySelector(s), err = t => { $('#aErr').textContent = t; };
-    $('#aName').focus();
+    let mode = 'login';
+    const show = md => { mode = md; err('');
+      const vis = { login: ['aName', 'aPw'], register: ['aName', 'aMailIn', 'aPw', 'aPw2'], forgot: ['aMailIn'] }[md];
+      m.querySelectorAll('[data-f]').forEach(f => f.hidden = !vis.includes(f.dataset.f));
+      $('#aH').textContent = { login: 'Anmelden', register: 'Neues Konto', forgot: 'Passwort vergessen' }[md];
+      $('#aTxt').textContent = { login: 'Mit Name oder E-Mail und Passwort. Dann sind deine Fahrten, Einstellungen und dein Fahrer gespeichert, auch auf anderen Geräten.',
+        register: 'Name (sehen die anderen in der Rangliste), deine E-Mail (nur für „Passwort vergessen“, wird nie angezeigt) und ein Passwort mit mindestens 6 Zeichen.',
+        forgot: 'Gib die E-Mail deines Kontos ein. Du bekommst einen Link, mit dem du ein neues Passwort festlegst.' }[md];
+      $('[data-f="aName"] div').textContent = md === 'login' ? 'Name / E-Mail' : 'Name';
+      $('#aPw').autocomplete = md === 'register' ? 'new-password' : 'current-password';
+      $('#aForgot').hidden = md !== 'login';
+      $('#aSwitch').textContent = md === 'login' ? 'Neues Konto' : 'Zur Anmeldung';
+      $('#aGo').textContent = { login: 'Anmelden', register: 'Konto anlegen', forgot: 'Link schicken' }[md];
+      (md === 'forgot' ? $('#aMailIn') : $('#aName')).focus(); };
+    show('login');
     $('#aSkip').onclick = close;
-    const go = async (op) => {
-      const name = $('#aName').value.trim(), password = $('#aPw').value;
-      if (!name || !password) return err('Bitte Name und Passwort eingeben.');
-      m.querySelectorAll('button').forEach(b => b.disabled = true); err(op === 'register' ? 'Konto wird angelegt …' : 'Anmelden …');
+    $('#aSwitch').onclick = () => show(mode === 'login' ? 'register' : 'login');
+    $('#aForgot').onclick = () => { const v = $('#aName').value.trim(); if (v.includes('@')) $('#aMailIn').value = v; show('forgot'); };
+    const busy = on => m.querySelectorAll('button').forEach(b => b.disabled = on);
+    const go = async () => {
+      const name = $('#aName').value.trim(), email = $('#aMailIn').value.trim(), password = $('#aPw').value, password2 = $('#aPw2').value;
+      if (mode === 'forgot') {
+        if (!email.includes('@')) return err('Bitte deine E-Mail-Adresse eingeben.');
+        busy(true); err('Wird geschickt …');
+        try { const j = await api('forgot', { method: 'POST', body: JSON.stringify({ email }) }); busy(false);
+          err(j.mail ? 'Wenn es ein Konto mit dieser E-Mail gibt, ist der Link unterwegs. Schau auch im Spam-Ordner nach.' : 'Mails sind auf diesem Server noch nicht eingerichtet. Bitte Freddy fragen.'); }
+        catch (e) { busy(false); err(e.message); } return;
+      }
+      if (!name || !password) return err(mode === 'login' ? 'Bitte Name (oder E-Mail) und Passwort eingeben.' : 'Bitte Name und Passwort eingeben.');
+      if (mode === 'register') { if (!email.includes('@')) return err('Bitte deine E-Mail-Adresse eingeben.'); if (password.length < 6) return err('Passwort: mindestens 6 Zeichen.'); if (password !== password2) return err('Die beiden Passwörter sind nicht gleich.'); }
+      busy(true); err(mode === 'register' ? 'Konto wird angelegt …' : 'Anmelden …');
       try {
-        const j = await api(op, { method: 'POST', body: JSON.stringify({ name, password, invite: $('#aInv').value.trim() || undefined }) });
-        acc = { token: j.token, name: j.name }; store(acc);
+        const j = await api(mode, { method: 'POST', body: JSON.stringify({ name, password, ...(mode === 'register' ? { email, password2 } : {}), invite: $('#aInv').value.trim() || undefined }) });
+        acc = { token: j.token, name: j.name }; store(acc); emailAsked = mode === 'register';
         err('Fahrten werden abgeglichen …');
-        await syncAccount(state, op === 'login');
+        await syncAccount(state, mode === 'login');
         onChange?.(); close();
-      } catch (e) { err(e.message); m.querySelectorAll('button').forEach(b => b.disabled = false);
+      } catch (e) { err(e.message); busy(false);
         if (e.invite) { $('#aInvRow').hidden = false; $('#aInv').focus(); } } // this host only takes new riders with an invitation code
     };
-    $('#aIn').onclick = () => go('login'); $('#aNew').onclick = () => go('register');
-    $('#aPw').onkeydown = e => { if (e.key === 'Enter') go('login'); };
+    $('#aGo').onclick = go;
+    m.querySelectorAll('input').forEach(i => i.onkeydown = e => { if (e.key === 'Enter') go(); });
   });
+}
+
+/** add / change the email of the signed-in account (accounts from before 16.11. have none) */
+export function emailModal() {
+  if (!acc || document.querySelector('#eMailBox')) return;
+  const m = document.createElement('div'); m.className = 'modal'; m.id = 'eMailBox';
+  m.innerHTML = `<div class="box"><div class="label">Konto · ${esc(acc.name)}</div><h2 class="display">E-Mail ${acc.email ? 'ändern' : 'hinzufügen'}</h2>
+    <p>${acc.email ? '' : 'Neu: Mit deiner E-Mail kannst du dein Passwort zurücksetzen, falls du es vergisst. Sie wird nirgends angezeigt. '}Zur Sicherheit brauchen wir einmal dein Passwort.</p>
+    <div class="form"><div class="field"><div style="min-width:110px">E-Mail</div><input type="email" id="eMail" maxlength="200" autocomplete="email" autocapitalize="off" spellcheck="false" inputmode="email" value="${esc(acc.email || '')}"></div>
+      <div class="field"><div style="min-width:110px">Passwort</div><input type="password" id="ePw" autocomplete="current-password"></div></div>
+    <p id="eErr" style="color:var(--accent);min-height:20px;margin-top:10px"></p>
+    <div class="actions"><button class="btn ghost" id="eLater" style="margin-right:auto">${acc.email ? 'Abbrechen' : 'Später'}</button><button class="btn" id="eSave">Speichern</button></div></div>`;
+  document.body.append(m);
+  const $ = s => m.querySelector(s); $('#eMail').focus();
+  $('#eLater').onclick = () => m.remove();
+  const save = async () => {
+    const email = $('#eMail').value.trim(); if (!email.includes('@')) { $('#eErr').textContent = 'Bitte eine gültige E-Mail-Adresse eingeben.'; return; }
+    $('#eSave').disabled = true;
+    try { const j = await api('email', { method: 'PUT', body: JSON.stringify({ email, password: $('#ePw').value }) }); acc.email = j.email; store(acc); m.remove(); }
+    catch (e) { $('#eErr').textContent = e.message; $('#eSave').disabled = false; }
+  };
+  $('#eSave').onclick = save; m.querySelectorAll('input').forEach(i => i.onkeydown = e => { if (e.key === 'Enter') save(); });
 }

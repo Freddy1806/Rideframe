@@ -18,6 +18,9 @@ const seed = async p => p.evaluate(async ([long, NAME]) => { const { db } = awai
 const SCREENS = [
   ['handy', '/handy.html', null],
   ['handy-login', '/handy.html', async p => { await p.evaluate(() => localStorage.removeItem('rf_account')); await p.reload(); await p.waitForTimeout(500); await p.click('#hAcc'); }],
+  ['handy-registrieren', '/handy.html', async p => { await p.evaluate(() => localStorage.removeItem('rf_account')); await p.reload(); await p.waitForTimeout(500); await p.click('#hAcc'); await p.click('#aSwitch'); }],
+  ['handy-passwort-vergessen', '/handy.html', async p => { await p.evaluate(() => localStorage.removeItem('rf_account')); await p.reload(); await p.waitForTimeout(500); await p.click('#hAcc'); await p.click('#aForgot'); }],
+  ['passwort-neu', '/reset.html#t=' + 'a'.repeat(64), null],
   ['draussen', '/outdoor.html?demo&run', null],
   ['draussen-sensoren', '/outdoor.html?demo', p => p.click('#oSens')],
   ['draussen-ende', '/outdoor.html?demo&fast&run', async p => { await p.waitForTimeout(3000); await p.click('#oPause'); await p.click('#oEnd'); }],
