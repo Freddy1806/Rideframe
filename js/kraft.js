@@ -210,7 +210,7 @@ async function quickSave(R, said) {
   let prs = 0; for (const x of w.ex) { const b = bests(x.k); if (!b.n) continue; for (const y of x.sets) if ((x.t === 'w' && e1rm(+y.kg, +y.r) > b.rm + .01) || (x.t === 'bw' && +y.r > b.reps) || (x.t === 'time' && +y.s > b.sec)) { prs++; break; } }
   if (prs) w.prs = prs;
   list.unshift(w); await saveList(); import('./account.js').then(a => a.pushKraft?.(w)).catch(() => {});
-  tab = 'hist'; render(); sessionSheet(w); flash('Eingetragen.');
+  tab = 'hist'; render(); sessionSheet(w); flash('Eingetragen.'); if (S.autoStrava) toStrava(w);
 }
 function aiSheet(Q, done) {
   const has = !!Q.aiKey();
@@ -356,7 +356,8 @@ function finishSheet() {
     W = null; rest = null; db.kvDel('kraftDraft').catch(() => {}); try { wake?.release(); } catch {}
     return w;
   };
-  $('#fSave', s).onclick = async () => { const w = await save(); s.remove(); tab = 'hist'; render(); sessionSheet(w); };
+  if (S.autoStrava) { $('#fSave', s).textContent = 'Speichern + Strava'; $('#fStrava', s).hidden = true; }
+  $('#fSave', s).onclick = async () => { if (S.autoStrava) return $('#fStrava', s).click(); const w = await save(); s.remove(); tab = 'hist'; render(); sessionSheet(w); };
   $('#fStrava', s).onclick = async e => { e.target.disabled = true; const w = await save(); s.remove(); tab = 'hist'; render(); await toStrava(w); };
 }
 

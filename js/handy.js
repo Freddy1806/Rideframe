@@ -44,7 +44,7 @@ function recent() {
     ...kraft.map(k => ({ t: k.start || k.date, m: 'kraft', name: k.name, val: fmtTime(k.dur || 0) }))].sort((a, b) => b.t - a.t).slice(0, 6);
   return all.map(x => `<a class="hrow" href="${x.m === 'world' ? './?desktop' : MODES[x.m].href + (x.m === 'kraft' || x.m === 'trainer' ? '' : (MODES[x.m].href.includes('?') ? '&' : '?') + 'list')}" style="--mc:${MODES[x.m].color};--mcl:${MODES[x.m].light}">${icon(x.m, 'rico')}<div><b>${esc(x.name)}</b><small>${day(x.t)}</small></div><span>${x.val}</span></a>`);
 }
-async function save() { const st = (await db.kvGet('settings').catch(() => null)) || {}; Object.assign(st, { theme: S.theme, modeColors: S.modeColors, accent: S.accent }); await db.kvSet('settings', st).catch(() => {}); }
+async function save() { const st = (await db.kvGet('settings').catch(() => null)) || {}; Object.assign(st, { theme: S.theme, modeColors: S.modeColors, accent: S.accent, autoStrava: S.autoStrava, kraftRest: S.kraftRest }); await db.kvSet('settings', st).catch(() => {}); }
 function settings() {
   const s = document.createElement('div'); s.className = 'psheet'; document.body.append(s);
   const draw = () => {
@@ -53,7 +53,15 @@ function settings() {
       <h3 class="ksec">Farben</h3>
       <label class="prow">Jeder Modus in eigener Farbe<input id="tMc" type="checkbox" class="toggle" ${S.modeColors !== false ? 'checked' : ''}></label>
       <div class="hsw" ${S.modeColors !== false ? 'hidden' : ''}>${Object.entries(ACCENTS).map(([k, c]) => `<button data-ac="${k}" class="${(S.accent || 'orange') === k ? 'on' : ''}" style="background:${c[0]}" aria-label="${k}"></button>`).join('')}</div>
+      <h3 class="ksec">Strava</h3>
+      <label class="prow">Nach dem Speichern automatisch hochladen<input id="tSt" type="checkbox" class="toggle" ${S.autoStrava ? 'checked' : ''}></label>
+      <h3 class="ksec">Kraft: Pause zwischen Sätzen</h3><div class="pseg" id="tRest">${[60, 90, 120, 180].map(n => `<button data-rest="${n}" class="${(+S.kraftRest || 90) === n ? 'on' : ''}">${n < 120 ? n + ' s' : n / 60 + ' min'}</button>`).join('')}</div>
+      <h3 class="ksec">Mehr</h3>
+      <a class="hrow hlink" href="profil.html"><div><b>Meine Daten</b><small>Gewicht, FTP, Puls, Export</small></div><i>›</i></a>
+      <a class="hrow hlink" href="datenschutz.html"><div><b>Datenschutz</b></div><i>›</i></a>
       <div class="pfoot"><button class="btn" id="tOk">Fertig</button></div></div>`;
+    $('#tSt', s).onchange = e => { S.autoStrava = e.target.checked; save(); };
+    s.querySelectorAll('[data-rest]').forEach(b => b.onclick = () => { S.kraftRest = +b.dataset.rest; save(); draw(); });
     s.querySelectorAll('[data-th]').forEach(b => b.onclick = () => { S.theme = b.dataset.th; applyTheme(S, null); save(); draw(); });
     $('#tMc', s).onchange = e => { S.modeColors = e.target.checked; save(); draw(); render(); };
     s.querySelectorAll('[data-ac]').forEach(b => b.onclick = () => { S.accent = b.dataset.ac; applyTheme(S, null); save(); draw(); render(); });

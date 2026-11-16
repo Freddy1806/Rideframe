@@ -298,7 +298,8 @@ function endSheet() {
     import('./account.js').then(a => a.pushRide?.(rec)).catch(() => {}); try { wake?.release(); } catch {} };
   $('#eBack', s).onclick = () => s.remove();
   $('#eDrop', s).onclick = () => { if (!confirm(`${W.act} wirklich verwerfen?`)) return; R = fresh(); db.kvDel(DRAFT).catch(() => {}); s.remove(); render(); };
-  $('#eSave', s).onclick = async () => { await save(); s.remove(); R = fresh(); view = 'list'; render(); detail(rec); };
+  if (S.autoStrava) { $('#eSave', s).textContent = 'Speichern + Strava'; $('#eStrava', s).hidden = true; }
+  $('#eSave', s).onclick = async () => { if (S.autoStrava) return $('#eStrava', s).click(); await save(); s.remove(); R = fresh(); view = 'list'; render(); detail(rec); };
   $('#eStrava', s).onclick = async e => { e.target.disabled = true; await save(); s.remove(); R = fresh(); view = 'list'; render(); detail(rec); toStrava(rec); };
 }
 async function toStrava(rec, btn) {

@@ -271,6 +271,7 @@ function endSheet() {
   $('#eBack', s).onclick = () => s.remove();
   $('#eDrop', s).onclick = () => { if (!confirm('Fahrt wirklich verwerfen?')) return; R.state = 'done'; trainer.setPower(null); location.href = './pure.html' + location.search; };
   $('#eSave', s).onclick = async () => { await save(); s.remove(); doneScreen(rec); };
+  if (S.autoStrava) { $('#eSave', s).onclick = () => $('#eStrava', s).click(); $('#eSave', s).textContent = 'Speichern + Strava'; $('#eStrava', s).hidden = true; } // settings: upload on its own
   $('#eStrava', s).onclick = async e => { await save(); await toStrava(e.target, rec); s.remove(); doneScreen(rec); };
 }
 const avgHr = () => { const h = R.samples.map(x => x[5]).filter(Boolean); return h.length ? Math.round(h.reduce((a, b) => a + b, 0) / h.length) : 0; };
