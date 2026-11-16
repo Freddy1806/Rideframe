@@ -12,7 +12,7 @@ async function loadPeer() {
   if (window.Peer) return window.Peer;
   peerLib ||= new Promise((res, rej) => {
     const s = document.createElement('script'); s.src = new URL('../vendor/peerjs.min.js', import.meta.url).href;
-    s.onload = () => res(window.Peer); s.onerror = () => rej(new Error('PeerJS konnte nicht geladen werden'));
+    s.onload = () => res(window.Peer); s.onerror = () => rej(new Error('Could not load PeerJS'));
     document.head.append(s);
   });
   return peerLib;
@@ -33,7 +33,7 @@ export class Group {
   constructor(opts) {
     Object.assign(this, opts);
     this.host = !opts.code; this.code = opts.code || opts.hostCode || newCode(); this.lastD = new Map(); // host: rider id -> last distance (for rejoins)
-    this.me = { id: riderId(), name: opts.name || 'Ich', look: opts.look ? cleanLook(opts.look) : null, d: 0, v: 0, w: 0, hr: 0, riding: false };
+    this.me = { id: riderId(), name: opts.name || 'Me', look: opts.look ? cleanLook(opts.look) : null, d: 0, v: 0, w: 0, hr: 0, riding: false };
     this.riders = new Map(); // id -> state of the others
     this.conns = []; this.open = false; this.routeId = null;
   }
@@ -60,11 +60,11 @@ export class Group {
   }
 
   _msg(e) {
-    if (e?.type === 'unavailable-id') return 'Dieser Gruppen-Code ist gerade belegt. Bitte neu erstellen.';
-    if (e?.type === 'peer-unavailable') return 'Keine Gruppe mit diesem Code gefunden. Ist der Gastgeber online?';
-    if (e?.type === 'ice-timeout') return 'Die Gruppe ist da, aber eure Router lassen keine direkte Verbindung zu. Probiert es nochmal, sonst über einen Handy-Hotspot.';
-    if (e?.type === 'network' || e?.type === 'server-error' || e?.type === 'socket-error') return 'Keine Verbindung zum Vermittlungs-Server. Internet prüfen.';
-    return 'Verbindung: ' + (e?.message || e?.type || e);
+    if (e?.type === 'unavailable-id') return 'This group code is taken right now. Please create a new one.';
+    if (e?.type === 'peer-unavailable') return 'No group found with this code. Is the host online?';
+    if (e?.type === 'ice-timeout') return 'The group is there, but your routers block a direct connection. Try again, or use a phone hotspot.';
+    if (e?.type === 'network' || e?.type === 'server-error' || e?.type === 'socket-error') return 'Cannot reach the relay server. Check your internet.';
+    return 'Connection: ' + (e?.message || e?.type || e);
   }
 
   _wire(c) {
@@ -74,7 +74,7 @@ export class Group {
     c.on('close', () => {
       this.conns = this.conns.filter(x => x !== c);
       if (c._rid) { this.riders.delete(c._rid); this._relayAll(); }
-      if (!this.host && !this._closed) { this.onError?.('Verbindung zur Gruppe getrennt · verbinde neu …'); this._retry(); } // the host reloads: same code, back in a few seconds
+      if (!this.host && !this._closed) { this.onError?.('Lost connection to the group · reconnecting …'); this._retry(); } // the host reloads: same code, back in a few seconds
       this.onChange?.(this);
     });
   }
@@ -82,7 +82,7 @@ export class Group {
   _retry(n = 0) {
     if (this._closed || n > 60 || this.conns.some(c => c.open)) return;
     setTimeout(() => { if (this._closed || this.conns.some(c => c.open)) return;
-      try { const c = this.peer.connect(PREFIX + this.code, { reliable: true }); c.on('open', () => this.onError?.('Wieder mit der Gruppe verbunden')); this._wire(c);
+      try { const c = this.peer.connect(PREFIX + this.code, { reliable: true }); c.on('open', () => this.onError?.('Reconnected to the group')); this._wire(c);
         setTimeout(() => { if (!c.open) { this.conns = this.conns.filter(x => x !== c); this._retry(n + 1); } }, 8000); } catch { this._retry(n + 1); } }, 4000);
   }
 
@@ -108,7 +108,7 @@ export class Group {
   _clean(r) { // never trust what comes over the wire
     if (!r || typeof r.id !== 'string') return null;
     const n = v => (Number.isFinite(+v) ? +v : 0);
-    return { id: r.id.slice(0, 16), name: String(r.name || 'Fahrer').slice(0, 20), d: n(r.d), v: n(r.v), w: Math.round(n(r.w)), hr: Math.round(n(r.hr)), riding: !!r.riding, done: !!r.done, pid: typeof r.pid === 'string' ? r.pid.slice(0, 64) : '', vo: !!r.vo, sg: Array.isArray(r.sg) ? r.sg.slice(-6).filter(x => Array.isArray(x) && typeof x[0] === 'string').map(x => [x[0].slice(0, 40), n(x[1])]) : [], cr: Array.isArray(r.cr) ? r.cr.slice(-4).filter(x => Array.isArray(x) && typeof x[0] === 'string').map(x => [x[0].slice(0, 30), x[1] ? 1 : 0, Math.round(n(x[2]))]) : [], look: r.look && typeof r.look === 'object' ? cleanLook(r.look) : null };
+    return { id: r.id.slice(0, 16), name: String(r.name || 'Rider').slice(0, 20), d: n(r.d), v: n(r.v), w: Math.round(n(r.w)), hr: Math.round(n(r.hr)), riding: !!r.riding, done: !!r.done, pid: typeof r.pid === 'string' ? r.pid.slice(0, 64) : '', vo: !!r.vo, sg: Array.isArray(r.sg) ? r.sg.slice(-6).filter(x => Array.isArray(x) && typeof x[0] === 'string').map(x => [x[0].slice(0, 40), n(x[1])]) : [], cr: Array.isArray(r.cr) ? r.cr.slice(-4).filter(x => Array.isArray(x) && typeof x[0] === 'string').map(x => [x[0].slice(0, 30), x[1] ? 1 : 0, Math.round(n(x[2]))]) : [], look: r.look && typeof r.look === 'object' ? cleanLook(r.look) : null };
   }
 
   _relayAll() {

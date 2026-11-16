@@ -32,22 +32,22 @@ export function stravaConnect() {
 const paceTxt = s => `${Math.floor(s / 60)}:${String(Math.round(s % 60)).padStart(2, '0')}`;
 /** uploads one ride; onState(text) gets progress. Returns the Strava activity URL. */
 export async function stravaUpload(rec, name, eleAt, onState = () => {}, imageUrl = '') {
-  onState('Wird hochgeladen …');
+  onState('Uploading …');
   const km = (rec.distance / 1000).toFixed(1);
   const r = await fetch('/api/strava/upload', { method: 'POST', headers: { ...hdr(), 'Content-Type': 'application/json' },
     body: JSON.stringify({ tcx: toTCX(rec, name, eleAt), name: `RIDEFRAME · ${name}`, external_id: 'rideframe-' + rec.id,
-      outdoor: !!rec.outdoor, description: rec.sport === 'run' ? `${km} km · ${rec.gain} hm${rec.distance > 0 ? ` · Ø ${paceTxt(rec.duration / rec.distance * 1000)} /km` : ''}\nGelaufen mit RIDEFRAME.` : rec.outdoor ? `${km} km · ${rec.gain} hm${rec.avgPower ? ` · Ø ${rec.avgPower} W` : ''}\nDraußen aufgezeichnet mit RIDEFRAME.`
-      : `${km} km · ${rec.gain} hm · Ø ${rec.avgPower} W\nGefahren in RIDEFRAME (Indoor, virtuelle Strecke).` + intervalText(rec) /* no image link in the description (Freddy 12.11.: it exposed the Mac mini address) */ }) });
+      outdoor: !!rec.outdoor, description: rec.sport === 'run' ? `${km} km · ${rec.gain} m climb${rec.distance > 0 ? ` · avg ${paceTxt(rec.duration / rec.distance * 1000)} /km` : ''}\nRun with RIDEFRAME.` : rec.outdoor ? `${km} km · ${rec.gain} m climb${rec.avgPower ? ` · avg ${rec.avgPower} W` : ''}\nRecorded outdoors with RIDEFRAME.`
+      : `${km} km · ${rec.gain} m climb · avg ${rec.avgPower} W\nRidden in RIDEFRAME (indoor, virtual route).` + intervalText(rec) /* no image link in the description (Freddy 12.11.: it exposed the Mac mini address) */ }) });
   const j = await r.json().catch(() => ({}));
-  if (!r.ok) throw new Error(j.error || 'Upload fehlgeschlagen');
-  onState('Strava verarbeitet die Fahrt …');
+  if (!r.ok) throw new Error(j.error || 'Upload failed');
+  onState('Strava is processing the ride …');
   for (let i = 0; i < 40; i++) { // Strava needs a few seconds to process
     await new Promise(r => setTimeout(r, i < 5 ? 1500 : 3000));
     const s = await (await fetch('/api/strava/upload/' + j.id + (rec.outdoor ? '' : '?indoor=1'), { headers: hdr(), cache: 'no-store' })).json().catch(() => ({}));
     if (s.activity_id) return 'https://www.strava.com/activities/' + s.activity_id;
-    if (s.error) throw new Error(/duplicate/i.test(s.error) ? 'Diese Fahrt ist schon auf Strava.' : s.error);
+    if (s.error) throw new Error(/duplicate/i.test(s.error) ? 'This ride is already on Strava.' : s.error);
   }
-  throw new Error('Strava antwortet nicht. Schau gleich in deinem Strava-Profil nach, die Fahrt kommt meist trotzdem an.');
+  throw new Error('Strava is not answering. Check your Strava profile in a moment, the ride usually arrives anyway.');
 }
 
 /** one button for everything: connect if needed, upload, show the result; falls back to the file */
@@ -58,18 +58,18 @@ export async function stravaButton(btn, rec, name, eleAt, makeImage = null) {
   const label = btn.textContent, set = t => { btn.textContent = t; };
   btn.disabled = true;
   try {
-    if (!st.connected) { set('Mit Strava verbinden …'); if (!(await stravaConnect()) || !(await stravaStatus()).connected) throw new Error('Nicht mit Strava verbunden.'); }
+    if (!st.connected) { set('Connecting to Strava …'); if (!(await stravaConnect()) || !(await stravaStatus()).connected) throw new Error('Not connected to Strava.'); }
     let imageUrl = '';
     if (makeImage) try {
-      set('Bild wird gemacht …'); const c = await makeImage(), jpg = c.toDataURL('image/jpeg', 0.9);
+      set('Making image …'); const c = await makeImage(), jpg = c.toDataURL('image/jpeg', 0.9);
       const a = document.createElement('a'); a.href = jpg; a.download = `RIDEFRAME_${String(name).replace(/[^\w-]+/g, '_')}.jpg`; a.click(); // saved, ready to add in Strava
       const r = await fetch('/api/strava/image', { method: 'POST', headers: { ...hdr(), 'Content-Type': 'application/json' }, body: JSON.stringify({ jpg }) });
       if (r.ok) imageUrl = (await r.json()).url || '';
     } catch (e) { console.warn('Teilen-Bild:', e); }
     const url = await stravaUpload(rec, name, eleAt, set, imageUrl);
-    set('Auf Strava ✓ öffnen'); btn.disabled = false; btn.onclick = () => window.open(url, '_blank');
+    set('Open on Strava ✓'); btn.disabled = false; btn.onclick = () => window.open(url, '_blank');
     window.open(url, '_blank');
-    if (makeImage) import('./app.js').then(m => m.toast('Bild ist gespeichert (Downloads). In Strava bei der Fahrt auf Bearbeiten → Foto hinzufügen.', 8000));
+    if (makeImage) import('./app.js').then(m => m.toast('Image saved (Downloads). In Strava, open the ride, Edit → Add photo.', 8000));
   } catch (e) {
     btn.disabled = false; set(label);
     import('./app.js').then(m => m.toast(e.message || String(e), 6000));
@@ -80,7 +80,7 @@ export async function stravaButton(btn, rec, name, eleAt, makeImage = null) {
 function intervalText(rec) {
   const iv = rec.ivs; if (!iv?.length) return '';
   const mm = t => `${Math.floor(t / 60)}:${String(Math.round(t % 60)).padStart(2, '0')}`;
-  return '\n\nIntervalle:\n' + iv.map((x, i) => `${i + 1}. ${x.name} · ${mm(x.t)} · Ø ${x.w} W${x.target ? ` (Ziel ${x.target} W)` : ''}`).join('\n');
+  return '\n\nIntervals:\n' + iv.map((x, i) => `${i + 1}. ${x.name} · ${mm(x.t)} · avg ${x.w} W${x.target ? ` (target ${x.target} W)` : ''}`).join('\n');
 }
 
 /** a strength workout as a manual Strava activity (Krafttraining, no file). Returns the activity URL. */
@@ -90,7 +90,7 @@ export async function stravaStrength({ id, name, start, dur, description }) {
   const r = await fetch('/api/strava/activity', { method: 'POST', headers: { ...hdr(), 'Content-Type': 'application/json' },
     body: JSON.stringify({ name, sport_type: 'WeightTraining', start_date_local: local, elapsed_time: dur, description, external_id: 'rideframe-kraft-' + id }) });
   const j = await r.json().catch(() => ({}));
-  if (!r.ok) throw new Error(/write|scope|permission/i.test(j.error || '') ? 'Strava erlaubt das Anlegen nicht. Bitte Strava einmal neu verbinden.' : j.error || 'Upload fehlgeschlagen');
+  if (!r.ok) throw new Error(/write|scope|permission/i.test(j.error || '') ? 'Strava does not allow creating activities. Please reconnect Strava once.' : j.error || 'Upload failed');
   return 'https://www.strava.com/activities/' + j.id;
 }
 
