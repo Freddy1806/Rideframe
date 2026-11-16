@@ -1,12 +1,12 @@
 /* RIDEFRAME Draußen: outdoor recording, phone portrait */
 body.outdoor { min-height: 100dvh; }
 #out { min-height: 100dvh; max-width: 620px; margin: 0 auto; padding: env(safe-area-inset-top) 12px calc(env(safe-area-inset-bottom) + 10px); display: flex; flex-direction: column; gap: 10px; }
-.omap { position: relative; height: 30dvh; min-height: 170px; border-radius: 10px; overflow: hidden; border: 1px solid var(--line); background: #1a1a1a; flex: none; }
+.omap { position: relative; height: 30dvh; min-height: 170px; border-radius: 10px; overflow: hidden; border: 1px solid var(--line); background: var(--ink-3); flex: none; }
 .omap.big { height: 52dvh; }
 .omap.det { height: 260px; margin-bottom: 10px; }
 .omapbtn { position: absolute; z-index: 500; left: 8px; bottom: 8px; width: 38px; height: 38px; border-radius: 50%; background: #000b; color: #fff; font-size: 18px; border: 1px solid #fff3; }
 .omapbtn.r { left: auto; right: 8px; }
-.leaflet-container { background: #1a1a1a; font: inherit; }
+.leaflet-container { background: var(--ink-3); font: inherit; }
 .leaflet-control-attribution { font-size: 9px !important; background: #0008 !important; color: #aaa !important; }
 .leaflet-control-attribution a { color: #ccc !important; }
 .obig { padding: 8px 16px 10px; }
@@ -36,3 +36,20 @@ body.outdoor { min-height: 100dvh; }
 #opocket button i { position: absolute; inset: -2px; border-radius: 50%; border: 3px solid #555; clip-path: inset(100% 0 0 0); }
 #opocket button.hold i { clip-path: inset(0 0 0 0); transition: clip-path 1.5s linear; border-color: #777; }
 #opocket small { font-size: 12px; color: #333; }
+/* data pages (Freddy 16.11., like Cadence): 4 / 6 / 9 fields, swipe between pages */
+button.obig { width: 100%; text-align: left; color: inherit; font: inherit; }
+#out .ptiles.n4 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+#out .ptiles.n4 .ptile { min-height: 96px; }
+#out .ptiles.n4 .ptile b { font-size: clamp(18px, 23cqw, 64px); align-self: center; }
+#out .ptiles.n6 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+#out .ptiles.n6 .ptile { min-height: 80px; }
+#out .ptiles.n6 .ptile b { font-size: clamp(18px, 21cqw, 54px); }
+#out .ptiles { touch-action: pan-y; }
+.odots { display: flex; justify-content: center; gap: 8px; margin-top: -2px; }
+.odots button { width: 8px; height: 8px; border-radius: 50%; background: var(--line-2); padding: 0; }
+.odots button.on { background: var(--accent); width: 20px; border-radius: 4px; }
+.olbl { font-size: 13px; font-weight: 700; color: var(--muted); margin: 4px 0 -2px; }
+:root[data-theme="light"] .kchart .oele { fill: #00000014; }
+:root[data-theme="light"] .omapbtn { background: #fffd; color: #151515; border-color: #0002; }
+:root[data-theme="light"] .leaflet-control-attribution { background: #fffa !important; color: #555 !important; }
+:root[data-theme="light"] .leaflet-control-attribution a { color: #333 !important; }

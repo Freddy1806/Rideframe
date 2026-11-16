@@ -39,7 +39,7 @@ export function toTCX(rec, name, eleAt = null) {
   }
   return `<?xml version="1.0" encoding="UTF-8"?>
 <TrainingCenterDatabase xmlns="http://www.garmin.com/xmlschemas/TrainingCenterDatabase/v2">
-<Activities><Activity Sport="Biking"><Id>${start.toISOString()}</Id>
+<Activities><Activity Sport="${rec.sport === 'run' ? 'Running' : 'Biking'}"><Id>${start.toISOString()}</Id>
 ${laps.join('\n')}<Notes>RIDEFRAME · ${name}</Notes></Activity></Activities></TrainingCenterDatabase>`;
 }
 

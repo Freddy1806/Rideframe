@@ -3,10 +3,10 @@
 // can go to Strava as "Krafttraining". Stored in kv 'kraft' (newest first) and, with an account, on the host (account.js syncKraft).
 import { db, uid } from './db.js';
 import { fmtTime, fmtNum, esc } from './util.js';
+import { applyTheme } from './theme.js';
 
 const $ = (s, r = document) => r.querySelector(s);
 const el = document.getElementById('kraft');
-const ACCENTS = { orange: '#ff5a1f', violet: '#8b6cff', lime: '#c6f432', cyan: '#2fd3e0', pink: '#ff4f9a' };
 
 // t: w = weight × reps, bw = body weight (reps, optional extra kg), time = seconds
 const CATALOG = [
@@ -26,7 +26,7 @@ let S = {}, list = [], mine = [], tpls = [], W = null, tab = 'start', rest = nul
 // ---------------- data ----------------
 async function load() {
   S = (await db.kvGet('settings').catch(() => null)) || {};
-  document.documentElement.style.setProperty('--accent', ACCENTS[S.accent] || ACCENTS.orange);
+  applyTheme(S, 'kraft');
   list = (await db.kvGet('kraft').catch(() => null)) || [];
   mine = (await db.kvGet('kraftEx').catch(() => null)) || [];
   tpls = (await db.kvGet('kraftTpl').catch(() => null)) || S.kraftTpl || [];
@@ -77,6 +77,7 @@ function prevSets(k, without = null) {
 /** short form for the narrow "Vorher" column: the column heads already say kg / Wdh */
 const prevTxt = (t, s) => !s ? '–' : t === 'time' ? `${+s.s || 0} s` : t === 'bw' ? `${+s.kg ? '+' + fmtNum(+s.kg, +s.kg % 1 ? 1 : 0) + ' × ' : ''}${+s.r || 0}` : `${fmtNum(+s.kg || 0, +s.kg % 1 ? 1 : 0)} × ${+s.r || 0}`;
 const setTxt = (t, s) => !s ? '–' : t === 'time' ? `${+s.s || 0} s` : t === 'bw' ? `${+s.kg ? '+' + fmtNum(+s.kg, 1) + ' kg × ' : ''}${+s.r || 0} Wdh` : `${fmtNum(+s.kg || 0, 1)} kg × ${+s.r || 0}`;
+const nSets = n => `${n} ${n === 1 ? 'Satz' : 'Sätze'}`;
 const kgTxt = v => v >= 1000 ? fmtNum(v / 1000, 1) + ' t' : fmtNum(v) + ' kg';
 const dayTxt = t => new Date(t).toLocaleDateString('de-DE', { weekday: 'short', day: 'numeric', month: 'short' });
 
@@ -90,10 +91,11 @@ function sheet(html) {
 function render() {
   if (W) return workoutScreen();
   const head = `<header class="ptop"><a class="pback" href="handy.html" title="Zur App">‹</a><div class="pbrand"><b>RIDEFRAME </b><span>Kraft</span></div>
-    ${acc ? `<span class="ppill on"><i></i>${esc(acc.name)}</span>` : '<span class="ppill" title="In der App anmelden, dann sind die Workouts auf allen Geräten"><i></i>Nur hier</span>'}</header>
+    ${acc ? `<span class="ppill on"><i></i>${esc(acc.name)}</span>` : '<button class="ppill" id="kAcc" title="Anmelden, dann sind die Workouts auf allen Geräten"><i></i>Anmelden</button>'}</header>
     <nav class="pseg kseg">${[['start', 'Training'], ['hist', 'Verlauf'], ['ex', 'Übungen']].map(([k, n]) => `<button data-tab="${k}" class="${tab === k ? 'on' : ''}">${n}</button>`).join('')}</nav>`;
   el.innerHTML = head + `<main class="kmain">${tab === 'hist' ? histView() : tab === 'ex' ? exView() : startView()}</main>`;
   el.querySelectorAll('[data-tab]').forEach(b => b.onclick = () => { tab = b.dataset.tab; render(); });
+  const ka = $('#kAcc'); if (ka) ka.onclick = async () => { const a = await import('./account.js'); await a.accountModal({ settings: S }, async () => { await load(); render(); }); };
   wireMain();
 }
 
@@ -103,17 +105,17 @@ function startView() {
   const last = []; for (const s of list) if (!last.some(x => x.name === s.name) && last.length < 3) last.push(s);
   return `<section class="kcard kweek"><div class="label">Letzte 7 Tage</div><div class="kstats">
       <div><b>${week.length}</b><small>Workouts</small></div><div><b>${week.reduce((a, s) => a + doneSets(s), 0)}</b><small>Sätze</small></div>
-      <div><b>${kgTxt(week.reduce((a, s) => a + sessVol(s), 0))}</b><small>Volumen</small></div><div><b>${hm(week.reduce((a, s) => a + (s.dur || 0), 0))}</b><small>Stunden</small></div></div>
+      <div><b>${kgTxt(week.reduce((a, s) => a + sessVol(s), 0))}</b><small>Volumen</small></div><div><b>${hm(week.reduce((a, s) => a + (s.dur || 0), 0))}</b><small>Dauer (h)</small></div></div>
       ${weekBars()}</section>
     <button class="btn kbig" id="kNew">Leeres Workout starten</button>
     ${tpls.length ? `<h3 class="ksec">Vorlagen</h3><div class="kgrid">${tpls.map((t, i) => `<div class="kcard ktpl" data-tpl="${i}"><b>${esc(t.name)}</b><span>${t.ex.map(x => esc(exOf(x.k).n)).join(', ')}</span><button class="kx" data-tdel="${i}" title="Vorlage löschen">✕</button></div>`).join('')}</div>` : ''}
-    ${last.length ? `<h3 class="ksec">Wie letztes Mal</h3><div class="kgrid">${last.map(s => `<div class="kcard ktpl" data-again="${s.id}"><b>${esc(s.name)}</b><span>${dayTxt(s.start || s.date)} · ${(s.ex || []).map(x => esc(x.n)).join(', ')}</span></div>`).join('')}</div>` : ''}
+    ${last.length ? `<h3 class="ksec">Wiederholen</h3><div class="kgrid">${last.map(s => `<div class="kcard ktpl" data-again="${s.id}"><b>${esc(s.name)}</b><span>${dayTxt(s.start || s.date)} · ${(s.ex || []).map(x => esc(x.n)).join(', ')}</span></div>`).join('')}</div>` : ''}
     ${!list.length ? '<p class="hint" style="margin-top:18px">Noch keine Workouts. Starte ein leeres Workout, füge Übungen hinzu und hake jeden Satz ab. Beim nächsten Mal siehst du neben jedem Satz, was du letztes Mal geschafft hast.</p>' : ''}`;
 }
 function weekBars() { // the last 8 weeks: workouts per week, like Strong's dashboard
   const mon = t => { const d = new Date(t); d.setHours(0, 0, 0, 0); d.setDate(d.getDate() - ((d.getDay() + 6) % 7)); return d.getTime(); };
   const now = mon(Date.now()), w = [...Array(8)].map((_, i) => now - (7 - i) * 7 * 864e5), n = w.map(t => list.filter(s => mon(s.start || s.date) === t).length), mx = Math.max(3, ...n);
-  return `<div class="kbars">${n.map((v, i) => `<div><i style="height:${v / mx * 100}%"></i><small>${v || ''}</small><span>${new Date(w[i]).getDate()}.${new Date(w[i]).getMonth() + 1}.</span></div>`).join('')}</div>`;
+  return `<div class="label kbarcap">Workouts pro Woche</div><div class="kbars">${n.map((v, i) => `<div><i style="height:${v / mx * 100}%"></i><small>${v || ''}</small><span>${new Date(w[i]).getDate()}.${new Date(w[i]).getMonth() + 1}.</span></div>`).join('')}</div>`;
 }
 function histView() {
   if (!list.length) return '<p class="hint">Noch keine Workouts gespeichert.</p>';
@@ -121,7 +123,7 @@ function histView() {
   return list.map(s => {
     const m = new Date(s.start || s.date).toLocaleDateString('de-DE', { month: 'long', year: 'numeric' }), h = m !== mon ? `<h3 class="ksec">${m}</h3>` : ''; mon = m;
     return h + `<div class="kcard khist" data-open="${s.id}"><div class="khh"><b>${esc(s.name)}</b><span>${dayTxt(s.start || s.date)}</span></div>
-      <div class="khm"><span>⏱ ${fmtTime(s.dur || 0)}</span><span>${kgTxt(sessVol(s))}</span><span>${doneSets(s)} Sätze</span>${s.prs ? `<span class="kpr">🏆 ${s.prs}</span>` : ''}${s.strava ? '<span>Strava ✓</span>' : ''}</div>
+      <div class="khm"><span>⏱ ${fmtTime(s.dur || 0)}</span><span>${kgTxt(sessVol(s))}</span><span>${nSets(doneSets(s))}</span>${s.prs ? `<span class="kpr">🏆 ${s.prs}</span>` : ''}${s.strava ? '<span>Strava ✓</span>' : ''}</div>
       <div class="khx">${(s.ex || []).map(x => { const d = x.sets.filter(y => y.done); if (!d.length) return ''; const best = d.slice().sort((a, b) => e1rm(+b.kg, +b.r) - e1rm(+a.kg, +a.r) || (+b.r || +b.s) - (+a.r || +a.s))[0];
         return `<div><span>${d.length} × ${esc(x.n)}</span><span>${setTxt(x.t, best)}</span></div>`; }).join('')}</div></div>`;
   }).join('');
@@ -161,7 +163,7 @@ document.addEventListener('visibilitychange', () => { if (document.visibilitySta
 function workoutScreen() {
   el.innerHTML = `<header class="ptop"><button class="pback" id="kMin" title="Abbrechen">✕</button><input class="kname" id="kName" value="${esc(W.name)}">
       <button class="btn ksmall" id="kFin">Fertig</button></header>
-    <div class="kclock"><span id="kClock">${fmtTime((Date.now() - W.start) / 1000)}</span><span>${kgTxt(sessVol(W))} · ${doneSets(W)} Sätze</span></div>
+    <div class="kclock"><span id="kClock">${fmtTime((Date.now() - W.start) / 1000)}</span><span>${kgTxt(sessVol(W))} · ${nSets(doneSets(W))}</span></div>
     <main class="kmain kwork">${W.ex.map((x, i) => exBlock(x, i)).join('')}
       <button class="btn ghost kbig" id="kAdd">+ Übung hinzufügen</button>
       <button class="btn ghost ksmall kcancel" id="kDrop">Workout verwerfen</button></main>
@@ -169,7 +171,7 @@ function workoutScreen() {
   wireWork(); paintRest();
 }
 function exBlock(x, i) {
-  const prev = prevSets(x.k), cols = x.t === 'time' ? ['Sek'] : x.t === 'bw' ? ['+kg', 'Wdh'] : ['kg', 'Wdh'];
+  const prev = prevSets(x.k), cols = x.t === 'time' ? ['Sek'] : x.t === 'bw' ? ['Zusatz kg', 'Wdh'] : ['kg', 'Wdh'];
   return `<section class="kcard kex" data-i="${i}"><div class="kexh"><button class="kexn" data-chart="${x.k}">${esc(x.n)}</button><button class="kx" data-xmenu="${i}">⋯</button></div>
     ${x.note ? `<div class="hint">${esc(x.note)}</div>` : ''}
     <div class="kset khead ${x.t}"><span>Satz</span><span>Vorher</span>${cols.map(c => `<span>${c}</span>`).join('')}<span>✓</span></div>
@@ -178,7 +180,7 @@ function exBlock(x, i) {
       ${x.t === 'time' ? `<input inputmode="numeric" data-f="s" value="${s.s ?? ''}" placeholder="${pv?.s ?? ''}">`
         : `<input inputmode="decimal" data-f="kg" value="${s.kg === '' || s.kg == null ? '' : String(s.kg).replace('.', ',')}" placeholder="${pv ? String(pv.kg ?? '').replace('.', ',') : ''}"><input inputmode="numeric" data-f="r" value="${s.r ?? ''}" placeholder="${pv?.r ?? ''}">`}
       <button class="kchk" data-chk="${j}">✓</button></div>`; }).join('')}
-    <button class="kaddset" data-addset="${i}">+ Satz${prev.length ? '' : ''}</button></section>`;
+    <button class="kaddset" data-addset="${i}">+ Satz</button></section>`;
 }
 function wireWork() {
   $('#kName').onchange = e => { W.name = e.target.value.trim() || defaultName(); saveDraft(); };
@@ -274,7 +276,7 @@ function finishSheet() {
 function stravaText(w) {
   return w.ex.map(x => { const d = x.sets.filter(y => !y.warm); const same = d.every(y => setTxt(x.t, y) === setTxt(x.t, d[0]));
     return `${x.n}: ${same ? `${d.length} × ${setTxt(x.t, d[0])}` : d.map(y => setTxt(x.t, y)).join(', ')}`; }).join('\n')
-    + `\n\n${doneSets(w)} Sätze · ${kgTxt(sessVol(w))} Volumen${w.prs ? ` · 🏆 ${w.prs} ${w.prs === 1 ? 'Rekord' : 'Rekorde'}` : ''}\nAufgezeichnet mit RIDEFRAME Kraft.`;
+    + `\n\n${nSets(doneSets(w))} · ${kgTxt(sessVol(w))} Volumen${w.prs ? ` · 🏆 ${w.prs} ${w.prs === 1 ? 'Rekord' : 'Rekorde'}` : ''}\nAufgezeichnet mit RIDEFRAME Kraft.`;
 }
 async function toStrava(w) {
   const { stravaStatus, stravaConnect, stravaStrength } = await import('./stravaup.js');
@@ -311,7 +313,7 @@ function sessionSheet(w) {
 // ---------------- exercise graph ----------------
 function exSheet(k) {
   const e = exOf(k), h = history(k), b = bests(k);
-  const metrics = e.t === 'w' ? [['rm', '1RM (geschätzt)', 'kg'], ['kg', 'Gewicht', 'kg'], ['vol', 'Volumen', 'kg'], ['reps', 'Wdh', '']]
+  const metrics = e.t === 'w' ? [['rm', '1RM', 'kg'], ['kg', 'Gewicht', 'kg'], ['vol', 'Volumen', 'kg'], ['reps', 'Wdh', '']]
     : e.t === 'bw' ? [['reps', 'Meiste Wdh', ''], ['totalReps', 'Wdh gesamt', ''], ['kg', 'Zusatz-kg', 'kg']] : [['sec', 'Längste Zeit', 's']];
   let m = metrics[0][0];
   const s = sheet(`<div class="label">${esc(e.g || 'Übung')}</div><h2 class="display" style="font-size:28px;margin:8px 0 12px">${esc(e.n)}</h2>
@@ -335,7 +337,7 @@ function chart(pts, unit) {
     ${[hi, (hi + lo) / 2, lo].map(v => `<line x1="${L}" x2="${W0 - R}" y1="${y(v)}" y2="${y(v)}" class="kgrid"/><text x="${L - 5}" y="${y(v) + 3}" text-anchor="end">${lab(v)}</text>`).join('')}
     <path d="${path}" class="kline"/>${pts.map(p => `<circle cx="${x(p[0])}" cy="${y(p[1])}" r="${p[1] === best ? 4.5 : 3}" class="${p[1] === best ? 'kdotb' : 'kdot'}"/>`).join('')}
     <text x="${L}" y="${H - 5}">${d(t0)}</text><text x="${W0 - R}" y="${H - 5}" text-anchor="end">${d(t1)}</text></svg>
-    <div class="kchartcap">Letztes Mal <b>${cap(pts[pts.length - 1][1])} ${unit}</b> · Bestwert <b>${cap(best)} ${unit}</b></div>`;
+    <div class="kchartcap">Letztes Mal <b>${cap(pts[pts.length - 1][1])} ${unit}</b></div>`;
 }
 
 window.addEventListener('beforeunload', () => { if (W) db.kvSet('kraftDraft', W).catch(() => {}); });

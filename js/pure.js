@@ -7,12 +7,12 @@ import { allWorkouts, workoutById, workoutAt, workoutDuration, workoutSVG, setMy
 import { defaultParams, step } from './physics.js';
 import { stravaStatus, stravaConnect, stravaUpload } from './stravaup.js';
 import { stravaExport } from './tcx.js';
+import { applyTheme, icon } from './theme.js';
 
 const $ = (s, r = document) => r.querySelector(s);
 const params = new URLSearchParams(location.search), DEMO = params.has('demo');
 const S = { riderKg: 75, bikeKg: 8.5, ftp: 250, accent: 'orange' };
 const P = { tiles: ['cad', 'hr', 'time', 'dist', 'speed', 'avg', 'np', 'kj', 'lapTime', 'lapAvg', 'max', 'tss'], smooth: 3, autoPause: true, erg: 200, grade: 0, mode: 'erg', workout: '' };
-const ACCENTS = { orange: '#ff5a1f', violet: '#8b6cff', lime: '#c6f432', cyan: '#2fd3e0', pink: '#ff4f9a' };
 
 const trainer = new Trainer(), hrStrap = new HeartRate();
 const R = { state: 'ready', moving: 0, wall: 0, d: 0, v: 0, kj: 0, samples: [], pw: [], laps: [], lap: null, max: 0, hrMax: 0, wT: 0, wDone: false, intensity: 100, lastSec: 0, idle: 0, roll30: [], np4: 0, npN: 0 };
@@ -25,7 +25,7 @@ async function loadSettings() {
   if (saved) Object.assign(S, saved);
   Object.assign(P, S.pure || {});
   setMyWorkouts(S.myWorkouts);
-  document.documentElement.style.setProperty('--accent', ACCENTS[S.accent] || ACCENTS.orange);
+  applyTheme(S, 'trainer');
 }
 async function saveSettings() {
   const saved = (await db.kvGet('settings').catch(() => null)) || {}; // keep everything the main app stored
@@ -52,7 +52,7 @@ const M = {
   avgSpeed: { l: 'Ø Tempo', u: 'km/h', v: () => fmtNum(R.moving ? R.d / R.moving * 3.6 : 0, 1) },
   avg: { l: 'Ø Leistung', u: 'W', v: () => Math.round(avgP()) },
   np: { l: 'NP', u: 'W', v: () => Math.round(NP()) },
-  max: { l: 'Max Watt', u: 'W', v: () => R.max },
+  max: { l: 'Max Leistung', u: 'W', v: () => R.max },
   kj: { l: 'Arbeit', u: 'kJ', v: () => Math.round(R.kj) },
   kcal: { l: 'Kalorien', u: 'kcal', v: () => Math.round(R.kj * 1.1) },
   tss: { l: 'TSS', u: '', v: () => Math.round(R.moving * NP() * IF() / (ftp() * 3600) * 100) },
@@ -60,8 +60,8 @@ const M = {
   wkg: { l: 'W/kg', u: '', v: () => fmtNum(shown() / (S.riderKg || 75), 1) },
   pct: { l: '% FTP', u: '%', v: () => Math.round(shown() / ftp() * 100) },
   zone: { l: 'Zone', u: '', v: () => zoneOf(shown())[1] },
-  lapTime: { l: 'Runde Zeit', u: '', v: () => fmtTime(lapNow().t) },
-  lapAvg: { l: 'Runde Ø', u: 'W', v: () => Math.round(lapNow().w) },
+  lapTime: { l: 'Rundenzeit', u: '', v: () => fmtTime(lapNow().t) },
+  lapAvg: { l: 'Ø Runde', u: 'W', v: () => Math.round(lapNow().w) },
   lapDist: { l: 'Runde km', u: 'km', v: () => fmtNum(lapNow().d / 1000, 2) },
   laps: { l: 'Runde', u: '', v: () => R.laps.length + 1 },
   best5: { l: 'Beste 5 min', u: 'W', v: () => bestAvg(R.pw, 300) || '–' },
@@ -153,12 +153,12 @@ function render() {
   const bt = !trainer.connected && !DEMO, bleOk = Trainer.supported();
   el.innerHTML = `
   <header class="ptop">
-    <a class="pback" href="handy.html" title="Zur App">‹</a><div class="pbrand"><b>RIDEFRAME </b><span>Pure</span></div>
+    <a class="pback" href="handy.html" title="Zur App">‹</a><div class="pbrand"><b>RIDEFRAME </b><span>Indoor</span></div>
     <button class="ppill ${trainer.connected || DEMO ? 'on' : ''}" id="pTr"><i></i>${DEMO ? 'Demo' : trainer.connected ? esc(trainer.device?.name || 'Trainer') : 'Trainer'}</button>
     <button class="ppill ${hrStrap.connected ? 'on' : ''}" id="pHr"><i></i>Puls</button>
-    <button class="pgear" id="pSetBtn" title="Einstellungen">⚙</button>
+    <button class="pgear" id="pSetBtn" title="Einstellungen">${icon('gear', 'gico')}</button>
   </header>
-  ${!bleOk && !DEMO ? `<div class="pnote">Dieser Browser kann kein Bluetooth. Android: Chrome. iPhone: die kostenlose App <b>Bluefy</b> öffnen und diese Seite dort laden.</div>` : ''}
+  ${!bleOk && !DEMO ? `<div class="pnote">Bluetooth ist hier nicht verfügbar, der Trainer lässt sich nicht verbinden.</div>` : ''}
   <section class="pbig" id="pBig">
     <div class="label">Leistung ${P.smooth > 1 ? `· ${P.smooth} s` : ''}</div>
     <div class="pbigv"><b id="pPow">0</b><small>W</small></div>
@@ -176,7 +176,6 @@ function render() {
   </footer>
   <div class="pflash" id="pflash"></div>`;
   wire(); paint();
-  if (bt && bleOk && R.state === 'ready') flash('Tippe oben auf „Trainer“, um den Rollentrainer zu verbinden.');
 }
 
 function wire() {
@@ -279,7 +278,7 @@ async function toStrava(btn, rec) {
   } catch (e) { alert(e.message || String(e)); }
 }
 function doneScreen(rec) {
-  el.innerHTML = `<header class="ptop"><a class="pback" href="handy.html">‹</a><div class="pbrand">RIDEFRAME <span>Pure</span></div></header>
+  el.innerHTML = `<header class="ptop"><a class="pback" href="handy.html">‹</a><div class="pbrand">RIDEFRAME <span>Indoor</span></div></header>
     <section class="pdone"><div class="label">Gespeichert</div><h1 class="display">${fmtTime(rec.duration)}</h1>
     <p>${fmtNum(rec.distance / 1000, 1)} km · Ø ${rec.avgPower} W · NP ${rec.np} W · ${rec.kj} kJ</p>
     <div class="pfoot col"><a class="btn" href="./pure.html${location.search}">Neue Fahrt</a><a class="btn ghost" href="handy.html">Zur App</a></div></section>`;

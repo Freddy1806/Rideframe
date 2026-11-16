@@ -12,7 +12,7 @@ const seed = async p => p.evaluate(async ([long, NAME]) => { const { db } = awai
   await db.kvSet('kraft', [0, 1, 2].map(i => ({ id: 'w' + i, name: 'Oberkörper schwer und lang benannt', start: now - i * 3 * d, date: now - i * 3 * d + 3600e3, dur: 3725, prs: 2,
     ex: [{ k: 'bench', n: 'Bankdrücken', t: 'w', sets: [{ kg: 102.5, r: 10, done: true }, { kg: 100, r: 8, done: true }] }, { k: 'my_x', n: long, t: 'w', sets: [{ kg: 140, r: 12, done: true }] },
       { k: 'pull', n: 'Klimmzüge', t: 'bw', sets: [{ kg: 12.5, r: 12, done: true }] }, { k: 'plank', n: 'Plank', t: 'time', sets: [{ s: 185, done: true }] }] })));
-  await db.kvDel('outdoorDraft').catch(() => {}); await db.kvDel('kraftDraft').catch(() => {});
+  await db.kvDel('outdoorDraft').catch(() => {}); await db.kvDel('runDraft').catch(() => {}); await db.kvDel('kraftDraft').catch(() => {});
   localStorage.setItem('rf_account', JSON.stringify({ token: 'x', name: NAME }));
 }, [LONG, NAME]);
 const SCREENS = [
@@ -23,6 +23,14 @@ const SCREENS = [
   ['passwort-neu', '/reset.html#t=' + 'a'.repeat(64), null],
   ['draussen', '/outdoor.html?demo&run', null],
   ['draussen-sensoren', '/outdoor.html?demo', p => p.click('#oSens')],
+  ['menu-einstellungen', '/handy.html', p => p.click('#hSet')],
+  ['laufen', '/outdoor.html?sport=run&demo&run', null],
+  ['laufen-ende', '/outdoor.html?sport=run&demo&fast&run', async p => { await p.waitForTimeout(3000); await p.click('#oPause'); await p.click('#oEnd'); }],
+  ['draussen-einstellungen', '/outdoor.html?demo', p => p.click('#oSet')],
+  ['draussen-4felder', '/outdoor.html?demo&run', async p => { await p.evaluate(async () => { const { db } = await import('/js/db.js'); const st = (await db.kvGet('settings')) || {}; st.outdoor = { n: 4, map: 'small' }; await db.kvSet('settings', st); }); await p.reload(); await p.waitForTimeout(1500);
+    await p.evaluate(async () => { const { db } = await import('/js/db.js'); const st = (await db.kvGet('settings')) || {}; delete st.outdoor; await db.kvSet('settings', st); }); }],
+  ['draussen-6felder-hell', '/outdoor.html?demo&run', async p => { await p.evaluate(async () => { const { db } = await import('/js/db.js'); const st = (await db.kvGet('settings')) || {}; st.outdoor = { n: 6, map: 'off', big: 'hr' }; st.theme = 'light'; await db.kvSet('settings', st); }); await p.reload(); await p.waitForTimeout(1500);
+    await p.evaluate(async () => { const { db } = await import('/js/db.js'); const st = (await db.kvGet('settings')) || {}; delete st.outdoor; delete st.theme; await db.kvSet('settings', st); }); }],
   ['draussen-ende', '/outdoor.html?demo&fast&run', async p => { await p.waitForTimeout(3000); await p.click('#oPause'); await p.click('#oEnd'); }],
   ['kraft', '/kraft.html', null],
   ['kraft-verlauf', '/kraft.html', p => p.click('[data-tab="hist"]')],
@@ -83,7 +91,7 @@ function measure(minGap) { // runs in the page
       const p = await c.newPage(); p.setDefaultTimeout(4000);
       if (!mobile) await p.route('**/api/account/**', r => r.fulfill({ status: 200, contentType: 'application/json', body: '{}' })); // signed in: the pill shows the long name
       const errs = []; p.on('pageerror', e => errs.push(e.message));
-      await p.goto(BASE + '/handy.html'); await p.evaluate(async () => { const { db } = await import('/js/db.js'); await db.kvDel('outdoorDraft'); await db.kvDel('kraftDraft'); }); // each screen starts clean
+      await p.goto(BASE + '/handy.html'); await p.evaluate(async () => { const { db } = await import('/js/db.js'); await db.kvDel('outdoorDraft'); await db.kvDel('runDraft'); await db.kvDel('kraftDraft'); }); // each screen starts clean
       await p.goto(BASE + url); await p.waitForTimeout(mobile ? 700 : 1500);
       try { if (act) { await act(p); await p.waitForTimeout(400); } } catch (e) { errs.push('Schritt ging nicht: ' + e.message.split('\n').slice(0, 6).join(' | ')); }
       if (safari) await p.evaluate(SAFARI);

@@ -18,6 +18,9 @@
 }
 :root[data-accent="violet"] { --accent: #8b6cff; --accent-ink: #0b0b0b; }
 :root[data-accent="orange"] { --accent: #ff5a1f; --accent-ink: #0b0b0b; }
+:root[data-theme="light"] { --ink: #f4f3ef; --ink-2: #ffffff; --ink-3: #ecebe6; --paper: #151515; --muted: #6b6b66; --line: rgba(0,0,0,.10); --line-2: rgba(0,0,0,.18); color-scheme: light; }
+:root[data-theme="dark"] { color-scheme: dark; }
+:root[data-theme="light"] .psheet { background: rgba(0,0,0,.35); }
 
 * { box-sizing: border-box; margin: 0; padding: 0; }
 html, body { height: 100%; }

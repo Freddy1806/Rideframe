@@ -1,47 +1,70 @@
-// RIDEFRAME as a phone app (Freddy 15.11.): the home screen of the installed app (app.webmanifest, start_url handy.html).
-// Big tiles for what works on the phone: ride outside, strength, the trainer (Pure); the 3D world stays a laptop/TV thing.
+// RIDEFRAME main menu on the phone (handy.html, start of the installed app and the Android app).
+// Freddy 16.11.: one clear menu, every mode its own big card with colour and icon (ride outside, run, indoor trainer,
+// routes & 3D world, strength); the week at a glance; settings for light/dark and colours.
 import { db } from './db.js';
 import { fmtTime, fmtNum, esc } from './util.js';
+import { MODES, ACCENTS, icon, applyTheme } from './theme.js';
 
 const el = document.getElementById('handy'), $ = (s, r = document) => r.querySelector(s);
-const ACCENTS = { orange: '#ff5a1f', violet: '#8b6cff', lime: '#c6f432', cyan: '#2fd3e0', pink: '#ff4f9a' };
-const standalone = matchMedia('(display-mode: standalone)').matches || navigator.standalone === true;
-const ios = /iPhone|iPad|iPod/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
 let S = {}, acc = null, rides = [], kraft = [], installEvt = null;
 window.addEventListener('beforeinstallprompt', e => { e.preventDefault(); installEvt = e; render(); });
 
 async function load() {
   S = (await db.kvGet('settings').catch(() => null)) || {};
-  document.documentElement.style.setProperty('--accent', ACCENTS[S.accent] || ACCENTS.orange);
-  rides = (await db.all('rides').catch(() => [])).sort((a, b) => b.date - a.date);
+  applyTheme(S, null);
+  rides = (await db.all('rides').catch(() => [])).filter(r => r.routeId !== 'demo').sort((a, b) => b.date - a.date);
   kraft = (await db.kvGet('kraft').catch(() => null)) || [];
   try { acc = (await import('./account.js')).account(); } catch {}
 }
+const modeOf = r => r.routeId === 'run' || r.sport === 'run' ? 'run' : r.routeId === 'outdoor' ? 'ride' : r.routeId === 'pure' ? 'trainer' : 'world';
+const day = t => new Date(t).toLocaleDateString('de-DE', { weekday: 'short', day: 'numeric', month: 'short' });
+const pace = (d, s) => d > 0 ? (x => `${Math.floor(x / 60)}:${String(Math.round(x % 60)).padStart(2, '0')} min/km`)(s / d * 1000) : '';
+
 function render() {
-  const wk = Date.now() - 7 * 864e5, wr = rides.filter(r => r.date > wk && r.routeId !== 'demo'), wkr = kraft.filter(w => (w.start || w.date) > wk);
-  const out = rides.find(r => r.routeId === 'outdoor'), kw = kraft[0];
-  const tile = (href, icon, name, sub) => `<a class="htile" href="${href}"><span class="hico">${icon}</span><b>${name}</b><small>${sub}</small></a>`;
+  const wk = Date.now() - 7 * 864e5, w = rides.filter(r => r.date > wk), wkr = kraft.filter(k => (k.start || k.date) > wk);
+  const bike = w.filter(r => modeOf(r) !== 'run'), runs = w.filter(r => modeOf(r) === 'run');
+  const lastOf = m => m === 'kraft' ? kraft[0] : rides.find(r => modeOf(r) === m);
+  const sub = m => { const l = lastOf(m);
+    if (m === 'kraft') return l ? `Zuletzt ${esc(l.name)} · ${day(l.start || l.date)}` : 'Sätze, Gewichte, Fortschritt';
+    if (!l) return { ride: 'GPS, Karte, Sensoren, Strava', run: 'Pace, Kilometer-Zeiten, Puls', trainer: 'Watt, ERG und Workouts', world: 'Echte Strecken in 3D, für Laptop & TV' }[m];
+    return `Zuletzt ${fmtNum(l.distance / 1000, 1)} km · ${day(l.date)}`; };
+  const card = m => `<a class="hmode" href="${MODES[m].href}" style="--mc:${MODES[m].color};--mcl:${MODES[m].light}">${icon(m, 'hico')}<span><b>${MODES[m].name}</b><small>${sub(m)}</small></span><i>›</i></a>`;
   el.innerHTML = `<header class="ptop"><div class="pbrand" style="font-size:22px">RIDE<span>FRAME</span></div>
-      <button class="ppill ${acc ? 'on' : ''}" id="hAcc"><i></i><span class="pname">${acc ? esc(acc.name) : 'Anmelden'}</span></button></header>
-    ${!standalone ? installHint() : ''}
-    <section class="kcard"><div class="label">Diese Woche</div><div class="kstats">
-      <div><b>${wr.length}</b><small>Fahrten</small></div><div><b>${fmtNum(wr.reduce((a, r) => a + r.distance, 0) / 1000, 0)}</b><small>km</small></div>
-      <div><b>${fmtNum(wr.reduce((a, r) => a + (r.gain || 0), 0))}</b><small>hm</small></div><div><b>${wkr.length}</b><small>Kraft</small></div></div></section>
-    <div class="htiles">
-      ${tile('outdoor.html', '◉', 'Draußen fahren', out ? `Zuletzt ${fmtNum(out.distance / 1000, 1)} km · ${new Date(out.date).toLocaleDateString('de-DE', { day: 'numeric', month: 'short' })}` : 'GPS, Karte, Tempo, Höhenmeter')}
-      ${tile('kraft.html', 'kg', 'Kraft', kw ? `Zuletzt ${esc(kw.name)} · ${new Date(kw.start || kw.date).toLocaleDateString('de-DE', { day: 'numeric', month: 'short' })}` : 'Sätze, Gewichte, Graphen')}
-      ${tile('pure.html', 'W', 'Rollentrainer', 'Watt, ERG und Workouts ohne 3D')}
-      ${tile('./?desktop', '3D', '3D-Welt', 'Am besten am Laptop oder TV')}
-    </div>
-    ${rides.length ? `<h3 class="ksec">Letzte Fahrten</h3>${rides.slice(0, 5).map(r => `<div class="hrow"><span>${r.routeId === 'outdoor' ? '◉' : r.routeId === 'pure' ? 'W' : '3D'}</span><div><b>${esc(r.workout && (r.routeId === 'outdoor' || r.routeId === 'pure') ? r.workout : r.routeName || (r.routeId === 'outdoor' ? 'Draußen' : 'Indoor'))}</b><small>${new Date(r.date).toLocaleDateString('de-DE', { weekday: 'short', day: 'numeric', month: 'short' })}</small></div><span>${fmtNum(r.distance / 1000, 1)} km · ${fmtTime(r.duration)}</span></div>`).join('')}` : ''}
-    ${!acc ? '<p class="hint" style="margin-top:14px">Melde dich mit deinem RIDEFRAME-Konto an, dann landen Fahrten und Kraft-Workouts vom Handy auch am Laptop.</p>' : ''}`;
+      <button class="ppill ${acc ? 'on' : ''}" id="hAcc"><i></i><span class="pname">${acc ? esc(acc.name) : 'Anmelden'}</span></button>
+      <button class="pgear" id="hSet" title="Einstellungen">${icon('gear', 'gico')}</button></header>
+    ${installEvt && !window.__rfNative ? `<button class="btn ghost" id="hInstall">Als App installieren</button>` : ''}
+    <section class="hweek"><div class="label">Letzte 7 Tage</div><div class="kstats">
+      <div><b>${bike.length}</b><small>Fahrten</small></div><div><b>${runs.length}</b><small>Läufe</small></div>
+      <div><b>${fmtNum(w.reduce((a, r) => a + r.distance, 0) / 1000, 0)}</b><small>km</small></div><div><b>${wkr.length}</b><small>Kraft</small></div></div></section>
+    <nav class="hmodes">${['ride', 'run', 'trainer', 'world', 'kraft'].map(card).join('')}</nav>
+    ${rides.length || kraft.length ? `<h3 class="ksec">Zuletzt</h3>${recent().join('')}` : ''}`;
   $('#hAcc').onclick = async () => { const a = await import('./account.js'); await a.accountModal({ settings: S }, async () => { await load(); render(); }); };
+  $('#hSet').onclick = settings;
   const ib = $('#hInstall'); if (ib) ib.onclick = async () => { installEvt.prompt(); await installEvt.userChoice.catch(() => {}); installEvt = null; render(); };
 }
-function installHint() {
-  if (installEvt) return `<button class="btn kbig" id="hInstall">Als App installieren</button>`;
-  if (ios) return `<div class="pnote"><b>Als App aufs iPhone:</b> in Safari unten auf <b>Teilen</b> (□↑) tippen, dann <b>„Zum Home-Bildschirm“</b>. Danach startet RIDEFRAME wie eine App, ohne Adressleiste.</div>`;
-  return `<div class="pnote"><b>Als App installieren:</b> im Browser-Menü <b>„App installieren“</b> oder <b>„Zum Startbildschirm hinzufügen“</b> wählen.</div>`;
+/** the last activities of all modes, newest first */
+function recent() {
+  const all = [...rides.map(r => ({ t: r.date, m: modeOf(r), name: r.workout && r.routeId !== 'demo' && ['outdoor', 'run', 'pure'].includes(r.routeId) ? r.workout : r.routeName || MODES[modeOf(r)].short,
+    val: modeOf(r) === 'run' ? `${fmtNum(r.distance / 1000, 1)} km · ${pace(r.distance, r.duration)}` : `${fmtNum(r.distance / 1000, 1)} km · ${fmtTime(r.duration)}` })),
+    ...kraft.map(k => ({ t: k.start || k.date, m: 'kraft', name: k.name, val: fmtTime(k.dur || 0) }))].sort((a, b) => b.t - a.t).slice(0, 6);
+  return all.map(x => `<a class="hrow" href="${x.m === 'world' ? './?desktop' : MODES[x.m].href + (x.m === 'kraft' ? '' : (MODES[x.m].href.includes('?') ? '&' : '?') + 'list')}" style="--mc:${MODES[x.m].color};--mcl:${MODES[x.m].light}">${icon(x.m, 'rico')}<div><b>${esc(x.name)}</b><small>${day(x.t)}</small></div><span>${x.val}</span></a>`);
+}
+async function save() { const st = (await db.kvGet('settings').catch(() => null)) || {}; Object.assign(st, { theme: S.theme, modeColors: S.modeColors, accent: S.accent }); await db.kvSet('settings', st).catch(() => {}); }
+function settings() {
+  const s = document.createElement('div'); s.className = 'psheet'; document.body.append(s);
+  const draw = () => {
+    s.innerHTML = `<div class="psheetin"><div class="label">Einstellungen</div>
+      <h3 class="ksec">Erscheinungsbild</h3><div class="pseg" id="tSeg">${[['auto', 'Automatisch'], ['dark', 'Dunkel'], ['light', 'Hell']].map(([k, l]) => `<button data-th="${k}" class="${(S.theme || 'dark') === k ? 'on' : ''}">${l}</button>`).join('')}</div>
+      <h3 class="ksec">Farben</h3>
+      <label class="prow">Jeder Modus in eigener Farbe<input id="tMc" type="checkbox" class="toggle" ${S.modeColors !== false ? 'checked' : ''}></label>
+      <div class="hsw" ${S.modeColors !== false ? 'hidden' : ''}>${Object.entries(ACCENTS).map(([k, c]) => `<button data-ac="${k}" class="${(S.accent || 'orange') === k ? 'on' : ''}" style="background:${c[0]}" aria-label="${k}"></button>`).join('')}</div>
+      <div class="pfoot"><button class="btn" id="tOk">Fertig</button></div></div>`;
+    s.querySelectorAll('[data-th]').forEach(b => b.onclick = () => { S.theme = b.dataset.th; applyTheme(S, null); save(); draw(); });
+    $('#tMc', s).onchange = e => { S.modeColors = e.target.checked; save(); draw(); render(); };
+    s.querySelectorAll('[data-ac]').forEach(b => b.onclick = () => { S.accent = b.dataset.ac; applyTheme(S, null); save(); draw(); render(); });
+    $('#tOk', s).onclick = () => s.remove();
+  };
+  s.onclick = e => { if (e.target === s) s.remove(); }; draw();
 }
 await load(); render();
 if ('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js').catch(() => {});

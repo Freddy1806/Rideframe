@@ -21,7 +21,7 @@ body.pure { overflow: hidden; height: 100dvh; }
 .pbigv small { font-size: 22px; font-weight: 800; color: var(--muted); }
 .pbigs { display: flex; justify-content: space-between; gap: 10px; font-size: 14px; font-weight: 700; color: var(--muted); margin-top: 6px; }
 .pbigs span:first-child { color: var(--paper); }
-.pzbar { height: 6px; border-radius: 3px; background: #ffffff12; margin-top: 10px; overflow: hidden; }
+.pzbar { height: 6px; border-radius: 3px; background: var(--line-2); margin-top: 10px; overflow: hidden; }
 .pzbar i { display: block; height: 100%; width: 0; transition: width .4s, background .4s; }
 
 .ptiles { flex: 1 1 auto; min-height: 0; overflow-y: auto; display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; align-content: start; }
@@ -132,3 +132,5 @@ body.pure { overflow: hidden; height: 100dvh; }
 @media (max-width: 440px) { body.outdoor .ptop .pbrand { display: none; } body.outdoor .ptop .pback + * { margin-left: auto; } }
 /* smallest phones (320 px): the unit moves under the number, so the number keeps the whole tile width */
 @media (max-width: 340px) { .ptile { grid-template-columns: minmax(0, 1fr); } .ptile b { font-size: clamp(15px, 19cqw, 30px); } .ptile small { line-height: 1.1; } }
+.pgear { display: grid; place-items: center; color: var(--paper); } .gico { width: 18px; height: 18px; }
+.psheetin > .label:first-child { font-size: 15px; color: var(--paper); letter-spacing: .08em; }

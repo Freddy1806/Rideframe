@@ -29,20 +29,21 @@ export function stravaConnect() {
   });
 }
 
+const paceTxt = s => `${Math.floor(s / 60)}:${String(Math.round(s % 60)).padStart(2, '0')}`;
 /** uploads one ride; onState(text) gets progress. Returns the Strava activity URL. */
 export async function stravaUpload(rec, name, eleAt, onState = () => {}, imageUrl = '') {
   onState('Wird hochgeladen …');
   const km = (rec.distance / 1000).toFixed(1).replace('.', ',');
   const r = await fetch('/api/strava/upload', { method: 'POST', headers: { ...hdr(), 'Content-Type': 'application/json' },
     body: JSON.stringify({ tcx: toTCX(rec, name, eleAt), name: `RIDEFRAME · ${name}`, external_id: 'rideframe-' + rec.id,
-      outdoor: !!rec.outdoor, description: rec.outdoor ? `${km} km · ${rec.gain} hm${rec.avgPower ? ` · Ø ${rec.avgPower} W` : ''}\nDraußen aufgezeichnet mit RIDEFRAME.`
+      outdoor: !!rec.outdoor, description: rec.sport === 'run' ? `${km} km · ${rec.gain} hm${rec.distance > 0 ? ` · Ø ${paceTxt(rec.duration / rec.distance * 1000)} /km` : ''}\nGelaufen mit RIDEFRAME.` : rec.outdoor ? `${km} km · ${rec.gain} hm${rec.avgPower ? ` · Ø ${rec.avgPower} W` : ''}\nDraußen aufgezeichnet mit RIDEFRAME.`
       : `${km} km · ${rec.gain} hm · Ø ${rec.avgPower} W\nGefahren in RIDEFRAME (Indoor, virtuelle Strecke).` + intervalText(rec) /* no image link in the description (Freddy 12.11.: it exposed the Mac mini address) */ }) });
   const j = await r.json().catch(() => ({}));
   if (!r.ok) throw new Error(j.error || 'Upload fehlgeschlagen');
   onState('Strava verarbeitet die Fahrt …');
   for (let i = 0; i < 40; i++) { // Strava needs a few seconds to process
     await new Promise(r => setTimeout(r, i < 5 ? 1500 : 3000));
-    const s = await (await fetch('/api/strava/upload/' + j.id, { headers: hdr(), cache: 'no-store' })).json().catch(() => ({}));
+    const s = await (await fetch('/api/strava/upload/' + j.id + (rec.outdoor ? '' : '?indoor=1'), { headers: hdr(), cache: 'no-store' })).json().catch(() => ({}));
     if (s.activity_id) return 'https://www.strava.com/activities/' + s.activity_id;
     if (s.error) throw new Error(/duplicate/i.test(s.error) ? 'Diese Fahrt ist schon auf Strava.' : s.error);
   }
@@ -94,7 +95,7 @@ export async function stravaStrength({ id, name, start, dur, description }) {
 }
 
 /** Strava segments for the outdoor map: starred ones + popular ones in bounds [swLat, swLon, neLat, neLon]; [] without Strava */
-export async function stravaSegments(bounds) {
-  try { const r = await fetch('/api/strava/segments?bounds=' + bounds.map(v => v.toFixed(5)).join(','), { headers: hdr(), cache: 'no-store' }); return r.ok ? (await r.json()).segments || [] : []; }
+export async function stravaSegments(bounds, type = 'riding') {
+  try { const r = await fetch('/api/strava/segments?type=' + type + '&bounds=' + bounds.map(v => v.toFixed(5)).join(','), { headers: hdr(), cache: 'no-store' }); return r.ok ? (await r.json()).segments || [] : []; }
   catch { return []; }
 }

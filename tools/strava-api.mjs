@@ -120,7 +120,7 @@ export async function stravaApi(req, res, path) {
       }
       const b = (q.get('bounds') || '').split(',').map(Number);
       if (b.length === 4 && b.every(Number.isFinite)) {
-        const ex = await fetch(`${API}/segments/explore?activity_type=riding&bounds=${b.join(',')}`, { headers: H }).then(r => r.ok ? r.json() : {}).catch(() => ({}));
+        const ex = await fetch(`${API}/segments/explore?activity_type=${q.get('type') === 'running' ? 'running' : 'riding'}&bounds=${b.join(',')}`, { headers: H }).then(r => r.ok ? r.json() : {}).catch(() => ({}));
         for (const e of ex.segments || []) if (!out.has(e.id)) out.set(e.id, { id: e.id, name: e.name, dist: e.distance, grade: e.avg_grade, line: e.points, starred: false });
       }
       await mkdir(DATA, { recursive: true }); await writeFile(cacheF, JSON.stringify(cache));
@@ -136,7 +136,7 @@ export async function stravaApi(req, res, path) {
     const m = op.match(/^upload\/(\d+)$/);
     if (m) {
       const r = await fetch(`${API}/uploads/${m[1]}`, { headers: { Authorization: 'Bearer ' + tok } }), j = await r.json();
-      if (j.activity_id && !j.__marked) { // indoor ride: mark it as a virtual ride on the trainer (best effort)
+      if (j.activity_id && new URL(req.url, 'http://x').searchParams.get('indoor') === '1') { // indoor ride only (outdoor rides and runs stay as they are): mark it as a virtual ride on the trainer (best effort)
         fetch(`${API}/activities/${j.activity_id}`, { method: 'PUT', headers: { Authorization: 'Bearer ' + tok, 'Content-Type': 'application/json' }, body: JSON.stringify({ sport_type: 'VirtualRide', trainer: true }) }).catch(() => {});
       }
       return send(res, 200, { status: j.status, error: j.error, activity_id: j.activity_id || null }), true;
