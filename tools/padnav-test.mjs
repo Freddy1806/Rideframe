@@ -3,6 +3,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { pickInDir, isCandidate, repeater, stickDir } from '../js/padnav.js';
+import { NINTENDO, padButtons } from '../js/controller.js';
 
 const R = (x, y, w = 100, h = 40) => ({ left: x, top: y, right: x + w, bottom: y + h });
 
@@ -65,4 +66,14 @@ test('stick: on beyond 0.6, held until under 0.35, dominant axis picks the direc
   assert.equal(stickDir(-0.2, -0.9, null), 'up');
   assert.equal(stickDir(0.1, 0.8, null), 'down');
   assert.equal(stickDir(-0.8, 0.1, null), 'left');
+});
+
+test('A / B swap only for pads that report as a Switch controller (8BitDo in "D" is taken as it comes)', () => {
+  const pad = (id, pressed) => ({ id, buttons: Array.from({ length: 17 }, (_, i) => ({ pressed: i === pressed })) });
+  assert.equal(NINTENDO('Pro Controller (STANDARD GAMEPAD Vendor: 057e Product: 2009)'), true);
+  assert.equal(NINTENDO('Joy-Con (L/R)'), true);
+  assert.equal(NINTENDO('8BitDo Micro gamepad (Vendor: 2dc8 Product: 9020)'), false);
+  assert.equal(NINTENDO('Xbox Wireless Controller (STANDARD GAMEPAD Vendor: 045e)'), false);
+  assert.equal(padButtons(pad('Pro Controller (Vendor: 057e)', 1))[0], true, 'Switch layout: bottom-right index 1 is the printed A');
+  assert.equal(padButtons(pad('8BitDo Micro gamepad (Vendor: 2dc8)', 0))[0], true, '8BitDo in D: index 0 stays A');
 });

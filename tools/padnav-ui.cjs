@@ -96,6 +96,7 @@ const BTN = { A: 0, B: 1, L: 4, R: 5, START: 9, up: 12, down: 13, left: 14, righ
     await press('A'); await p.waitForTimeout(200); ok(await p.locator('#ctLog').isVisible(), 'A opens the controller test window');
     await press('down'); const m1 = await cur(); ok(m1?.modal, `the focus stays inside the window (${m1?.text})`);
     ok(await p.evaluate(() => /Gamepad in the menus/.test(document.querySelector('.modal').textContent)), 'the controller window lists the menu controls');
+    ok(await p.evaluate(() => /Test pad/.test(document.querySelector('#ctPad').textContent) && !document.querySelector('#ctSwap').hidden && /Zwift Click \/ Di2/.test(document.querySelector('#ctScan').textContent) && /set to D on a Mac/.test(document.querySelector('.modal').textContent)), 'controller window: the pad is named, Swap A / B offered, "Find device" is for Zwift Click / Di2, switch D on a Mac');
     await shot('06_modal_focus');
     await press('B'); await p.waitForTimeout(150); const m2 = await cur();
     ok(!(await p.locator('#ctLog').count()) && m2?.id === 'ctBtn', `B closes the window, the focus returns to ${m2?.id}`);
