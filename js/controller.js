@@ -30,7 +30,8 @@ export function openControllerTest() {
     <div class="label">Bluetooth</div><h2 class="display" style="margin-top:10px">Test<br>controller</h2>
     <p>Choose a device (e.g. your Di2 derailleur: shift once first so it wakes up), then press the buttons. Every message shows up below. Gamepads and keyboard are shown too.</p>
     <details style="margin:6px 0 10px"><summary style="cursor:pointer"><b>Gamepad buttons during a ride</b> (e.g. 8BitDo Micro, switch on the back set to S)</summary>
-      <table style="margin-top:8px;border-collapse:collapse">${PAD_MAP.map(([k, v]) => `<tr><td style="padding:2px 14px 2px 0;white-space:nowrap"><b>${k}</b></td><td>${v}</td></tr>`).join('')}</table></details>
+      <table style="margin-top:8px;border-collapse:collapse">${PAD_MAP.map(([k, v]) => `<tr><td style="padding:2px 14px 2px 0;white-space:nowrap"><b>${k}</b></td><td>${v}</td></tr>`).join('')}</table>
+      <p style="margin-top:8px"><b>Zwift Click + / −</b>: Gear harder / easier (connect it in Settings → Trainer)</p></details>
     <div class="actions" style="justify-content:flex-start"><button class="btn small" id="ctScan">Find device</button><button class="btn ghost small" id="ctCopy">Copy log</button><button class="btn ghost small" id="ctClose">Close</button></div>
     <pre id="ctLog" style="margin-top:18px;height:340px;overflow:auto;background:#000;border:1px solid var(--line-2);border-radius:4px;padding:12px;font:12px/1.5 ui-monospace,Menlo,monospace;white-space:pre-wrap"></pre></div>`;
   document.body.append(m);

@@ -9,6 +9,7 @@ import { fmtTime, fmtKm, fmtNum, esc, bestAvg } from './util.js';
 import { bestClimb, distAtTime } from './climbghost.js';
 import { stravaButton } from './stravaup.js';
 import { padButtons } from './controller.js';
+import { click } from './zwiftclick.js';
 import { routeFns } from './tcx.js';
 import { gearsFrom, gearName, parseGear, estimateGear, virtualGrade } from './gears.js';
 import { UEBridge } from './uebridge.js';
@@ -170,6 +171,7 @@ export class RideSession {
     this.q = s => el.querySelector(s);
     this._wireWorkoutStop();
     el.querySelector('#hGearChip')?.addEventListener('click', () => this.toggleShift());
+    if (!this._closed) this._clickOff = click.on('shift', d => { if (!this.paused && !this.finished) this._padShift(d); }); // Zwift Click (connected in Settings): + / − like the pad's L/R
     el.querySelector('#hPause')?.addEventListener('click', () => this.paused ? this._resume() : this._pause());
     el.querySelector('#hCam')?.addEventListener('click', () => this._cycleView());
     el.querySelector('#hBar')?.addEventListener('click', () => this._toggleBar());
@@ -371,7 +373,7 @@ export class RideSession {
       return;
     }
     if (this.finished) return;
-    const sh = d => { if (!this.virtual && !this.berg) this.toggleShift(); this.shift(d); }; // a pad means virtual shifting: switch over on first use
+    const sh = d => this._padShift(d);
     if (hit(4) || hit(13)) sh(-1);
     if (hit(5) || hit(12)) sh(1);
     if (hit(0)) { this._chKey = true; if (this.ch?.active?.state === 'offer') this._flash('Accepted!'); }
@@ -384,6 +386,9 @@ export class RideSession {
     if (hit(11) || hit(15)) { this.music?.skip(); setTimeout(() => this._flash('♫ ' + (this.music?.title() || '')), 300); }
   }
 
+
+  /** a pad (or Zwift Click) means virtual shifting: switch over on first use */
+  _padShift(d) { if (!this.virtual && !this.berg) this.toggleShift(); this.shift(d); }
 
   _syncVideo() {
     const p = this.player;
@@ -1153,7 +1158,7 @@ export class RideSession {
   }
 
   _close(saved) {
-    this._closed = true; this.pose?.stop();
+    this._closed = true; this.pose?.stop(); this._clickOff?.();
     this.running = false; this.ue?.close(); this.state.trainer.setPower?.(null); this.music?.destroy();
     if (this.group?.voice) { this.group.voice.stop(); this.group.voice = null; } // ride over: microphone off, indicator off
     if (this._voiceUI) window.removeEventListener('rf-voicechange', this._voiceUI);

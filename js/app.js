@@ -15,6 +15,7 @@ import { gameVersion } from './uebridge.js';
 import { fovOf, FOV_MIN, FOV_MAX } from './fov.js';
 import { fmtTime, fmtKm, fmtNum, esc, bestAvg } from './util.js';
 import { openControllerTest } from './controller.js';
+import { click } from './zwiftclick.js';
 import { stravaButton } from './stravaup.js';
 import { routeFns } from './tcx.js';
 import { hudPrefs, hudControlsHTML, wireHudControls } from './hudprefs.js';
@@ -483,6 +484,7 @@ function settings() {
         <label class="field"><div>Gradient realism <b id="diffV">${s.difficulty}%</b><div class="hint">100 % = real gradient. 50 % = climbs feel half as steep.</div></div><input type="range" id="difficulty" min="0" max="100" step="5" value="${s.difficulty}"></label>
         <label class="field"><div>Descents <b id="downV">${s.downhill}%</b><div class="hint">How much the trainer eases off downhill.</div></div><input type="range" id="downhill" min="0" max="100" step="5" value="${s.downhill}"></label>
         <div class="field"><div>Test controller<div class="hint">E.g. Di2 extra buttons (D-FLY), Zwift Click, gamepad. Shows what the buttons send.</div></div><button class="btn ghost small" id="ctBtn">Test</button></div>
+        <div class="field"><div>Zwift Click<div class="hint">Its + / − buttons shift the virtual gears in the ride. Click v2: open it in the Zwift app once a day, or it drops after a minute.</div><div class="hint" id="zcState">${clickState()}</div></div><button class="btn ghost small" id="zcBtn">${click.device ? 'Disconnect' : 'Connect'}</button></div>
         <div class="field"><div>Heart rate strap<div class="hint">Optional, via Bluetooth.</div></div><div style="display:flex;gap:8px"><button class="btn ghost small" id="hrAll" title="If the strap is missing in the normal search">All devices</button><button class="btn ghost small" id="hrBtn">${state.hr?.connected ? 'Connected' : 'Connect'}</button></div></div>
       </div>
       <div class="panel"><h3>Video &amp; data</h3>
@@ -575,6 +577,7 @@ function settings() {
   main.querySelectorAll('.swatch').forEach(b => b.onclick = () => { s.accent = b.dataset.acc; applyAccent(); saveSettings(); settings(); });
   $('#hrBtn').onclick = () => connectHR(false); $('#hrAll').onclick = () => connectHR(true);
   $('#ctBtn').onclick = openControllerTest;
+  $('#zcBtn').onclick = connectClick;
   db.usage().then(u => { if (u) $('#usage').textContent = `${fmtNum(u.usage / 1e9, 1)} GB used of ${fmtNum(u.quota / 1e9, 0)} GB available`; });
 }
 
@@ -613,6 +616,19 @@ async function connectHR(all) {
     // nothing picked: most often the strap is asleep (not worn) or still paired with a watch/phone/bike computer
     if (!all) toast('No strap chosen? Put the strap on, wet the electrodes (it only sends while worn) and briefly turn off Bluetooth on your watch/phone/bike computer. Settings also has “All devices”.', 7000);
   }
+}
+
+// ---------------- Zwift Click ----------------
+function clickState() {
+  const c = click, s = c.status;
+  if (s === 'on') return `Connected: ${esc(c.name)}${c.battery != null ? ` · battery ${c.battery} %` : ''}${c.locked ? ' · locked, open the Zwift app' : ''}`;
+  return { connecting: 'Connecting…', reconnecting: 'Connection lost, reconnecting…', lost: 'Connection lost. Wake it up and connect again.' }[s] || 'Not connected';
+}
+click.on('state', () => { const st = document.querySelector('#zcState'), b = document.querySelector('#zcBtn'); if (st) st.innerHTML = clickState(); if (b) b.textContent = click.device ? 'Disconnect' : 'Connect'; });
+async function connectClick() {
+  if (click.device) { if (confirm('Disconnect Zwift Click?')) click.disconnect(); return; }
+  try { await click.connect(); toast(`${click.name} connected · + / − shift the virtual gears`); }
+  catch (e) { if (e.name !== 'NotFoundError') toast('Zwift Click: ' + e.message, 7000); }
 }
 
 // ---------------- import ----------------
