@@ -67,10 +67,14 @@ class RideframeApp extends Application.AppBase {
         if (timer != null) { timer.stop(); }
         Sensor.enableSensorEvents(null);
         if (flow != null) { Application.Storage.setValue("queue", flow.queue); }
-        saveActs();
         // a run / ride the system closes keeps what was recorded (Recorder.shutdown); an open strength workout is lost
         // (VERIFY on the device: does the system close the app mid-workout, e.g. on a notification? then keep a draft)
-        if (recorder != null) { recorder.shutdown(); }
+        if (recorder != null) { // not in the glance process (it never loads the queues, so it must not write them)
+            recorder.shutdown();
+            var b = recorder.lastAct; // an activity saved but not queued yet goes into the queue for the next start
+            if (b != null) { acts.add(b); recorder.lastAct = null; }
+            saveActs();
+        }
         if (rec != null && rec.isRecording()) { rec.stop(); rec.discard(); rec = null; }
     }
 
