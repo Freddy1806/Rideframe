@@ -86,6 +86,8 @@ function draw() {
   status();
 }
 
+const tintSub = p => { const a = sh && sh.style.getPropertyValue('--accent'); if (a) p.style.setProperty('--accent', a); }; // the sheets on top keep the sport's colour
+
 /* -- run / ride: pages, fields, preview, switches -- */
 const faceSeg = () => `<div class="pseg wcface" role="group" aria-label="Watch">${FACES.map((f, i) => `<button data-face="${i}" class="${face === i ? 'on' : ''}">${f.name}</button>`).join('')}</div>`;
 const preview = () => `<figure class="wcprev"><canvas id="wcCv" aria-label="Watch preview"></canvas></figure>`;
@@ -123,7 +125,7 @@ function fieldPicker(sp, page, i) {
   p.innerHTML = `<div class="psheetin"><div class="label">${i < page.fields.length ? `${SLOTS[page.fields.length][i]}: choose value` : 'Add a field'}</div>
     <div class="ppick wcpick">${Object.entries(F).map(([k, f]) => `<button data-f="${k}" class="${k === cur ? 'on' : ''}"><b>${esc(f.l)}</b><small>${f.u ? esc(f.u) + ' · ' : ''}${esc(f.demo)}</small></button>`).join('')}</div>
     <div class="pfoot"><button class="btn ghost" id="wcPickX">Cancel</button></div></div>`;
-  document.body.append(p); p.onclick = e => { if (e.target === p) p.remove(); }; $('#wcPickX', p).onclick = () => p.remove();
+  document.body.append(p); tintSub(p); p.onclick = e => { if (e.target === p) p.remove(); }; $('#wcPickX', p).onclick = () => p.remove();
   p.querySelectorAll('[data-f]').forEach(b => b.onclick = () => { const k = b.dataset.f, at = page.fields.indexOf(k);
     if (i >= page.fields.length) { if (at < 0) page.fields.push(k); } else if (at >= 0) { page.fields[at] = page.fields[i]; page.fields[i] = k; } else page.fields[i] = k;
     p.remove(); changed(); draw(); });
@@ -140,7 +142,7 @@ function strengthTab(body) {
   const nw = $('#wcNewW', body); if (nw) nw.onclick = () => { const w = { id: 'w' + Date.now().toString(36) + Math.random().toString(36).slice(2, 5), name: `Workout ${C.workouts.length + 1}`, items: [] }; C.workouts.push(w); changed(); draw(); workoutSheet(w, true); };
 }
 function workoutSheet(w, fresh = false) {
-  const p = document.createElement('div'); p.className = 'psheet'; p.id = 'wcWork'; document.body.append(p);
+  const p = document.createElement('div'); p.className = 'psheet'; p.id = 'wcWork'; document.body.append(p); tintSub(p);
   const done = () => { p.remove(); draw(); };
   const paint = () => {
     p.innerHTML = `<div class="psheetin"><div class="label">Workout</div>
@@ -163,7 +165,7 @@ function workoutSheet(w, fresh = false) {
 }
 const itemTxt = (it, e) => `${it.sets} × ${e.t === 'time' ? mmss(it.reps) : it.reps + ' reps'}${it.kg ? ` · ${it.kg} kg` : e.t === 'bw' ? ' · body weight' : ''} · rest ${mmss(it.rest)}`;
 function itemSheet(it, back) {
-  const e = exOf(it.ex), p = document.createElement('div'); p.className = 'psheet'; p.id = 'wcItem'; document.body.append(p);
+  const e = exOf(it.ex), p = document.createElement('div'); p.className = 'psheet'; p.id = 'wcItem'; document.body.append(p); tintSub(p);
   const row = (k, l, v, lim, step) => `<label class="prow wcnum"><span>${l}</span><input type="number" inputmode="${step < 1 ? 'decimal' : 'numeric'}" data-n="${k}" min="${lim[0]}" max="${lim[1]}" step="${step}" value="${v}"></label>`;
   p.innerHTML = `<div class="psheetin"><div class="label">${esc(e.n)}</div>
     ${row('sets', 'Sets', it.sets, LIM.sets, 1)}${row('reps', e.t === 'time' ? 'Seconds' : 'Reps', it.reps, e.t === 'time' ? [5, 100] : LIM.reps, e.t === 'time' ? 5 : 1)}
@@ -175,7 +177,7 @@ function itemSheet(it, back) {
   p.querySelectorAll('[data-n]').forEach(i => i.onchange = () => {}); $('#wcItOk', p).onclick = ok; p.onclick = ev => { if (ev.target === p) ok(); };
 }
 function exPicker(pick) {
-  const p = document.createElement('div'); p.className = 'psheet'; p.id = 'wcEx'; document.body.append(p);
+  const p = document.createElement('div'); p.className = 'psheet'; p.id = 'wcEx'; document.body.append(p); tintSub(p);
   const groups = [...new Set(exList.map(e => e.own ? 'Your exercises' : GROUP[e.g] || e.g))].sort((a, b) => (b === 'Your exercises') - (a === 'Your exercises'));
   p.innerHTML = `<div class="psheetin"><div class="label">Add exercise</div><input type="search" class="wcsearch" id="wcQ" placeholder="Search" autocomplete="off" aria-label="Search exercises">
     <div class="wcexl">${groups.map(g => `<h3 class="ksec" data-g>${esc(g)}</h3>${exList.filter(e => (e.own ? 'Your exercises' : GROUP[e.g] || e.g) === g).map(e => `<button class="wcex" data-ex="${esc(e.k)}" data-q="${esc(e.n.toLowerCase())}"><b>${esc(e.n)}</b><small>${e.t === 'time' ? 'time' : e.t === 'bw' ? 'body weight' : 'weight'}</small></button>`).join('')}`).join('')}</div>
