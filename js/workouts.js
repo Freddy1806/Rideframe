@@ -89,7 +89,7 @@ export const pctAt = (st, f = 0) => st.to == null ? st.pct : st.pct + (st.to - s
 
 /** everything a workout display needs at time t, with the rider's offsets and the ERG ramps (pure, tested):
  *  o.hardAdj  W on every hard interval (pct >= 88, not free), kept for the whole workout
- *  o.stepAdj  W on the current step when it is not hard (warm-up, rest, cool-down); the caller resets it at the next step
+ *  o.easyAdj  W on every easier step (warm-up, rests, cool-down; not free blocks), kept for the whole workout (owner 17.11.)
  *  o.ramp     true (ERG): no wall into a hard interval: the last o.rampIn s (10) before it the target rises linearly from
  *             this step's to the interval's, and over the first o.rampOut s (5) after it falls back
  *  Returns { done, i, step, next, prev, left, inStep, target (W, ramped and adjusted: what the trainer gets and compliance
@@ -97,18 +97,19 @@ export const pctAt = (st, f = 0) => st.to == null ? st.pct : st.pct + (st.to - s
  *  hardNo / hardCount / nextHardNo, name, nextTarget / nextName / nextDur, totalLeft, countdown (whole s, last 3 s before a
  *  change, else 0), steps: [{ dur, pct (height incl. offset), to, hard, label }] } */
 export function workoutState(w, t, ftp, o = {}) {
-  const hardAdj = o.hardAdj || 0, stepAdj = o.stepAdj || 0, rampIn = o.rampIn ?? 10, rampOut = o.rampOut ?? 5, steps = w.steps;
-  const W0 = (st, f, own) => { const b = Math.round(pctAt(st, f) / 100 * ftp); return isHard(st) ? tunedTarget(st, b, hardAdj) : own && stepAdj ? Math.max(50, b + stepAdj) : b; };
+  const hardAdj = o.hardAdj || 0, easyAdj = o.easyAdj || 0, rampIn = o.rampIn ?? 10, rampOut = o.rampOut ?? 5, steps = w.steps;
+  const W0 = (st, f) => { const b = Math.round(pctAt(st, f) / 100 * ftp); return isHard(st) ? tunedTarget(st, b, hardAdj) : easyAdj && !st.free ? Math.max(50, b + easyAdj) : b; };
   const hardCount = steps.filter(isHard).length, total = workoutDuration(w);
-  const list = steps.map(st => ({ dur: st.dur, pct: ftp && hardAdj && isHard(st) ? tunedTarget(st, st.pct / 100 * ftp, hardAdj) / ftp * 100 : st.pct, to: st.to, hard: isHard(st), label: st.label || '' }));
+  const ea = (p, st) => ftp && easyAdj && !st.free ? Math.max(50, p / 100 * ftp + easyAdj) / ftp * 100 : p; // the easy parts' offset (charts)
+  const list = steps.map(st => ({ dur: st.dur, pct: ftp && hardAdj && isHard(st) ? tunedTarget(st, st.pct / 100 * ftp, hardAdj) / ftp * 100 : isHard(st) ? st.pct : ea(st.pct, st), to: st.to != null ? ea(st.to, st) : st.to, hard: isHard(st), label: st.label || '' }));
   let s = 0, i = 0; for (; i < steps.length && t >= s + steps[i].dur; i++) s += steps[i].dur;
   if (i >= steps.length) return { done: true, i: steps.length, step: null, next: null, prev: steps[steps.length - 1] || null, left: 0, inStep: 0, target: null, plateau: null, lo: null, hi: null, ramp: null, hard: false,
     hardNo: 0, hardCount, nextHardNo: 0, name: '', nextTarget: null, nextName: '', nextDur: 0, totalLeft: 0, countdown: 0, steps: list };
   const st = steps[i], next = steps[i + 1] || null, prev = steps[i - 1] || null, inStep = t - s, left = st.dur - inStep, f = inStep / st.dur;
-  const plateau = W0(st, f, true); let target = plateau, ramp = st.to != null ? 'step' : null;
+  const plateau = W0(st, f); let target = plateau, ramp = st.to != null ? 'step' : null;
   if (o.ramp && !isHard(st) && !st.free) {
-    if (next && isHard(next) && left < rampIn && rampIn > 0) { const k = 1 - left / rampIn, a = W0(st, 1, true), b = W0(next, 0); target = Math.round(a + (b - a) * k); ramp = 'in'; }
-    else if (prev && isHard(prev) && inStep < rampOut && rampOut > 0) { const k = inStep / rampOut, a = W0(prev, 1), b = W0(st, 0, true); target = Math.round(a + (b - a) * k); ramp = 'out'; }
+    if (next && isHard(next) && left < rampIn && rampIn > 0) { const k = 1 - left / rampIn, a = W0(st, 1), b = W0(next, 0); target = Math.round(a + (b - a) * k); ramp = 'in'; }
+    else if (prev && isHard(prev) && inStep < rampOut && rampOut > 0) { const k = inStep / rampOut, a = W0(prev, 1), b = W0(st, 0); target = Math.round(a + (b - a) * k); ramp = 'out'; }
   }
   const hardBefore = steps.slice(0, i).filter(isHard).length;
   return { done: false, i, step: st, next, prev, left, inStep, target, plateau, lo: Math.round(target * .95), hi: Math.round(target * 1.05), ramp, hard: isHard(st),
@@ -128,16 +129,23 @@ export function workoutAt(w, t, ftp) {
   return { i: w.steps.length, step: null, next: null, left: 0, target: null, done: true };
 }
 
-/** the big workout timeline (design C) from a workoutState: every step a block by its % FTP (hard steps with the offset),
- *  hard orange, the rest light; the current step full, the past dimmed; a white marker at time t */
+/** neon zone scale for the timeline (owner 17.11.): cool blue easy, green endurance, yellow tempo, orange threshold, hot
+ *  red-orange VO2max, red above; by % FTP */
+export const ZONES = [[56, '#3aa8ff'], [76, '#2ee59d'], [91, '#ffd23f'], [106, '#ff5a1f'], [121, '#ff3d1f'], [Infinity, '#ff1f3d']];
+export const zoneColor = pct => ZONES.find(([lim]) => pct < lim)[1];
+
+/** the big workout timeline (design C) from a workoutState: every step a block by its % FTP (with the offsets) in its neon
+ *  zone colour; the current step full with a glow, the past dimmed; a white marker at time t */
 export function timelineSVG(st, t, w, h = 92) {
   const W0 = 1280, list = st.steps, total = list.reduce((a, x) => a + x.dur, 0) || 1, mx = Math.max(125, ...list.map(x => Math.max(x.pct, x.to ?? 0)));
   let x = 0, o = ''; const at = Math.min(total, Math.max(0, t)) / total * W0;
-  list.forEach((s, i) => { const bw = s.dur / total * W0, ph = s.pct / mx * h, cur = i === st.i, done = i < st.i, op = cur ? 1 : done ? .28 : s.hard ? .78 : .42, col = s.hard ? 'var(--accent)' : 'var(--paper)';
+  list.forEach((s, i) => { const bw = s.dur / total * W0, ph = s.pct / mx * h, cur = i === st.i, done = i < st.i, op = cur ? 1 : done ? .3 : .72,
+      col = zoneColor(s.to != null ? (s.pct + s.to) / 2 : s.pct), f = cur ? ' filter="url(#wglow)"' : '';
     const x0 = (x + Math.min(1.5, bw / 4)).toFixed(1), x1 = (x + bw - Math.min(1.5, bw / 4)).toFixed(1);
-    o += s.to != null ? `<polygon points="${x0},${h} ${x0},${(h - ph).toFixed(1)} ${x1},${(h - s.to / mx * h).toFixed(1)} ${x1},${h}" fill="${col}" opacity="${op}"/>`
-      : `<rect x="${x0}" y="${(h - ph).toFixed(1)}" width="${Math.max(0.5, x1 - x0).toFixed(1)}" height="${ph.toFixed(1)}" rx="3" fill="${col}" opacity="${op}"/>`; x += bw; });
-  return `<svg class="wtl" viewBox="0 0 ${W0} ${h + 8}" preserveAspectRatio="none"><g transform="translate(0,4)">${o}</g><rect x="${(at - 2).toFixed(1)}" y="0" width="4" height="${h + 8}" fill="#fff"/></svg>`;
+    o += s.to != null ? `<polygon points="${x0},${h} ${x0},${(h - ph).toFixed(1)} ${x1},${(h - s.to / mx * h).toFixed(1)} ${x1},${h}" fill="${col}" opacity="${op}"${f}/>`
+      : `<rect x="${x0}" y="${(h - ph).toFixed(1)}" width="${Math.max(0.5, x1 - x0).toFixed(1)}" height="${ph.toFixed(1)}" rx="3" fill="${col}" opacity="${op}"${f}/>`; x += bw; });
+  return `<svg class="wtl" viewBox="0 0 ${W0} ${h + 8}" preserveAspectRatio="none"><defs><filter id="wglow" x="-10%" y="-40%" width="120%" height="180%"><feGaussianBlur stdDeviation="5" result="b"/><feMerge><feMergeNode in="b"/><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge></filter></defs>`
+    + `<g transform="translate(0,4)">${o}</g><rect x="${(at - 2).toFixed(1)}" y="0" width="4" height="${h + 8}" fill="#fff" style="filter:drop-shadow(0 0 4px #fff)"/></svg>`;
 }
 
 /** small block chart of the program (SVG), the current position marked with a line; adj / ftp: hard bars at the tuned target */

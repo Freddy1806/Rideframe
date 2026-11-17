@@ -73,7 +73,7 @@ function fakePad() { // a standard-mapping gamepad; window.__pad.press(i) holds 
     const h1 = await H();
     ok(h1.a === 10 && h1.v === '+10 W' && h1.t === T(10), `W W: offset +10 W, #hWT = ${T(10)}`, JSON.stringify(h1));
     ok(h1.adj && h1.tag !== 'none', 'offset not 0: the bar shows the "+10 W" tag', JSON.stringify(h1));
-    ok(h1.flash === `Intervals +10 W · target ${T(10)} W`, `flash "Intervals +10 W · target ${T(10)} W"`, h1.flash);
+    ok(h1.flash === `Target ${T(10)} W (+10 W on the intervals)`, `flash "Target ${T(10)} W (+10 W on the intervals)"`, h1.flash);
     ok(h1.next === `Rest · ${RB} W`, `next step "Rest · ${RB} W" (the rest stays)`, h1.next);
     await p.waitForTimeout(1800);
     if (SHOTS) await p.screenshot({ path: path.join(SHOTS, 'ride_hud_plus10_1280.png') });
@@ -98,14 +98,14 @@ function fakePad() { // a standard-mapping gamepad; window.__pad.press(i) holds 
     await p.evaluate(() => { window.__ride.elapsed = 15 * 60 + 8; }); await p.waitForTimeout(300); // past the 5 s ramp down
     const hr = await H();
     ok(hr.a === 10 && hr.step === 'Rest' && hr.t === String(RB) && hr.next === `VO2max 2/5 · ${T(10)} W`, `in a rest: target ${RB} W untouched, next interval previewed at ${T(10)} W`, JSON.stringify(hr));
-    // ---- this easy step: D / A (pad ← / →) a few watts, only until the next step; W / S stay the interval watts ----
-    await p.keyboard.press('d'); await p.keyboard.press('d'); await p.keyboard.press('Shift+A'); await p.waitForTimeout(150);
-    const hs = await p.evaluate(() => ({ s: window.__ride.sAdj, a: window.__ride.wAdj, t: document.querySelector('#hWT').textContent, step: document.querySelector('#hWStep').textContent, f: document.querySelector('#hFlash')?.textContent }));
-    ok(hs.s === 9 && hs.a === 10 && hs.t === String(RB + 9) && hs.step === 'Rest +9 W', `D D Shift+A in the rest: this step +9 W (${RB + 9} W), interval offset still +10`, JSON.stringify(hs));
-    ok(hs.f === `This step (Rest) +9 W · target ${RB + 9} W · until the next step`, 'flash names "This step"', hs.f);
-    await p.keyboard.press('w'); await p.waitForTimeout(100);
-    ok(await p.evaluate(() => window.__ride.wAdj === 15 && window.__ride.sAdj === 9), 'W in the rest still moves the interval watts (+15), the step offset stays');
-    await p.keyboard.press('s'); await p.waitForTimeout(100);
+    // ---- the easy parts have their own offset (owner 17.11.): W / S in a rest move it, kept for every later easy step ----
+    await p.keyboard.press('w'); await p.keyboard.press('w'); await p.keyboard.press('Shift+S'); await p.waitForTimeout(150);
+    const hs = await p.evaluate(() => ({ e: window.__ride.wAdjE, a: window.__ride.wAdj, t: document.querySelector('#hWT').textContent, tag: document.querySelector('#hWAdjV').textContent, f: document.querySelector('#hFlash')?.textContent }));
+    ok(hs.e === 9 && hs.a === 10 && hs.t === String(RB + 9) && hs.tag === '+9 W', `W W Shift+S in the rest: easy parts +9 W (${RB + 9} W), interval offset still +10, the bar shows +9 W`, JSON.stringify(hs));
+    ok(hs.f === `Target ${RB + 9} W (+9 W on the easy parts)`, 'flash says "on the easy parts"', hs.f);
+    await p.evaluate(() => { window.__ride.elapsed = 21 * 60 + 8; }); await p.waitForTimeout(200);
+    ok(await p.evaluate(() => window.__ride.wAdjE === 9 && window.__ride.wNow.target === window.__ride.wNow.plateau && +document.querySelector('#hWAdjV').textContent.replace(/\D/g, '') === 10), 'in the next interval: its own +10 W, the easy offset waits');
+    await p.evaluate(() => { window.__ride.elapsed = 15 * 60 + 8; }); await p.waitForTimeout(200);
     // ---- ERG ramp: 10 s up into the interval, the step offset ends with the rest ----
     await p.evaluate(() => { window.__ride.elapsed = 20 * 60 - 5; }); await p.waitForTimeout(200);
     const rp = await p.evaluate(() => ({ t: +document.querySelector('#hWT').textContent, of: document.querySelector('#hWOf').textContent, cue: !document.querySelector('#hWCue').hidden && document.querySelector('#hWCueN').textContent, ramp: window.__ride.wNow.ramp }));
@@ -115,9 +115,6 @@ function fakePad() { // a standard-mapping gamepad; window.__pad.press(i) holds 
     ok(cd.on && cd.n === '3' && /^VO2max 2\/5 · \d+ W$/.test(cd.w), `countdown into the interval: "3" above the bar, "${cd.w}"`, JSON.stringify(cd));
     if (SHOTS) await p.screenshot({ path: path.join(SHOTS, 'ride_hud_ramp_1280.png') });
     await p.waitForFunction(() => document.querySelector('#hWStep').textContent === 'VO2max 2/5', null, { timeout: 8000 });
-    ok(await p.evaluate(() => window.__ride.sAdj === 0), 'the step offset reset at the next step');
-    await p.keyboard.press('d'); await p.waitForTimeout(100);
-    ok(await p.evaluate(() => window.__ride.sAdj === 0 && /Hard interval/.test(document.querySelector('#hFlash')?.textContent)), 'D in a hard interval changes nothing and says to use ↑ / ↓');
     await p.evaluate(() => { window.__ride.elapsed = 10 * 60 + 30; }); await p.waitForTimeout(300);
 
     // ---- gear keys still shift, not the watts ----
@@ -130,40 +127,56 @@ function fakePad() { // a standard-mapping gamepad; window.__pad.press(i) holds 
     await p.click('#hWAdj [data-wa="-5"]'); await p.waitForTimeout(150);
     ok((await H()).a === 15 && (await H()).t === T(15), `HUD − clicked: +15 W, target ${T(15)}`);
     const box = await p.locator('#hWAdj [data-wa="5"]').boundingBox();
+    // ---- three views of the interval display (owner 17.11.): button on the bar, key L, pause Options; kept in the settings ----
+    const vw = () => p.evaluate(() => ({ c: document.querySelector('#hWork').className, s: window.__ride.state.settings.wbView, f: document.querySelector('#hFlash')?.textContent }));
+    ok(/v-big/.test((await vw()).c), 'interval display: big (design C) by default');
+    await p.click('#hWView'); await p.waitForTimeout(300); const v1 = await vw();
+    ok(/v-compact/.test(v1.c) && v1.s === 'compact' && v1.f === 'Interval display: compact', 'View button: compact', JSON.stringify(v1));
+    const cl = await p.evaluate(() => { const r = document.querySelector('#hWork .wb-row').getBoundingClientRect(), t = document.querySelector('#hWTime'); return { h: Math.round(document.querySelector('#hWork').getBoundingClientRect().height), ring: getComputedStyle(document.querySelector('.wring')).display, time: getComputedStyle(t).display !== 'none' && t.textContent }; });
+    ok(cl.ring === 'none' && cl.time && cl.h < 200, `compact: slim bar (${cl.h} px), time left as text, no ring`, JSON.stringify(cl));
+    if (SHOTS) await p.screenshot({ path: path.join(SHOTS, 'ride_view_compact_1280.png') });
+    await p.keyboard.press('l'); await p.waitForTimeout(300); const v2 = await vw();
+    const fc = await p.evaluate(() => { const r = document.querySelector('#hWork .wb-row').getBoundingClientRect(); return { l: Math.round(r.left), r: Math.round(innerWidth - r.right), z: getComputedStyle(document.querySelector('#hWZone')).visibility }; });
+    ok(/v-focus/.test(v2.c) && v2.s === 'focus' && Math.abs(fc.l - fc.r) <= 2 && fc.l > 100 && fc.z === 'visible', 'key L: focus, a centred card with the zone gauge', JSON.stringify({ v2, fc }));
+    if (SHOTS) await p.screenshot({ path: path.join(SHOTS, 'ride_view_focus_1280.png') });
+    await p.keyboard.press('l'); await p.waitForTimeout(300);
+    const kept = await p.evaluate(async () => { const { db } = await import('/js/db.js'); return (await db.kvGet('settings'))?.wbView; });
+    ok(/v-big/.test((await vw()).c) && kept === 'big', 'key L again: back to big, saved in the settings', String(kept));
     ok(box && box.width >= 36 && box.height >= 32, `HUD buttons large enough to click (${box && Math.round(box.width)}×${box && Math.round(box.height)} px)`);
 
     // ---- the controller: D-pad ↑ / ↓ tune the watts in a workout, L/R still shift ----
     await p.evaluate(() => { window.__pad.on = true; }); await p.waitForTimeout(200);
-    ok(/D-pad ↑↓: interval watts, ←→: this step/.test((await H()).flash), 'pad hint on connect: "D-pad ↑↓: interval watts, ←→: this step"', (await H()).flash);
+    ok(/D-pad ↑↓ \/ L R: target ±1 W, L2 R2: ±5 W/.test((await H()).flash), 'pad hint on connect: "D-pad ↑↓ / L R: target ±1 W, L2 R2: ±5 W"', (await H()).flash);
     const gA = (await H()).gi;
     await p.evaluate(() => window.__pad.press(12)); await p.evaluate(() => window.__pad.press(12));
-    const h6 = await H(); ok(h6.a === 25 && h6.gi === gA, 'pad D-pad ↑ twice: +25 W, gear unchanged', JSON.stringify(h6));
+    const h6 = await H(); ok(h6.a === 17 && h6.gi === gA, 'pad D-pad ↑ twice: +17 W (1 W steps), gear unchanged', JSON.stringify(h6));
     await p.evaluate(() => window.__pad.press(13));
-    const h7 = await H(); ok(h7.a === 20 && h7.gi === gA && h7.t === T(20), `pad D-pad ↓: +20 W (${T(20)} W), gear unchanged`, JSON.stringify(h7));
-    await p.evaluate(() => window.__pad.press(5)); const h8 = await H();
-    ok(h8.a === 20 && h8.gi !== gA, 'pad R still shifts, offset unchanged', JSON.stringify({ gA, gi: h8.gi }));
+    const h7 = await H(); ok(h7.a === 16 && h7.gi === gA && h7.t === T(16), `pad D-pad ↓: +16 W (${T(16)} W), gear unchanged`, JSON.stringify(h7));
+    await p.evaluate(() => window.__pad.press(5)); await p.evaluate(() => window.__pad.press(4)); await p.evaluate(() => window.__pad.press(5)); const h8 = await H();
+    ok(h8.a === 17 && h8.gi === gA, 'pad R, L, R in a workout: ±1 W each (+17 W), no gear change', JSON.stringify({ gA, gi: h8.gi, a: h8.a }));
+    await p.evaluate(() => window.__pad.press(7)); await p.evaluate(() => window.__pad.press(7)); await p.evaluate(() => window.__pad.press(6)); const h9 = await H();
+    ok(h9.a === 22, 'pad R2 R2 L2: ±5 W each (+22 W)', JSON.stringify(h9));
 
     await p.evaluate(() => { window.__ride.elapsed = 15 * 60 + 30; }); await p.waitForTimeout(250);
-    const mus0 = await p.evaluate(() => window.__ride.music?.on);
-    await p.evaluate(() => window.__pad.press(15)); await p.evaluate(() => window.__pad.press(15)); await p.evaluate(() => window.__pad.press(14));
-    ok(await p.evaluate(m => window.__ride.sAdj === 5 && window.__ride.music?.on === m, mus0), 'pad D-pad → → ← in the rest: this step +5 W, music untouched');
+    await p.evaluate(() => window.__pad.press(12));
+    ok(await p.evaluate(() => window.__ride.wAdjE === 10 && window.__ride.wAdj === 22), 'pad D-pad ↑ in the rest: easy parts +10 W, intervals untouched');
     await p.evaluate(() => { window.__ride.elapsed = 10 * 60 + 40; }); await p.waitForTimeout(250);
     // ---- back to +10 W and finish: options, saved record and summary ----
-    await p.keyboard.press('s'); await p.keyboard.press('s'); await p.waitForTimeout(1200);
+    await p.keyboard.press('s'); await p.keyboard.press('s'); await p.keyboard.press('Shift+S'); await p.keyboard.press('Shift+S'); await p.waitForTimeout(1200);
     ok((await H()).a === 10, 'back to +10 W');
     await p.evaluate(() => window.__pad.press(9)); await p.waitForSelector('#pOpts');
     await p.click('#pOpts'); await p.waitForTimeout(200);
     const opt = await p.textContent('#pauseOverlay');
-    ok(/Intervals \+5 W \(now \+10 W\)/.test(opt) && /Intervals −5 W/.test(opt) && /D-pad up \/ down: interval watts/.test(opt) && /W \/ S/.test(opt), 'pause Options: interval watt items and the key / pad help', opt);
-    await p.click('#oAdjDn'); await p.waitForTimeout(200); ok((await H()).a === 5, 'Options "Intervals −5 W" works');
-    await p.click('#oAdjUp'); await p.waitForTimeout(200); ok((await H()).a === 10, 'Options "Intervals +5 W" works');
+    ok(/Target \+5 W \(intervals now \+10 W\)/.test(opt) && /Target −5 W/.test(opt) && /D-pad up \/ down or L \/ R: target ±1 W/.test(opt) && /W \/ S/.test(opt) && /Interval display: big/.test(opt), 'pause Options: target items, interval display and the key / pad help', opt);
+    await p.click('#oAdjDn'); await p.waitForTimeout(200); ok((await H()).a === 5, 'Options "Target −5 W" works (in an interval: the intervals)');
+    await p.click('#oAdjUp'); await p.waitForTimeout(200); ok((await H()).a === 10, 'Options "Target +5 W" works');
     await p.click('#oBack'); await p.waitForSelector('#pSave'); await p.click('#pSave');
     await p.waitForSelector('.finish', { timeout: 10000 });
     const fin = await p.textContent('.finish');
-    ok(/Intervals \+10 W/.test(fin), 'summary shows "Intervals +10 W"', fin.slice(0, 300));
+    ok(/Intervals \+10 W/.test(fin) && /easy parts \+10 W/.test(fin), 'summary shows "Intervals +10 W … easy parts +10 W"', fin.slice(0, 300));
     const rec = await p.evaluate(async () => { const { db } = await import('/js/db.js'); const rs = await db.ridesFor('demo'); return rs.sort((a, b) => b.date - a.date)[0] || null; });
     ok(rec && rec.wAdj === 10 && Number.isFinite(rec.wAdjAvg) && rec.wAdjAvg !== 0 && Math.abs(rec.wAdjAvg) <= 150, `saved ride: wAdj 10, time-weighted average ${rec?.wAdjAvg}`, JSON.stringify(rec && { a: rec.wAdj, v: rec.wAdjAvg }));
-    ok(rec && rec.workoutId === 'vo2_5x5', 'saved ride: workoutId vo2_5x5');
+    ok(rec && rec.workoutId === 'vo2_5x5' && rec.wAdjE === 10, 'saved ride: workoutId vo2_5x5, easy parts offset wAdjE 10');
     const iv = rec?.ivs?.[0];
     ok(!iv || (iv.target > B && iv.target <= B + 150), `interval summary target uses the tuned watts (${iv?.target ?? 'no interval row'})`, JSON.stringify(rec?.ivs));
     if (SHOTS) await p.screenshot({ path: path.join(SHOTS, 'ride_summary_1280.png') });
@@ -179,7 +192,7 @@ function fakePad() { // a standard-mapping gamepad; window.__pad.press(i) holds 
       return [c, q2]; };
     // a trainer that delivers power (no Bluetooth: the shared Trainer object gets a fake connection and fresh data)
     const fakeTrainer = q2 => q2.evaluate(() => { const t = window.__ride.state.trainer; t.device = { gatt: { connected: true } }; t.data = { power: 240, cadence: 90, speed: 9, hr: 0 };
-      window.__tl = setInterval(() => { t.lastData = performance.now(); t.data.power = window.__tp ?? 240; }, 100); t.lastData = performance.now(); });
+      window.__tl = setInterval(() => { t.lastData = performance.now(); t.data.power = window.__tp ?? 240; t.data.cadence = window.__tc ?? 90; }, 100); t.lastData = performance.now(); });
     {
       const [c, q2] = await ride2('vo2_5x5', false, 'non-ERG');
       await q2.evaluate(() => { window.__ride.elapsed = 10 * 60 + 5; }); await q2.waitForTimeout(300);
@@ -228,8 +241,8 @@ function fakePad() { // a standard-mapping gamepad; window.__pad.press(i) holds 
       for (let k = 0; k < 3; k++) await q2.keyboard.press('ArrowUp');
       await q2.waitForTimeout(150);
       const k1 = await q2.evaluate(() => { const r = window.__ride; return { a: r.wAdj, kp: !!r.keyPower, mp: r.manualPower, src: r.source, t: +document.querySelector('#hWT').textContent, erg: r.state.trainer.erg, f: document.querySelector('#hFlash')?.textContent }; });
-      ok(k1.a === 15 && !k1.kp && k1.mp === 0 && k1.src === 'trainer', 'trainer + workout: ↑ ↑ ↑ = interval watts +15 W, no keyboard watts', JSON.stringify(k1));
-      ok(k1.t === base + 15 && k1.erg === base + 15, `ERG follows: the trainer is asked for ${base + 15} W`, JSON.stringify(k1));
+      ok(k1.a === 3 && !k1.kp && k1.mp === 0 && k1.src === 'trainer', 'trainer + workout: ↑ ↑ ↑ = target +3 W (1 W steps), no keyboard watts', JSON.stringify(k1));
+      ok(k1.t === base + 3 && k1.erg === base + 3, `ERG follows: the trainer is asked for ${base + 3} W`, JSON.stringify(k1));
       ok(k1.f === 'Controller is in keyboard mode: switch it to D for all buttons', 'one-time hint: controller in keyboard mode', k1.f);
       // the zone band: too low / in zone / too high from the trainer's power against the (tuned) target
       const zs = async pw => { await q2.evaluate(pw => { window.__tp = pw; window.__ride.powerHist = []; }, pw); await q2.waitForTimeout(1500);
@@ -240,16 +253,26 @@ function fakePad() { // a standard-mapping gamepad; window.__pad.press(i) holds 
       ok(/^\d+ W too high$/.test(zh.st) && /z-hi/.test(zh.cls), `${base + 60} W: "${zh.st}", marked too high`, JSON.stringify(zh));
       await q2.evaluate(() => { window.__tp = 240; });
       await q2.keyboard.press('Shift+ArrowDown'); await q2.waitForTimeout(100);
-      ok(await q2.evaluate(() => window.__ride.wAdj === 14 && !window.__ride.keyPower), 'Shift+↓ = −1 W');
+      ok(await q2.evaluate(() => window.__ride.wAdj === -2 && !window.__ride.keyPower), 'Shift+↓ = −5 W');
       // group seams: "keep the group together" tailwind and drafting only change the virtual speed, never the ERG target
       const tw = await q2.evaluate(async () => { const r = window.__ride, t = r.state.trainer; r._togetherTo = 0.6; r._draftTo = 0.3; await new Promise(z => setTimeout(z, 1500));
         return { erg: t.erg, target: r.wNow.target, togK: r._togK }; });
-      ok(tw.togK > 0.1 && tw.erg === tw.target && tw.erg === base + 14, `tailwind / slipstream on (k ${tw.togK.toFixed(2)}): the trainer still holds ${base + 14} W`, JSON.stringify(tw));
+      ok(tw.togK > 0.1 && tw.erg === tw.target && tw.erg === base - 2, `tailwind / slipstream on (k ${tw.togK.toFixed(2)}): the trainer still holds ${base - 2} W`, JSON.stringify(tw));
       await q2.evaluate(() => { const r = window.__ride; r._togetherTo = 0; r._draftTo = 0; r.elapsed = 20 * 60 - 5; }); await q2.waitForTimeout(200);
       const rr = await q2.evaluate(() => ({ erg: window.__ride.state.trainer.erg, t: window.__ride.wNow.target, ramp: window.__ride.wNow.ramp }));
-      ok(rr.ramp === 'in' && rr.erg === rr.t && rr.t < base + 14, `ERG ramp reaches the trainer (${rr.erg} W, 5 s before the interval)`, JSON.stringify(rr));
-      await q2.keyboard.press('ArrowRight'); await q2.waitForTimeout(100);
-      ok(await q2.evaluate(() => window.__ride.sAdj === 5 && !window.__ride.keyPower), 'trainer: → in the rest = this step +5 W');
+      ok(rr.ramp === 'in' && rr.erg === rr.t && rr.t < base - 2, `ERG ramp reaches the trainer (${rr.erg} W, 5 s before the interval)`, JSON.stringify(rr));
+      await q2.keyboard.press('ArrowUp'); await q2.waitForTimeout(100);
+      ok(await q2.evaluate(() => window.__ride.wAdjE === 1 && window.__ride.wAdj === -2 && !window.__ride.keyPower), 'trainer: ↑ in the rest = easy parts +1 W');
+      // ERG (owner 17.11.): no shifting advice under the cadence; at very low cadence and power under target only "spin faster"
+      const sh = async (cad, pw) => { await q2.evaluate(([c, w]) => { window.__tc = c; window.__tp = w; }, [cad, pw]); await q2.waitForTimeout(700); return q2.evaluate(() => document.querySelector('#hHr').textContent); };
+      const s1 = await sh(110, 240), s2 = await sh(70, 240), s3 = await sh(50, 60);
+      ok(!/shift/i.test(s1 + s2 + s3) && s3 === '▲ spin faster', `ERG: no "shift easier / harder" (${s1} | ${s2} | ${s3})`, JSON.stringify([s1, s2, s3]));
+      await q2.evaluate(() => { window.__tc = null; window.__tp = 240; });
+      // the trainer drops: "–" and "Connection lost" with a reconnect button, not 0 W
+      await q2.evaluate(() => { clearInterval(window.__tl); window.__ride.state.trainer.device.gatt.connected = false; }); await q2.waitForTimeout(3600);
+      const lost = await q2.evaluate(() => ({ p: document.querySelector('#hWP').textContent, st: document.querySelector('#hWState').textContent, rc: !document.querySelector('#hWRc').hidden, cad: document.querySelector('#hCad').textContent, cs: document.querySelector('#hCadS').textContent, hr: document.querySelector('#hBpm').textContent }));
+      ok(lost.p === '–' && lost.st === 'connection lost' && lost.rc && lost.cad === '–' && /Connection lost/.test(lost.cs), 'trainer dropped: bar "–" + "connection lost" + Reconnect, cadence "–"', JSON.stringify(lost));
+      ok(lost.hr === '–', 'heart rate from the trainer gone: "–", not 0', JSON.stringify(lost));
       await q2.keyboard.press('Space'); await q2.waitForSelector('#pSave'); await q2.click('#pSave'); await q2.waitForSelector('.finish', { timeout: 10000 });
       ok(!/arrow keys/i.test(await q2.textContent('.finish')), 'the ride is saved normally (not "ridden with the arrow keys")');
       await c.close();
@@ -263,10 +286,20 @@ function fakePad() { // a standard-mapping gamepad; window.__pad.press(i) holds 
     }
     {
       const [c, q2] = await ride2('', true, 'free ride');
+      // nothing connected, no test watts: "–" and "No connection" / "No sensor" instead of 0 W / 0 bpm
+      await q2.waitForTimeout(400);
+      const nc = await q2.evaluate(() => ({ p: document.querySelector('#hPow').textContent, ps: document.querySelector('#hPowS').textContent, psh: document.querySelector('#hPowS').hidden, hr: document.querySelector('#hBpm').textContent, hs: document.querySelector('#hHrS').textContent, cad: document.querySelector('#hCad').textContent, rc: document.querySelectorAll('#hPowS .sens-rc').length }));
+      ok(nc.p === '–' && !nc.psh && /No connection/.test(nc.ps) && !nc.rc && nc.hr === '–' && /No sensor/.test(nc.hs) && nc.cad === '–', 'nothing connected: power, cadence, heart rate "–" with "No connection" / "No sensor" (no reconnect)', JSON.stringify(nc));
       await q2.keyboard.press('w'); await q2.waitForTimeout(150);
       ok(await q2.evaluate(() => !window.__ride.wAdj && !document.querySelector('#hWAdj') && !document.querySelector('#hWork')), 'free ride: no workout bar, W does nothing');
       await q2.keyboard.press('ArrowUp'); await q2.waitForTimeout(100);
       ok(await q2.evaluate(() => window.__ride.keyPower === true && window.__ride.manualPower === 10), 'no trainer: ↑ still sets test watts (as before)');
+      await q2.waitForTimeout(300);
+      ok(await q2.evaluate(() => document.querySelector('#hPow').textContent !== '–' && document.querySelector('#hPowS').hidden), 'test watts count as a source: a number again, no "No connection"');
+      // a real 0 from a connected trainer stays 0
+      await fakeTrainer(q2); await q2.evaluate(() => { window.__tp = 0; window.__ride.keyPower = false; window.__ride.manualPower = 0; window.__ride.powerHist = []; }); await q2.waitForTimeout(800);
+      const z0 = await q2.evaluate(() => ({ p: document.querySelector('#hPow').textContent, h: document.querySelector('#hPowS').hidden, src: window.__ride.source, pw: window.__ride.power }));
+      ok(z0.p === '0' && z0.h, 'connected trainer saying 0 W: shows 0', JSON.stringify(z0));
       await c.close();
     }
 

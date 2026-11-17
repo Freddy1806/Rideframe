@@ -5,7 +5,7 @@
 // Usage: node --test tools/intensity-test.mjs   (no browser, no network)
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { WORKOUTS, workoutById, workoutAt, workoutDuration, workoutSVG, defFrom, buildMy, isHard, tuneAdj, tunedTarget, fmtAdj, WADJ_MAX, workoutState, pctAt, Ramp } from '../js/workouts.js';
+import { WORKOUTS, workoutById, workoutAt, workoutDuration, workoutSVG, defFrom, buildMy, isHard, tuneAdj, tunedTarget, fmtAdj, WADJ_MAX, workoutState, pctAt, Ramp, timelineSVG, zoneColor } from '../js/workouts.js';
 import { Group } from '../js/group.js';
 
 test('isHard: pct >= 88 and not a free test block', () => {
@@ -114,12 +114,30 @@ test('ERG ramps: 10 s up into a hard interval, 5 s down after it; no wall', () =
   assert.equal(workoutState(ftp20, tFree - 5, F, { ramp: true }).ramp, null);
 });
 
-test('easy-step offset only moves a non-hard step', () => {
-  const r = workoutState(V, 1000, F, { hardAdj: 10, stepAdj: 15 }); assert.equal(r.target, 140); assert.equal(r.plateau, 140);
-  const h = workoutState(V, 605, F, { hardAdj: 10, stepAdj: 15 }); assert.equal(h.target, 285, 'a hard step ignores it');
-  assert.equal(workoutState(V, 1000, F, { stepAdj: -150 }).target, 50, 'floor 50 W');
+test('easy-parts offset (owner 17.11.): every non-hard step, kept the whole workout; hard steps have their own', () => {
+  const r = workoutState(V, 1000, F, { hardAdj: 10, easyAdj: 15 }); assert.equal(r.target, 140); assert.equal(r.plateau, 140);
+  const h = workoutState(V, 605, F, { hardAdj: 10, easyAdj: 15 }); assert.equal(h.target, 285, 'a hard step takes the interval offset only');
+  assert.equal(workoutState(V, 100, F, { easyAdj: 15 }).target, workoutState(V, 100, F).target + 15, 'the warm-up too');
+  assert.equal(workoutState(V, 2800, F, { easyAdj: 15 }).target, workoutState(V, 2800, F).target + 15, 'a later rest too (not reset)');
+  assert.equal(workoutState(V, 1000, F, { easyAdj: -150 }).target, 50, 'floor 50 W');
+  assert.equal(workoutState(V, 1000, F, { easyAdj: 15 }).nextTarget, 275, 'the next interval preview is not moved by it');
+  assert.equal(workoutState(V, 605, F, { easyAdj: 15 }).nextTarget, 140, 'the next rest preview is');
   // ramp-in starts from the adjusted easy step
-  assert.equal(workoutState(V, 1195, F, { ramp: true, stepAdj: 15, hardAdj: 10 }).target, Math.round(140 + (285 - 140) * 0.5));
+  assert.equal(workoutState(V, 1195, F, { ramp: true, easyAdj: 15, hardAdj: 10 }).target, Math.round(140 + (285 - 140) * 0.5));
+  // the timeline heights carry both offsets
+  const st = workoutState(V, 1000, F, { hardAdj: 10, easyAdj: 15 }), rest = st.steps.findIndex(x => !x.hard && /Rest/.test(x.label)), hard = st.steps.findIndex(x => x.hard);
+  assert.equal(Math.round(st.steps[rest].pct / 100 * F), 140); assert.equal(Math.round(st.steps[hard].pct / 100 * F), 285);
+  const free = workoutById('ftp20'), fi = free.steps.findIndex(x => x.free);
+  assert.equal(workoutState(free, 0, F, { easyAdj: 20 }).steps[fi].pct, free.steps[fi].pct, 'free blocks have no offset');
+});
+
+test('timeline: neon zone scale, current step glows, past dimmed', () => {
+  assert.equal(zoneColor(50), '#3aa8ff'); assert.equal(zoneColor(65), '#2ee59d'); assert.equal(zoneColor(85), '#ffd23f'); assert.equal(zoneColor(100), '#ff5a1f'); assert.equal(zoneColor(110), '#ff3d1f'); assert.equal(zoneColor(150), '#ff1f3d');
+  const st = workoutState(V, 1000, F), svg = timelineSVG(st, 1000, V);
+  assert.equal((svg.match(/<rect [^>]*rx="3"/g) || []).length + (svg.match(/<polygon/g) || []).length, V.steps.length, 'one block per step');
+  assert.equal((svg.match(/filter="url\(#wglow\)"/g) || []).length, 1, 'only the current step glows');
+  assert.ok(svg.includes('opacity="0.3"') && svg.includes('opacity="0.72"'), 'past dimmed, future softer');
+  assert.ok(!/#ff4fa3|pink|magenta/i.test(svg), 'no pink');
 });
 
 test('ramp steps: opt-in, linear, in the builder and the chart', () => {
