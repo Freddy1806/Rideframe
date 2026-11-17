@@ -4,6 +4,7 @@
 import Toybox.Application;
 import Toybox.Communications;
 import Toybox.Lang;
+import Toybox.PersistedContent;
 
 class Api {
     var busy as Boolean = false;
@@ -50,7 +51,7 @@ class Api {
         // Content-Type is REQUEST_CONTENT_TYPE_JSON; GET with null params sends no body. Response codes < 0 are phone / BLE errors.
         Communications.makeWebRequest(base() + j[1], j[2], options, method(:onResponse));
     }
-    function onResponse(code as Number, data) as Void {
+    function onResponse(code as Number, data as Null or Dictionary or String or ByteArray or PersistedContent.Iterator) as Void {
         busy = false;
         var c = cb; cb = null;
         if (c != null) { c.invoke(code, data); }

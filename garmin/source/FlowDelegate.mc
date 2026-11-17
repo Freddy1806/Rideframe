@@ -30,16 +30,16 @@ class FlowDelegate extends WatchUi.BehaviorDelegate {
         downKey = k; downAt = System.getTimer(); held = false;
         if (k != WatchUi.KEY_ENTER) {
             if (holdTimer == null) { holdTimer = new Timer.Timer(); }
-            holdTimer.start(method(:onHold), k == WatchUi.KEY_ESC ? 700 : 500, false);
+            holdTimer.start(method(:onKeyHold), k == WatchUi.KEY_ESC ? 700 : 500, false);
         }
         return true;
     }
-    function onHold() as Void {
+    function onKeyHold() as Void {
         if (downKey == null) { return; }
         held = true;
         if (downKey == WatchUi.KEY_ESC) { app.input(E_MENU, null); return; }
         app.input(downKey == WatchUi.KEY_UP ? E_UP_HOLD : E_DOWN_HOLD, null);
-        holdTimer.start(method(:onHold), 350, false); // keeps stepping while held
+        holdTimer.start(method(:onKeyHold), 350, false); // keeps stepping while held
     }
     function onKeyReleased(evt as WatchUi.KeyEvent) as Boolean {
         var k = evt.getKey();

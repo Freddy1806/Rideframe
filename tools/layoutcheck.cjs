@@ -60,7 +60,7 @@ const SCREENS = [
   ['menu-einstellungen-uhr', '/handy.html', async p => { const day = 864e5, w = [{ id: 'a1b2c3d4e5f6', label: 'Forerunner 265 von Maximilian am Handgelenk', created: Date.now() - 40 * day, used: Date.now() - 3600e3 }, { id: 'f6e5d4c3b2a1', label: 'fenix 7X Pro', created: Date.now() - 2 * day, used: Date.now() - 2 * day }];
     await p.route('**/api/watch/devices', r => r.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ watches: w }) }));
     await p.route('**/api/watch/code', r => r.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ code: '048213', exp: Date.now() + 600e3, ttl: 600 }) }));
-    await p.route('**/api/account/kraft**', r => r.fulfill({ status: 200, contentType: 'application/json', body: '{"ids":[]}' })); // the strength sync must not sign the fake login out
+    await p.route(/\/api\/account\/kraft/, r => r.fulfill({ status: 200, contentType: 'application/json', body: '{"ids":[]}' })); // the strength sync must not sign the fake login out
     await p.evaluate(n => localStorage.setItem('rf_account', JSON.stringify({ token: 'x', name: n })), NAME); await p.reload(); await p.waitForTimeout(500); // the login screens before signed out
     await p.click('#hSet'); await p.waitForSelector('#wPair', { timeout: 15000 }); await p.click('#wPair'); await p.waitForSelector('.wcode'); await p.waitForTimeout(300); await p.locator('#tWatch').scrollIntoViewIfNeeded(); }],
   ['menu-einstellungen-uhr-abgemeldet', '/handy.html', async p => { await p.evaluate(() => localStorage.removeItem('rf_account')); await p.reload(); await p.waitForTimeout(500); await p.click('#hSet'); await p.waitForSelector('#wIn'); await p.locator('#tWatch').scrollIntoViewIfNeeded(); }],
