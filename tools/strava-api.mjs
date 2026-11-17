@@ -22,7 +22,7 @@ const pending = new Map(); // oauth state -> time
 const claims = new Map(), stateClaim = new Map(); // installed phone app (iOS): the login runs in a separate browser with its own storage, so the app fetches its key by a one-time claim code
 
 const readJSON = async (f, d) => { try { return JSON.parse(await readFile(f, 'utf8')); } catch { return d; } };
-async function saveTokens(t) { await mkdir(DATA, { recursive: true }); await writeFile(TOK, JSON.stringify(t, null, 1), { mode: 0o600 }); } // Strava logins of the riders: readable by the host user only
+async function saveTokens(t) { await mkdir(DATA, { recursive: true, mode: 0o700 }); await writeFile(TOK, JSON.stringify(t, null, 1), { mode: 0o600 }); } // Strava logins of the riders: readable by the host user only
 const send = (res, code, obj) => { res.writeHead(code, { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' }); res.end(JSON.stringify(obj)); };
 const html = (res, body) => { res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-store' }); res.end(`<!doctype html><meta charset="utf-8"><meta name="viewport" content="width=device-width"><body style="font:18px system-ui;background:#0b0b0b;color:#f4f4ef;display:grid;place-items:center;height:90vh;text-align:center">${body}`); };
 async function body(req, max = 20e6) {

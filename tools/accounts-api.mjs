@@ -11,7 +11,7 @@ const DATA = process.env.RIDEFRAME_DATA || join(homedir(), 'RIDEFRAME_data');
 const ACC = join(DATA, 'accounts.json');
 const readJSON = async (f, d) => { try { return JSON.parse(await readFile(f, 'utf8')); } catch { return d; } };
 // written to a temp file first and then swapped in, so a crash mid-write never leaves a half accounts.json; readable by the host user only
-const writeJSON = async (f, o) => { await mkdir(join(f, '..'), { recursive: true }); const t = `${f}.${randomBytes(4).toString('hex')}.tmp`; await writeFile(t, JSON.stringify(o), { mode: 0o600 }); await rename(t, f); };
+const writeJSON = async (f, o) => { await mkdir(join(f, '..'), { recursive: true, mode: 0o700 }); const t = `${f}.${randomBytes(4).toString('hex')}.tmp`; await writeFile(t, JSON.stringify(o), { mode: 0o600 }); await rename(t, f); };
 const send = (res, code, obj) => { res.writeHead(code, { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' }); res.end(JSON.stringify(obj)); return true; };
 async function body(req, max = 20e6) {
   const chunks = []; let n = 0;
