@@ -180,6 +180,37 @@ function fakePad() { // a standard-mapping gamepad; window.__pad.press(i) holds 
       ok(await q2.evaluate(() => window.__ride.wNow.ramp === null), 'non-ERG: no ramp (the target is a step to hit, nothing is pushed to the trainer)');
       await c.close();
     }
+    // ---- ERG workout on a route: no climb while the trainer holds the watts; only simulated parts count; flat in the file ----
+    {
+      const [c, q2] = await ride2('vo2_5x5', true, 'erg climb');
+      const up = await q2.evaluate(async () => { const r = window.__ride; r.elapsed = 60; r.manualPower = 400; const d0 = r.d; /* over the 30 s a saved ride needs */ await new Promise(z => setTimeout(z, 4000)); return { dd: r.d - d0, gain: r.gainAcc, on: r._ergOn }; });
+      ok(up.on && up.dd > 10 && up.gain === 0, `ERG part: ${up.dd.toFixed(0)} m uphill ridden, 0 m climb counted`, JSON.stringify(up));
+      await q2.click('#hWStop'); await q2.click('#hWFree'); // end the workout, ride on freely: the gradient is simulated again
+      const fr = await q2.evaluate(async () => { const r = window.__ride; await new Promise(z => setTimeout(z, 4000)); return { gain: r.gainAcc, on: r._ergOn }; });
+      ok(!fr.on && fr.gain > 0.3, `free part afterwards: ${fr.gain.toFixed(1)} m climb counted`, JSON.stringify(fr));
+      await q2.keyboard.press('Space'); await q2.waitForSelector('#pSave'); await q2.click('#pSave'); await q2.waitForSelector('.finish', { timeout: 10000 });
+      const fin = await q2.textContent('.finish');
+      const rec = await q2.evaluate(async () => { const { db } = await import('/js/db.js'); return (await db.ridesFor('demo')).sort((a, b) => b.date - a.date)[0]; });
+      ok(rec.erg === true && rec.mode === 'Workout (ERG)' && rec.ergSpans?.length === 1 && rec.ergSpans[0][1] > rec.ergSpans[0][0] && rec.gain >= 0 && rec.gain <= Math.ceil(fr.gain) + 1, `saved: erg true, mode "Workout (ERG)", one ERG span ${JSON.stringify(rec.ergSpans)}, gain ${rec.gain} m (free part only)`, JSON.stringify({ erg: rec.erg, mode: rec.mode, sp: rec.ergSpans, gain: rec.gain }));
+      ok(/Workout \(ERG\)/.test(fin) && rec.complete === false, 'summary says "Workout (ERG)"; no best time on the route', fin.slice(0, 300));
+      // the Strava upload (server faked): title and description tell it apart, the file is flat in the ERG part
+      let sent = null;
+      await q2.route('**/api/strava/upload', r => { sent = JSON.parse(r.request().postData()); r.fulfill({ status: 200, contentType: 'application/json', body: '{"id":1}' }); });
+      await q2.route('**/api/strava/upload/1*', r => r.fulfill({ status: 200, contentType: 'application/json', body: '{"activity_id":42}' }));
+      await q2.evaluate(async rec => { const [{ stravaUpload }, { routeFns }] = await Promise.all([import('/js/stravaup.js'), import('/js/tcx.js')]); const { routeById } = await import('/js/app.js');
+        await stravaUpload(rec, 'Passo Demo', routeFns(routeById('demo').track)); }, rec);
+      const al = sent ? [...sent.tcx.matchAll(/<Trackpoint><Time>[^<]+<\/Time>(?:<Position>.*?<\/Position>)?<AltitudeMeters>([\d.]+)/g)].map(m => +m[1]) : [];
+      const fl = rec.samples.map(x => x[0] >= rec.ergSpans[0][0] && x[0] <= rec.ergSpans[0][1]), ia = al.filter((v, i) => fl[i]), flat = al.length === rec.samples.length && ia.length > 2 && ia.every(v => v === ia[0]) && al.some((v, i) => !fl[i] && v !== ia[0]);
+      ok(sent && /· Workout \(ERG\)$/.test(sent.name) && /Workout \(ERG\)/.test(sent.description) && /climbing was not ridden/.test(sent.description), 'Strava title and description: "Workout (ERG)"', JSON.stringify(sent && { n: sent.name, d: sent.description.slice(0, 200) }));
+      ok(al.length > 5 && flat, `Strava file: flat altitude through the ERG part (${al.length} points)`, JSON.stringify(al.slice(0, 12)));
+      await c.close();
+    }
+    {
+      const [c, q2] = await ride2('vo2_5x5', false, 'sim climb');
+      const up = await q2.evaluate(async () => { const r = window.__ride; r.manualPower = 400; await new Promise(z => setTimeout(z, 4000)); return { gain: r.gainAcc, on: !!r._ergOn }; });
+      ok(!up.on && up.gain > 0.3, `workout without ERG: the gradient is simulated, ${up.gain.toFixed(1)} m climb counted`, JSON.stringify(up));
+      await c.close();
+    }
     // ---- B: a controller in keyboard mode sends ↑ / ↓; with a live trainer they tune the intervals, never keyboard watts ----
     {
       const [c, q2] = await ride2('vo2_5x5', true, 'trainer workout');
