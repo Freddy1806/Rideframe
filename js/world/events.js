@@ -280,8 +280,8 @@ export class Events {
     S.ambient('brandung', open * A.sea * 0.55);
     S.ambient('voegel', open * (A.sea ? 0.12 : 0.32) * (1 - rain) * (1 - 0.5 * (wx.cover || 0)));
     S.ambient('markt', open * (A.village ? 0.35 : 0));
-    S.ambient('regen', open * Math.min(1, rain * 2) * 0.6);
-    S.ambient('regen_stark', open * Math.max(0, rain - 0.5) * 2 * 0.7);
+    S.ambient('regen', open * Math.min(1, rain * 2) * 0.2); // rain clearly under the music (Freddy 17.11.)
+    S.ambient('regen_stark', open * Math.max(0, rain - 0.5) * 2 * 0.25);
     if (rain > 0.6 && time > (this.nextThunder ??= time + 20)) { this.nextThunder = time + 40 + Math.random() * 60; S.sfx('donner', 0.5 + Math.random() * 0.4, Math.random() * 1.4 - 0.7); }
     if (A.valley && !A.village && time > (this.nextMoo ??= time + 30)) { // a cow or a goat somewhere on the pasture
       this.nextMoo = time + 60 + Math.random() * 70; const side = Math.random() < 0.5 ? -1 : 1, a = this.f.at(d + 60), l = Math.hypot(a.tx, a.tz) || 1;
