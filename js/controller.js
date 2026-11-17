@@ -10,7 +10,7 @@ const CANDIDATES = [
 // what each gamepad button does during a ride (standard mapping; same numbers as js/ride.js _pollPad)
 export const PAD_MAP = [['L / R', 'Gear easier / harder'], ['D-pad ↓ / ↑', 'Gear easier / harder · in a workout: interval watts −5 / +5 W'], ['A', 'Accept challenge'], ['B', 'Switch display'],
   ['X', 'Photo'], ['Y', 'Switch view'], ['L2 / R2', 'Field of view wider / narrower'], ['Select (−)', 'Gear mode: real / virtual / auto / climb watts'],
-  ['Start (+) / Home', 'Pause menu (D-pad to choose, A ok, B back; options in there too)'], ['D-pad ←', 'Music on / off'], ['D-pad →', 'Next song']];
+  ['Start (+) / Home', 'Pause menu (D-pad to choose, A ok, B back; options in there too)'], ['D-pad ←', 'Music on / off · in a workout: this easy step −5 W'], ['D-pad →', 'Next song · in a workout: this easy step +5 W']];
 /** pressed state per standard button index, so the printed letters mean the same on every pad. Nintendo-style pads
  *  (8BitDo in Switch mode "S", Switch Pro): Chrome reports them by position (0 = bottom = their "B"), so A/B and X/Y are swapped
  *  back here: "A" in PAD_MAP is the button printed A (Freddy's 8BitDo Micro). */
@@ -21,7 +21,7 @@ export function padButtons(pad) {
   return b;
 }
 const BTN = ['A', 'B', 'X', 'Y', 'L', 'R', 'L2 / ZL', 'R2 / ZR', 'Select (−)', 'Start (+)', 'L3', 'R3', 'D-pad ↑', 'D-pad ↓', 'D-pad ←', 'D-pad →', 'Home'];
-const ACT = ['Accept challenge / menu ok', 'Switch display / back', 'Photo', 'Switch view', 'Gear easier', 'Gear harder', 'Field of view wider', 'Field of view narrower', 'Gear mode', 'Pause menu', '', '', 'Gear harder (workout: interval watts +5 W)', 'Gear easier (workout: interval watts −5 W)', 'Music on/off', 'Next song', 'Pause menu'];
+const ACT = ['Accept challenge / menu ok', 'Switch display / back', 'Photo', 'Switch view', 'Gear easier', 'Gear harder', 'Field of view wider', 'Field of view narrower', 'Gear mode', 'Pause menu', '', '', 'Gear harder (workout: interval watts +5 W)', 'Gear easier (workout: interval watts −5 W)', 'Music on/off (workout: this easy step −5 W)', 'Next song (workout: this easy step +5 W)', 'Pause menu'];
 const hex = dv => [...new Uint8Array(dv.buffer, dv.byteOffset, dv.byteLength)].map(b => b.toString(16).padStart(2, '0')).join(' ');
 
 export function openControllerTest() {
@@ -31,7 +31,7 @@ export function openControllerTest() {
     <p>Choose a device (e.g. your Di2 derailleur: shift once first so it wakes up), then press the buttons. Every message shows up below. Gamepads and keyboard are shown too.</p>
     <details style="margin:6px 0 10px"><summary style="cursor:pointer"><b>Gamepad buttons during a ride</b> (e.g. 8BitDo Micro, switch on the back set to S)</summary>
       <table style="margin-top:8px;border-collapse:collapse">${PAD_MAP.map(([k, v]) => `<tr><td style="padding:2px 14px 2px 0;white-space:nowrap"><b>${k}</b></td><td>${v}</td></tr>`).join('')}</table>
-      <p style="margin-top:8px"><b>Keyboard in a workout</b>: W / S interval watts +5 / −5 W, with Shift 1 W</p>
+      <p style="margin-top:8px"><b>Keyboard in a workout</b>: W / S interval watts +5 / −5 W, A / D this easy step −5 / +5 W (until the next step), with Shift 1 W. With a trainer connected the arrow keys do the same and never set test watts.</p>
       <p style="margin-top:8px"><b>Zwift Click + / −</b>: Gear harder / easier (connect it in Settings → Trainer)</p></details>
     <div class="actions" style="justify-content:flex-start"><button class="btn small" id="ctScan">Find device</button><button class="btn ghost small" id="ctCopy">Copy log</button><button class="btn ghost small" id="ctClose">Close</button></div>
     <pre id="ctLog" style="margin-top:18px;height:340px;overflow:auto;background:#000;border:1px solid var(--line-2);border-radius:4px;padding:12px;font:12px/1.5 ui-monospace,Menlo,monospace;white-space:pre-wrap"></pre></div>`;

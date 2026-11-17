@@ -15,7 +15,7 @@ import { gearsFrom, gearName, parseGear, estimateGear, virtualGrade } from './ge
 import { UEBridge } from './uebridge.js';
 import { MiniMap } from './minimap.js';
 import { fovOf, FOV_MIN, FOV_MAX, FOV_DEFAULT } from './fov.js';
-import { workoutAt, workoutSVG, isHard, tunedTarget, tuneAdj, fmtAdj } from './workouts.js';
+import { workoutState, workoutSVG, isHard, tunedTarget, tuneAdj, fmtAdj } from './workouts.js';
 import { Challenges } from './challenges.js';
 import { findSegments, segmentBests, segmentLast, SEG_KIND } from './segments.js';
 import { testResult } from './stats.js';
@@ -90,7 +90,7 @@ export class RideSession {
   constructor({ route, ghost, state, onExit, autopilot = false, at = 0, group = null, ghostName = '', workout = null, catchUp = false, elapsed0 = 0 }) {
     Object.assign(this, { route, ghost, state, onExit, autopilot, group, ghostName, workout }); this._wId = workout?.id;
     this.erg = state.settings.erg !== false; this.ftp = state.settings.ftp || 200;
-    this.wAdj = 0; this._adjAcc = 0; this._adjT = 0; this._stepAdj = []; // live watt offset on the hard intervals (_wTune): per rider, never sent to the group
+    this.wAdj = 0; this.sAdj = 0; this._adjAcc = 0; this._adjT = 0; this._stepAdj = []; // live watt offset on the hard intervals (_wTune): per rider, never sent to the group
     this.track = route.track;
     this.params = defaultParams(state.settings);
     this.d = Math.min(at, this.track.length - 1); this.v = 0; this.elapsed = 0;
@@ -364,7 +364,7 @@ export class RideSession {
     const pad = navigator.getGamepads?.().find(Boolean); if (!pad) return;
     const b = padButtons(pad), was = this.padPrev || [];
     this.padPrev = b;
-    if (!this.padSeen) { this.padSeen = true; this._flash(`🎮 Controller ready · Start = pause · L/R = shift${this.workout ? ' · D-pad up / down: interval watts' : ''}`); }
+    if (!this.padSeen) { this.padSeen = true; this._flash(`🎮 Controller ready · Start = pause · L/R = shift${this.workout ? ' · D-pad ↑↓: interval watts, ←→: this step' : ''}`); }
     const hit = i => b[i] && !was[i];
     if (hit(9) || hit(16)) { this.paused ? this._resume() : this._pause(); return; } // Start or Home: pause menu
     if (this.paused) { // menu navigation like on a console
@@ -376,19 +376,20 @@ export class RideSession {
     }
     if (this.finished) return;
     const sh = d => this._padShift(d);
-    const tune = this.workout && !this.wDone; // in a workout the D-pad moves the interval target, the bumpers keep shifting
+    const tune = this.workout && !this.wDone; // in a workout the D-pad moves the targets (↑↓ intervals, ←→ this easy step), the bumpers keep shifting
     if (hit(4) || (!tune && hit(13))) sh(-1);
     if (hit(5) || (!tune && hit(12))) sh(1);
     if (tune && hit(12)) this._wTune(5);
     if (tune && hit(13)) this._wTune(-5);
+    if (tune && (hit(14) || hit(15))) this._sTune(hit(15) ? 5 : -5);
     if (hit(0)) { this._chKey = true; if (this.ch?.active?.state === 'offer') this._flash('Accepted!'); }
     if (hit(1)) this._cycleHud();
     if (hit(2) && this.player?.snapshot) { this._takePhoto(); this._flash('📸 Foto'); }
     if (hit(3)) this._cycleView();
     if (hit(6) || hit(7)) this._lens(hit(7) ? 1 : -1);
     if (hit(8)) this.toggleShift();
-    if (hit(10) || hit(14)) this._toggleMusic();
-    if (hit(11) || hit(15)) { this.music?.skip(); setTimeout(() => this._flash('♫ ' + (this.music?.title() || '')), 300); }
+    if (hit(10) || (!tune && hit(14))) this._toggleMusic();
+    if (hit(11) || (!tune && hit(15))) { this.music?.skip(); setTimeout(() => this._flash('♫ ' + (this.music?.title() || '')), 300); }
   }
 
 
@@ -505,11 +506,23 @@ export class RideSession {
     this._flash(`Intervals ${fmtAdj(this.wAdj)}${base ? ` · target ${tunedTarget(st, base, this.wAdj)} W` : ''}`);
     this._wT = 0; this._workout(0); this._workoutHUD(this.power); // HUD, chart and ERG follow right away
   }
+  /** the current step when it is not a hard interval (warm-up, rest, cool-down): a few watts easier / harder, only until the
+   *  next step (D-pad ← / →, A / D). In a hard interval ↑ / ↓ are the way, so this only says so. */
+  _sTune(d) {
+    if (!this.workout || this.wDone || !this.wNow || this.wNow.done) return;
+    const st = this.wNow.step;
+    if (isHard(st)) return this._flash('Hard interval: ↑ / ↓ (W / S) change the interval watts');
+    if (st.free) return this._flash('Free block: ride it as you like');
+    this.sAdj = tuneAdj(this.sAdj, d); this._workout(0);
+    this._flash(`This step (${st.label || 'Block'}) ${fmtAdj(this.sAdj)} · target ${this.wNow.plateau} W · until the next step`);
+    this._workoutHUD(this.power);
+  }
   /** training program: target power for now; in ERG mode the trainer holds it */
   _workout(dt = 0.016) {
     if (!this.workout) return;
-    const w = this.wNow = workoutAt(this.workout, this.elapsed, this.ftp);
-    if (!w.done) { w.target = tunedTarget(w.step, w.target, this.wAdj); w.nextTarget = tunedTarget(w.next, w.nextTarget, this.wAdj); } // the rider's own offset on the hard intervals (_wTune)
+    const i0 = this.wNow?.i; if (i0 != null && workoutState(this.workout, this.elapsed, this.ftp).i !== i0) this.sAdj = 0; // the easy-step offset ends with its step
+    // targets with the rider's offsets (_wTune: hard intervals, _sTune: this easy step) and, in ERG, ramps instead of a wall into / out of hard intervals
+    const w = this.wNow = workoutState(this.workout, this.elapsed, this.ftp, { hardAdj: this.wAdj, stepAdj: this.sAdj, ramp: this.erg });
     if (!w.done && isHard(w.step) && dt > 0) { this._adjAcc += this.wAdj * dt; this._adjT += dt; const sa = this._stepAdj[w.i] ||= [0, 0]; sa[0] += this.wAdj * dt; sa[1] += dt; } // time-weighted, for the saved ride
     if (this.erg) this.state.trainer.setPower(w.done || w.step?.free ? null : w.target); // a test block is ridden freely
         if (w.done && !this.wDone) { this.wDone = true; this._flash?.('Workout done!'); this.coach?.say('done', 0); }
@@ -703,12 +716,12 @@ export class RideSession {
     const av = q('#hWAdjV'); if (av) { av.textContent = fmtAdj(this.wAdj); q('#hWAdj').classList.toggle('adj', !!this.wAdj); q('#hWAdj').hidden = !!w.done; }
     if (w.done) { q('#hWStep').textContent = 'Done – ride on freely'; q('#hWT').textContent = '✓'; q('#hWLeft').textContent = ''; q('#hWNext').textContent = ''; }
     else {
-      q('#hWStep').textContent = w.step.label || 'Block';
+      q('#hWStep').textContent = (w.step.label || 'Block') + (this.sAdj && !w.hard ? ` ${fmtAdj(this.sAdj)}` : '') + (w.ramp === 'in' ? ' · ramp up' : w.ramp === 'out' ? ' · ramp down' : '');
       q('#hWT').textContent = w.target;
       q('#hWLeft').textContent = fmtTime(Math.ceil(w.left));
       q('#hWNext').textContent = w.next ? `Next: ${w.next.label || 'Block'} · ${w.nextTarget} W` : 'Last block';
       const pw = q('.metric.power'); pw.classList.remove('z-lo', 'z-ok', 'z-hi');
-      pw.classList.add(pShow < w.target * 0.95 ? 'z-lo' : pShow > w.target * 1.05 ? 'z-hi' : 'z-ok');
+      pw.classList.add(pShow < w.lo ? 'z-lo' : pShow > w.hi ? 'z-hi' : 'z-ok');
     }
     if (!this._wT || this.elapsed - this._wT > 2) { this._wT = this.elapsed; q('#hWChart').innerHTML = workoutSVG(this.workout, this.elapsed, 46, this.wAdj, this.ftp); }
   }
@@ -826,12 +839,14 @@ export class RideSession {
     return this._pk;
   }
   _key(e) {
+    if (e.key.startsWith('Arrow') && this._trainerLive()) return this._arrowWithTrainer(e);
     if (!this.running && !e.key.startsWith('Arrow')) return; // still loading / counting down: only the power keys
     if (e.key === 'ArrowUp' || e.key === 'ArrowDown') this.keyPower = true; /* watts from the keyboard: fine for trying things out, never a saved ride (Freddy 12.11.) */
     if (e.key === 'ArrowUp') { this.manualPower = Math.min(1500, this.manualPower + (e.shiftKey ? 50 : 10)); e.preventDefault(); }
     else if (e.key === 'ArrowDown') { this.manualPower = Math.max(0, this.manualPower - (e.shiftKey ? 50 : 10)); e.preventDefault(); }
     else if (e.key === 'w' || e.key === 'W') this._wTune(e.shiftKey ? 1 : 5); /* interval target up / down: 5 W, with Shift 1 W */
     else if (e.key === 's' || e.key === 'S') this._wTune(e.shiftKey ? -1 : -5);
+    else if ((e.key === 'a' || e.key === 'A' || e.key === 'd' || e.key === 'D') && this.workout) this._sTune((/d/i.test(e.key) ? 1 : -1) * (e.shiftKey ? 1 : 5)); /* this easy step only */
     else if (e.key === 'g' || e.key === 'G') this.toggleShift();
     else if (e.key === 'q' || e.key === ',' || e.key === '-' || e.key === 'PageDown') { e.preventDefault?.(); this.shift(-1); } /* PageUp/PageDown: Bluetooth presenters and many media remotes */
     else if (e.key === 'e' || e.key === '.' || e.key === '+' || e.key === 'PageUp') { e.preventDefault?.(); this.shift(1); }
@@ -845,6 +860,17 @@ export class RideSession {
     else if (e.key === 'm') this._toggleMusic();
     else if (e.key === 'i') this._cycleHud();
     else if (e.key === 'n') { this.music?.skip(); setTimeout(() => this._flash('♫ ' + (this.music?.title() || '')), 300); }
+  }
+  _trainerLive() { const t = this.state.trainer; return !!(t.connected && t.lastData && performance.now() - t.lastData < 3000); }
+  /** Freddy 17.11.: his 8BitDo in keyboard mode sent the D-pad as arrow keys, ↑ / ↓ switched to keyboard test watts and wrecked
+   *  the ERG workout. With a trainer delivering power the arrows never set watts: in a workout ↑ / ↓ tune the intervals like
+   *  W / S and ← / → this easy step like A / D, otherwise nothing; when they keep coming, a one-time hint to switch the pad. */
+  _arrowWithTrainer(e) {
+    e.preventDefault?.();
+    const k = e.key, f = e.shiftKey ? 1 : 5;
+    if (this.workout && !this.wDone) { if (k === 'ArrowUp' || k === 'ArrowDown') this._wTune(k === 'ArrowUp' ? f : -f); else if (k === 'ArrowLeft' || k === 'ArrowRight') this._sTune(k === 'ArrowRight' ? f : -f); }
+    const now = performance.now(); this._arrowT = (this._arrowT || []).filter(x => now - x < 10000); this._arrowT.push(now);
+    if (this._arrowT.length >= 3 && !this._arrowHint) { this._arrowHint = true; this._flash('Controller is in keyboard mode: switch it to D for all buttons'); }
   }
   _toggleBar() { // handlebar and forearms in the rider's view on/off
     if (!this.player.setCockpit) return;
@@ -923,11 +949,12 @@ export class RideSession {
       ['oMusic', `Music: ${this.music?.on ? 'on' : 'off'}`, () => this._toggleMusic()],
       ['oNext', 'Next song', () => this.music?.skip()],
       ['oWide', 'Wider view', () => this._lens(-1)], ['oNarrow', 'Narrower view', () => this._lens(1)],
-      ...(this.workout && !this.wDone ? [['oAdjUp', `Intervals +5 W (now ${fmtAdj(this.wAdj)})`, () => this._wTune(5)], ['oAdjDn', 'Intervals −5 W', () => this._wTune(-5)]] : []),
+      ...(this.workout && !this.wDone ? [['oAdjUp', `Intervals +5 W (now ${fmtAdj(this.wAdj)})`, () => this._wTune(5)], ['oAdjDn', 'Intervals −5 W', () => this._wTune(-5)],
+        ...(this.wNow && !this.wNow.done && !this.wNow.hard && !this.wNow.step?.free ? [['oStepUp', `This step +5 W (now ${fmtAdj(this.sAdj)})`, () => this._sTune(5)], ['oStepDn', 'This step −5 W', () => this._sTune(-5)]] : [])] : []),
     ];
     o.querySelector('.box').innerHTML = `<div class="label">Pause</div><h2 class="display">Options</h2>
       <div class="row-actions padmenu" style="flex-wrap:wrap">${items.map(([id, t]) => `<button class="btn ghost" id="${id}">${t}</button>`).join('')}<button class="btn" id="oBack">Back</button></div>
-      <div class="hint pad-hint" style="margin-top:12px;opacity:.7">🎮 D-pad to choose · A change · B back${this.workout && !this.wDone ? '<br>While riding the workout: 🎮 D-pad up / down: interval watts ±5 · keys W / S (with Shift 1 W) · − / + in the workout panel' : ''}</div>`;
+      <div class="hint pad-hint" style="margin-top:12px;opacity:.7">🎮 D-pad to choose · A change · B back${this.workout && !this.wDone ? '<br>While riding the workout: 🎮 D-pad up / down: interval watts ±5 · keys W / S (with Shift 1 W) · − / + in the workout panel<br>🎮 D-pad ← / →: this easy step (warm-up, rest, cool-down) ±5, until the next step · keys A / D · shifting stays on L / R' : ''}</div>`;
     items.forEach(([id, , fn], i) => o.querySelector('#' + id).onclick = () => { fn(); setTimeout(() => { this._options(); this._padFocus(i); }, 60); });
     o.querySelector('#oBack').onclick = () => this._pause();
     this._padFocus(0);
