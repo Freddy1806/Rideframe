@@ -32,21 +32,29 @@ let fails = 0; const ok = (c, m) => { console.log(`${c ? '✓' : '✗'} ${m}`); 
     ok(/River Valley/.test(await D.textContent('h1')), 'route page: River Valley');
     await D.selectOption('#workSel', 'vo2_5x3'); await D.click('#wCustom'); await D.waitForSelector('.mwbox');
     ok(/for River Valley/.test(await D.textContent('#mwTitle')), 'editor: made for River Valley');
-    ok((await D.locator('.mwstep').count()) === 3 + 9 + 1, `editor: the 13 steps of VO2max 5 × 3 (${await D.locator('.mwstep').count()})`);
+    const bw = await D.evaluate(() => import('/js/workouts.js').then(m => m.WORKOUTS.find(w => w.id === 'vo2_5x3').steps)), iv = bw.findIndex(x => /^VO2max/.test(x.label));
+    ok((await D.locator('.mwstep').count()) === bw.length, `editor: all ${bw.length} steps of VO2max 5 × 3 (${await D.locator('.mwstep').count()})`);
+    ok(await D.inputValue('#mwName') === 'River Valley VO2 1', `editor: a default name without typing (${await D.inputValue('#mwName')})`);
+    ok(await D.locator('.mwchip').count() >= 3, 'editor: one-tap name suggestions');
+    ok(await D.inputValue('.mwstep[data-i="0"] input[data-f="pct2"]') === '75' && (await D.textContent('.mwstep[data-i="0"] .mww')).trim() === '100 → 188 W', 'editor: the warm-up stays a ramp 40 → 75 % (100 → 188 W)');
+    ok(await D.locator('#mwGraph polygon').count() >= 2, 'editor: ramps drawn sloped in the graph');
     ok(await D.locator('#mwSum').textContent().then(t => /route/.test(t)), 'editor: the route duration is compared');
-    const s3 = '.mwstep[data-i="3"]';
-    ok((await D.textContent(`${s3} .mww`)).trim() === '295 W', 'editor: step 4 at 118 % of 250 W = 295 W');
-    await D.fill(`${s3} input[data-f="pct"]`, '120'); await D.fill(`${s3} input[data-f="min"]`, '3.5');
-    ok((await D.textContent(`${s3} .mww`)).trim() === '300 W', 'editor: the watts follow the % live (120 % → 300 W)');
+    const s3 = `.mwstep[data-i="${iv}"]`;
+    ok((await D.textContent(`${s3} .mww`)).trim() === '300 W', `editor: step ${iv + 1} at 120 % of 250 W = 300 W`);
+    await D.fill(`${s3} input[data-f="pct"]`, '125'); await D.fill(`${s3} input[data-f="min"]`, '3.5');
+    ok((await D.textContent(`${s3} .mww`)).trim() === '313 W', 'editor: the watts follow the % live (125 % → 313 W)');
+    await D.fill(`${s3} input[data-f="pct2"]`, '130');
+    ok((await D.textContent(`${s3} .mww`)).trim() === '313 → 325 W', 'editor: a ramp to 130 % shows 313 → 325 W');
     const n0 = await D.locator('.mwstep').count(); await D.click('.mwstep[data-i="0"] button[data-a="dup"]');
     ok((await D.locator('.mwstep').count()) === n0 + 1, 'editor: duplicate adds a step');
     await D.click('.mwstep[data-i="1"] button[data-a="del"]'); ok((await D.locator('.mwstep').count()) === n0, 'editor: remove takes it out again');
     await D.fill('#mwName', ''); await D.click('#mwSave'); ok(/Name/.test(await D.textContent('#mwErr')), 'editor: an empty name is refused');
     await D.fill('#mwName', 'My VO2');
     if (SHOTS) await D.screenshot({ path: `${SHOTS}/myworkouts_editor_1280.png` });
+    if (SHOTS) { await D.locator(s3).scrollIntoViewIfNeeded(); await D.screenshot({ path: `${SHOTS}/myworkouts_editor_ramp_1280.png` }); }
     await D.click('#mwSave'); await D.waitForSelector('.mwbox', { state: 'detached' }); await D.waitForTimeout(300);
     const saved = (await listOf(token)).find(w => w.name === 'My VO2');
-    ok(!!saved && saved.steps[3].pct === 120 && saved.steps[3].min === 3.5 && saved.routeId === 'fluss' && saved.base === 'vo2_5x3', 'server: “My VO2” stored with the changed step, made for River Valley');
+    ok(!!saved && saved.steps[iv].pct === 125 && saved.steps[iv].pct2 === 130 && saved.steps[iv].min === 3.5 && saved.steps[0].pct2 === 75 && saved.routeId === 'fluss' && saved.base === 'vo2_5x3', 'server: “My VO2” stored with the changed step and the ramps, made for River Valley');
     ok(await D.inputValue('#workSel') === saved?.id, 'route page: the new workout is chosen');
     ok(await D.locator('#workSel optgroup[label="My workouts"] option', { hasText: 'My VO2' }).count() === 1, 'route page: “My VO2” in the “My workouts” group');
     ok(/made for this route/.test(await D.locator('#workSel option', { hasText: 'My VO2' }).textContent()), 'route page: marked as made for this route');
@@ -66,7 +74,9 @@ let fails = 0; const ok = (c, m) => { console.log(`${c ? '✓' : '✗'} ${m}`); 
     if (SHOTS) await D.locator('#mwProf').screenshot({ path: `${SHOTS}/myworkouts_profile_1280.png` });
     await D.locator('.mwitem', { hasText: 'My VO2' }).locator('[data-dup]').click(); await D.waitForTimeout(400);
     ok((await listOf(token)).some(w => w.name === 'My VO2 copy'), 'profile: duplicate → “My VO2 copy” on the server');
-    await D.locator('.mwitem', { hasText: 'My VO2 copy' }).locator('[data-del]').click(); await D.waitForTimeout(400);
+    await D.locator('.mwitem', { hasText: 'My VO2 copy' }).locator('[data-del]').click(); await D.waitForSelector('.mwask');
+    ok(/Delete “My VO2 copy”/.test(await D.textContent('.mwask')), 'profile: delete asks in the page (no browser dialog)');
+    await D.click('.mwask button:has-text("Delete")'); await D.waitForTimeout(400);
     ok(!(await listOf(token)).some(w => w.name === 'My VO2 copy') && await D.locator('.mwitem', { hasText: 'My VO2 copy' }).count() === 0, 'profile: delete removes the copy');
 
     // ---- ride with it: the first target is FTP × % of the first step, the saved ride carries the name ----
@@ -75,12 +85,12 @@ let fails = 0; const ok = (c, m) => { console.log(`${c ? '✓' : '✗'} ${m}`); 
     await D.goto(BASE + '/?desktop&noprofile&demo&view=detail&id=demo'); await D.waitForSelector('#rideBtn'); await D.waitForTimeout(500);
     ok(await D.inputValue('#workSel') === saved?.id, 'Passo Demo route page: “My VO2” still chosen');
     await D.click('#rideBtn'); await D.waitForSelector('#hWT', { timeout: 60000 }); await D.waitForFunction(() => /\d/.test(document.querySelector('#hWT')?.textContent || ''), null, { timeout: 30000 });
-    const want = Math.round(saved.steps[0].pct / 100 * 260), got = +(await D.textContent('#hWT')).trim();
-    ok(got === want, `ride: first target ${got} W = 260 W × ${saved.steps[0].pct} % (${want} W)`);
+    const got = +(await D.textContent('#hWT')).trim(), lo = Math.round(saved.steps[0].pct / 100 * 260), hi = Math.round((saved.steps[0].pct + 3) / 100 * 260);
+    ok(got >= lo && got <= hi, `ride: first target ${got} W = 260 W × the warm-up ramp start ${saved.steps[0].pct} % (${lo} W, rising)`);
     ok(/My VO2/.test(await D.textContent('#hWName')), 'ride: the HUD names “My VO2”');
     if (SHOTS) await D.screenshot({ path: `${SHOTS}/myworkouts_ride_1280.png` });
-    // rides under 30 s are not saved: wait until 35 s of the first step (4 min) are gone
-    await D.waitForFunction(() => { const [m, s] = (document.querySelector('#hWLeft')?.textContent || '9:99').split(':').map(Number); return m * 60 + s <= 240 - 35; }, null, { timeout: 90000 });
+    // rides under 30 s are not saved: wait until 35 s of the first step are gone
+    await D.waitForFunction(d0 => { const [m, s] = (document.querySelector('#hWLeft')?.textContent || '99:99').split(':').map(Number); return m * 60 + s <= d0 - 35; }, Math.round(saved.steps[0].min * 60), { timeout: 90000 });
     await D.click('#hPause'); await D.waitForSelector('#pSave'); await D.click('#pSave'); await D.waitForTimeout(2500);
     const rides = await D.evaluate(async () => { const { db } = await import('/js/db.js'); return (await db.all('rides')).map(r => ({ workout: r.workout, workoutId: r.workoutId })); });
     ok(rides.some(r => r.workout === 'My VO2' && r.workoutId === saved.id), `finished ride records the workout name (${JSON.stringify(rides)})`);
@@ -93,14 +103,15 @@ let fails = 0; const ok = (c, m) => { console.log(`${c ? '✓' : '✗'} ${m}`); 
     if (SHOTS) { await P.locator('#mwProf').scrollIntoViewIfNeeded(); await P.screenshot({ path: `${SHOTS}/myworkouts_profile_390.png` }); }
     await P.locator('.mwitem', { hasText: 'My VO2' }).locator('[data-ed]').click(); await P.waitForSelector('.mwbox');
     ok(await P.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1), 'phone editor: no sideways scrolling at 390 px');
-    ok((await P.textContent('.mwstep[data-i="3"] .mww')).trim() === '312 W', 'phone editor: 120 % of 260 W = 312 W');
+    ok((await P.textContent(`.mwstep[data-i="${iv}"] .mww`)).trim() === '325 → 338 W', 'phone editor: 125 → 130 % of 260 W = 325 → 338 W');
     await P.fill('#mwInt', '10'); await P.dispatchEvent('#mwInt', 'input');
-    ok(await P.inputValue('.mwstep[data-i="3"] input[data-f="pct"]') === '132' && await P.inputValue('.mwstep[data-i="0"] input[data-f="pct"]') === '50', 'phone editor: intensity +10 % scales only the work steps (120 → 132, warm-up stays 50)');
+    ok(await P.inputValue(`.mwstep[data-i="${iv}"] input[data-f="pct"]`) === '138' && await P.inputValue(`.mwstep[data-i="${iv}"] input[data-f="pct2"]`) === '143' && await P.inputValue('.mwstep[data-i="0"] input[data-f="pct"]') === '40', 'phone editor: intensity +10 % scales only the work steps (125 → 130 % becomes 138 → 143 %, warm-up ramp stays 40)');
     await P.fill('#mwRf', '1'); await P.fill('#mwRt', '1'); await P.fill('#mwRn', '2'); const c0 = await P.locator('.mwstep').count(); await P.click('#mwRep');
     ok((await P.locator('.mwstep').count()) === c0 + 1, 'phone editor: repeat step 1 ×2 adds one step');
     if (SHOTS) await P.screenshot({ path: `${SHOTS}/myworkouts_editor_390.png` });
-    await P.click('#mwCancel'); await P.waitForSelector('.mwbox', { state: 'detached' });
-    ok((await listOf(token)).find(w => w.id === saved.id).steps[3].pct === 120, 'phone editor: Cancel keeps the stored workout');
+    await P.click('#mwCancel'); await P.waitForSelector('.mwask'); ok(/Discard your changes/.test(await P.textContent('.mwask')), 'phone editor: Cancel with changes asks first (in the page)');
+    await P.click('.mwask button:has-text("Discard")'); await P.waitForSelector('.mwbox', { state: 'detached' });
+    ok((await listOf(token)).find(w => w.id === saved.id).steps[iv].pct === 125, 'phone editor: Discard keeps the stored workout');
     await P.goto(BASE + '/pure.html'); await P.waitForTimeout(800); await P.click('[data-m="work"]'); await P.waitForSelector('#pWork');
     ok(await P.locator('#pWork option', { hasText: 'My VO2' }).count() === 1, 'indoor page: “My VO2” selectable');
     await P.selectOption('#pWork', saved.id); await P.waitForTimeout(300); ok(await P.inputValue('#pWork') === saved.id, 'indoor page: “My VO2” chosen');
@@ -118,6 +129,68 @@ let fails = 0; const ok = (c, m) => { console.log(`${c ? '✓' : '✗'} ${m}`); 
     ok((await listOf(t2)).some(w => w.name === 'Offline intervals') && !(await listOf(token)).some(w => w.name === 'Offline intervals'), 'after sign-in: uploaded to that account only');
     ok(await O.locator('#mwUpP').count() === 0, 'after the upload: no offer any more');
     await octx.close();
+
+    // ---- the whole thing by gamepad only (js/padnav.js, a fake standard pad): create, two values, repeat, save, profile, delete ----
+    const gctx = await b.newContext({ viewport: { width: 1280, height: 860 } });
+    await gctx.addInitScript(() => { const btn = () => ({ pressed: false, value: 0, touched: false });
+      window.__pad = { id: 'Test pad (STANDARD GAMEPAD Vendor: 045e)', index: 0, connected: true, mapping: 'standard', timestamp: 0, buttons: Array.from({ length: 17 }, btn), axes: [0, 0, 0, 0] };
+      Object.defineProperty(Navigator.prototype, 'getGamepads', { value: () => [window.__pad, null, null, null], configurable: true }); });
+    const G = await gctx.newPage(); G.on('pageerror', e => errs.push('pad: ' + e.message)); G.on('dialog', d => { errs.push('pad: a native dialog: ' + d.message()); d.dismiss(); });
+    await G.goto(BASE + '/?desktop&noprofile'); await signIn(G, token, 'Freddy Workouts', 250); await G.goto(BASE + '/?desktop&noprofile&view=detail&id=fluss'); await G.waitForSelector('#wCustom'); await G.waitForTimeout(600);
+    const BTN = { A: 0, B: 1, L: 4, R: 5, up: 12, down: 13, left: 14, right: 15 };
+    const press = async (k, hold = 60) => { await G.evaluate(i => { const x = window.__pad.buttons[i]; x.pressed = true; x.value = 1; }, BTN[k]); await G.waitForTimeout(hold);
+      await G.evaluate(i => { const x = window.__pad.buttons[i]; x.pressed = false; x.value = 0; }, BTN[k]); await G.waitForTimeout(90); };
+    const curIs = sel => G.evaluate(sel => { const c = window.__padnav?.cur; return !!c && c.isConnected && c.matches(sel); }, sel);
+    /** the pad's way to a control: the test only chooses the direction to press, toward where the control is on screen */
+    const padTo = async (sel, max = 80) => {
+      for (let i = 0; i < max; i++) {
+        if (await curIs(sel)) return true;
+        const dir = await G.evaluate(sel => { const c = window.__padnav?.cur, t = [...document.querySelectorAll(sel)].find(e => e.getBoundingClientRect().width > 0); if (!c || !t) return 'down';
+          const a = c.getBoundingClientRect(), b = t.getBoundingClientRect(), ax = (a.left + a.right) / 2, bx = (b.left + b.right) / 2;
+          if (b.top >= a.bottom - 2) return 'down'; if (b.bottom <= a.top + 2) return 'up'; return bx > ax ? 'right' : 'left'; }, sel);
+        const before = await G.evaluate(() => window.__padnav?.cur?.outerHTML.slice(0, 120));
+        await press(dir);
+        if (before === await G.evaluate(() => window.__padnav?.cur?.outerHTML.slice(0, 120))) await press(dir === 'up' || dir === 'down' ? (i % 2 ? 'left' : 'right') : (i % 2 ? 'up' : 'down')); // stuck: sidestep
+      }
+      return curIs(sel);
+    };
+    const val = sel => G.inputValue(sel);
+    await press('down'); // the first press shows the focus
+    ok(await padTo('#workSel'), 'pad: reaches the workout choice');
+    await press('A'); for (let i = 0; i < 40 && /^(pw_|$)/.test(await val('#workSel')); i++) await press('down'); await press('B');
+    const pick = await val('#workSel'); ok(!/^(pw_|$)/.test(pick), `pad: a standard workout chosen with A and ↓ (${pick})`);
+    ok(await padTo('#wCustom'), 'pad: reaches “Customise”'); await press('A'); await G.waitForSelector('.mwbox');
+    const nm = await val('#mwName'); ok(/^River Valley .+ \d+$/.test(nm), `pad: the editor opens with a default name (${nm})`);
+    const iv2 = await G.evaluate(() => [...document.querySelectorAll('.mwstep input[data-f="pct"]')].findIndex((x, i) => i >= 3 && +x.value >= 88)); // a work step after the repeated block (steps 1–2)
+    const minSel = `.mwstep[data-i="${iv2}"] input[data-f="min"]`, pctSel = `.mwstep[data-i="${iv2}"] input[data-f="pct"]`, m0 = +await val(minSel), p0 = +await val(pctSel);
+    ok(await padTo(minSel), `pad: reaches the minutes of step ${iv2 + 1}`);
+    await press('A'); ok(await G.evaluate(() => window.__padnav.editing), 'pad: A on a number field = change mode');
+    if (SHOTS) await G.screenshot({ path: `${SHOTS}/myworkouts_pad_editor_1280.png` });
+    await press('up'); await press('up'); await press('B');
+    ok(+await val(minSel) === m0 + 1, `pad: ↑ ↑ = +2 × 0.5 min (${m0} → ${await val(minSel)})`);
+    ok(await padTo(pctSel), 'pad: right to the % field'); await press('A'); await press('up', 700); await press('A'); // held: repeats
+    const p1 = +await val(pctSel); ok(p1 >= p0 + 15, `pad: held ↑ repeats (${p0} → ${p1} %)`);
+    await press('R'); ok(+await val(pctSel) === p1 + 5, 'pad: R = one step up without change mode'); await press('L');
+    const wtxt = (await G.textContent(`.mwstep[data-i="${iv2}"] .mww`)).trim(); ok(wtxt === `${Math.round(p1 / 100 * 250)} W`, `pad: the watts follow (${wtxt})`);
+    // B with unsaved changes: the question, B again keeps editing
+    await press('B'); await G.waitForSelector('.mwask'); ok(/Discard your changes/.test(await G.textContent('.mwask')), 'pad: B with changes asks (in the page)');
+    await press('B'); await G.waitForTimeout(150); ok(!(await G.locator('.mwask').count()) && await G.locator('.mwbox').count() === 1, 'pad: B on the question keeps editing');
+    const n1 = await G.locator('.mwstep').count();
+    ok(await padTo('#mwRn'), 'pad: reaches “× N” of Repeat'); await press('A'); await press('down'); await press('A');
+    ok(await val('#mwRn') === '2', 'pad: × 2'); ok(await padTo('#mwRep'), 'pad: reaches “Repeat”'); await press('A');
+    ok(await G.locator('.mwstep').count() === n1 + 2, `pad: repeat steps 1–2 × 2 (${n1} → ${await G.locator('.mwstep').count()} steps)`);
+    ok(await padTo('.mwchip:nth-child(2)'), 'pad: reaches a name suggestion'); const chip = await G.textContent('.mwchip:nth-child(2)'); await press('A');
+    ok(await val('#mwName') === chip, `pad: one tap names it “${chip}”`);
+    ok(await padTo('#mwSave'), 'pad: reaches Save'); await press('A'); await G.waitForSelector('.mwbox', { state: 'detached' }); await G.waitForTimeout(300);
+    const padW = (await listOf(token)).find(w => w.name === chip);
+    ok(!!padW && padW.steps[iv2 + 2].min === m0 + 1 && padW.steps[iv2 + 2].pct === p1 && padW.steps.length === n1 + 2, 'pad: saved on the server with both values and the repeat');
+    ok(await padTo('#wMine'), 'pad: reaches “My workouts”'); await press('A'); await G.waitForURL(/profil\.html/); await G.waitForSelector('.mwitem'); await G.waitForTimeout(500);
+    await press('down');
+    const del = `.mwitem[data-id="${padW?.id}"] [data-del]`;
+    ok(await padTo(del, 120), 'pad: in the profile, reaches Delete of the new workout');
+    await press('A'); await G.waitForSelector('.mwask'); await padTo('.mwask button.danger'); await press('A'); await G.waitForTimeout(500);
+    ok(!(await listOf(token)).some(w => w.id === padW?.id) && !(await G.locator(`.mwitem[data-id="${padW?.id}"]`).count()), 'pad: deleted after the in-page question');
+    await gctx.close();
 
     ok(!errs.length, 'no page errors' + (errs.length ? ': ' + errs.join(' | ') : ''));
   } catch (e) { console.log('✗ ' + e.message); fails++; }

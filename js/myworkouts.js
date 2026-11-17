@@ -1,7 +1,8 @@
 // Personal workouts (owner 17.11.: "pick a route, personalise the workout for the ride, save it under my name, find and
 // edit it later in my profile"). Pure module, no DOM: used by the browser (js/myworkouts-ui.js, js/myworkouts-store.js)
 // and by the server (tools/workouts-api.mjs), so both check a workout the same way.
-// A personal workout: { id, name, base (built-in id or null), steps: [{ min, pct, label, free? }], routeId?, routeName?, updated }.
+// A personal workout: { id, name, base (built-in id or null), steps: [{ min, pct, pct2?, label, free? }], routeId?, routeName?, updated }.
+// pct2 makes the step a ramp: the target moves evenly from pct to pct2 (like the built-ins' warm-up, js/workouts.js pctAt).
 // For riding it becomes the shape of the built-ins (js/workouts.js: { id, name, what, steps: [{ dur, pct, label, free? }] }),
 // so js/ride.js and workoutAt() run it unchanged.
 
@@ -28,7 +29,10 @@ export function validateWorkout(b) {
     const min = +s.min, pct = +s.pct;
     if (!Number.isFinite(min) || min < LIM.minMin || min > LIM.maxMin) return { error: `Step ${i + 1}: ${LIM.minMin}–${LIM.maxMin} min.` };
     if (!Number.isFinite(pct) || pct < LIM.minPct || pct > LIM.maxPct) return { error: `Step ${i + 1}: ${LIM.minPct}–${LIM.maxPct} % FTP.` };
-    const st = { min: r2(min), pct: Math.round(pct), label: clean(s.label, LIM.label) }; if (s.free === true) st.free = true;
+    let pct2 = null;
+    if (s.pct2 != null && s.pct2 !== '') { pct2 = +s.pct2; if (!Number.isFinite(pct2) || pct2 < LIM.minPct || pct2 > LIM.maxPct) return { error: `Step ${i + 1}: ramp to ${LIM.minPct}–${LIM.maxPct} % FTP.` }; }
+    const st = { min: r2(min), pct: Math.round(pct) }; if (pct2 != null && Math.round(pct2) !== st.pct) st.pct2 = Math.round(pct2); // a ramp to the same value is flat
+    st.label = clean(s.label, LIM.label); if (s.free === true) st.free = true;
     steps.push(st);
   }
   const w = { id, name: raw, base, steps, updated: Math.round(+b.updated) > 0 ? Math.round(+b.updated) : 0 };
@@ -47,14 +51,17 @@ export function validateList(list) {
 /* ---- numbers ---- */
 export const stepSec = s => Math.round(s.min * 60); // the same rounding as js/workouts.js W()
 export const totalSec = steps => steps.reduce((a, s) => a + stepSec(s), 0);
+/** mean % FTP of one step (a ramp: halfway) */
+export const stepAvg = s => s.pct2 == null ? s.pct : (s.pct + s.pct2) / 2;
 /** time-weighted mean of % FTP */
-export const avgPct = steps => { const t = totalSec(steps); return t ? Math.round(steps.reduce((a, s) => a + s.pct * stepSec(s), 0) / t) : 0; };
+export const avgPct = steps => { const t = totalSec(steps); return t ? Math.round(steps.reduce((a, s) => a + stepAvg(s) * stepSec(s), 0) / t) : 0; };
 export const watts = (pct, ftp) => ftp > 0 ? Math.round(pct / 100 * ftp) : null;
 /** a work step: everything harder than endurance (warm-up, rest and cool-down stay as they are when the intensity is scaled) */
-export const isWork = s => s.pct >= 76;
+export const isWork = s => stepAvg(s) >= 76;
 /** the intensity slider: every work step d % harder (or easier), within the limits */
-export const scaleWork = (steps, d) => steps.map(s => isWork(s) && !s.free ? { ...s, pct: Math.max(LIM.minPct, Math.min(LIM.maxPct, Math.round(s.pct * (1 + d / 100)))) } : { ...s });
-const same = (a, b) => a.min === b.min && a.pct === b.pct && !!a.free === !!b.free;
+const scale1 = (v, d) => Math.max(LIM.minPct, Math.min(LIM.maxPct, Math.round(v * (1 + d / 100))));
+export const scaleWork = (steps, d) => steps.map(s => isWork(s) && !s.free ? { ...s, pct: scale1(s.pct, d), ...(s.pct2 != null ? { pct2: scale1(s.pct2, d) } : {}) } : { ...s });
+const same = (a, b) => a.min === b.min && a.pct === b.pct && (a.pct2 ?? null) === (b.pct2 ?? null) && !!a.free === !!b.free;
 
 /** "repeat block ×N": steps from..to (0-based, inclusive) stand n times in a row (n counts the block itself) */
 export function repeatBlock(steps, from, to, n) {
@@ -80,7 +87,7 @@ export const expand = groups => groups.flatMap(g => Array.from({ length: g.n }, 
 const fmtMin = m => m >= 1 ? `${r2(m)} min` : `${Math.round(m * 60)} s`;
 /** one line on what the workout is, e.g. "10 min 60 %, 5 × (3 min 118 % / 3 min 50 %), 5 min 50 %" */
 export function describe(steps) {
-  const one = s => `${fmtMin(s.min)} ${s.pct} %${s.free ? ' free' : ''}`;
+  const one = s => `${fmtMin(s.min)} ${s.pct}${s.pct2 != null ? '→' + s.pct2 : ''} %${s.free ? ' free' : ''}`;
   return collapse(steps).map(g => g.n > 1 ? `${g.n} × (${g.steps.map(one).join(' / ')})` : g.steps.map(one).join(', ')).join(', ');
 }
 
@@ -88,11 +95,13 @@ export function describe(steps) {
 /** a personal workout in the shape of the built-ins, for js/workouts.js and the ride */
 export function toRide(w) {
   return { id: w.id, name: w.name, what: `Personal workout: ${describe(w.steps)}.`, personal: true, base: w.base || null, routeId: w.routeId || null, routeName: w.routeName || '',
-    steps: w.steps.map(s => ({ dur: stepSec(s), pct: s.pct, label: s.label || '', ...(s.free ? { free: true } : {}) })) };
+    steps: w.steps.map(s => ({ dur: stepSec(s), pct: s.pct, ...(s.pct2 != null ? { pct2: s.pct2 } : {}), label: s.label || '', ...(s.free ? { free: true } : {}) })) };
 }
 /** a draft from a built-in workout (or any workout in ride shape) */
 export function fromBuiltin(bw) {
-  const steps = bw.steps.slice(0, LIM.steps).map(s => ({ min: Math.max(LIM.minMin, r2(s.dur / 60)), pct: Math.max(LIM.minPct, Math.min(LIM.maxPct, Math.round(s.pct))), label: clean(s.label, LIM.label), ...(s.free ? { free: true } : {}) }));
+  const cp = v => Math.max(LIM.minPct, Math.min(LIM.maxPct, Math.round(v)));
+  const steps = bw.steps.slice(0, LIM.steps).map(s => { const st = { min: Math.max(LIM.minMin, r2(s.dur / 60)), pct: cp(s.pct) }; if (s.pct2 != null && cp(s.pct2) !== st.pct) st.pct2 = cp(s.pct2);
+    st.label = clean(s.label, LIM.label); if (s.free) st.free = true; return st; });
   return { id: newId(), name: clean(bw.name, LIM.name) || 'My workout', base: bw.personal ? bw.base || null : bw.id || null, steps, updated: 0 };
 }
 /** "free ride with intervals": the start when no workout is chosen */
@@ -109,12 +118,33 @@ export const ZONES = [[55, 'Z1', '#6b7480'], [75, 'Z2', '#2f8fe0'], [90, 'Z3', '
 export const zoneOf = pct => ZONES.find(z => pct < z[0]);
 /** bars over time, height = % FTP, colour = zone; mark = index of a step to outline (the one being edited) */
 export function graphSVG(steps, { h = 60, mark = -1, cls = 'mwgraph' } = {}) {
-  const tot = totalSec(steps) || 1, max = Math.max(130, ...steps.map(s => s.pct)); let x = 0;
+  const tot = totalSec(steps) || 1, max = Math.max(130, ...steps.map(s => Math.max(s.pct, s.pct2 ?? 0))); let x = 0;
   const bars = steps.map((s, i) => {
-    const bw = stepSec(s) / tot * 1000, bh = Math.max(2, s.pct / max * (h - 2)), z = zoneOf(s.pct);
-    const r = `<rect x="${x.toFixed(1)}" y="${(h - bh).toFixed(1)}" width="${Math.max(0.8, bw - 1.2).toFixed(1)}" height="${bh.toFixed(1)}" fill="${z[2]}"${s.free ? ' fill-opacity=".55"' : ''}${i === mark ? ' stroke="#ff5a1f" stroke-width="4" vector-effect="non-scaling-stroke"' : ''}/>`;
+    const bw = stepSec(s) / tot * 1000, bh = Math.max(2, s.pct / max * (h - 2)), z = zoneOf(stepAvg(s)), w = Math.max(0.8, bw - 1.2);
+    const att = `fill="${z[2]}"${s.free ? ' fill-opacity=".55"' : ''}${i === mark ? ' stroke="#ff5a1f" stroke-width="4" vector-effect="non-scaling-stroke"' : ''}`;
+    const r = s.pct2 == null ? `<rect x="${x.toFixed(1)}" y="${(h - bh).toFixed(1)}" width="${w.toFixed(1)}" height="${bh.toFixed(1)}" ${att}/>`
+      : `<polygon points="${x.toFixed(1)},${h} ${x.toFixed(1)},${(h - bh).toFixed(1)} ${(x + w).toFixed(1)},${(h - Math.max(2, s.pct2 / max * (h - 2))).toFixed(1)} ${(x + w).toFixed(1)},${h}" ${att}/>`; // a ramp: sloped top
     x += bw; return r;
   }).join('');
   const ftpY = (h - 100 / max * (h - 2)).toFixed(1);
   return `<svg class="${cls}" viewBox="0 0 1000 ${h}" preserveAspectRatio="none" role="img" aria-label="Workout profile">${bars}<line x1="0" x2="1000" y1="${ftpY}" y2="${ftpY}" stroke="currentColor" stroke-opacity=".35" stroke-dasharray="6 6" vector-effect="non-scaling-stroke"/></svg>`;
+}
+
+/* ---- names without a keyboard (gamepad): a default and a few one-tap suggestions ---- */
+const DAYS = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+/** what kind of session, from the built-in's name: "VO2max 5 × 3" -> "VO2", "Sweet Spot 3 × 10" -> "Sweet Spot" */
+export const kindOf = name => String(name || '').replace(/\s*\(.*?\)/g, '').replace(/^VO2max\b/, 'VO2').replace(/\s+\d.*$/, '').trim() || 'Intervals';
+const free1 = (base, taken) => { let n = 1; while (taken.has((cut1(base, n)).toLowerCase())) n++; return cut1(base, n); };
+const cut1 = (base, n) => { const t = ` ${n}`; return (base.length + t.length > LIM.name ? base.slice(0, LIM.name - t.length).trim() : base) + t; };
+/** "River Valley VO2 1": route + kind + the first free number among the existing names */
+export function defaultName(routeName, kind, existing = []) {
+  const taken = new Set(existing.map(x => String(x).toLowerCase()));
+  return free1([clean(routeName, LIM.name), kind].filter(Boolean).join(' ') || 'My workout', taken);
+}
+/** up to four names to pick with one tap */
+export function nameSuggestions(routeName, kind, existing = [], { minutes = 0, day = new Date().getDay() } = {}) {
+  const taken = new Set(existing.map(x => String(x).toLowerCase())), out = [];
+  const add = n => { n = clean(n, LIM.name); if (n && !out.includes(n)) out.push(n); };
+  add(defaultName(routeName, kind, existing)); add(taken.has(`my ${kind}`.toLowerCase()) ? free1(`My ${kind}`, taken) : `My ${kind}`); add(`${kind} ${DAYS[day % 7]}`); if (minutes) add(`${kind} ${minutes} min`);
+  return out.slice(0, 4);
 }

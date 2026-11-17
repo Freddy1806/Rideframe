@@ -71,9 +71,9 @@ test('repeat ×N and collapse are each other\'s inverse', () => {
 test('a built-in becomes a draft and back: the ride runs it through workoutAt unchanged', () => {
   for (const bw of WORKOUTS) {
     const d = MW.fromBuiltin(bw), v = MW.validateWorkout(d); assert.ifError(v.error); assert.equal(d.base, bw.id);
-    const r = MW.toRide(v.w); assert.deepEqual(r.steps.map(x => [x.dur, x.pct, !!x.free]), bw.steps.map(x => [x.dur, Math.min(MW.LIM.maxPct, x.pct), !!x.free]), bw.id); // the ramp test's last steps (> 200 %) are capped
+    const r = MW.toRide(v.w); assert.deepEqual(r.steps.map(x => [x.dur, x.pct, x.pct2 ?? null, !!x.free]), bw.steps.map(x => [x.dur, Math.min(MW.LIM.maxPct, x.pct), x.pct2 ?? null, !!x.free]), bw.id); // the ramp test's last steps (> 200 %) are capped
     if (bw.id === 'ramp') continue;
-    for (const t of [0, 61, 900, 1e5]) { const a = workoutAt(r, t, 250), b = workoutAt(bw, t, 250); assert.deepEqual([a.i, a.target, a.left, a.done], [b.i, b.target, b.left, b.done]); }
+    for (const t of [0, 61, 240, 479, 900, 1e5]) { const a = workoutAt(r, t, 250), b = workoutAt(bw, t, 250); assert.deepEqual([a.i, a.target, a.left, a.done], [b.i, b.target, b.left, b.done]); }
   }
   const mine = MW.toRide(MW.validateWorkout(W({ routeId: 'fluss', routeName: 'River Valley' })).w);
   assert.equal(workoutAt(mine, 0, 250).target, 150); assert.equal(workoutAt(mine, 600, 250).target, 295);
@@ -162,4 +162,50 @@ test('API: at most 50 workouts per account', async () => {
   assert.equal((await call('PUT', '/api/account/workouts/pw_n999', { token: C, body: W() })).status, 409);
   assert.equal((await call('PUT', '/api/account/workouts/pw_n000', { token: C, body: W({ name: 'replace still works' }) })).status, 200);
   assert.equal((await call('GET', '/api/account/workouts', { token: C })).j.workouts.length, MW.LIM.count);
+});
+
+/* ---------------- ramps (pct -> pct2, like the built-ins' warm-up) ---------------- */
+const RAMP = { min: 8, pct: 40, pct2: 75, label: 'Warm-up' };
+test('ramps: pct2 is validated like pct, a ramp to the same % is flat', () => {
+  assert.deepEqual(MW.validateWorkout(W({ steps: [RAMP] })).w.steps, [{ min: 8, pct: 40, pct2: 75, label: 'Warm-up' }]);
+  assert.deepEqual(MW.validateWorkout(W({ steps: [{ min: 6, pct: 55, pct2: '35' }] })).w.steps[0].pct2, 35, 'down ramps too, strings as numbers');
+  assert.equal(MW.validateWorkout(W({ steps: [{ min: 5, pct: 80, pct2: 80 }] })).w.steps[0].pct2, undefined);
+  assert.equal(MW.validateWorkout(W({ steps: [{ min: 5, pct: 80, pct2: '' }] })).w.steps[0].pct2, undefined, 'empty = flat');
+  assert.equal(MW.validateWorkout(W({ steps: [{ min: 5, pct: 80, pct2: null }] })).w.steps[0].pct2, undefined);
+  for (const p2 of [29, 201, 'x', NaN, Infinity]) assert.ok(MW.validateWorkout(W({ steps: [{ min: 5, pct: 80, pct2: p2 }] })).error, `pct2 ${p2} refused`);
+  assert.ok(!MW.validateWorkout(W({ steps: [{ min: 5, pct: 30, pct2: 200 }] })).error);
+});
+test('ramps: numbers, scaling, describe, repeat / collapse keep the slope', () => {
+  const st = [RAMP, { min: 4, pct: 100, pct2: 120 }, { min: 4, pct: 50 }];
+  assert.equal(MW.avgPct([RAMP]), 58, 'a ramp counts halfway (57.5)');
+  assert.equal(MW.avgPct(st), Math.round((8 * 57.5 + 4 * 110 + 4 * 50) / 16));
+  assert.deepEqual(MW.scaleWork(st, 10).map(x => [x.pct, x.pct2]), [[40, 75], [110, 132], [50, undefined]], 'the warm-up ramp is no work step and stays, a work ramp scales both ends');
+  assert.equal(MW.describe(st), '8 min 40→75 %, 4 min 100→120 %, 4 min 50 %');
+  const r = MW.repeatBlock(st, 1, 2, 3); assert.equal(r.length, 7); assert.deepEqual(r[3], st[1]);
+  assert.deepEqual(MW.collapse(r).map(g => g.n), [1, 3]);
+  assert.deepEqual(MW.collapse([{ min: 4, pct: 100, pct2: 120 }, { min: 4, pct: 100 }]).map(g => g.n), [1, 1], 'a ramp and a flat step with the same start are not the same');
+  const svg = MW.graphSVG(st); assert.equal((svg.match(/<polygon /g) || []).length, 2, 'ramps drawn sloped'); assert.equal((svg.match(/<rect /g) || []).length, 1);
+});
+test('ramps: the ride follows them second by second through workoutAt (pctAt)', () => {
+  const r = MW.toRide(MW.validateWorkout(W({ steps: [RAMP, { min: 2, pct: 100 }] })).w);
+  assert.deepEqual(r.steps[0], { dur: 480, pct: 40, pct2: 75, label: 'Warm-up' });
+  assert.equal(workoutAt(r, 0, 200).target, 80); assert.equal(workoutAt(r, 240, 200).target, Math.round(57.5 * 2)); assert.equal(workoutAt(r, 479, 200).target, Math.round((40 + 35 * 479 / 480) * 2));
+  assert.equal(workoutAt(r, 480, 200).target, 200);
+  const d = MW.fromBuiltin(WORKOUTS.find(w => w.id === 'vo2_5x3')); assert.deepEqual(d.steps[0], { min: 8, pct: 40, pct2: 75, label: 'Warm-up' }, 'the built-in warm-up stays a ramp in the editor');
+});
+test('names without a keyboard: default "River Valley VO2 1", the next free number, suggestions', () => {
+  assert.equal(MW.kindOf('VO2max 5 × 3'), 'VO2'); assert.equal(MW.kindOf('Sweet Spot 3 × 10'), 'Sweet Spot'); assert.equal(MW.kindOf('Ramp test (FTP)'), 'Ramp test'); assert.equal(MW.kindOf(''), 'Intervals');
+  assert.equal(MW.defaultName('River Valley', 'VO2'), 'River Valley VO2 1');
+  assert.equal(MW.defaultName('River Valley', 'VO2', ['river valley vo2 1', 'River Valley VO2 2']), 'River Valley VO2 3');
+  assert.equal(MW.defaultName('', 'Intervals'), 'Intervals 1');
+  const long = MW.defaultName('A very long route name that goes on and on', 'Sweet Spot'); assert.ok(long.length <= MW.LIM.name && long.endsWith(' 1'), long);
+  const sg = MW.nameSuggestions('River Valley', 'VO2', ['My VO2'], { minutes: 43, day: 2 });
+  assert.deepEqual(sg, ['River Valley VO2 1', 'My VO2 1', 'VO2 Tuesday', 'VO2 43 min']);
+  for (const n of sg) assert.ok(!MW.validateWorkout(W({ name: n })).error);
+});
+test('API: ramps are stored, a bad ramp is refused', async () => {
+  const p = await call('PUT', '/api/account/workouts/pw_ramp1', { token: A, body: W({ steps: [RAMP, { min: 3, pct: 120 }] }) }); assert.equal(p.status, 200);
+  assert.deepEqual((await call('GET', '/api/account/workouts/pw_ramp1', { token: A })).j.workout.steps[0], { min: 8, pct: 40, pct2: 75, label: 'Warm-up' });
+  assert.equal((await call('PUT', '/api/account/workouts/pw_ramp2', { token: A, body: W({ steps: [{ min: 3, pct: 120, pct2: 250 }] }) })).status, 400);
+  assert.equal((await call('DELETE', '/api/account/workouts/pw_ramp1', { token: A })).status, 200);
 });
