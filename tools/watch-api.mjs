@@ -3,6 +3,8 @@
 // Only a hash of the token is stored, with label and created / last-used time; the phone lists and removes watches.
 // Every watch call sends "Authorization: Bearer <token>". Sessions land as normal strength records (users/<id>/kraft/),
 // so the phone app shows them after its next sync, marked source: 'watch'. Stored in <data>/watches.json.
+// 18.11.: the watch config (data pages per sport, "more" sports, workouts, js/watchfields.js) is edited on the phone
+// (GET / PUT /api/watch/config with the login), kept in users/<id>/watch.json and served to the watch in a compact form.
 import { randomBytes, randomInt } from 'node:crypto';
 import { readdir, stat } from 'node:fs/promises';
 import { join } from 'node:path';
@@ -41,28 +43,40 @@ async function sessions(uid) { // every strength session of the account, newest 
 }
 const settingsOf = async uid => (await readJSON(join(userDir(uid), 'settings.json'), null))?.settings || {};
 
-/** the watch's whole strength setup, kept small (< 8 KB): exercises most recently / often used first, their last sets and best */
+/* ---- the watch config (18.11.): data pages per sport, "more" sports, workouts; set up on the phone, one file per account ---- */
+const WFM = () => import('../js/watchfields.js'); // pure browser module, like kraftlib.js
+const cfgFile = uid => join(userDir(uid), 'watch.json');
+async function configOf(uid) { const W = await WFM(), f = await readJSON(cfgFile(uid), null), v = f && W.validate(f.cfg);
+  return v && v.cfg ? { cfg: v.cfg, at: +f.at || 0, stored: true } : { cfg: W.defaults(), at: 0, stored: false }; }
+
+/** the watch's whole strength setup, kept small (< 8 KB): exercises most recently / often used first, their last sets and best;
+ *  since 18.11. also the workouts from the phone, the 20 standard exercises (top) and the recent ones (recent), all of them in ex */
 export async function setup(u) {
-  const S = await settingsOf(u.id), list = await sessions(u.id), cat = await catalog(), info = new Map();
+  const S = await settingsOf(u.id), list = await sessions(u.id), cat = await catalog(), info = new Map(), W = await WFM(), C = (await configOf(u.id)).cfg;
   for (const e of cat) info.set(e.k, { n: e.n, t: e.t });
   for (const e of Array.isArray(S.kraftEx) ? S.kraftEx : []) if (e?.k && !info.has(e.k)) info.set(String(e.k), { n: String(e.n || e.k), t: e.t, own: true });
+  for (const e of W.TOP) if (!info.has(e.id)) info.set(e.id, { n: e.n, t: e.t });
   const use = new Map(), now = Date.now();
   for (const s of list) for (const x of s.ex) {
     if (!info.has(x.k)) info.set(x.k, { n: x.n || x.k, t: x.t });
-    const sets = x.sets.filter(y => y[1] > 0); if (!sets.length) continue;
+    const sets = x.sets.filter(y => y[1] > 0 || y[2] > 0); if (!sets.length) continue;
     const m = use.get(x.k) || use.set(x.k, { last: s.start, n: 0, sets, best: 0 }).get(x.k);
     if (now - s.start < 90 * 864e5) m.n++;
-    for (const [kg, r] of sets) m.best = Math.max(m.best, x.t === 'bw' ? r : e1rm(kg, r));
+    for (const [kg, r, sec] of sets) m.best = Math.max(m.best, x.t === 'time' ? sec : x.t === 'bw' ? r : e1rm(kg, r));
   }
   // recent use counts most: one point per session in the last 90 days, plus up to 10 for having been done in the last days
   const score = k => { const m = use.get(k); return m ? m.n + 10 * Math.max(0, 1 - (now - m.last) / (60 * 864e5)) + 1e-15 * m.last : -1; };
-  const keys = [...info.keys()].filter(k => ['w', 'bw'].includes(info.get(k).t)); // timed exercises (plank) stay on the phone for now
+  const top = W.TOP.map(e => e.id), inW = new Set(C.workouts.flatMap(w => w.items.map(i => i.ex)));
+  const keys = [...info.keys()].filter(k => ['w', 'bw'].includes(info.get(k).t)); // timed exercises (plank) only as one of the top 20 or in a workout
   keys.sort((a, b) => score(b) - score(a) || (info.get(b).own ? 1 : 0) - (info.get(a).own ? 1 : 0)); // then own ones, then the catalogue order
-  const r1 = v => Math.round(v * 10) / 10;
-  const ex = keys.slice(0, 40).map(k => { const e = info.get(k), m = use.get(k), o = { id: k, n: shortName(k, e.n), t: e.t };
-    if (m) { o.s = m.sets.slice(0, 6).map(([kg, r]) => [r1(kg), r]); o.b = r1(m.best); } return o; });
+  const r1 = v => Math.round(v * 10) / 10, name = k => shortName(k, W.TOP.find(e => e.id === k)?.n || info.get(k)?.n || k);
+  const one = k => { const e = info.get(k) || { n: k, t: 'w' }, m = use.get(k), o = { id: k, n: name(k), t: ['bw', 'time'].includes(e.t) ? e.t : 'w' };
+    if (m) { o.s = m.sets.slice(0, 6).map(([kg, r, sec]) => e.t === 'time' ? [0, sec] : [r1(kg), r]); o.b = r1(m.best); } return o; };
+  const ids = keys.slice(0, 40); for (const k of [...top, ...inW]) if (!ids.includes(k)) ids.push(k);
+  const recent = [...use.entries()].filter(([, m]) => now - m.last < 90 * 864e5).sort((a, b) => b[1].last - a[1].last).slice(0, 8).map(([k]) => k).filter(k => ids.includes(k));
   const last = list[0], sets = last ? last.ex.reduce((a, x) => a + x.sets.length, 0) : 0;
-  return { v: 1, unit: 'kg', rest: Math.min(600, Math.max(15, +S.kraftRest || 90)), ex, last: last ? { at: Math.round(last.start / 1000), sets, n: clean(last.name, 24) } : null };
+  return { v: 1, unit: 'kg', rest: Math.min(600, Math.max(15, +S.kraftRest || 90)), ex: ids.map(one), last: last ? { at: Math.round(last.start / 1000), sets, n: clean(last.name, 24) } : null,
+    top, recent, workouts: W.compact(C).w };
 }
 
 /* ---- a finished watch session -> a strength record exactly like kraft.js saves it ---- */
@@ -93,11 +107,11 @@ const nameAt = t => { const h = new Date(t).getHours(); return h < 11 ? 'Morning
 export function toRecord(v, info, history) {
   const ex = [], at = new Map();
   for (const s of v.sets.slice().sort((a, b) => a.t - b.t)) { // one block per exercise, in the order first done
-    let x = at.get(s.ex); if (!x) { const e = info.get(s.ex) || { n: s.ex, t: 'w' }; x = { k: s.ex, n: e.n, t: e.t === 'bw' ? 'bw' : 'w', sets: [] }; at.set(s.ex, x); ex.push(x); }
-    x.sets.push({ kg: x.t === 'bw' && !s.kg ? '' : s.kg, r: s.reps, s: '', done: true });
+    let x = at.get(s.ex); if (!x) { const e = info.get(s.ex) || { n: s.ex, t: 'w' }; x = { k: s.ex, n: e.n, t: ['bw', 'time'].includes(e.t) ? e.t : 'w', sets: [] }; at.set(s.ex, x); ex.push(x); }
+    x.sets.push(x.t === 'time' ? { kg: '', r: '', s: s.reps, done: true } : { kg: x.t === 'bw' && !s.kg ? '' : s.kg, r: s.reps, s: '', done: true }); // a timed exercise: the watch's reps are seconds
   }
   let prs = 0;
-  for (const x of ex) { const h = history.flatMap(w => w.ex.filter(y => y.k === x.k).flatMap(y => y.sets)); if (!h.length) continue;
+  for (const x of ex) { const h = history.flatMap(w => w.ex.filter(y => y.k === x.k).flatMap(y => y.sets)); if (!h.length || x.t === 'time') continue;
     const best = Math.max(...h.map(([kg, r]) => x.t === 'bw' ? r : e1rm(kg, r))); let hit = false;
     for (const y of x.sets) if (x.t === 'bw' ? +y.r > best : e1rm(+y.kg, +y.r) > best + .01) { y.pr = true; hit = true; }
     if (hit) prs++; }
@@ -170,6 +184,16 @@ export async function watchApi(req, res, path) {
       return await withW(async W => { const e = Object.entries(W.devs).find(([, d]) => d.id === dm[1] && d.key === me.key); if (!e) return send(res, 404, { error: 'Watch not found.' });
         delete W.devs[e[0]]; await writeJSON(WF, W); return send(res, 200, { ok: true }); });
     }
+    if (op === 'config' && !req.headers.authorization) { // the phone: read / replace the account's watch config (js/watchcfg.js)
+      const me = await accountOf(req); if (!me) return send(res, 401, { error: 'Not signed in.' });
+      if (M === 'GET') { const c = await configOf(me.u.id); return send(res, 200, { config: c.cfg, at: c.at, stored: c.stored }); }
+      if (M !== 'PUT') return send(res, 405, { error: 'not allowed' });
+      if (limited('wcfg:' + me.key, 120, 10 * 60e3)) return send(res, 429, { error: 'Too many saves. Please wait a few minutes.' });
+      let b; try { b = await body(req, 64e3); } catch (e) { return send(res, e.message === 'too large' ? 413 : 400, { error: e.message === 'too large' ? 'Config too large.' : 'Body must be JSON.' }); }
+      const v = (await WFM()).validate(b); if (v.error) return send(res, 400, { error: v.error });
+      const at = Date.now(); await writeJSON(cfgFile(me.u.id), { cfg: v.cfg, at });
+      return send(res, 200, { ok: true, config: v.cfg, at });
+    }
     /* -- watch side -- */
     if (op === 'pair' && M === 'POST') {
       // brute-force brakes: every try counts per address (10 per 10 min); wrong codes count for everyone (60 per 10 min), so 6 digits cannot be walked through
@@ -190,12 +214,13 @@ export async function watchApi(req, res, path) {
         await writeJSON(WF, W); return send(res, 200, { token, name: u.name, label });
       });
     }
-    if (!['strength/setup', 'strength', 'summary', 'me'].includes(op)) return send(res, 404, { error: 'unknown' });
+    if (!['strength/setup', 'strength', 'summary', 'me', 'config'].includes(op)) return send(res, 404, { error: 'unknown' });
     const w = await watchOf(req); if (!w) return send(res, 401, { error: 'Not paired.' });
     if (limited('wcall:' + w.h, 120, 10 * 60e3)) return send(res, 429, { error: 'Too many requests.' });
     if (op === 'me') return send(res, 200, { name: w.u.name, label: w.d.label });
     if (op === 'strength/setup' && M === 'GET') return send(res, 200, await setup(w.u));
     if (op === 'summary' && M === 'GET') return send(res, 200, await summaryOf(w.u));
+    if (op === 'config' && M === 'GET') { const c = await configOf(w.u.id); return send(res, 200, { ...(await WFM()).compact(c.cfg), at: Math.round(c.at / 1000) }); }
     if (op === 'strength' && M === 'POST') {
       let b; try { b = await body(req, 32e3); } catch (e) { return send(res, e.message === 'too large' ? 413 : 400, { error: e.message === 'too large' ? 'Session too large.' : 'Body must be JSON.' }); }
       const v = validate(b); if (v.error) return send(res, 400, { error: v.error });

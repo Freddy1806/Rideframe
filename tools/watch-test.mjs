@@ -1,5 +1,6 @@
 // Garmin watch API (tools/watch-api.mjs) against a real serve.mjs on a free port with a temp data folder:
-// pairing (expiry, single use, wrong codes, limits), auth, setup size, session validation / idempotency / records, summary, revoke.
+// pairing (expiry, single use, wrong codes, limits), auth, setup size, session validation / idempotency / records, summary, revoke,
+// the watch config (phone auth, defaults, strict validation and limits, compact form for the watch, workouts / top 20 in the setup).
 // Usage: node --test tools/watch-test.mjs   (no real data is touched)
 import test, { before, after } from 'node:test';
 import assert from 'node:assert/strict';
@@ -70,7 +71,8 @@ test('setup: own exercises, most recent first, last sets and best, short names, 
   const t = await pairWith(A), day = 864e5, now = Date.now();
   const empty = await call('GET', '/api/watch/strength/setup', { bearer: t });
   assert.equal(empty.status, 200); assert.equal(empty.j.rest, 90); assert.equal(empty.j.unit, 'kg'); assert.equal(empty.j.ex[0].id, 'squat', 'nothing done: the catalogue'); assert.equal(empty.j.last, null);
-  assert.ok(!empty.j.ex.some(e => e.id === 'plank'), 'timed exercises stay on the phone');
+  assert.equal(empty.j.ex.filter(e => e.t === 'time').map(e => e.id).join(), 'plank', 'timed exercises only as one of the top 20 (plank)');
+  assert.equal(empty.j.top.length, 20); assert.ok(empty.j.top.every(id => empty.j.ex.some(e => e.id === id)), 'every top exercise is described in ex'); assert.deepEqual(empty.j.recent, []); assert.deepEqual(empty.j.workouts, []);
   const own = [...Array(45)].map((_, i) => ({ k: 'my_' + i, n: 'Thai kick on the heavy bag variant ' + i, t: 'w', g: 'Custom' }));
   assert.equal((await call('PUT', '/api/account/settings', { token: A, body: { settings: { kraftRest: 120, kraftEx: own }, at: now } })).status, 200);
   const sess = (id, ago, ex) => call('PUT', '/api/account/kraft/' + id, { token: A, body: { id, name: 'Push day', start: now - ago * day, date: now - ago * day + 3600e3, dur: 3600, ex } });
@@ -79,14 +81,14 @@ test('setup: own exercises, most recent first, last sets and best, short names, 
   for (let i = 0; i < 30; i++) await sess('old' + i, 200 + i, [{ k: 'my_' + (10 + i), n: own[10 + i].n, t: 'w', sets: [{ kg: 100.25, r: 10, done: true }, { kg: 100.25, r: 10, done: true }, { kg: 100.25, r: 10, done: true }, { kg: 100.25, r: 10, done: true }, { kg: 100.25, r: 10, done: true }, { kg: 100.25, r: 10, done: true }, { kg: 100.25, r: 10, done: true }] }]);
   const r = await call('GET', '/api/watch/strength/setup', { bearer: t }), S = r.j;
   assert.equal(r.status, 200); assert.ok(r.size < 8192, `setup is ${r.size} bytes`); console.log(`  setup payload: ${r.size} bytes, ${S.ex.length} exercises`);
-  assert.equal(S.rest, 120); assert.equal(S.ex.length, 40); assert.ok(S.ex.every(e => e.n.length <= 18 && /^[\w-]+$/.test(e.id)));
+  assert.equal(S.rest, 120); assert.equal(S.ex.length, 40 + S.top.filter(id => !S.ex.slice(0, 40).some(e => e.id === id)).length); assert.ok(S.ex.every(e => e.n.length <= 18 && /^[\w-]+$/.test(e.id)));
   assert.deepEqual(S.ex.slice(0, 3).map(e => e.id), ['bench', 'my_3', 'pull'], 'used recently and often first');
   const bench = S.ex[0]; assert.deepEqual(bench.s, [[82.5, 8], [82.5, 7]], 'the last session, without the warm-up'); assert.equal(bench.b, 104.5, 'best e1RM: 82.5 x 8'); assert.equal(bench.n, 'Bench press');
   assert.equal(S.ex[2].t, 'bw'); assert.equal(S.ex[2].b, 12);
   assert.equal(S.ex[1].n, 'Thai kick on the.', 'long own names are cut to 18');
   assert.ok(S.ex.find(e => e.id === 'my_10').s.length <= 6);
   assert.equal(S.last.sets, 3); assert.equal(S.last.n, 'Push day'); assert.ok(Math.abs(S.last.at - (now - 2 * day) / 1000) < 2);
-  assert.ok(S.ex.slice(0, 33).every(e => e.s), 'everything done comes first'); assert.ok(S.ex.slice(33).every(e => e.id.startsWith('my_') && !e.s), 'then own exercises not done yet, before the catalogue');
+  assert.ok(S.ex.slice(0, 33).every(e => e.s), 'everything done comes first'); assert.deepEqual(S.recent.slice(0, 2), ['bench', 'my_3'], 'recent: newest first'); assert.ok(S.ex.slice(33, 40).every(e => e.id.startsWith('my_') && !e.s), 'then own exercises not done yet, before the catalogue');
 });
 
 test('session: validated, stored once as a strength record with records, shows in the account', async () => {
@@ -132,6 +134,68 @@ test('list and revoke watches; a revoked or deleted account token stops working'
   assert.deepEqual((await call('GET', '/api/watch/devices', { token: B2 })).j.watches, []);
 });
 
+/* ---- watch config (18.11.): phone edits, server checks and keeps it per account, the watch gets the compact form ---- */
+const CFG = () => ({ v: 1, sports: { run: { pages: [{ fields: ['pace', 'hr'] }, { fields: ['lapTime'] }], map: false, segWarn: true, autoLap: true, autoPause: true, vibrate: false },
+  ride: { pages: [{ fields: ['power3s', 'speed', 'hr', 'np'] }], map: true, segWarn: false, autoLap: false, autoPause: true, vibrate: true }, other: { pages: [{ fields: ['hr', 'time', 'clock', 'kcal'] }] } },
+  more: ['Basketball', 'Yoga'], workouts: [{ id: 'w1', name: 'Push day', items: [{ ex: 'bench', sets: 3, reps: 8, kg: 80, rest: 120 }, { ex: 'plank', sets: 2, reps: 60, kg: 0, rest: 60 }, { ex: 'my_9', sets: 3, reps: 12, kg: 22.5, rest: 90 }] }] });
+test('config: phone needs a login, defaults until saved, saved per account with mode 600', async () => {
+  const C = await register('Config Carla'), O = await register('Config Other');
+  assert.equal((await call('GET', '/api/watch/config')).status, 401); assert.equal((await call('PUT', '/api/watch/config', { body: CFG() })).status, 401);
+  assert.equal((await call('GET', '/api/watch/config', { token: 'nope' })).status, 401);
+  const d = await call('GET', '/api/watch/config', { token: C }); assert.equal(d.status, 200); assert.equal(d.j.stored, false);
+  assert.deepEqual(d.j.config.sports.run.pages.map(p => p.fields), [['pace', 'dist', 'time', 'hr'], ['lapPace', 'lapDist', 'cadence', 'hrZone']]);
+  assert.deepEqual(d.j.config.sports.ride.pages.map(p => p.fields), [['power3s', 'speed', 'hr', 'time'], ['dist', 'climb', 'avgPower', 'cadence']]);
+  assert.deepEqual(d.j.config.sports.other.pages[0].fields, ['hr', 'time', 'clock', 'kcal']); assert.deepEqual(d.j.config.workouts, []);
+  const p = await call('PUT', '/api/watch/config', { token: C, body: CFG() }); assert.equal(p.status, 200, JSON.stringify(p.j)); assert.ok(p.j.at > 0);
+  const g = await call('GET', '/api/watch/config', { token: C }); assert.equal(g.j.stored, true); assert.deepEqual(g.j.config, CFG()); assert.equal(g.j.at, p.j.at);
+  assert.equal((await call('GET', '/api/watch/config', { token: O })).j.stored, false, 'another account keeps its own');
+  const dir = join(DATA, 'users'), files = []; for (const u of await readdir(dir)) if ((await readdir(join(dir, u))).includes('watch.json')) files.push(join(dir, u, 'watch.json'));
+  assert.equal(files.length, 1); const { stat } = await import('node:fs/promises'); assert.equal((await stat(files[0])).mode & 0o777, 0o600);
+});
+test('config: strict validation, limits, unknown keys, size', async () => {
+  const C = await register('Config Checker'), put = b => call('PUT', '/api/watch/config', { token: C, body: b }), page = f => ({ fields: f });
+  const run = x => { const c = CFG(); Object.assign(c.sports.run, x); return c; }, W = (n, items = 1) => [...Array(n)].map((_, i) => ({ id: 'w' + i, name: 'W ' + i, items: [...Array(items)].map(() => ({ ex: 'bench', sets: 3, reps: 8, kg: 60, rest: 90 })) }));
+  const bad = [[null, /object/], [{ ...CFG(), v: 2 }, /v: 1/], [{ ...CFG(), extra: 1 }, /unknown key "extra"/], [{ ...CFG(), sports: { ...CFG().sports, swim: {} } }, /unknown key "swim"/],
+    [run({ pages: [] }), /1 to 4 pages/], [run({ pages: [page(['hr']), page(['hr']), page(['hr']), page(['hr']), page(['hr'])] }), /1 to 4 pages/], [run({ pages: [page([])] }), /1 to 4 fields/],
+    [run({ pages: [page(['pace', 'hr', 'dist', 'time', 'clock'])] }), /1 to 4 fields/], [run({ pages: [page(['power'])] }), /not a run field/], [run({ pages: [page(['hr', 'hr'])] }), /twice/],
+    [run({ pages: [{ fields: ['hr'], big: 1 }] }), /unknown key "big"/], [run({ autoLap: 'yes' }), /true or false/], [run({ color: 'red' }), /unknown key/],
+    [{ ...CFG(), sports: { other: { pages: [page(['hr'])], map: true } } }, /unknown key "map"/], [{ ...CFG(), more: ['Run'] }, /not a sport/], [{ ...CFG(), more: Array(41).fill('Yoga') }, /up to 40/],
+    [{ ...CFG(), workouts: W(31) }, /up to 30/], [{ ...CFG(), workouts: W(1, 21) }, /up to 20 exercises/], [{ ...CFG(), workouts: [...W(1), ...W(1)] }, /unique/], [{ ...CFG(), workouts: [{ ...W(1)[0], name: ' ' }] }, /name: 1 to 40/],
+    [{ ...CFG(), workouts: [{ ...W(1)[0], name: 'x'.repeat(41) }] }, /name: 1 to 40/], [{ ...CFG(), workouts: [{ ...W(1)[0], id: '../x' }] }, /id/]];
+  for (const [field, val, re] of [['sets', 0, /sets/], ['sets', 11, /sets/], ['reps', 101, /reps/], ['reps', 2.5, /reps/], ['kg', -1, /kg/], ['kg', 501, /kg/], ['kg', 80.1, /kg/], ['kg', '80', /kg/], ['rest', 601, /rest/], ['rest', 7, /rest/], ['ex', '<b>', /ex/], ['note', 'x', /unknown key "note"/]])
+    bad.push([{ ...CFG(), workouts: [{ id: 'w', name: 'W', items: [{ ex: 'bench', sets: 3, reps: 8, kg: 60, rest: 90, [field]: val }] }] }, re]);
+  for (const [b, re] of bad) { const r = await put(b); assert.equal(r.status, 400, JSON.stringify(b)?.slice(0, 120)); assert.match(r.j.error, re); }
+  assert.equal((await call('PUT', '/api/watch/config', { token: C, raw: '{nope' })).status, 400);
+  assert.equal((await call('PUT', '/api/watch/config', { token: C, raw: JSON.stringify({ ...CFG(), pad: 'x'.repeat(70e3) }) })).status, 413);
+  assert.equal((await call('GET', '/api/watch/config', { token: C })).j.stored, false, 'nothing bad was stored');
+  const full = { ...CFG(), more: (await import('../js/watchfields.js')).MORE.slice(0, 40), workouts: W(30, 20).map(w => ({ ...w, name: 'Upper body heavy and long name x' })) };
+  const r = await put(full); assert.equal(r.status, 200, r.j.error); assert.equal(r.j.config.workouts.length, 30);
+  const tidy = await put({ ...CFG(), sports: { run: CFG().sports.run }, more: ['Yoga', 'Yoga'], workouts: [{ id: 'a', name: '  Leg   day <3 ', items: [] }] });
+  assert.equal(tidy.status, 200); assert.deepEqual(tidy.j.config.more, ['Yoga']); assert.equal(tidy.j.config.workouts[0].name, 'Leg day 3'); assert.deepEqual(tidy.j.config.sports.ride.pages[0].fields, ['power3s', 'speed', 'hr', 'time'], 'a missing sport gets the defaults');
+});
+test('config: the watch gets the compact form with its token, the strength setup brings workouts, top 20 and recent', async () => {
+  const C = await register('Config Watch'), t = await pairWith(C);
+  assert.equal((await call('GET', '/api/watch/config', { bearer: 'rfw_' + 'y'.repeat(43) })).status, 401, 'a wrong watch token is not taken for the phone');
+  const d = await call('GET', '/api/watch/config', { bearer: t }); assert.equal(d.status, 200);
+  assert.deepEqual(d.j.run, { p: [['pace', 'dist', 'time', 'hr'], ['lapPace', 'lapDist', 'cadence', 'hrZone']], map: 1, seg: 1, lap: 1, pause: 0, vib: 1 }); assert.deepEqual(d.j.w, []); assert.equal(d.j.at, 0);
+  await call('PUT', '/api/account/settings', { token: C, body: { settings: { kraftEx: [{ k: 'my_9', n: 'Thai kick heavy bag combo', t: 'w', g: 'Custom' }] }, at: Date.now() } });
+  await call('PUT', '/api/watch/config', { token: C, body: CFG() });
+  const c = await call('GET', '/api/watch/config', { bearer: t }); assert.ok(c.size < 4096, `compact config is ${c.size} bytes`);
+  assert.deepEqual(c.j.run, { p: [['pace', 'hr'], ['lapTime']], map: 0, seg: 1, lap: 1, pause: 1, vib: 0 }); assert.deepEqual(c.j.ride.p, [['power3s', 'speed', 'hr', 'np']]); assert.equal(c.j.ride.seg, 0);
+  assert.deepEqual(c.j.other, { p: [['hr', 'time', 'clock', 'kcal']] }); assert.deepEqual(c.j.more, [['Basketball', 'Basketball'], ['Yoga', 'Yoga']]);
+  assert.deepEqual(c.j.w, [{ id: 'w1', n: 'Push day', it: [['bench', 3, 8, 80, 120], ['plank', 2, 60, 0, 60], ['my_9', 3, 12, 22.5, 90]] }]); assert.ok(c.j.at > 1e9);
+  assert.equal((await call('GET', '/api/watch/config', { token: C })).j.config.v, 1, 'the phone still gets the full form');
+  const now = Date.now(); await call('PUT', '/api/account/kraft/r1', { token: C, body: { id: 'r1', name: 'Legs', start: now - 864e5, date: now - 864e5 + 3600e3, dur: 3600, ex: [{ k: 'squat', n: 'Squat (barbell)', t: 'w', sets: [{ kg: 100, r: 5, done: true }] }, { k: 'plank', n: 'Plank', t: 'time', sets: [{ s: 90, done: true }] }] } });
+  const s = (await call('GET', '/api/watch/strength/setup', { bearer: t })); assert.ok(s.size < 8192, `setup is ${s.size} bytes`); const S = s.j;
+  assert.deepEqual(S.workouts, c.j.w); assert.deepEqual(S.top, ['bench', 'incline', 'ohp', 'dip', 'push', 'pull', 'lat', 'row', 'cable', 'squat', 'legpress', 'dead', 'rdl', 'lunge', 'legcurl', 'calf', 'curl', 'tri', 'lateral', 'plank']);
+  assert.deepEqual(S.recent, ['squat', 'plank'], 'recent: what was done lately');
+  for (const id of [...S.top, 'my_9']) assert.ok(S.ex.some(e => e.id === id), id + ' is described in ex');
+  assert.equal(S.ex.find(e => e.id === 'my_9').n, 'Thai kick heavy b.'); assert.equal(S.ex.find(e => e.id === 'cable').n, 'Cable row', 'the short top-20 names');
+  assert.deepEqual(S.ex.find(e => e.id === 'plank'), { id: 'plank', n: 'Plank', t: 'time', s: [[0, 90]], b: 90 });
+  const r = await call('POST', '/api/watch/strength', { bearer: t, body: { id: 'plank12345', start: nowS() - 600, duration: 500, sets: [{ ex: 'plank', kg: 0, reps: 75, t: 100 }, { ex: 'bench', kg: 80, reps: 8, t: 300 }] } });
+  assert.equal(r.status, 200); const w = (await call('GET', '/api/account/kraft/watch-plank12345', { token: C })).j;
+  assert.deepEqual(w.ex[0], { k: 'plank', n: 'Plank', t: 'time', sets: [{ kg: '', r: '', s: 75, done: true }] }, 'a timed set keeps its seconds');
+});
 test('limits: codes per account, pair tries per address, wrong codes for everyone', async () => {
   const C = await register('Code Spammer');
   for (let i = 0; i < 10; i++) assert.equal((await call('POST', '/api/watch/code', { token: C })).status, 200);
@@ -144,3 +208,4 @@ test('limits: codes per account, pair tries per address, wrong codes for everyon
   const r = await call('POST', '/api/watch/pair', { body: { code: c.j.code } }); assert.equal(r.status, 429, 'after 60 wrong codes pairing pauses for everyone');
   const files = await readdir(DATA); assert.ok(files.includes('watches.json'));
 });
+
