@@ -1,4 +1,6 @@
-// Live interval watts in a workout end to end (owner: "VO2max 5 × 5, and turn the watts up while riding, also with the controller").
+// Live interval watts in a workout end to end (owner: "VO2max 5 × 5, and turn the watts up while riding, also with the controller"),
+// the easy-step offset (A / D, pad ← / →), the ERG ramps, and arrow keys from a controller in keyboard mode with a live
+// (faked) trainer: interval / step watts, never keyboard watts; the group tailwind never touches the ERG target.
 // 3D ride (Passo Demo, no trainer, 2D demo scene) with the "VO2max 5 × 5" preset: W / S keys (Shift 1 W), the − / + buttons in
 // the workout panel, pause Options and a fake gamepad (navigator.getGamepads replaced before the app loads; D-pad ↑ / ↓ in a
 // workout) move the hard intervals' target in watts (±150 W); rests stay; the gear keys + / − and pad R still shift; the saved
@@ -56,11 +58,8 @@ function fakePad() { // a standard-mapping gamepad; window.__pad.press(i) holds 
     const F = await p.evaluate(() => window.__ride.ftp), B = Math.round(110 * F / 100), RB = Math.round(50 * F / 100), T = a => String(Math.max(50, B + a)); // interval and rest targets from this FTP
     const h0 = await H();
     ok(h0.step === 'VO2max 1/5' && h0.t === String(B) && h0.a === 0, `workout runs: VO2max 1/5, target ${B} W (110 % of FTP ${F}), offset 0`, JSON.stringify(h0));
-    ok(!h0.adj && h0.op === '0', 'offset 0: the − / + control stays hidden (calm HUD)', JSON.stringify(h0));
-    await p.hover('#hWork'); await p.waitForTimeout(350);
-    ok(+(await H()).op > 0.95, 'hovering the workout panel shows − ±0 W +');
-    if (SHOTS) await p.screenshot({ path: path.join(SHOTS, 'ride_hud_0_hover_1280.png') });
-    await p.mouse.move(640, 300); await p.waitForTimeout(1800);
+    ok(!h0.adj && h0.op === '0', 'offset 0: the − / + control stays folded away (calm panel)', JSON.stringify(h0));
+    await p.waitForTimeout(1800);
     if (SHOTS) await p.screenshot({ path: path.join(SHOTS, 'ride_hud_0_1280.png') });
 
     // ---- keyboard: W twice -> +10 W, S three times -> −5 W ----
@@ -69,7 +68,7 @@ function fakePad() { // a standard-mapping gamepad; window.__pad.press(i) holds 
     ok(h1.a === 10 && h1.v === '+10 W' && h1.t === T(10), `W W: offset +10 W, #hWT = ${T(10)}`, JSON.stringify(h1));
     await p.waitForTimeout(300); ok(h1.adj && +(await H()).op > 0.95, 'offset not 0: the control stays visible', JSON.stringify(h1));
     ok(h1.flash === `Intervals +10 W · target ${T(10)} W`, `flash "Intervals +10 W · target ${T(10)} W"`, h1.flash);
-    ok(h1.next === `Next: Rest · ${RB} W`, `the rest after it stays ${RB} W`, h1.next);
+    ok(h1.next === `Next: Rest · ${RB} W`, `"Next: Rest · ${RB} W" (the rest stays)`, h1.next);
     await p.waitForTimeout(1800);
     if (SHOTS) await p.screenshot({ path: path.join(SHOTS, 'ride_hud_plus10_1280.png') });
     for (let i = 0; i < 3; i++) await p.keyboard.press('s');
@@ -90,9 +89,26 @@ function fakePad() { // a standard-mapping gamepad; window.__pad.press(i) holds 
 
     // ---- the "then" preview in a rest is the next interval, tuned ----
     for (let i = 0; i < 32; i++) await p.keyboard.press('w'); // −150 + 160 -> +10
-    await p.evaluate(() => { window.__ride.elapsed = 15 * 60 + 5; }); await p.waitForTimeout(300);
+    await p.evaluate(() => { window.__ride.elapsed = 15 * 60 + 8; }); await p.waitForTimeout(300); // past the 5 s ramp down
     const hr = await H();
     ok(hr.a === 10 && hr.step === 'Rest' && hr.t === String(RB) && hr.next === `Next: VO2max 2/5 · ${T(10)} W`, `in a rest: target ${RB} W untouched, next interval previewed at ${T(10)} W`, JSON.stringify(hr));
+    // ---- this easy step: D / A (pad ← / →) a few watts, only until the next step; W / S stay the interval watts ----
+    await p.keyboard.press('d'); await p.keyboard.press('d'); await p.keyboard.press('Shift+A'); await p.waitForTimeout(150);
+    const hs = await p.evaluate(() => ({ s: window.__ride.sAdj, a: window.__ride.wAdj, t: document.querySelector('#hWT').textContent, step: document.querySelector('#hWStep').textContent, f: document.querySelector('#hFlash')?.textContent }));
+    ok(hs.s === 9 && hs.a === 10 && hs.t === String(RB + 9) && hs.step === 'Rest +9 W', `D D Shift+A in the rest: this step +9 W (${RB + 9} W), interval offset still +10`, JSON.stringify(hs));
+    ok(hs.f === `This step (Rest) +9 W · target ${RB + 9} W · until the next step`, 'flash names "This step"', hs.f);
+    await p.keyboard.press('w'); await p.waitForTimeout(100);
+    ok(await p.evaluate(() => window.__ride.wAdj === 15 && window.__ride.sAdj === 9), 'W in the rest still moves the interval watts (+15), the step offset stays');
+    await p.keyboard.press('s'); await p.waitForTimeout(100);
+    // ---- ERG ramp: 10 s up into the interval, the step offset ends with the rest ----
+    await p.evaluate(() => { window.__ride.elapsed = 20 * 60 - 5; }); await p.waitForTimeout(200);
+    const rp = await p.evaluate(() => ({ t: +document.querySelector('#hWT').textContent, step: document.querySelector('#hWStep').textContent, ramp: window.__ride.wNow.ramp }));
+    ok(rp.ramp === 'in' && rp.t > RB + 9 && rp.t < B + 10 && /ramp up/.test(rp.step), `ERG ramp: 5 s before the interval the target is ${rp.t} W (between ${RB + 9} and ${B + 10})`, JSON.stringify(rp));
+    if (SHOTS) await p.screenshot({ path: path.join(SHOTS, 'ride_hud_ramp_1280.png') });
+    await p.waitForFunction(() => document.querySelector('#hWStep').textContent === 'VO2max 2/5', null, { timeout: 8000 });
+    ok(await p.evaluate(() => window.__ride.sAdj === 0), 'the step offset reset at the next step');
+    await p.keyboard.press('d'); await p.waitForTimeout(100);
+    ok(await p.evaluate(() => window.__ride.sAdj === 0 && /Hard interval/.test(document.querySelector('#hFlash')?.textContent)), 'D in a hard interval changes nothing and says to use ↑ / ↓');
     await p.evaluate(() => { window.__ride.elapsed = 10 * 60 + 30; }); await p.waitForTimeout(300);
 
     // ---- gear keys still shift, not the watts ----
@@ -109,7 +125,7 @@ function fakePad() { // a standard-mapping gamepad; window.__pad.press(i) holds 
 
     // ---- the controller: D-pad ↑ / ↓ tune the watts in a workout, L/R still shift ----
     await p.evaluate(() => { window.__pad.on = true; }); await p.waitForTimeout(200);
-    ok(/D-pad up \/ down: interval watts/.test((await H()).flash), 'pad hint on connect: "D-pad up / down: interval watts"', (await H()).flash);
+    ok(/D-pad ↑↓: interval watts, ←→: this step/.test((await H()).flash), 'pad hint on connect: "D-pad ↑↓: interval watts, ←→: this step"', (await H()).flash);
     const gA = (await H()).gi;
     await p.evaluate(() => window.__pad.press(12)); await p.evaluate(() => window.__pad.press(12));
     const h6 = await H(); ok(h6.a === 25 && h6.gi === gA, 'pad D-pad ↑ twice: +25 W, gear unchanged', JSON.stringify(h6));
@@ -118,6 +134,11 @@ function fakePad() { // a standard-mapping gamepad; window.__pad.press(i) holds 
     await p.evaluate(() => window.__pad.press(5)); const h8 = await H();
     ok(h8.a === 20 && h8.gi !== gA, 'pad R still shifts, offset unchanged', JSON.stringify({ gA, gi: h8.gi }));
 
+    await p.evaluate(() => { window.__ride.elapsed = 15 * 60 + 30; }); await p.waitForTimeout(250);
+    const mus0 = await p.evaluate(() => window.__ride.music?.on);
+    await p.evaluate(() => window.__pad.press(15)); await p.evaluate(() => window.__pad.press(15)); await p.evaluate(() => window.__pad.press(14));
+    ok(await p.evaluate(m => window.__ride.sAdj === 5 && window.__ride.music?.on === m, mus0), 'pad D-pad → → ← in the rest: this step +5 W, music untouched');
+    await p.evaluate(() => { window.__ride.elapsed = 10 * 60 + 40; }); await p.waitForTimeout(250);
     // ---- back to +10 W and finish: options, saved record and summary ----
     await p.keyboard.press('s'); await p.keyboard.press('s'); await p.waitForTimeout(1200);
     ok((await H()).a === 10, 'back to +10 W');
@@ -139,15 +160,67 @@ function fakePad() { // a standard-mapping gamepad; window.__pad.press(i) holds 
     if (SHOTS) await p.screenshot({ path: path.join(SHOTS, 'ride_summary_1280.png') });
     await ctx.close();
 
-    // ---- a ride without a workout: W / S do nothing, no control ----
-    const c2 = await b.newContext({ viewport: { width: 1280, height: 860 } });
-    const p2 = await c2.newPage(); p2.on('pageerror', e => errs.push('free ride: ' + e.message)); p2.on('dialog', d => d.accept());
-    await p2.goto(BASE + '/?desktop&noprofile&demo&laptest'); await p2.waitForTimeout(600);
-    await p2.click('.tab[data-view="library"]'); await p2.click('.card[data-id="demo"]'); await p2.waitForSelector('#workSel'); await p2.selectOption('#workSel', '');
-    await p2.click('#rideBtn'); await p2.waitForFunction(() => window.__ride?.running && !document.querySelector('.countdown'), null, { timeout: 30000 });
-    await p2.keyboard.press('w'); await p2.waitForTimeout(150);
-    ok(await p2.evaluate(() => !window.__ride.wAdj && !document.querySelector('#hWAdj')), 'free ride: no interval watt control, W does nothing');
-    await c2.close();
+    // ---- non-ERG workout: the target is a zone to hold ----
+    const ride2 = async (work, erg, tag) => { const c = await b.newContext({ viewport: { width: 1280, height: 720 } }), q2 = await c.newPage();
+      q2.on('pageerror', e => errs.push(tag + ': ' + e.message)); q2.on('dialog', d => d.accept());
+      await q2.goto(BASE + '/?desktop&noprofile&demo&laptest'); await q2.waitForTimeout(600);
+      await q2.click('.tab[data-view="library"]'); await q2.click('.card[data-id="demo"]'); await q2.waitForSelector('#workSel'); await q2.selectOption('#workSel', work);
+      if (await q2.isChecked('#ergChk') !== erg) await q2.click('#ergChk');
+      await q2.click('#rideBtn'); await q2.waitForFunction(() => window.__ride?.running && !document.querySelector('.countdown'), null, { timeout: 30000 });
+      return [c, q2]; };
+    // a trainer that delivers power (no Bluetooth: the shared Trainer object gets a fake connection and fresh data)
+    const fakeTrainer = q2 => q2.evaluate(() => { const t = window.__ride.state.trainer; t.device = { gatt: { connected: true } }; t.data = { power: 240, cadence: 90, speed: 9, hr: 0 };
+      window.__tl = setInterval(() => { t.lastData = performance.now(); t.data.power = 240; }, 100); t.lastData = performance.now(); });
+    {
+      const [c, q2] = await ride2('vo2_5x5', false, 'non-ERG');
+      await q2.evaluate(() => { window.__ride.elapsed = 10 * 60 + 5; }); await q2.waitForTimeout(300);
+      const z = await q2.evaluate(() => ({ name: document.querySelector('#hWName').textContent, t: +document.querySelector('#hWT').textContent, w: window.__ride.wNow }));
+      ok(z.name === 'VO2max 5 × 5' && z.t === z.w.target, 'non-ERG workout: panel without "ERG", target shown', JSON.stringify({ name: z.name, t: z.t }));
+      await q2.evaluate(() => { window.__ride.elapsed = 10 * 60 - 5; }); await q2.waitForTimeout(200);
+      ok(await q2.evaluate(() => window.__ride.wNow.ramp === null), 'non-ERG: no ramp (the target is a step to hit, nothing is pushed to the trainer)');
+      await c.close();
+    }
+    // ---- B: a controller in keyboard mode sends ↑ / ↓; with a live trainer they tune the intervals, never keyboard watts ----
+    {
+      const [c, q2] = await ride2('vo2_5x5', true, 'trainer workout');
+      await q2.evaluate(() => { window.__ride.elapsed = 10 * 60 + 5; }); await fakeTrainer(q2); await q2.waitForTimeout(400);
+      const base = await q2.evaluate(() => +document.querySelector('#hWT').textContent);
+      for (let k = 0; k < 3; k++) await q2.keyboard.press('ArrowUp');
+      await q2.waitForTimeout(150);
+      const k1 = await q2.evaluate(() => { const r = window.__ride; return { a: r.wAdj, kp: !!r.keyPower, mp: r.manualPower, src: r.source, t: +document.querySelector('#hWT').textContent, erg: r.state.trainer.erg, f: document.querySelector('#hFlash')?.textContent }; });
+      ok(k1.a === 15 && !k1.kp && k1.mp === 0 && k1.src === 'trainer', 'trainer + workout: ↑ ↑ ↑ = interval watts +15 W, no keyboard watts', JSON.stringify(k1));
+      ok(k1.t === base + 15 && k1.erg === base + 15, `ERG follows: the trainer is asked for ${base + 15} W`, JSON.stringify(k1));
+      ok(k1.f === 'Controller is in keyboard mode: switch it to D for all buttons', 'one-time hint: controller in keyboard mode', k1.f);
+      await q2.keyboard.press('Shift+ArrowDown'); await q2.waitForTimeout(100);
+      ok(await q2.evaluate(() => window.__ride.wAdj === 14 && !window.__ride.keyPower), 'Shift+↓ = −1 W');
+      // group seams: "keep the group together" tailwind and drafting only change the virtual speed, never the ERG target
+      const tw = await q2.evaluate(async () => { const r = window.__ride, t = r.state.trainer; r._togetherTo = 0.6; r._draftTo = 0.3; await new Promise(z => setTimeout(z, 1500));
+        return { erg: t.erg, target: r.wNow.target, togK: r._togK }; });
+      ok(tw.togK > 0.1 && tw.erg === tw.target && tw.erg === base + 14, `tailwind / slipstream on (k ${tw.togK.toFixed(2)}): the trainer still holds ${base + 14} W`, JSON.stringify(tw));
+      await q2.evaluate(() => { const r = window.__ride; r._togetherTo = 0; r._draftTo = 0; r.elapsed = 20 * 60 - 5; }); await q2.waitForTimeout(200);
+      const rr = await q2.evaluate(() => ({ erg: window.__ride.state.trainer.erg, t: window.__ride.wNow.target, ramp: window.__ride.wNow.ramp }));
+      ok(rr.ramp === 'in' && rr.erg === rr.t && rr.t < base + 14, `ERG ramp reaches the trainer (${rr.erg} W, 5 s before the interval)`, JSON.stringify(rr));
+      await q2.keyboard.press('ArrowRight'); await q2.waitForTimeout(100);
+      ok(await q2.evaluate(() => window.__ride.sAdj === 5 && !window.__ride.keyPower), 'trainer: → in the rest = this step +5 W');
+      await q2.keyboard.press('Space'); await q2.waitForSelector('#pSave'); await q2.click('#pSave'); await q2.waitForSelector('.finish', { timeout: 10000 });
+      ok(!/arrow keys/i.test(await q2.textContent('.finish')), 'the ride is saved normally (not "ridden with the arrow keys")');
+      await c.close();
+    }
+    {
+      const [c, q2] = await ride2('', true, 'trainer free ride');
+      await fakeTrainer(q2); await q2.waitForTimeout(300);
+      await q2.keyboard.press('ArrowUp'); await q2.keyboard.press('ArrowUp'); await q2.waitForTimeout(100);
+      ok(await q2.evaluate(() => !window.__ride.keyPower && window.__ride.manualPower === 0 && !window.__ride.wAdj), 'trainer, no workout: ↑ does nothing (no keyboard watts)');
+      await c.close();
+    }
+    {
+      const [c, q2] = await ride2('', true, 'free ride');
+      await q2.keyboard.press('w'); await q2.waitForTimeout(150);
+      ok(await q2.evaluate(() => !window.__ride.wAdj && !document.querySelector('#hWAdj') && !document.querySelector('#hWork')), 'free ride: no workout bar, W does nothing');
+      await q2.keyboard.press('ArrowUp'); await q2.waitForTimeout(100);
+      ok(await q2.evaluate(() => window.__ride.keyPower === true && window.__ride.manualPower === 10), 'no trainer: ↑ still sets test watts (as before)');
+      await c.close();
+    }
 
     // ---- phone indoor page: the preset, "Intensity" and the interval watts ----
     const c3 = await b.newContext({ viewport: { width: 390, height: 844 }, deviceScaleFactor: 2, isMobile: true, hasTouch: true });
