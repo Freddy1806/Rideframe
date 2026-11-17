@@ -5,6 +5,8 @@
 // the hidden case ("Show me when I ride" off) and a signed-out ride that never sends a heartbeat; the phone home strip at
 // 390 px (read-only, Copy link, no sideways scroll) and both settings. PeerJS is replaced by a small relay through the test
 // (no internet needed; real WebRTC between two machines is not tested here). Starts its own serve.mjs on a free port.
+// A rides a workout in ERG (VO2max 5 × 3) with his own +10 W offset: B joining never touches A's workout (target, ERG,
+// offsets, pause, the ride clock), nothing of the workout goes over the wire, and B gets none of it.
 // Usage: NODE_PATH=$(npm root -g) node tools/live-ui.cjs [shotsDir]
 const { chromium } = require('playwright');
 const { spawn } = require('node:child_process'), fs = require('node:fs'), os = require('node:os'), path = require('node:path'), net = require('node:net');
@@ -74,11 +76,13 @@ async function peerOut({ page }, m) {
     const ctxA = await ctxFor(A), RA = await open(ctxA, '/?desktop&noprofile&demo&laptest', 'A');
     const beatsA = []; RA.on('request', r => { if (/\/api\/live$/.test(r.url()) && r.method() === 'POST') beatsA.push(Date.now()); });
     ok(!beatsA.length, 'no heartbeat in the library (not riding)');
-    await startDemoRide(RA);
+    await RA.waitForSelector('.card[data-id="demo"]'); await RA.click('.card[data-id="demo"]'); await RA.selectOption('#workSel', 'vo2_5x3'); // A rides a workout, ERG on (the default)
+    await RA.click('#rideBtn'); await RA.waitForSelector('#hPause', { timeout: 60000 });
+    ok(await RA.evaluate(() => window.__ride.workout?.id === 'vo2_5x3' && window.__ride.erg), 'A rides VO2max 5 × 3 in ERG');
     await RA.waitForFunction(() => window.__ride?.presence?.on, null, { timeout: 15000 });
     ok(beatsA.length >= 1, 'A in a ride: heartbeat sent');
 
-    const ctxB = await ctxFor(B), LB = await open(ctxB, '/?desktop&noprofile&demo', 'B');
+    const ctxB = await ctxFor(B), LB = await open(ctxB, '/?desktop&noprofile&demo&laptest', 'B');
     await LB.waitForSelector('#live.on .lvcard', { timeout: 20000 });
     const cardA = LB.locator('.lvcard', { hasText: 'Max Rider' });
     ok(await cardA.count() === 1, 'B sees Max Rider in "Riding now"');
@@ -124,6 +128,10 @@ async function peerOut({ page }, m) {
     ok(green === 'rgb(47, 211, 107)', 'the online dot is green: ' + green);
     await shot(LB, 'library_friends_online_1280.png');
     // ---- B taps Join: A's ride opens a group by itself, B ends up in it with A's code ----
+    // A's workout before the join: his own +10 W offset, every ERG target and the ride clock recorded from here on
+    await RA.evaluate(() => { const r = window.__ride, t = r.state.trainer, o = t.setPower.bind(t); window.__erg = []; t.setPower = w => { window.__erg.push([r.elapsed, w]); return o(w); };
+      r._wTune(10); window.__wB = { id: r.workout.id, wAdj: r.wAdj || 0, wAdjE: r.wAdjE || 0, erg: r.erg, ftp: r.ftp, el: r.elapsed };
+      window.__elS = []; window.__elT = setInterval(() => window.__elS.push([performance.now(), r.elapsed, r.paused]), 100); });
     const t0 = Date.now();
     await cardA.locator('.lvjoin').click();
     await LB.waitForSelector('#liveAsk'); ok(/Asking Max Rider\s*to let you in/.test(await LB.textContent('#liveAsk')), 'B: "Asking Max Rider to let you in …"');
@@ -141,6 +149,20 @@ async function peerOut({ page }, m) {
     ok(await vis(LB, '#hPause') && (await LB.textContent('#hGCode').catch(() => '')).trim() === code, 'B is riding in A\'s group (late join next to the host)');
     await RA.waitForFunction(() => /Freddy/.test(document.querySelector('#hGroup .glist')?.textContent || ''), null, { timeout: 15000 }).catch(() => {});
     ok(/Freddy/.test(await RA.textContent('#hGroup .glist')), 'A sees Freddy in his group chip');
+    // ---- A's workout after B joined: the same workout, offsets, ERG and clock; the target is what A's own clock asks for ----
+    const wk = await RA.evaluate(async () => { clearInterval(window.__elT); const { workoutAt } = await import('/js/workouts.js'), r = window.__ride, b = window.__wB, s = window.__elS;
+      let back = 0, jump = 0, paused = 0; for (let i = 1; i < s.length; i++) { const de = s[i][1] - s[i - 1][1], dw = (s[i][0] - s[i - 1][0]) / 1000; if (de < -1e-9) back++; if (de > dw + 0.3) jump++; if (s[i][2]) paused++; }
+      const tgt = el => { const v = workoutAt(r.workout, el, r.ftp); if (v.done || !v.step || v.step.free) return null; return Math.max(50, Math.round(v.target + (v.step.pct >= 88 ? r.wAdj || 0 : r.wAdjE || 0))); };
+      const bad = window.__erg.filter(([el, x]) => x !== tgt(el));
+      return { same: r.workout.id === b.id && (r.wAdj || 0) === b.wAdj && (r.wAdjE || 0) === b.wAdjE && r.erg === b.erg && r.ftp === b.ftp, adj: b.wAdj + b.wAdjE, n: s.length, back, jump, paused, el0: b.el, el1: r.elapsed,
+        own: tgt(r.elapsed), now: r.wNow?.target, trainer: r.state.trainer.erg, calls: window.__erg.length, bad: bad.slice(0, 3) }; });
+    ok(wk.same && wk.adj === 10, `A's workout untouched by the join: same workout, ERG on, FTP, his +10 W offset (wAdj / wAdjE) kept`);
+    ok(wk.n > 20 && !wk.back && !wk.jump && !wk.paused && wk.el1 > wk.el0, `A's ride clock ran on through the join: ${wk.el0.toFixed(1)} -> ${wk.el1.toFixed(1)} s, ${wk.n} samples, no step back, no jump, never paused`);
+    ok(wk.calls > 20 && !wk.bad.length && wk.now === wk.own && wk.trainer === wk.own, `A's ERG target follows only his own clock: ${wk.calls} trainer targets during the join all = workoutAt(his time) + offset, now ${wk.own} W` + (wk.bad.length ? ' ' + JSON.stringify(wk) : ''));
+    const wire = await LB.evaluate(() => { const a = window.__ride.group.others().find(r => r.name === 'Max Rider'); return a ? Object.keys(a).sort() : null; });
+    ok(wire && !wire.some(k => /target|erg|work|adj|step|pause|^el$/i.test(k)), 'nothing of A\'s workout reaches B (what B knows of A: ' + (wire || []).join(', ') + ')');
+    const wb = await LB.evaluate(() => { const r = window.__ride; return { w: r.workout?.id ?? null, erg: r.state.trainer.erg ?? null, adj: (r.wAdj || 0) + (r.wAdjE || 0), wNow: r.wNow?.target ?? null }; });
+    ok(wb.w === null && wb.erg === null && wb.adj === 0 && wb.wNow === null, 'B has his own ride: no workout of A\'s, no ERG target, no offsets (a group ride starts without a workout, js/app.js startRide)');
 
     // ---- "Friends can join me without asking" off: the HUD asks, Not now -> "Max Rider declined" ----
     await api('PUT', '/api/live/prefs', A.token, { auto: false });
