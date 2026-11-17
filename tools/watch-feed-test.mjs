@@ -125,6 +125,37 @@ test('dedupe, strength: Strava WeightTraining first, then the watch session: lin
 });
 
 /* ---- segments ---- */
+// a run recorded with the phone (js/outdoor.js record(): routeId 'run', outdoor, the GPS track in samples, date = the end)
+const PHONE = (startMs, o = {}) => ({ id: 'ph-' + startMs, routeId: 'run', outdoor: true, sport: 'run', date: startMs + 3700e3, complete: true, duration: 3530, elapsed: 3700, distance: 10180, gain: 80, startD: 0,
+  workout: 'Morning run', avgPower: 0, maxPower: 0, kj: 0, samples: Array.from({ length: 5 }, (_, i) => [i, 3.1, 0, 0, 0, 0, 47.37 + i * 1e-4, 8.54]), ...o });
+const WATCHREC = (startMs, o = {}) => ({ id: 'watch-run9abcdef', routeId: 'ext', sportType: 'Run', sport: 'run', source: 'watch', start: startMs + 40e3, date: startMs + 40e3, duration: 3540, elapsed: 3690, distance: 10230, gain: 84, avgHr: 151, maxHr: 178, kcal: 712, nLaps: 10, complete: true, avgPower: 0, ...o });
+test('dedupe, phone and watch: a run recorded on both is one entry in either order; the phone record stays, hr and kcal from the watch', () => {
+  const t0 = Date.now() - 9000e3, p = PHONE(t0), w = WATCHREC(t0);
+  for (const list of [[p, w], [w, p]]) {
+    const c = collapse(list); assert.equal(c.length, 1, 'one entry'); const m = c[0];
+    assert.equal(m.id, p.id, 'the phone record stays'); assert.equal(m.samples, p.samples, 'with its track'); assert.equal(m.routeId, 'run'); assert.equal(m.workout, 'Morning run');
+    assert.deepEqual([m.distance, m.gain, m.avgHr, m.maxHr, m.kcal, m.nLaps, m.watch], [10180, 80, 151, 178, 712, 10, 'run9abcdef'], 'its numbers kept, the missing ones from the watch');
+  }
+  assert.equal(collapse([PHONE(t0, { avgHr: 149 }), w])[0].avgHr, 149, 'a heart rate the phone has (strap) is kept');
+  const ride = PHONE(t0, { routeId: 'outdoor', sport: 'ride' }), wr = WATCHREC(t0, { sportType: 'GravelRide', sport: 'ride' });
+  assert.equal(collapse([ride, wr]).length, 1, 'a ride: all bikes are one family'); assert.equal(collapse([wr, ride])[0].id, ride.id);
+  assert.equal(collapse([p, WATCHREC(t0, { start: t0 + 200e3, date: t0 + 200e3 })]).length, 2, 'starts more than 2 minutes apart: two entries');
+  assert.equal(collapse([p, WATCHREC(t0, { duration: 3000, elapsed: 3100 })]).length, 2, 'durations more than 5 % apart: two entries');
+  assert.equal(collapse([p, WATCHREC(t0, { sportType: 'Ride', sport: 'ride' })]).length, 2, 'another sport family: two entries');
+  assert.equal(collapse([p, PHONE(t0, { id: 'ph-2' })]).length, 2, 'two phone records are left alone (no watch)');
+  const s = fromStrava({ id: 99010, name: 'Strava copy', sport_type: 'Run', start_date: new Date(t0 + 20e3).toISOString(), elapsed_time: 3700, moving_time: 3530, distance: 10150, average_heartrate: 150, map: { summary_polyline: 'pp' } });
+  for (const list of [[p, w, s], [s, w, p], [w, p, s]]) { const c = collapse(list); assert.equal(c.length, 1, 'phone, watch and Strava: one entry'); assert.equal(c[0].id, p.id); assert.equal(c[0].stravaId, '99010'); assert.equal(c[0].kcal, 712); }
+});
+test('dedupe, phone and watch on the server: the week summary counts the run once, whichever arrives first', async () => {
+  for (const watchFirst of [false, true]) {
+    const A = await register(watchFirst ? 'Twin Watch First' : 'Twin Phone First'), t = await pairWith(A), start = nowS() - 6000, p = PHONE(start * 1000 - 40e3);
+    const s0 = (await call('GET', '/api/watch/summary', { bearer: t })).j;
+    const phone = () => call('PUT', '/api/account/rides/' + p.id, { token: A, body: p }), watch = () => call('POST', '/api/watch/activity', { bearer: t, body: ACT({ id: 'twinph' + (watchFirst ? 'w1' : 'p1') + 'xx', start, duration: 3690, moving: 3540 }) });
+    if (watchFirst) { assert.equal((await watch()).status, 200); assert.equal((await phone()).status, 200); } else { assert.equal((await phone()).status, 200); assert.equal((await watch()).status, 200); }
+    assert.equal((await call('GET', '/api/account/rides', { token: A })).j.ids.length, 2, 'both stay stored');
+    const s1 = (await call('GET', '/api/watch/summary', { bearer: t })).j; assert.equal(s1.sessions, s0.sessions + 1, `one session (${watchFirst ? 'watch' : 'phone'} first)`);
+  }
+});
 test('segments: without the account\'s Strava { segs: [], strava: false }; validation', async () => {
   const A = await register('Seg None'), t = await pairWith(A);
   const r = await call('GET', `/api/watch/segments?lat=${C0[0]}&lon=${C0[1]}&type=run`, { bearer: t }); assert.equal(r.status, 200); assert.deepEqual(r.j, { segs: [], strava: false });

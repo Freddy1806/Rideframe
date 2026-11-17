@@ -72,18 +72,27 @@ export function mergeAct(keep, other) {
   const sid = sidOf(other); if (sid && !sidOf(m)) { m.stravaId = sid; m.strava = other.strava || 'https://www.strava.com/activities/' + sid; }
   return m;
 }
+/** a run or ride recorded with the phone (outdoor.js: routeId 'outdoor' / 'run', outdoor, the GPS track in samples) */
+export const isPhoneRec = a => !a.kraft && !a.source && a.outdoor === true && (a.routeId === 'outdoor' || a.routeId === 'run');
 /** the list as the feed, the week points and the statistics show it: a watch record (ride or strength session, source 'watch')
  *  and a Strava record of the same session (sameAct) are one entry. Both can be stored when the two met before either was
- *  on this device (the watch sent while the import ran); the watch's entry stays, with the Strava data merged in. */
+ *  on this device (the watch sent while the import ran); the watch's entry stays, with the Strava data merged in.
+ *  A run / ride recorded with the phone and the same one from the watch are one entry too: the phone's record stays (it has the
+ *  track), with what only the watch measured (heart rate, kcal …) merged in. Either can arrive first; both stay stored. */
 export function collapse(acts) {
   if (!acts.some(a => a.source === 'watch')) return acts;
-  const gone = new Set(), swap = new Map();
+  const gone = new Set(), swap = new Map(), cur = a => swap.get(a) || a;
   for (const w of acts) {
     if (w.source !== 'watch' || gone.has(w)) continue;
-    const o = acts.find(x => x !== w && !gone.has(x) && !x.kraft && x.source !== 'watch' && (x.source === 'strava' || sidOf(x)) && sameAct(w, x));
+    const o = acts.find(x => x !== w && !gone.has(x) && !x.kraft && x.source !== 'watch' && (x.source === 'strava' || sidOf(x)) && !isPhoneRec(x) && sameAct(w, x));
     if (o) { gone.add(o); swap.set(w, mergeAct(w, o)); }
   }
-  return gone.size ? acts.filter(a => !gone.has(a)).map(a => swap.get(a) || a) : acts;
+  for (const w of acts) {
+    if (w.source !== 'watch' || w.kraft || gone.has(w)) continue;
+    const p = acts.find(x => !gone.has(x) && isPhoneRec(x) && sameAct(cur(w), cur(x)));
+    if (p) { gone.add(w); swap.set(p, { ...mergeAct(cur(p), cur(w)), watch: String(w.id).replace(/^watch-/, '') }); }
+  }
+  return gone.size ? acts.filter(a => !gone.has(a)).map(cur) : acts;
 }
 
 // ---------------- browser: the import itself ----------------
