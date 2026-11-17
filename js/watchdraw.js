@@ -7,10 +7,10 @@ import { FIELDS } from './watchfields.js';
 /** the two faces: Forerunner 265 (416 px AMOLED) and fenix 7X Pro (280 px MIP, every colour one of 00 / 55 / AA / FF per channel).
  *  lbl = field labels: grey on AMOLED, white on MIP (no thin grey text on the fenix), line = separators */
 export const FACES = [
-  { id: 'fr265', name: 'Forerunner 265', sub: '416 × 416 AMOLED', S: 416, mip: false, C: { bg: '#000000', fg: '#f4f4ef', dim: '#8b8b85', faint: '#2c2c2a', lbl: '#a3a39c', line: '#3a3a37', acc: MODES.kraft.color, ink: '#0b0b0b', hr: '#ff5a5a', good: '#3ddc84', bad: '#ff5a5a',
-    sp: { run: MODES.run.color, ride: MODES.ride.color, kraft: MODES.kraft.color, other: MODES.walk.color } } },
-  { id: 'fenix7xpro', name: 'fenix 7X Pro', sub: '280 × 280 MIP · 64 colours', S: 280, mip: true, C: { bg: '#000000', fg: '#ffffff', dim: '#aaaaaa', faint: '#555555', lbl: '#ffffff', line: '#555555', acc: '#ff55aa', ink: '#000000', hr: '#ff5555', good: '#55ff55', bad: '#ff5555',
-    sp: { run: '#00ffff', ride: '#ff5500', kraft: '#ff55aa', other: '#ffaa00' } } },
+  { id: 'fr265', name: 'Forerunner 265', sub: '416 × 416 AMOLED', S: 416, mip: false, C: { bg: '#000000', fg: '#f4f4ef', dim: '#8b8b85', faint: '#2c2c2a', lbl: '#a3a39c', line: '#3a3a37', acc: MODES.ride.color, ink: '#0b0b0b', hr: '#ff5a5a', good: '#3ddc84', bad: '#ff5a5a',
+    sp: { run: MODES.ride.color, ride: MODES.ride.color, kraft: MODES.ride.color, other: MODES.ride.color } } },
+  { id: 'fenix7xpro', name: 'fenix 7X Pro', sub: '280 × 280 MIP · 64 colours', S: 280, mip: true, C: { bg: '#000000', fg: '#ffffff', dim: '#aaaaaa', faint: '#555555', lbl: '#ffffff', line: '#555555', acc: '#ff5500', ink: '#000000', hr: '#ff5555', good: '#55ff55', bad: '#ff5555',
+    sp: { run: '#ff5500', ride: '#ff5500', kraft: '#ff5500', other: '#ff5500' } } },
 ];
 /** the face's colours with the sport's accent */
 export const tint = (C, sp) => ({ ...C, acc: C.sp[sp] || C.acc });

@@ -80,7 +80,8 @@ function status() { const p = sh && $('#wcState', sh); if (p) { p.textContent = 
 function draw() {
   if (!sh) return;
   sh.querySelectorAll('[data-tab]').forEach(b => { b.classList.toggle('on', b.dataset.tab === tab); b.setAttribute('aria-selected', b.dataset.tab === tab); });
-  const m = MODES[tab === 'more' ? 'walk' : tab]; sh.style.setProperty('--accent', document.documentElement.dataset.theme === 'light' ? m.light : m.color); // the sport's own colour, like on the watch
+  const m = MODES.ride; // orange is the one accent everywhere (Freddy 17.11.)
+  sh.style.setProperty('--accent', document.documentElement.dataset.theme === 'light' ? m.light : m.color); // the sport's own colour, like on the watch
   const body = $('#wcBody', sh);
   if (tab === 'run' || tab === 'ride') sportTab(body, tab); else if (tab === 'kraft') strengthTab(body); else moreTab(body);
   status();

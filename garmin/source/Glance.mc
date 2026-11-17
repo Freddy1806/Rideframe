@@ -15,7 +15,7 @@ class RideframeGlance extends WatchUi.GlanceView {
         var s = Application.Storage.getValue("summary"); // VERIFY: Storage is readable from the glance process ("Glances" core topic)
         var h = dc.getHeight(), y = h / 2;
         // VERIFY: glance colours; most devices draw glances on black. Accent from the 64-colour palette works on both screens.
-        var acc = 0xFF55AA;
+        var acc = 0xFF5500;
         dc.setColor(Graphics.COLOR_LT_GRAY, Graphics.COLOR_TRANSPARENT);
         dc.drawText(0, y - h * 0.28, Graphics.FONT_XTINY, "RIDEFRAME", Graphics.TEXT_JUSTIFY_LEFT | Graphics.TEXT_JUSTIFY_VCENTER);
         if (!(s instanceof Dictionary) || s["pts"] == null) {

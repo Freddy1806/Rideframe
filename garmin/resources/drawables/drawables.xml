@@ -1,4 +1,4 @@
 <drawables>
-    <!-- placeholder: pink circle with a dumbbell. VERIFY the launcher icon size per device (fr265 / fenix 7X Pro) in the device reference; the compiler scales with a warning -->
+    <!-- placeholder: orange circle with a dumbbell. VERIFY the launcher icon size per device (fr265 / fenix 7X Pro) in the device reference; the compiler scales with a warning -->
     <bitmap id="LauncherIcon" filename="launcher_icon.png"/>
 </drawables>

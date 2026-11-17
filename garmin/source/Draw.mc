@@ -22,10 +22,10 @@ class Palette {
         mip = !amoled;
         if (amoled) {
             fg = 0xF4F4EF; dim = 0x8B8B85; faint = 0x2C2C2A; ink = 0x0B0B0B; hr = 0xFF5A5A; lbl = 0xA3A39C; line = 0x3A3A37; good = 0x3DDC84; bad = 0xFF5A5A;
-            far = faint; path = 0x6A6A66; cRun = 0x2FD3E0; cRide = 0xFF5A1F; cKraft = 0xFF4F9A; cOther = 0xE2A33B;
+            far = faint; path = 0x6A6A66; cRun = 0xFF5A1F; cRide = 0xFF5A1F; cKraft = 0xFF5A1F; cOther = 0xFF5A1F; // orange is the one accent everywhere
         } else {
             fg = 0xFFFFFF; dim = 0xAAAAAA; faint = 0x555555; ink = 0x000000; hr = 0xFF5555; lbl = 0xFFFFFF; line = 0x555555; good = 0x55FF55; bad = 0xFF5555;
-            far = dim; path = dim; cRun = 0x00FFFF; cRide = 0xFF5500; cKraft = 0xFF55AA; cOther = 0xFFAA00;
+            far = dim; path = dim; cRun = 0xFF5500; cRide = 0xFF5500; cKraft = 0xFF5500; cOther = 0xFF5500;
         }
         acc = cKraft;
     }

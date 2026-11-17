@@ -1,6 +1,6 @@
 /* watch.html: design preview of the Garmin watch app (js/watchsim.js). The screens are canvas, drawn like the watch draws. */
 @font-face { font-family: 'Archivo'; src: url(../fonts/archivo-latin.woff2) format('woff2'); font-weight: 100 900; font-stretch: 62% 125%; }
-:root { --ink: #0b0b0b; --ink-2: #141414; --paper: #f4f4ef; --muted: #8b8b85; --line: rgba(244, 244, 239, .12); --acc: #ff4f9a; color-scheme: dark; }
+:root { --ink: #0b0b0b; --ink-2: #141414; --paper: #f4f4ef; --muted: #8b8b85; --line: rgba(244, 244, 239, .12); --acc: #ff5a1f; color-scheme: dark; }
 * { box-sizing: border-box; margin: 0; padding: 0; }
 body { background: var(--ink); color: var(--paper); font-family: 'Archivo', system-ui, sans-serif; font-weight: 450; -webkit-font-smoothing: antialiased; min-height: 100dvh; overflow-x: hidden; }
 button { font: inherit; color: inherit; background: none; border: 0; cursor: pointer; }
@@ -29,7 +29,7 @@ button { font: inherit; color: inherit; background: none; border: 0; cursor: poi
 /* the five buttons: placed by angle (clockwise from 12) on the bezel edge, label outside */
 .wbtn { position: absolute; left: 50%; top: 50%; width: 46px; height: 46px; margin: -23px 0 0 -23px; transform: rotate(var(--a)) translateY(calc(-1 * var(--R) - 4px)); touch-action: none; }
 .wbtn i { position: absolute; left: 15px; top: 12px; width: 16px; height: 22px; border-radius: 4px; background: linear-gradient(90deg, #3a3a3a, #6a6a6a 50%, #3a3a3a); box-shadow: 0 2px 4px rgba(0,0,0,.6); transition: transform .08s; }
-.wbtn.start i { background: linear-gradient(90deg, #8a1f4b, var(--acc) 50%, #8a1f4b); }
+.wbtn.start i { background: linear-gradient(90deg, #8a3210, var(--acc) 50%, #8a3210); }
 .wbtn.on i, .wbtn:active i { transform: translateY(5px); }
 .wbtn span { position: absolute; left: 50%; top: -14px; transform: translateX(-50%) rotate(calc(-1 * var(--a))); font-size: 11px; font-weight: 800; letter-spacing: .08em; color: var(--muted); white-space: nowrap; pointer-events: none; }
 .wbtn:hover span, .wbtn.on span { color: var(--paper); } .wbtn:focus-visible { outline: 2px solid var(--acc); border-radius: 50%; }
