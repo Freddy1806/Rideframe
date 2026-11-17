@@ -177,7 +177,7 @@ function render() {
     ${live.gpsErr ? `<div class="pnote">${esc(live.gpsErr)}</div>` : ''}
     ${cfg().map === 'off' ? '' : `<div class="omap ${cfg().map === 'big' ? 'big' : ''}" id="oMap"><button class="omapbtn" id="oFollow" title="Centre on me">◎</button><button class="omapbtn r" id="oBig" title="Map bigger/smaller">${cfg().map === 'big' ? '▴' : '▾'}</button></div>`}
     <div class="oseg" id="oSeg" hidden></div>
-    ${cfg().big === 'off' ? '' : cfg().big === 'main' || !M[cfg().big] ? `<button class="pbig obig" id="oBigF"><div class="label">${RUN ? 'Pace' : 'Speed'}</div><div class="pbigv"><b id="oSpd">${RUN ? '–:––' : '0.0'}</b><small>${RUN ? 'min/km' : 'km/h'}</small></div></button>`
+    ${cfg().big === 'off' ? '' : cfg().big === 'main' || !M[cfg().big] ? `<button class="pbig obig" id="oBigF"><div class="label">${RUN ? 'Pace' : 'Speed'}</div><div class="pbigv"><b id="oSpd">${RUN ? '–' : '0.0'}</b><small>${RUN ? 'min/km' : 'km/h'}</small></div></button>`
       : `<button class="pbig obig" id="oBigF"><div class="label">${M[cfg().big].l}</div><div class="pbigv"><b data-k="${cfg().big}">–</b><small>${M[cfg().big].u}</small></div></button>`}
     <section class="ptiles n${cfg().n}" id="oTiles">${tilesOf(curPage()).map((k, i) => `<button class="ptile" data-t="${i}"><span class="label">${M[k]?.l || k}</span><b data-k="${k}">–</b><small>${M[k]?.u || ''}</small></button>`).join('')}</section>
     ${pages().length > 1 ? `<div class="odots">${pages().map((_, i) => `<button data-pg="${i}" class="${i === (O.pg || 0) ? 'on' : ''}" aria-label="Page ${i + 1}"></button>`).join('')}</div>` : ''}
