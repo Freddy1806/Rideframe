@@ -3,23 +3,27 @@
 // without ERG the trainer keeps simulating the road and the HUD shows the target to hit.
 const W = (min, pct, label = '') => ({ dur: Math.round(min * 60), pct, label });
 const warm = [W(4, 50, 'Warm-up'), W(3, 65, 'Warm-up'), W(3, 75, 'Warm-up')];
-const cool = [W(5, 50, 'Cool-down')];
+// before hard work (threshold and above): rise in steps, then three short openers that prime the oxygen uptake without tiring
+// (the usual priming warm-up; a long hard warm-up costs power in the first interval), a short easy spin, then the first interval
+const warmHard = [W(3, 50, 'Warm-up'), W(3, 62, 'Warm-up'), W(2, 72, 'Warm-up'), W(2, 82, 'Warm-up'),
+  W(0.5, 110, 'Opener 1/3'), W(1, 50, 'Easy'), W(0.5, 115, 'Opener 2/3'), W(1, 50, 'Easy'), W(0.5, 120, 'Opener 3/3'), W(1.5, 50, 'Easy')];
+const cool = [W(3, 55, 'Cool-down'), W(3, 45, 'Cool-down')];
 const reps = (n, on, off) => Array.from({ length: n }, (_, i) => [{ ...on, label: `${on.label} ${i + 1}/${n}` }, ...(i < n - 1 && off ? [off] : [])]).flat();
 
 export const WORKOUTS = [
   { id: 'ss3x10', name: 'Sweet Spot 3 × 10', what: '3 × 10 min at 90 % FTP, 5 min rest. The classic for more endurance power.',
     steps: [...warm, ...reps(3, W(10, 90, 'Sweet Spot'), W(5, 55, 'Rest')), ...cool] },
   { id: 'thr2x20', name: 'Threshold 2 × 20', what: '2 × 20 min at 97 % FTP. Hard, but it raises your FTP.',
-    steps: [...warm, ...reps(2, W(20, 97, 'Threshold'), W(8, 55, 'Rest')), ...cool] },
+    steps: [...warmHard, ...reps(2, W(20, 97, 'Threshold'), W(8, 55, 'Rest')), ...cool] },
   { id: 'over_under', name: 'Over-Unders 3 × 9', what: '9 min each: alternating 2 min at 95 % and 1 min at 108 %. Teaches you to ride above threshold and recover.',
-    steps: [...warm, ...[0, 1, 2].flatMap(i => [
+    steps: [...warmHard, ...[0, 1, 2].flatMap(i => [
       ...[0, 1, 2].flatMap(() => [W(2, 95, `Under ${i + 1}/3`), W(1, 108, `Over ${i + 1}/3`)]), ...(i < 2 ? [W(5, 55, 'Rest')] : [])]), ...cool] },
   { id: 'vo2_5x3', name: 'VO2max 5 × 3', what: '5 × 3 min at 118 % FTP, 3 min easy. For climbing sprints and attacks.',
-    steps: [...warm, ...reps(5, W(3, 118, 'VO2max'), W(3, 50, 'Rest')), ...cool] },
+    steps: [...warmHard, ...reps(5, W(3, 118, 'VO2max'), W(3, 50, 'Rest')), ...cool] },
   { id: 'pyramid', name: 'Pyramid', what: '1-2-3-4-3-2-1 min, rising from 100 to 115 % and back down.',
-    steps: [...warm, ...[[1, 100], [2, 105], [3, 110], [4, 115], [3, 110], [2, 105], [1, 100]].flatMap(([m, p], i, a) => [W(m, p, 'Pyramid'), ...(i < a.length - 1 ? [W(2, 55, 'Rest')] : [])]), ...cool] },
+    steps: [...warmHard, ...[[1, 100], [2, 105], [3, 110], [4, 115], [3, 110], [2, 105], [1, 100]].flatMap(([m, p], i, a) => [W(m, p, 'Pyramid'), ...(i < a.length - 1 ? [W(2, 55, 'Rest')] : [])]), ...cool] },
   { id: 'sprints', name: 'Sprints 8 × 30 s', what: '8 × 30 s all out (150 % in ERG), 4:30 easy.',
-    steps: [...warm, ...reps(8, W(0.5, 150, 'Sprint'), W(4.5, 50, 'Rest')), ...cool] },
+    steps: [...warmHard, ...reps(8, W(0.5, 150, 'Sprint'), W(4.5, 50, 'Rest')), ...cool] },
   { id: 'z2_60', name: 'Endurance 60 min', what: '60 min steady at 65 % FTP. Burn fat, clear your head.',
     steps: [W(5, 55, 'Warm-up'), W(50, 65, 'Endurance'), W(5, 50, 'Cool-down')] },
   { id: 'rec30', name: 'Recovery 30 min', what: '30 min very easy at 50–55 % FTP. Loosens the legs after hard days.',
@@ -29,9 +33,9 @@ export const WORKOUTS = [
   { id: 'ss2x12', name: 'Sweet Spot short 2 × 12', what: '2 × 12 min at 90 % FTP. Little time, still a good FTP stimulus.',
     steps: [...warm, ...reps(2, W(12, 90, 'Sweet Spot'), W(4, 55, 'Rest')), ...cool] },
   { id: 'vo2_4x4', name: 'VO2max 4 × 4', what: '4 × 4 min at 115 % FTP, 4 min easy. Raises oxygen uptake, helps on climbs.',
-    steps: [...warm, ...reps(4, W(4, 115, 'VO2max'), W(4, 50, 'Rest')), ...cool] },
+    steps: [...warmHard, ...reps(4, W(4, 115, 'VO2max'), W(4, 50, 'Rest')), ...cool] },
   { id: 'vo2_5x5', name: 'VO2max 5 × 5', what: '5 × 5 min at 110 % FTP, 5 min easy. Long VO2max intervals, hard but steady.',
-    steps: [...warm, ...reps(5, W(5, 110, 'VO2max'), W(5, 50, 'Rest')), ...cool] },
+    steps: [...warmHard, ...reps(5, W(5, 110, 'VO2max'), W(5, 50, 'Rest')), ...cool] },
   { id: 'z2_90', name: 'Endurance 90 min', what: '90 min steady at 65–70 % FTP with three short tempo blocks. The long ride.',
     steps: [W(10, 55, 'Warm-up'), W(20, 66, 'Endurance'), W(5, 80, 'Tempo'), W(20, 66, 'Endurance'), W(5, 80, 'Tempo'), W(15, 66, 'Endurance'), W(5, 80, 'Tempo'), W(10, 50, 'Cool-down')] },
   { id: 'ramp', name: 'Ramp test (FTP)', what: 'Every minute +6 % FTP until you cannot go on. New FTP ≈ 75 % of the best minute. Press space to finish.',
