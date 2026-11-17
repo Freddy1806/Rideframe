@@ -4,6 +4,8 @@
 //   tap = the thing under the finger (a list row, a value, DONE, a digit)
 //   recording: UP / DOWN = page, START = pause, BACK = lap (first it closes the segment popup); swipe up / down = page
 //   ready (run / ride): UP / DOWN or a tap on the route line = the Route choice (RPICK)
+//   pause screen (every mode): START = resume, BACK held 3 s = save (a short BACK only shows the hint), DOWN / tap = Discard (confirm);
+//   on the AMOLED touch face a finger resting on the "Hold to finish" pill = BACK held
 import Toybox.Lang;
 import Toybox.System;
 import Toybox.Timer;
@@ -16,6 +18,8 @@ class FlowDelegate extends WatchUi.BehaviorDelegate {
     var downAt as Number = 0;
     var held as Boolean = false;
     var holdTimer = null;
+    var pillHold as Boolean = false; // a finger on the pause screen's "Hold to finish" pill
+    var pillUp as Number = 0;        // when it lifted (a tap right after a hold is not a tap)
 
     function initialize(f as Flow, a) {
         BehaviorDelegate.initialize();
@@ -29,6 +33,7 @@ class FlowDelegate extends WatchUi.BehaviorDelegate {
         var k = evt.getKey();
         if (k != WatchUi.KEY_UP && k != WatchUi.KEY_DOWN && k != WatchUi.KEY_ESC && k != WatchUi.KEY_ENTER) { return false; } // LIGHT stays the system's
         downKey = k; downAt = System.getTimer(); held = false;
+        if (k == WatchUi.KEY_ESC) { app.input(E_HOLD_START, downAt); } // the pause screen's hold to finish (the flow ignores it elsewhere)
         if (k != WatchUi.KEY_ENTER) {
             if (holdTimer == null) { holdTimer = new Timer.Timer(); }
             holdTimer.start(method(:onKeyHold), k == WatchUi.KEY_ESC ? 700 : 500, false);
@@ -47,6 +52,7 @@ class FlowDelegate extends WatchUi.BehaviorDelegate {
         if (k != downKey) { return false; }
         if (holdTimer != null) { holdTimer.stop(); }
         downKey = null;
+        if (k == WatchUi.KEY_ESC) { app.input(E_HOLD_END, System.getTimer()); }
         if (held) { return true; }
         if (k == WatchUi.KEY_ENTER) { app.input(E_START, null); }
         else if (k == WatchUi.KEY_ESC) { app.input(E_BACK, null); }
@@ -70,18 +76,43 @@ class FlowDelegate extends WatchUi.BehaviorDelegate {
         else if (d == WatchUi.SWIPE_RIGHT) { app.input(E_SWIPE_RIGHT, null); }
         return true;
     }
+    // the "Hold to finish" pill (js/watchsim.js touch: pointerdown / pointerup on the pill)
+    // VERIFY (Toybox.WatchUi.InputDelegate onHold / onRelease, API 1.0 / 3.x): onHold comes after the system's hold delay (so the
+    // 3 s run from there), onRelease when the finger lifts, and no onTap follows a hold; if one does, pillUp skips it
+    function onPill(evt as WatchUi.ClickEvent) as Boolean {
+        var xy = evt.getCoordinates(), S = System.getDeviceSettings().screenWidth.toFloat();
+        var u = xy[0] / S, v = xy[1] / S;
+        return flow.scr == S_PAUSE && !flow.pzConf && isAmoled() && v > 0.75 && (u - 0.5).abs() < 0.27;
+    }
+    function onHold(evt as WatchUi.ClickEvent) as Boolean {
+        if (!onPill(evt)) { return false; }
+        pillHold = true; app.input(E_HOLD_START, System.getTimer());
+        return true;
+    }
+    function onRelease(evt as WatchUi.ClickEvent) as Boolean {
+        if (!pillHold) { return false; }
+        pillHold = false; pillUp = System.getTimer(); app.input(E_HOLD_END, pillUp);
+        return true;
+    }
     // js/watchsim.js tapAt: the same table, in screen fractions
     function onTap(evt as WatchUi.ClickEvent) as Boolean {
         var xy = evt.getCoordinates(), S = System.getDeviceSettings().screenWidth.toFloat();
         var u = xy[0] / S, v = xy[1] / S, s = flow.scr;
         if (flow.flash != null) { app.input(E_TAP, null); return true; }
+        if (s == S_PAUSE) { // js PAUSE_LAY: confirm: the Discard pill = yes, elsewhere = no; else the Discard row = ask, the top = resume
+            if (pillHold || System.getTimer() - pillUp < 400) { return true; }
+            if (flow.pzConf) { app.input((v - 0.68).abs() < 0.06 ? E_START : E_BACK, null); }
+            else if ((v - 0.68).abs() < 0.055) { app.input(E_ITEM, 1); }
+            else if (v < 0.62) { app.input(E_ITEM, 0); }
+            return true;
+        }
         if (s == S_SET) {
             if (v > 0.72 && (u - 0.5).abs() < 0.24) { app.input(E_START, null); }
             else if (v > 0.36 && v < 0.72) { app.input(E_FOCUS, u < 0.51 ? 0 : 1); }
             return true;
         }
         if (s == S_READY && !flow.sp.equals("other") && v > 0.665 && v < 0.74) { app.input(E_DOWN, null); return true; } // the route line
-        var menu = s == S_MENU || s == S_PAUSE || s == S_SMODE, pick = s == S_PICK || s == S_MORE || s == S_WPICK || s == S_RPICK;
+        var menu = s == S_MENU || s == S_SMODE, pick = s == S_PICK || s == S_MORE || s == S_WPICK || s == S_RPICK;
         if (s == S_HOME) {
             // the rows as Draw.drawHome draws them: row r at HOME_Y0 + r * HOME_DY, all four entries at once
             var hr = ((v - HOME_Y0) / HOME_DY + 0.5).toNumber(), hn = flow.listItems().size(), hi = flow.homeTop(hn) + hr;

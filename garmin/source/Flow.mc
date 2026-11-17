@@ -51,6 +51,8 @@ const E_HR = 15;
 const E_TICK = 16;
 const E_SAMPLE = 17;
 const E_SEG = 18;
+const E_HOLD_START = 19;   // BACK pressed (arg = System.getTimer() ms), or a finger on the pause screen's "Hold to finish" pill
+const E_HOLD_END = 20;     // released
 // vibration cues
 const C_SET = 1;
 const C_PR = 2;
@@ -75,6 +77,7 @@ const M_EX = "Change exercise";
 const M_SKIP = "Skip exercise";
 const M_UNDO = "Undo last set";
 const M_FIN = "Finish";
+const M_PAUSE = "Pause";
 const M_SYNC = "Sync now";
 const M_PAIR = "Pair with phone";
 // pairing states / sum states
@@ -105,6 +108,9 @@ const PR_SECS = 3;
 const LAP_SECS = 5;
 const SEG_SECS = 5;
 const PAUSE_MS = 0.7;
+// the pause screen (js: HOLD_S, HINT_S): BACK held 3 s saves (timed in ms: Time.now() has whole seconds), the short-press hint 2 s
+const HOLD_MS = 3000;
+const HINT_S = 2;
 
 // ---- small typed readers for JSON values (Dictionary / Array elements are untyped) ----
 function numOf(v) as Number {
@@ -247,6 +253,16 @@ class Flow {
     // watch only
     var holdAt as Number = 0;
     var holdCued as Boolean = false;
+    // the pause screen, every mode (js: F.pz { from, sel0, at, sel, conf, hold, hint } and F.pauseT)
+    var pauseT as Number = 0;                                   // strength: seconds paused in this session
+    var pzFrom as Number = S_HOME;
+    var pzSel0 as Number = 0;
+    var pzAt as Number = 0;
+    var pzSel as Number = 0;                                    // 0 = resume, 1 = Discard selected
+    var pzConf as Boolean = false;                              // "Discard? START yes, BACK no"
+    var pzHolding as Boolean = false;
+    var pzHold as Number = 0;                                   // System.getTimer() at the hold start
+    var pzHint as Number = 0;
     var gps as Number = 0;                                      // 0 none, 1 poor, 2 usable / good (set by Recorder)
 
     // js: newFlow(setup, { paired, queue, cfg, last })
@@ -368,6 +384,7 @@ class Flow {
             if (plan != null) { m.add(M_SKIP); }
             if (sets.size() > 0) { m.add(M_UNDO); }
             m.add(M_FIN);
+            m.add(M_PAUSE);
             return m;
         }
         return paired ? [M_SYNC, M_PAIR] as Array<String> : [M_PAIR] as Array<String>;
@@ -416,7 +433,7 @@ class Flow {
             var x = w ? e1rm(fltOf(mine[i]["kg"]), numOf(mine[i]["reps"])) : numOf(mine[i]["reps"]).toFloat();
             if (x > before) { before = x; }
         }
-        var t = now - start;
+        var t = now - start - pauseT;
         var set = { "ex" => id, "kg" => kg, "reps" => reps, "t" => t > 0 ? t : 0 } as Dictionary;
         var best = fltOf(e["b"]);
         if (best > 0.0 && v > best + 0.01 && v > before + 0.01) {
@@ -461,7 +478,7 @@ class Flow {
     function finish(now as Number) as Void {
         if (sets.size() == 0) { reset(); return; }
         var id = Math.rand().format("%08x") + now.format("%x");
-        var dur = now - start; if (dur < 1) { dur = 1; }
+        var dur = now - start - pauseT; if (dur < 1) { dur = 1; }
         var l = [] as Array<Dictionary>, prs = 0;
         for (var i = 0; i < sets.size(); i++) {
             var s = sets[i];
@@ -472,10 +489,10 @@ class Flow {
         if (hrN > 0) { sess["hr"] = { "avg" => rnd(hrSum.toFloat() / hrN), "max" => hrMax } as Dictionary; }
         queue.add(sess);
         sum = { "id" => id, "dur" => dur, "sets" => sets.size(), "vol" => volume(), "exs" => distinctEx(), "prs" => prs, "st" => paired ? ST_SENDING : ST_QUEUED } as Dictionary;
-        sets = [] as Array<Dictionary>; start = 0; restEnd = 0; plan = null; holdAt = 0; hrN = 0; hrSum = 0; hrMax = 0;
+        sets = [] as Array<Dictionary>; start = 0; pauseT = 0; restEnd = 0; plan = null; holdAt = 0; hrN = 0; hrSum = 0; hrMax = 0;
         scr = S_SUM; cues.add(C_DONE); out.add({ "k" => O_SEND } as Dictionary);
     }
-    function reset() as Void { sets = [] as Array<Dictionary>; start = 0; restEnd = 0; plan = null; flash = null; sum = null; holdAt = 0; scr = S_START; }
+    function reset() as Void { sets = [] as Array<Dictionary>; start = 0; pauseT = 0; pzConf = false; pzHolding = false; restEnd = 0; plan = null; flash = null; sum = null; holdAt = 0; scr = S_START; }
     // js: sent(F, id, res)
     function sent(id as String, res as Number) as Void {
         if (res != R_RETRY) {
@@ -667,6 +684,65 @@ class Flow {
     }
     function discardRec() as Void { rec = null; seg = null; flash = null; sel = 0; scr = S_HOME; }
 
+    /* ---- js: pause, the same in every mode: START resumes, BACK held 3 s saves (an orange ring fills with 3-2-1; released early =
+     *      nothing), DOWN / a tap reaches Discard with a confirm step; a short BACK only shows the hint ---- */
+    // js: pause(F, now): run / ride / more: START; strength: the menu's Pause. Strength: the clock and a running rest stop.
+    function pause(now as Number) as Void {
+        pzFrom = scr == S_MENU ? back : scr; pzSel0 = sel; pzAt = now; pzSel = 0; pzConf = false; pzHolding = false; pzHold = 0; pzHint = 0;
+        var R = rec;
+        if (R != null) { R.st = RS_PAUSE; }
+        flash = null; sel = 0; scr = S_PAUSE; cue(C_STOP);
+    }
+    function resume(now as Number) as Void {
+        pzHolding = false; pzConf = false;
+        var R = rec;
+        if (R != null) { R.st = RS_RUN; scr = S_REC; }
+        else {
+            var d = now - pzAt; if (d < 0) { d = 0; }
+            pauseT += d;
+            if (restEnd != 0) { restEnd += d; }
+            if (holdAt > 0) { holdAt += d; }
+            scr = pzFrom; sel = pzSel0;
+        }
+        cue(C_START);
+    }
+    // the hold is full: saved (run / ride / more: the activity; strength: the session, its time without the pauses)
+    function endPaused(now as Number) as Void {
+        pzHolding = false; pzConf = false;
+        if (rec != null) { saveRec(now); }
+        else { var d = now - pzAt; if (d > 0) { pauseT += d; } finish(now); }
+    }
+    function discardPaused() as Void {
+        pzHolding = false; pzConf = false;
+        if (rec != null) { discardRec(); } else { reset(); }
+    }
+    // js: holdPart(F, now).p: how full the finish ring is (0..1), -1 when no hold runs; ms = System.getTimer()
+    function holdPart(ms as Number) as Float {
+        if (scr != S_PAUSE || !pzHolding) { return -1.0; }
+        var p = (ms - pzHold).toFloat() / HOLD_MS;
+        return p < 0.0 ? 0.0 : (p > 1.0 ? 1.0 : p);
+    }
+    // js: holdPart(F, now).n: the 3-2-1 count
+    function holdCount(ms as Number) as Number {
+        var left = HOLD_MS - (ms - pzHold), n = (left + 999) / 1000;
+        return n < 1 ? 1 : (n > 3 ? 3 : n);
+    }
+    // js: pausedTime(F): the moving time, strength: the session time without pauses
+    function pausedTime() as Number {
+        var R = rec;
+        if (R != null) { return R.t; }
+        var t = pzAt - start - pauseT;
+        return t > 0 ? t : 0;
+    }
+    // js: onPause(F, ev, now, arg)
+    function onPause(ev as Number, now as Number, arg) as Void {
+        if (pzConf) { if (ev == E_START) { discardPaused(); } else if (ev == E_BACK) { pzConf = false; } return; }
+        if (ev == E_UP || ev == E_DOWN) { pzSel = pzSel != 0 ? 0 : 1; }
+        else if (ev == E_START || ev == E_TAP) { if (pzSel != 0) { pzConf = true; } else { resume(now); } }
+        else if (ev == E_ITEM) { if (numOf(arg) == 1) { pzSel = 1; pzConf = true; } else { resume(now); } }
+        else if (ev == E_BACK) { pzHint = now + HINT_S; }
+    }
+
     // js: handle(F, ev, now, arg)
     function handle(ev as Number, now as Number, arg) as Void {
         if (ev == E_HR) {
@@ -676,7 +752,14 @@ class Flow {
         }
         if (ev == E_SAMPLE) { if (arg instanceof Dictionary) { sample(now, arg as Dictionary); } return; }
         if (ev == E_SEG) { segment(now, arg); return; }
-        if (ev == E_TICK) {
+        if (ev == E_HOLD_START || ev == E_HOLD_END) { // BACK pressed / released (and the touch pill): only the pause screen listens
+            if (scr != S_PAUSE || pzConf) { return; }
+            if (ev == E_HOLD_START) { pzHolding = true; pzHold = numOf(arg); }
+            else if (pzHolding) { pzHolding = false; pzHint = now + HINT_S; } // released early: nothing, the hint
+            return;
+        }
+        if (ev == E_TICK) { // arg = System.getTimer() (RideframeApp.onTick)
+            if (scr == S_PAUSE && pzHolding && numOf(arg) - pzHold >= HOLD_MS) { endPaused(now); return; }
             var f = flash;
             if (f != null) { if (now >= numOf(f["until"])) { flash = null; } }
             var g = seg;
@@ -689,11 +772,12 @@ class Flow {
         if (ev == E_SWIPE_LEFT) { ev = E_MENU; }
         if (ev == E_SWIPE_RIGHT) { ev = E_BACK; }
         var s = scr;
-        var isList = s == S_PICK || s == S_MENU || s == S_HOME || s == S_MORE || s == S_SMODE || s == S_WPICK || s == S_PAUSE || s == S_RPICK;
+        var isList = s == S_PICK || s == S_MENU || s == S_HOME || s == S_MORE || s == S_SMODE || s == S_WPICK || s == S_RPICK;
         // a list (and the data pages) scroll with the finger, a number counts up
-        if (ev == E_SWIPE_UP) { ev = (isList || s == S_REC) ? E_DOWN : E_UP; }
-        else if (ev == E_SWIPE_DOWN) { ev = (isList || s == S_REC) ? E_UP : E_DOWN; }
+        if (ev == E_SWIPE_UP) { ev = (isList || s == S_REC || s == S_PAUSE) ? E_DOWN : E_UP; }
+        else if (ev == E_SWIPE_DOWN) { ev = (isList || s == S_REC || s == S_PAUSE) ? E_UP : E_DOWN; }
         if (ev == E_MENU) { if (s == S_HOME || s == S_START || s == S_PICK || s == S_SET || s == S_REST) { openMenu(); } return; }
+        if (s == S_PAUSE) { if (rec != null || start != 0) { onPause(ev, now, arg); } else { scr = S_HOME; } return; }
         if (s == S_GLANCE) { if (ev == E_START || ev == E_TAP) { sel = 0; scr = paired ? S_HOME : S_PAIR; } return; }
         if (s == S_START) {
             if (ev == E_START || ev == E_TAP) {
@@ -714,7 +798,7 @@ class Flow {
             if (R == null) { scr = S_HOME; return; }
             var n = pageCount();
             if (ev == E_UP || ev == E_DOWN) { R.pg = (R.pg + (ev == E_DOWN ? 1 : n - 1)) % n; }
-            else if (ev == E_START) { R.st = RS_PAUSE; sel = 0; scr = S_PAUSE; cue(C_STOP); }
+            else if (ev == E_START) { pause(now); }
             else if (ev == E_BACK || ev == E_TAP) { // BACK = lap (like Garmin); first it closes the segment popup
                 var g = seg, open = false;
                 if (g != null) { if (g["hide"] != true) { g["hide"] = true; open = true; } }
@@ -744,7 +828,6 @@ class Flow {
                 if (s == S_MENU) { scr = back; }
                 else if (s == S_HOME) { out.add({ "k" => O_EXIT } as Dictionary); }
                 else if (s == S_MORE) { sel = 0; scr = S_HOME; }
-                else if (s == S_PAUSE) { var R = rec; if (R != null) { R.st = RS_RUN; } scr = S_REC; cue(C_START); }
                 else if (s == S_WPICK) { sel = 0; scr = S_SMODE; }
                 else if (s == S_RPICK) { sel = 0; scr = S_READY; }
                 else if (sets.size() > 0) { if (planItem() != null) { goPlan(); } else { prefill(); scr = S_SET; } }
@@ -801,7 +884,6 @@ class Flow {
         else if (s == S_MORE) { var m = moreList(); for (var i = 0; i < m.size(); i++) { var x = arrOf(m[i]); r.add(x.size() > 1 ? strOf(x[1]) : ""); } }
         else if (s == S_SMODE) { r = ["Workout", "Free"] as Array<String>; }
         else if (s == S_WPICK) { var w = workouts(); for (var i = 0; i < w.size(); i++) { r.add(strOf(w[i]["n"])); } }
-        else if (s == S_PAUSE) { r = ["Resume", "Save", "Discard"] as Array<String>; }
         else if (s == S_RPICK) { r.add("None"); var l = routes; if (l != null) { for (var i = 0; i < l.size(); i++) { r.add(strOf(l[i]["name"])); } } }
         return r;
     }
@@ -818,11 +900,6 @@ class Flow {
         else if (s == S_SMODE) { if (i == 0) { sel = 0; scr = S_WPICK; } else { toPick(); } }
         else if (s == S_WPICK) { startPlan(i, now); }
         else if (s == S_RPICK) { chooseRoute(i); }
-        else if (s == S_PAUSE) {
-            if (i == 0) { var R = rec; if (R != null) { R.st = RS_RUN; } scr = S_REC; cue(C_START); }
-            else if (i == 1) { saveRec(now); }
-            else { discardRec(); }
-        }
     }
     function act(item as String, now as Number) as Void {
         if (M_EX.equals(item)) { toPick(); }
@@ -834,6 +911,7 @@ class Flow {
         }
         else if (M_UNDO.equals(item)) { undo(); }
         else if (M_FIN.equals(item)) { finish(now); }
+        else if (M_PAUSE.equals(item)) { pause(now); }
         else if (M_SYNC.equals(item)) { out.add({ "k" => O_SETUP } as Dictionary); out.add({ "k" => O_SEND } as Dictionary); scr = back; }
         else if (M_PAIR.equals(item)) { pairD = [0, 0, 0, 0, 0, 0] as Array<Number>; pairI = 0; pairSt = P_ENTER; scr = S_PAIR; }
     }

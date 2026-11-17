@@ -121,7 +121,10 @@ API:
 
 Flow additions (`SCR`): `HOME` (start menu: Run, Ride, Strength, More, the last used on top, week points) → `READY` (GPS ready,
 START) → `REC` (data pages from `cfg`, then the fixed route page when `map` is on and a route is loaded; UP / DOWN = page,
-START = pause, BACK = lap, or first closes the segment popup) ⇄ `PAUSE` (Resume, Save, Discard) → `RSUM`. `MORE` lists
+START = pause, BACK = lap, or first closes the segment popup) ⇄ `PAUSE` → `RSUM`. `PAUSE` is one screen in every mode (strength:
+the menu's Pause; its clock and a running rest stop): START resumes, BACK held 3 s saves (an orange ring with 3-2-1, released
+early = nothing; on the touch face also a finger on the "Hold to finish" pill; events `holdStart` / `holdEnd`), a short BACK
+only shows the hint, DOWN / a tap reaches Discard with a confirm step (START yes, BACK no). `MORE` lists
 `cfg.more`, its sports record one fixed page. Strength: `HOME` → `START` → `SMODE` (Workout, Free) → `WPICK` → guided `SET`
 (kg / reps / rest from the plan, the last planned set finishes) or `PICK` (recent, then top 20, then the rest).
 Events: `sample` `{ dt, v, hr, pw, cad, up }` once a second from Position / Sensor (auto lap, auto pause, NP),
@@ -140,7 +143,7 @@ Ported from `js/watchflow.js` / `js/watchfields.js` / `js/watchsim.js` / `js/wat
   as `cfg` in Storage; until then (or when the cache is unusable) `Fields.defaultCfg()`, identical to
   `compact(defaults())` in `js/watchfields.js`. A new config changes the pages only while nothing records.
 - **Run, Ride, More sports**: READY (GPS state for outdoor sports, heart rate for indoor ones, START) → REC → PAUSE
-  (Resume, Save, Discard) → RSUM. Data pages from the config with the 1 to 4 field layouts of `js/watchdraw.js`, UP /
+  (START resume, BACK held 3 s = save, Discard with a confirm) → RSUM. Data pages from the config with the 1 to 4 field layouts of `js/watchdraw.js`, UP /
   DOWN (and swipe up / down) switch pages, START pauses, BACK = manual lap, BACK held = nothing while recording.
   Auto lap (1 km run, 5 km ride; the more sports have none, like the preview) with the 5 s banner and a vibration, auto pause below
   0.7 m/s when switched on (run / ride only). `Recorder.mc` keeps an `ActivityRecording` session in step: started on
@@ -301,7 +304,7 @@ Build for `fr265` and again for `fenix7xpro`, run, pair (or put a `token` into F
 3. **Run**: Simulation → Activity Data (or File → playback of a FIT / GPX file of a run): READY shows "GPS search",
    then "GPS ready" with a fix (Simulation → Set Position / GPS quality if the menu has it). START: the page with pace,
    distance, time, heart rate; UP / DOWN and swipe up / down: page 2; BACK: lap banner "LAP 1" for 5 s with a long
-   vibration; after 1 km of playback: an auto lap. START: PAUSED menu; Resume; START, Save: SAVED with time, km,
+   vibration; after 1 km of playback: an auto lap. START: the PAUSED screen; START resumes; START, then BACK held 3 s (the ring fills, 3-2-1): SAVED with time, km,
    pace, kcal; the simulator writes the FIT file of the saved activity (check where on the Mac).
 4. **Ride**: as 3 with a ride FIT file (power, cadence): auto pause shows "AUTO PAUSE" and the ring turns dim while the
    playback stands still; auto lap at 5 km; the summary shows km/h and AVG W. Discard: back on the start menu, nothing saved.

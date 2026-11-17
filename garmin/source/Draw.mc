@@ -10,15 +10,19 @@ import Toybox.Time.Gregorian;
 
 // colours (js/watchdraw.js FACES): AMOLED (fr265) gets the RIDEFRAME tones on black, MIP (fenix 7 Pro, 64 colours) only
 // palette colours (channels 00 / 55 / AA / FF), field labels white and no dark grey text
+// AMOLED (fr265: the touch face with the "Hold to finish" pill) or MIP (fenix: buttons only, js/watchdraw.js FACES mip)
+function isAmoled() as Boolean {
+    var ds = System.getDeviceSettings();
+    // VERIFY: DeviceSettings.requiresBurnInProtection (API 3.0) is true on AMOLED watches (doc page Toybox.System.DeviceSettings)
+    return (ds has :requiresBurnInProtection) && ds.requiresBurnInProtection;
+}
 class Palette {
     var fg as Number; var dim as Number; var faint as Number; var acc as Number; var ink as Number; var hr as Number;
     var lbl as Number; var line as Number; var good as Number; var bad as Number; var far as Number; var path as Number;
     var cRun as Number; var cRide as Number; var cKraft as Number; var cOther as Number;
     var mip as Boolean;
     function initialize() {
-        var ds = System.getDeviceSettings();
-        // VERIFY: DeviceSettings.requiresBurnInProtection (API 3.0) is true on AMOLED watches (doc page Toybox.System.DeviceSettings)
-        var amoled = (ds has :requiresBurnInProtection) && ds.requiresBurnInProtection;
+        var amoled = isAmoled();
         mip = !amoled;
         if (amoled) {
             fg = 0xF4F4EF; dim = 0x8B8B85; faint = 0x2C2C2A; ink = 0x0B0B0B; hr = 0xFF5A5A; lbl = 0xA3A39C; line = 0x3A3A37; good = 0x3DDC84; bad = 0xFF5A5A;
@@ -176,7 +180,7 @@ module Draw {
         else if (s == S_PAIR) { drawPair(dc, F, S, P); }
         else if (s == S_READY) { drawReady(dc, F, S, P); }
         else if (s == S_REC) { drawRec(dc, F, S, P, now); }
-        else if (s == S_PAUSE) { var R = F.rec, t = 0; if (R != null) { t = R.t; } list(dc, F, S, P, F.listItems(), "PAUSED " + clock(t), true, null); }
+        else if (s == S_PAUSE) { drawPause(dc, F, S, P, now); }
         else if (s == S_RSUM) { drawRsum(dc, F, S, P); }
         else if (s == S_RPICK) { drawRpick(dc, F, S, P); }
         else { drawHome(dc, F, S, P, sum); }
@@ -311,7 +315,7 @@ module Draw {
     function drawSet(dc as Dc, F as Flow, S as Number, P as Palette, now as Number) as Void {
         var e = F.curEx(), c = S / 2, t = F.exT(e), it = F.planItem();
         startHint(dc, S, P);
-        txt(dc, c, S * 0.12, Graphics.FONT_XTINY, clock(now - F.start), P.dim);
+        txt(dc, c, S * 0.12, Graphics.FONT_XTINY, clock(now - F.start - F.pauseT), P.dim);
         txt(dc, c, S * 0.22, Graphics.FONT_SMALL, fit(dc, strOf(e["n"]), Graphics.FONT_SMALL, (S * 0.74).toNumber()), P.fg);
         var no = "SET " + F.setNo().toString();
         if (it != null) { no = no + " OF " + numOf(it[1]).toString(); }
@@ -412,6 +416,45 @@ module Draw {
     }
 
     /* ---- run, ride, other ---- */
+    // js/watchsim.js DRAW[SCR.PAUSE] and PAUSE_LAY: one screen in every mode: PAUSED, the time, START resume, Hold BACK to finish,
+    // Discard (with a confirm step); while BACK is held an orange ring fills with 3-2-1. Rows: the tap table in FlowDelegate.onTap.
+    // VERIFY on the 280 px MIP: FONT_SMALL at 0.5 and FONT_XTINY at 0.57 do not touch (20 px apart)
+    function drawPause(dc as Dc, F as Flow, S as Number, P as Palette, now as Number) as Void {
+        var c = S / 2, part = F.holdPart(System.getTimer()), touch = !P.mip;
+        if (part >= 0.0) {
+            var r = c - (S * 0.035).toNumber();
+            dc.setPenWidth(pw(S * 0.05)); dc.setColor(P.faint, Graphics.COLOR_TRANSPARENT); dc.drawCircle(c, c, r);
+            if (part > 0.01) {
+                dc.setColor(P.acc, Graphics.COLOR_TRANSPARENT);
+                if (part >= 0.99) { dc.drawCircle(c, c, r); }
+                else { var a = 90 - (part * 360).toNumber(); if (a < 0) { a += 360; } dc.drawArc(c, c, r, Graphics.ARC_CLOCKWISE, 90, a); } // from 12 o'clock, clockwise
+            }
+            dc.setPenWidth(1);
+        }
+        txt(dc, c, S * 0.17, Graphics.FONT_SMALL, "PAUSED", P.acc);
+        txt(dc, c, S * 0.235, Graphics.FONT_XTINY, fit(dc, F.rec != null ? sportName(F) : "Strength", Graphics.FONT_XTINY, (S * 0.5).toNumber()), P.lbl);
+        if (F.pzConf) {
+            txt(dc, c, S * 0.37, Graphics.FONT_LARGE, "Discard?", P.fg);
+            txt(dc, c, S * 0.5, Graphics.FONT_XTINY, fit(dc, "START yes, BACK no", Graphics.FONT_XTINY, (S * 0.74).toNumber()), P.lbl);
+            pill(dc, c, S * 0.68, S * 0.46, S * 0.1, P.acc); txt(dc, c, S * 0.68, Graphics.FONT_SMALL, "Discard", P.ink);
+            if (touch) { pill(dc, c, S * 0.82, S * 0.4, S * 0.1, P.faint); txt(dc, c, S * 0.82, Graphics.FONT_SMALL, "Keep", P.fg); }
+            return;
+        }
+        if (part >= 0.0) { txt(dc, c, S * 0.37, Graphics.FONT_NUMBER_HOT, F.holdCount(System.getTimer()).toString(), P.acc); }
+        else { txt(dc, c, S * 0.37, Graphics.FONT_NUMBER_MEDIUM, clock(F.pausedTime()), P.fg); }
+        txt(dc, c, S * 0.5, Graphics.FONT_SMALL, "START resume", P.fg);
+        txt(dc, c, S * 0.57, Graphics.FONT_XTINY, fit(dc, "Hold BACK to finish", Graphics.FONT_XTINY, (S * 0.72).toNumber()), F.pzHint > now || part >= 0.0 ? P.acc : P.lbl);
+        if (F.pzSel != 0) {
+            var w = S * 0.46, h = S * 0.1;
+            dc.setColor(P.acc, Graphics.COLOR_TRANSPARENT); dc.setPenWidth(2); dc.drawRoundedRectangle(c - w / 2, S * 0.68 - h / 2, w, h, h / 2); dc.setPenWidth(1);
+        }
+        txt(dc, c, S * 0.68, Graphics.FONT_SMALL, "Discard", F.pzSel != 0 ? P.fg : P.dim);
+        if (touch) {
+            var on = part >= 0.0;
+            pill(dc, c, S * 0.82, S * 0.5, S * 0.11, on ? P.acc : P.faint);
+            txt(dc, c, S * 0.82, Graphics.FONT_XTINY, "Hold to finish", on ? P.ink : P.fg);
+        }
+    }
     function sportName(F as Flow) as String { return F.sp.equals("other") ? F.tname : F.homeLabel(F.sp); }
     function drawReady(dc as Dc, F as Flow, S as Number, P as Palette) as Void {
         var c = S / 2;

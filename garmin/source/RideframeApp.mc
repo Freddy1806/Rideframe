@@ -90,7 +90,7 @@ class RideframeApp extends Application.AppBase {
     }
     function onTick() as Void {
         var t = now();
-        flow.handle(E_TICK, t, null);
+        flow.handle(E_TICK, t, System.getTimer()); // ms for the pause screen's 3 s hold (t has whole seconds)
         recorder.tick(System.getTimer(), t);
         drain();
         // retry the queue every 30 s while the app is open (the phone may be back)
@@ -126,6 +126,7 @@ class RideframeApp extends Application.AppBase {
         }
         if (flow.routeId == null) { recorder.track = null; }
         recorder.sync();
+        if (rec != null && flow.start != 0) { pauseRecording(flow.scr == S_PAUSE && flow.rec == null); } // a paused strength workout stops its timer
         if (flow.scr == S_SUM && rec != null) { stopRecording(true); }
         if (flow.scr == S_START && flow.start == 0 && rec != null) { stopRecording(false); }
         if (!lastKey.equals(flow.last)) { lastKey = flow.last; Application.Storage.setValue("last", lastKey); }
@@ -288,6 +289,11 @@ class RideframeApp extends Application.AppBase {
     function lap() as Void { // one lap per set, so the activity shows the sets as laps (real "sets" in the FIT file are not open to Connect IQ: VERIFY)
         if (flow.sets.size() > laps && rec.isRecording()) { rec.addLap(); }
         laps = flow.sets.size();
+    }
+    // VERIFY (Toybox.ActivityRecording.Session): stop() then start() again on the same session pauses and resumes its timer
+    function pauseRecording(paused as Boolean) as Void {
+        if (paused && rec.isRecording()) { rec.stop(); }
+        else if (!paused && !rec.isRecording()) { rec.start(); }
     }
     function stopRecording(save as Boolean) as Void {
         if (rec.isRecording()) { rec.stop(); }
