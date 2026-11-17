@@ -322,8 +322,8 @@ function fakePad() { // a standard-mapping gamepad; window.__pad.press(i) holds 
       await q2.evaluate(d => { window.__ride.elapsed = d + 1; }, dur); await q2.waitForTimeout(1200);
       const v = await q2.evaluate(() => ({ coach: window.__aud.filter(s => /assets\/audio\/coach\//.test(s)), voice: window.__voice, done: window.__ride.wDone, lines: Object.keys(window.__ride.coach?.lines || {}).length }));
       ok(v.lines === keys.length && v.done && !v.coach.length && !v.voice, 'workout start to finish: no coach line plays (warm-up, countdown, go, half, low, rest, done)', JSON.stringify(v));
-      await q2.evaluate(() => window.__ride.coach.say('challenge', 0));
-      ok(await q2.evaluate(() => window.__aud.some(s => /coach\/challenge\.mp3$/.test(s))), 'control: the coach still speaks outside workouts (a challenge offer), so the spy works');
+      await q2.evaluate(() => { window.__ride.coach.say('challenge', 0); new Audio('assets/audio/spy-check.mp3'); });
+      ok(await q2.evaluate(() => window.__aud.some(s => /spy-check/.test(s)) && !window.__aud.some(s => /coach\//.test(s))), 'control: the Audio spy sees new sounds; the coach is off everywhere now (main 92fa9ac), a challenge line plays nothing either');
       await c.close();
     }
 
