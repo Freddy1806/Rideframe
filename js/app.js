@@ -21,7 +21,7 @@ import { routeFns } from './tcx.js';
 import { hudPrefs, hudControlsHTML, wireHudControls } from './hudprefs.js';
 import { allWorkouts, setMyWorkouts, workoutById, workoutDuration, workoutSVG } from './workouts.js';
 import { loadShared, sharedFor, shareRide, importShared, groupModal } from './share.js';
-import { workoutOptions, wireRoutePick } from './myworkouts-ui.js';
+import { workoutOptions, wireRoutePick, fitBadge } from './myworkouts-ui.js';
 import { loadPersonal } from './myworkouts-store.js';
 
 const $ = s => document.querySelector(s);
@@ -288,6 +288,7 @@ function card(r) {
   return `<div class="card" data-id="${r.id}" tabindex="0" role="button">
     <div class="thumb" style="background-image:url('${r.thumb || ''}')">
       ${best ? `<span class="badge">PB ${fmtTime(best.duration)}</span>` : ''}
+      ${fitBadge(r, workoutById(state.settings.workout), state.settings)}
       <span class="go"><svg width="18" height="18" viewBox="0 0 24 24"><path d="M7 4l12 8-12 8z" fill="currentColor"/></svg></span>
       ${profileSVG(t)}
     </div>
@@ -391,7 +392,7 @@ function detail(id) {
   const showWork = () => { const w = workoutById(state.settings.workout); $('#workInfo').innerHTML = w ? `<p style="margin:6px 0">${esc(w.what)} Target watts from your FTP (${state.settings.ftp || 200} W).</p>${workoutSVG(w)}` : ''; $('#rideBtn').textContent = w ? 'Start workout ▸' : 'Ride ▸'; $('#chRow').hidden = !!w; };
   $('#workSel').value = workoutById(state.settings.workout) ? state.settings.workout : ''; showWork();
   $('#workSel').onchange = e => { state.settings.workout = e.target.value; saveSettings(); showWork(); };
-  wireRoutePick(main, { route: r, state, saveSettings, rerender: () => detail(id) });
+  wireRoutePick(main, { route: r, state, saveSettings, rerender: () => detail(id), routes: allRoutes, openRoute: rid => go('detail', rid) });
   $('#ergChk').onchange = e => { state.settings.erg = e.target.checked; saveSettings(); };
   $('#chSel').value = String(state.settings.challenges ?? 4);
   $('#lapSel').value = String(state.settings.laps || 1);

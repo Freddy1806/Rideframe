@@ -38,7 +38,7 @@ let fails = 0; const ok = (c, m) => { console.log(`${c ? '✓' : '✗'} ${m}`); 
     ok(await D.locator('.mwchip').count() >= 3, 'editor: one-tap name suggestions');
     ok(await D.inputValue('.mwstep[data-i="0"] input[data-f="pct2"]') === '75' && (await D.textContent('.mwstep[data-i="0"] .mww')).trim() === '100 → 188 W', 'editor: the warm-up stays a ramp 40 → 75 % (100 → 188 W)');
     ok(await D.locator('#mwGraph polygon').count() >= 2, 'editor: ramps drawn sloped in the graph');
-    ok(await D.locator('#mwSum').textContent().then(t => /route/.test(t)), 'editor: the route duration is compared');
+    ok(await D.locator('#mwSum .mwfit, #mwSum .mwwarn').count() === 1, 'editor: the route is ridden with these watts (js/routefit.js): ' + (await D.locator('#mwSum .mwfit, #mwSum .mwwarn').first().textContent().catch(() => '')).trim());
     const s3 = `.mwstep[data-i="${iv}"]`;
     ok((await D.textContent(`${s3} .mww`)).trim() === '300 W', `editor: step ${iv + 1} at 120 % of 250 W = 300 W`);
     await D.fill(`${s3} input[data-f="pct"]`, '125'); await D.fill(`${s3} input[data-f="min"]`, '3.5');
@@ -62,6 +62,32 @@ let fails = 0; const ok = (c, m) => { console.log(`${c ? '✓' : '✗'} ${m}`); 
     // another route lists it too, after the ones made for that route
     await D.click('#back'); await D.click('.card[data-id="coast"]'); await D.waitForSelector('#workSel');
     ok(await D.locator('#workSel optgroup[label="My workouts"] option', { hasText: 'My VO2' }).count() === 1, 'another route: “My VO2” in its workout choice too');
+
+    // ---- does the workout fit the route? (js/routefit.js) too short: more laps or a longer route; fits; much longer ----
+    await D.goto(BASE + '/?desktop&noprofile&demo&view=detail&id=demo'); await D.waitForSelector('#workSel'); await D.selectOption('#lapSel', '1'); await D.waitForTimeout(200);
+    const fitOf = async () => ({ fit: await D.getAttribute('#mwFitLine', 'data-fit').catch(() => null), txt: (await D.textContent('#mwFitLine').catch(() => '')).replace(/\s+/g, ' ').trim() });
+    await D.selectOption('#workSel', 'z2_90'); await D.waitForTimeout(200); let fl = await fitOf();
+    ok(fl.fit === 'short' && /Route ends after about \d+ min, the workout needs 90 min: this workout does not fit on this route/.test(fl.txt), 'route page, 90 min on Passo Demo: ' + fl.txt);
+    ok(await D.locator('#mwFitLaps').count() === 1 && /Ride \d+ laps/.test(await D.textContent('#mwFitLaps')), 'too short: a button for the laps it needs');
+    const sugg = await D.locator('#mwFitLine .mwfitr').allTextContents(); ok(sugg.length >= 1, 'too short: longer routes to pick, closest fit first: ' + sugg.join(', '));
+    if (SHOTS) { await D.locator('#mwFitLine').scrollIntoViewIfNeeded(); await D.screenshot({ path: `${SHOTS}/routefit_short_1280.png` }); }
+    const need = await D.getAttribute('#mwFitLaps', 'data-laps'); await D.click('#mwFitLaps'); await D.waitForTimeout(300); fl = await fitOf();
+    ok(await D.inputValue('#lapSel') === need && ['fits', 'long'].includes(fl.fit) && new RegExp(need + ' laps take about').test(fl.txt), `“Ride ${need} laps” sets the laps and the line turns: ${fl.txt}`);
+    await D.selectOption('#lapSel', '1'); await D.waitForTimeout(200);
+    await D.selectOption('#workSel', 'rec30'); await D.waitForTimeout(200); fl = await fitOf();
+    ok(fl.fit === 'long' && /the workout ends at km [\d.,]+ of [\d.,]+, the rest is free riding/.test(fl.txt), 'much longer route: where the workout ends: ' + fl.txt);
+    await D.selectOption('#workSel', 'vo2_5x3'); await D.waitForTimeout(200); fl = await fitOf();
+    ok(fl.fit === 'fits' && /Workout 49 min · route takes about \d+ min at these watts: fits/.test(fl.txt), 'fits: ' + fl.txt);
+    if (SHOTS) { await D.locator('#mwFitLine').scrollIntoViewIfNeeded(); await D.screenshot({ path: `${SHOTS}/routefit_fits_1280.png` }); }
+    await D.selectOption('#workSel', 'z2_90'); await D.waitForTimeout(200);
+    const first = D.locator('#mwFitLine .mwfitr').first(), toId = await first.getAttribute('data-route'); await first.click(); await D.waitForTimeout(400);
+    ok((await D.textContent('h1')).replace(/\s/g, '') === sugg[0].replace(/\s/g, '') && await D.getAttribute('#mwFitLine', 'data-fit') !== 'short', `a suggested route opens and the workout fits there (${sugg[0]})`);
+    await D.click('#back'); await D.waitForSelector('.card[data-id="demo"]');
+    ok(/Too short for Endurance 90/.test(await D.textContent('.card[data-id="demo"]')) && await D.locator(`.card[data-id="${toId}"] .fitshort`).count() === 0, 'library: with the 90 min workout chosen Passo Demo is marked too short, the suggested route is not');
+    if (SHOTS) { await D.locator('.card[data-id="demo"]').scrollIntoViewIfNeeded(); await D.screenshot({ path: `${SHOTS}/routefit_library_1280.png` }); }
+    await D.click('.card[data-id="demo"]'); await D.waitForSelector('#workSel'); await D.selectOption('#workSel', ''); await D.waitForTimeout(200);
+    ok(await D.locator('#mwFitLine').count() === 0, 'free ride: no fit line');
+    await D.selectOption('#workSel', saved.id); await D.waitForTimeout(200); // back to “My VO2” for the ride below
 
     // ---- Profile → My workouts, FTP there = the FTP of "My data" ----
     await D.goto(BASE + '/profil.html#myworkouts'); await D.waitForSelector('.mwitem');
@@ -190,6 +216,16 @@ let fails = 0; const ok = (c, m) => { console.log(`${c ? '✓' : '✗'} ${m}`); 
     ok(await padTo(del, 120), 'pad: in the profile, reaches Delete of the new workout');
     await press('A'); await G.waitForSelector('.mwask'); await padTo('.mwask button.danger'); await press('A'); await G.waitForTimeout(500);
     ok(!(await listOf(token)).some(w => w.id === padW?.id) && !(await G.locator(`.mwitem[data-id="${padW?.id}"]`).count()), 'pad: deleted after the in-page question');
+    // the fit line by pad: “Ride N laps” and a suggested route are buttons the pad reaches
+    await G.goto(BASE + '/?desktop&noprofile&demo&view=detail&id=demo'); await G.waitForSelector('#workSel'); await G.selectOption('#workSel', 'z2_90'); await G.waitForTimeout(500);
+    await press('down'); ok(await padTo('#mwFitLaps'), 'pad: reaches “Ride N laps”'); const needG = await G.getAttribute('#mwFitLaps', 'data-laps'); await press('A'); await G.waitForTimeout(300);
+    ok(await val('#lapSel') === needG, `pad: A sets ${needG} laps`);
+    await G.selectOption('#lapSel', '1'); await G.waitForTimeout(300);
+    ok(await padTo('#mwFitLine .mwfitr'), 'pad: reaches a suggested route'); const toG = await G.evaluate(() => window.__padnav.cur.textContent); // the one the pad stands on
+    await press('A');
+    const h1G = await G.waitForFunction(t => { const h = document.querySelector('h1')?.textContent.replace(/\s/g, ''); return h === t && h; }, toG.replace(/\s/g, ''), { timeout: 30000 }).then(h => h.jsonValue(), () => G.textContent('h1'));
+    ok(h1G.replace(/\s/g, '') === toG.replace(/\s/g, ''), `pad: A opens ${toG} (${h1G})`); // the title may break into lines
+    if (SHOTS) await G.screenshot({ path: `${SHOTS}/routefit_pad_1280.png` });
     await gctx.close();
 
     ok(!errs.length, 'no page errors' + (errs.length ? ': ' + errs.join(' | ') : ''));

@@ -170,6 +170,9 @@ const DESK = [ // the main app with its top bar (account pill, tabs) on tablet, 
   ['app-fahrten', '/?desktop&noprofile&view=history', null],
   ['app-einstellungen', '/?desktop&noprofile&view=settings', null],
   ['app-strecke-workout', '/?desktop&noprofile&view=detail&id=fluss', async p => { await p.selectOption('#workSel', 'z2_90'); await p.locator('#wCustom').scrollIntoViewIfNeeded(); }],
+  // does the workout fit the route (js/routefit.js): the "too short" line with its buttons, and the library marks
+  ['app-strecke-zukurz', '/?desktop&noprofile&demo&view=detail&id=demo', async p => { await p.selectOption('#lapSel', '1'); await p.selectOption('#workSel', 'z2_90'); await p.waitForSelector('#mwFitLine'); await p.locator('#mwFitLine').scrollIntoViewIfNeeded(); }],
+  ['app-strecken-zukurz', '/?desktop&noprofile&demo&view=detail&id=demo', async p => { await p.selectOption('#lapSel', '1'); await p.selectOption('#workSel', 'z2_90'); await p.evaluate(() => document.querySelectorAll('.modal').forEach(m => m.remove())); await p.click('#back'); await p.waitForSelector('.card .fitshort'); }],
   ['app-workout-editor', '/?desktop&noprofile&view=detail&id=fluss', async p => { await p.evaluate(() => document.querySelectorAll('.modal').forEach(m => m.remove())); // the faked login asks for an email first
     await p.selectOption('#workSel', 'over_under'); await p.click('#wCustom'); await p.waitForSelector('.mwbox'); }],
 ];

@@ -1,14 +1,18 @@
 // Personal workouts on screen (js/myworkouts.js): one editor, opened from the route page ("Customise" next to the workout
 // choice) and from the profile ("My workouts"), the grouped workout choice of the route page and the profile section
 // with the FTP. Every control is a real <button> / <input>, so the gamepad focus navigation reaches it.
-import { esc, fmtTime } from './util.js';
+import { esc, fmtTime, fmtKm } from './util.js';
 import { WORKOUTS, MY, workoutById } from './workouts.js';
-import { LIM, newId, totalSec, avgPct, stepAvg, isWork, watts, scaleWork, repeatBlock, graphSVG, zoneOf, fromBuiltin, freeTemplate, orderFor, kindOf, defaultName, nameSuggestions } from './myworkouts.js';
+import { toRide, LIM, newId, totalSec, avgPct, stepAvg, isWork, watts, scaleWork, repeatBlock, graphSVG, zoneOf, fromBuiltin, freeTemplate, orderFor, kindOf, defaultName, nameSuggestions } from './myworkouts.js';
+import { fitRoute, fittingRoutes, AFTER_PCT, FREE_PCT } from './routefit.js';
 import { loadPersonal, personalList, personalById, savePersonal, deletePersonal, localOnly, uploadLocal, storeMode } from './myworkouts-store.js';
 
 if (!document.querySelector('link[data-mw]')) { const l = document.createElement('link'); l.rel = 'stylesheet'; l.href = 'css/myworkouts.css'; l.dataset.mw = '1'; document.head.append(l); }
 const $ = (s, r = document) => r.querySelector(s);
 const mins = sec => `${Math.round(sec / 60)} min`;
+const km = fmtKm; // like everywhere in the app
+const FIT_HOW = `Estimated with your FTP and weight at the workout's target watts (free blocks at ${FREE_PCT} %, after the workout ${AFTER_PCT} % FTP)`;
+const lapsTxt = n => n > 1 ? `${n} laps` : 'the route';
 const cut = (s, n = LIM.name) => s.length > n ? s.slice(0, n).trim() : s;
 
 /* ---------------- in-page question (no native confirm / prompt: the gamepad reaches these buttons) ---------------- */
@@ -29,7 +33,7 @@ export function ask({ title, text = '', buttons }) {
 /* ---------------- the editor ---------------- */
 const wattsText = (s, ftp) => !ftp ? '–' : s.pct2 != null ? `${watts(s.pct, ftp)} → ${watts(s.pct2, ftp)} W` : `${watts(s.pct, ftp)} W`;
 const FIELD = { min: [LIM.minMin, LIM.maxMin, 'Minutes'], pct: [LIM.minPct, LIM.maxPct, '% FTP'], pct2: [LIM.minPct, LIM.maxPct, 'Ramp to % FTP'] };
-/** opens the editor; draft = a personal workout (saved = it exists already), ftp in W, route = { id, name, sec? } it is made for,
+/** opens the editor; draft = a personal workout (saved = it exists already), ftp in W, route = { id, name, track?, settings?, laps? } it is made for,
  *  kind = what sort of session ("VO2") for the name suggestions. Resolves { saved: workout } | { deleted: id } | null (cancelled). */
 export function openEditor({ draft, saved = false, ftp = 0, route = null, kind = '' }) {
   return new Promise(done => {
@@ -73,10 +77,11 @@ export function openEditor({ draft, saved = false, ftp = 0, route = null, kind =
 
     const summary = () => {
       const sec = totalSec(w.steps), avg = avgPct(w.steps), aw = watts(avg, ftp);
-      let fit = '';
-      if (route?.sec > 0) { const d = sec - route.sec;
-        fit = d > 60 ? `<p class="mwwarn" id="mwWarn">⚠ ${mins(d)} longer than the route (${esc(route.name)} ≈ ${mins(route.sec)} at your pace). Shorten it or ride more laps.</p>`
-          : `<p class="mwfit">Fits the route: ${esc(route.name)} takes about ${mins(route.sec)}.</p>`; }
+      let fit = ''; const f = route?.track ? fitRoute(route.track, toRide(w), { ...route.settings, ftp: ftp || route.settings?.ftp }, { laps: route.laps }) : null;
+      if (f) { const on = `${esc(route.name)}${f.laps > 1 ? ` (${f.laps} laps)` : ''}`;
+        fit = f.verdict === 'short' ? `<p class="mwwarn" id="mwWarn" title="${FIT_HOW}">⚠ ${on} ends after about ${mins(f.routeSec)}, the workout needs ${mins(sec)}. Shorten it or ride more laps.</p>`
+          : f.verdict === 'long' ? `<p class="mwfit" id="mwFit" title="${FIT_HOW}">${on} takes about ${mins(f.routeSec)}: the workout ends at km ${km(f.endD)} of ${km(route.track.length)}${f.laps > 1 ? ` in lap ${f.endLap}` : ''}, the rest is free riding.</p>`
+          : `<p class="mwfit" id="mwFit" title="${FIT_HOW}">Fits ${on}: about ${mins(f.routeSec)} at these watts${f.spare >= 60 ? `, ${mins(f.spare)} to spare` : ''}.</p>`; }
       $('#mwSum', m).innerHTML = `<span><b id="mwTotal">${fmtTime(sec)}</b><small>total</small></span><span><b>${avg} %</b><small>avg FTP</small></span>
         <span><b>${aw ? aw + ' W' : '–'}</b><small>${ftp ? `avg · FTP ${ftp} W` : 'set your FTP in the profile'}</small></span><span><b>${w.steps.length}</b><small>steps</small></span>${fit}`;
       $('#mwGraph', m).innerHTML = graphSVG(w.steps, { h: 80, mark: sel });
@@ -169,25 +174,46 @@ export function workoutOptions(routeId) {
     ${own.length ? `<optgroup label="My workouts">${own.map(w => `<option value="${esc(w.id)}">${w.mine ? '★ ' : ''}${optText(w, routeId)}</option>`).join('')}</optgroup>` : ''}
     <optgroup label="Standard workouts">${WORKOUTS.map(w => `<option value="${w.id}">${optText(w, routeId)}</option>`).join('')}</optgroup>`;
 }
-/** the "Customise" button and the route fit line on the route page; ctx = { route, state, saveSettings, rerender } */
-export function wireRoutePick(root, { route, state, saveSettings, rerender }) {
+/** the line under the workout choice: does the workout fit this route (js/routefit.js)? fits / too short (more laps or
+ *  another route, as buttons) / much longer (where the workout ends). routes = all routes for the suggestions. */
+export function fitLineHTML(route, w, settings, routes = []) {
+  const f = w ? fitRoute(route.track, w, settings, { laps: settings.laps || 1 }) : null; if (!f) return '';
+  const W = mins(f.workoutSec), R = mins(f.routeSec), L = route.track.length;
+  if (f.verdict === 'fits') return `<p class="mwfitline ok" id="mwFitLine" data-fit="fits" title="${FIT_HOW}">✓ Workout ${W} · ${lapsTxt(f.laps) === 'the route' ? 'route takes' : `${f.laps} laps take`} about ${R} at these watts: fits${f.spare >= 60 ? `, ${mins(f.spare)} to spare` : ''}</p>`;
+  if (f.verdict === 'long') return `<p class="mwfitline ok" id="mwFitLine" data-fit="long" title="${FIT_HOW}">✓ Workout ${W} · ${f.laps > 1 ? `${f.laps} laps take` : 'route takes'} about ${R}: the workout ends at km ${km(f.endD)} of ${km(L)}${f.laps > 1 ? ` in lap ${f.endLap}` : ''}, the rest is free riding</p>`;
+  const sugg = fittingRoutes(routes, w, { ...settings, laps: 1 }, { not: route.id });
+  const lapBtn = f.lapsNeeded && f.lapsNeeded > f.laps ? `<button type="button" class="btn ghost small" id="mwFitLaps" data-laps="${f.lapsNeeded}">Ride ${f.lapsNeeded} laps</button>` : '';
+  return `<div class="mwfitline bad" id="mwFitLine" data-fit="short" title="${FIT_HOW}"><p>⚠ ${f.laps > 1 ? `${f.laps} laps end` : 'Route ends'} after about ${R}, the workout needs ${W}: this workout does not fit on this route.</p>
+    <div class="mwfitacts">${lapBtn}${sugg.length ? `<span>${lapBtn ? 'or pick' : 'Pick'} a longer route:</span>${sugg.map(x => `<button type="button" class="btn ghost small mwfitr" data-route="${esc(x.id)}" title="Fits with ${mins(x.fit.spare)} to spare">${esc(x.name)}</button>`).join('')}` : lapBtn ? '' : '<span>Shorten it with “Customise”.</span>'}</div></div>`;
+}
+/** the "Customise" button and the route fit line on the route page; ctx = { route, state, saveSettings, rerender, routes, openRoute } */
+export function wireRoutePick(root, { route, state, saveSettings, rerender, routes = () => [], openRoute = () => {} }) {
   const sel = $('#workSel', root), info = $('#mwFitInfo', root), btn = $('#wCustom', root); if (!sel || !btn) return;
-  const routeSec = () => Math.round((route.track?.duration || 0) * (state.settings.laps || 1));
   const show = async () => {
-    const w = workoutById(sel.value), sec = w ? w.steps.reduce((a, s) => a + s.dur, 0) : 0, rs = routeSec(), up = localOnly();
-    info.innerHTML = (w && rs && sec > rs + 60 ? `<p class="mwwarn">⚠ This workout takes ${mins(sec)}, the route about ${mins(rs)}. Customise it or ride more laps.</p>` : '')
+    const w = workoutById(sel.value), up = localOnly();
+    info.innerHTML = fitLineHTML(route, w, state.settings, w ? routes() : [])
       + (up.length ? `<p class="mwup">${up.length} ${up.length === 1 ? 'workout' : 'workouts'} from this browser not in your account yet. <button type="button" class="btn ghost small" id="mwUp">Upload</button></p>` : '');
     const ub = $('#mwUp', info); if (ub) ub.onclick = async () => { ub.disabled = true; await uploadLocal(); rerender(); };
+    const lb = $('#mwFitLaps', info); if (lb) lb.onclick = async () => { const n = +lb.dataset.laps, ls = $('#lapSel', root);
+      if (ls && ![...ls.options].some(o => +o.value === n)) ls.add(new Option(`${n} laps · ${(route.track.length * n / 1000).toFixed(1)} km`, String(n)));
+      state.settings.laps = n; if (ls) ls.value = String(n); await saveSettings(); await show(); (ls || $('#workSel', root))?.focus(); }; // focus on the laps, so the pad stays on the page
+    info.querySelectorAll('[data-route]').forEach(b => b.onclick = () => openRoute(b.dataset.route));
   };
   const mine = $('#wMine', root); if (mine) mine.onclick = () => { location.href = 'profil.html#myworkouts'; };
-  sel.addEventListener('change', show); $('#lapSel', root)?.addEventListener('change', show); show();
+  sel.addEventListener('change', show); $('#lapSel', root)?.addEventListener('change', () => setTimeout(show)); show(); // after app.js stored the laps
   btn.onclick = async () => {
     const cur = workoutById(sel.value), own = cur?.personal ? personalById(cur.id) : null;
     const draft = own || (cur ? { ...fromBuiltin(cur), name: '' } : { ...freeTemplate(), name: '' }); // the editor names it: "River Valley VO2 1"
-    const res = await openEditor({ draft, saved: !!own, ftp: +state.settings.ftp || 0, route: { id: route.id, name: route.name, sec: routeSec() }, kind: own ? '' : kindOf(cur?.name || '') });
+    const res = await openEditor({ draft, saved: !!own, ftp: +state.settings.ftp || 0, route: { id: route.id, name: route.name, track: route.track, settings: state.settings, laps: state.settings.laps || 1 }, kind: own ? '' : kindOf(cur?.name || '') });
     if (!res) return;
     state.settings.workout = res.saved ? res.saved.id : ''; await saveSettings(); rerender();
   };
+}
+
+/** library card: a small mark when the preselected workout does not fit this route (laps from the settings) */
+export function fitBadge(route, w, settings) {
+  const f = w ? fitRoute(route.track, w, settings, { laps: settings.laps || 1 }) : null;
+  return f?.verdict === 'short' ? `<span class="badge fitshort" title="${esc(w.name)} needs ${mins(f.workoutSec)}, this route ends after about ${mins(f.routeSec)}${f.laps > 1 ? ` (${f.laps} laps)` : ''}">Too short for ${esc(cut(w.name, 22))}</span>` : '';
 }
 
 /* ---------------- profile ---------------- */
