@@ -14,17 +14,26 @@ export function routeFns(track) {
 
 const xml = v => String(v).replace(/[<>&"']/g, c => ({ '<': '&lt;', '>': '&gt;', '&': '&amp;', '"': '&quot;', "'": '&apos;' })[c]);
 
-/** samples: [t s, distance m, watts, km/h, rpm, bpm]; eleAt(d) adds altitude so Strava shows the climbing */
+/** in an ERG workout part (rec.ergSpans, seconds) the trainer held the watts: the route's climbing was not ridden */
+export const inErg = (rec, t) => (rec.ergSpans || []).some(([a, b]) => t >= a && t <= b);
+
+/** samples: [t s, distance m, watts, km/h, rpm, bpm]; eleAt(d) adds altitude so Strava shows the climbing. ERG parts get a flat
+ *  altitude (the last simulated one) and no map position: with positions Strava may replace the altitude from its own elevation
+ *  map (devices without a barometer) and would count the route's climb again */
 export function toTCX(rec, name, eleAt = null) {
   name = xml(name); const d0 = rec.startD || 0, J = rec.jumps || [], jd = t => J.reduce((m, [tj, sk]) => tj <= t ? m + sk : m, 0); // jumps to friends: the map follows the jump, the distance does not
   const DUR = rec.elapsed || rec.duration, start = new Date(rec.date - DUR * 1000) /* outdoor: sample times are wall-clock seconds incl. pauses */, iso = t => new Date(start.getTime() + t * 1000).toISOString();
   // outdoor rides (outdoor.html) carry their own GPS per sample: [.., lat, lon, ele]
   const pos = ([la, lo]) => `<Position><LatitudeDegrees>${la.toFixed(6)}</LatitudeDegrees><LongitudeDegrees>${lo.toFixed(6)}</LongitudeDegrees></Position>`;
-  const pts = rec.samples.map(([t, d, w, kmh, cad, hr, la, lo, el]) => `<Trackpoint><Time>${iso(t)}</Time>`
-    + (la != null ? pos([la, lo]) : eleAt?.pos ? pos(eleAt.pos(d0 + d + jd(t))) : '')
-    + (el != null ? `<AltitudeMeters>${(+el).toFixed(1)}</AltitudeMeters>` : eleAt ? `<AltitudeMeters>${eleAt(d0 + d + jd(t)).toFixed(1)}</AltitudeMeters>` : '') + `<DistanceMeters>${d}</DistanceMeters>`
+  let flat = null, off = 0, wasErg = false; // ERG: the altitude is held; afterwards the profile goes on from that level (no jump = no fake climb)
+  const pts = rec.samples.map(([t, d, w, kmh, cad, hr, la, lo, el]) => { const erg = !!rec.ergSpans && inErg(rec, t), raw = el != null ? +el : eleAt ? eleAt(d0 + d + jd(t)) : null;
+    if (raw != null) { if (erg) { if (flat == null) flat = raw + off; } else { if (wasErg && flat != null) off = flat - raw; flat = raw + off; } }
+    wasErg = erg;
+    return `<Trackpoint><Time>${iso(t)}</Time>`
+    + (erg ? '' : la != null ? pos([la, lo]) : eleAt?.pos ? pos(eleAt.pos(d0 + d + jd(t))) : '')
+    + (raw != null ? `<AltitudeMeters>${flat.toFixed(1)}</AltitudeMeters>` : '') + `<DistanceMeters>${d}</DistanceMeters>`
     + (hr ? `<HeartRateBpm><Value>${hr}</Value></HeartRateBpm>` : '') + (cad ? `<Cadence>${Math.min(254, cad)}</Cadence>` : '')
-    + `<Extensions><TPX xmlns="http://www.garmin.com/xmlschemas/ActivityExtension/v2"><Speed>${(kmh / 3.6).toFixed(2)}</Speed><Watts>${w}</Watts></TPX></Extensions></Trackpoint>`);
+    + `<Extensions><TPX xmlns="http://www.garmin.com/xmlschemas/ActivityExtension/v2"><Speed>${(kmh / 3.6).toFixed(2)}</Speed><Watts>${w}</Watts></TPX></Extensions></Trackpoint>`; });
   // laps (Freddy 12.11.: every climb counts as its own lap, like the lap button on a bike computer): split at rec.lapMarks (seconds)
   const marks = [...new Set((rec.lapMarks || []).map(Math.round))].filter(t => t > 0 && t < DUR).sort((a, b) => a - b), cuts = [0, ...marks, Infinity];
   const laps = [];
