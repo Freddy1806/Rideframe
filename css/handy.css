@@ -33,3 +33,4 @@
 a.hrow { color: inherit; text-decoration: none; }
 .hlink i { font-style: normal; color: var(--muted); font-size: 20px; }
 #tRest { grid-template-columns: repeat(4, 1fr); }
+#tStrava { grid-template-columns: minmax(0, 1fr) auto; } #tStrava .btn { white-space: nowrap; padding: 0 14px; } /* "Reconnect" / "Connected ✓" keep their own width */

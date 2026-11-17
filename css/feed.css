@@ -61,3 +61,21 @@ button.hrow { width: 100%; text-align: left; font: inherit; color: inherit; }
 .fdet .psum .fldc { grid-column: 1 / -1; } /* load is the one number every sport has: its own full row with the source */
 .fspl div span:nth-child(2) { display: flex; align-items: center; } .fspl i { display: block; height: 8px; border-radius: 4px; background: var(--accent); opacity: .8; }
 @media (max-width: 360px) { .fdet .psum b { font-size: 17px; } .fdet .psum div { padding: 8px 10px; } }
+
+/* ---- import + add activity (17.11.) ---- */
+.fact { display: flex; flex-wrap: wrap; gap: 8px; }
+.fact .btn { flex: 1 1 140px; min-width: 0; height: 44px; white-space: normal; line-height: 1.15; }
+.fact .btn[hidden] { display: none; }
+.fmsg { font-size: 14px; font-weight: 700; color: var(--paper); line-height: 1.35; overflow-wrap: anywhere; }
+.fmsg[hidden] { display: none; }
+.fadd .olbl { display: block; margin-top: 2px; }
+.fadd select.ksearch, .fadd input.ksearch { margin-bottom: 0; font-weight: 700; }
+.fadd input[type=datetime-local] { min-width: 0; max-width: 100%; display: block; }
+.fdur { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.fdur label { display: flex; align-items: center; gap: 8px; font-weight: 700; color: var(--muted); min-width: 0; }
+.fdur input[type=number] { height: 44px !important; font-size: 17px !important; min-width: 0; }
+.fnote { height: auto !important; min-height: 76px; padding: 10px 14px !important; font: inherit; font-size: 15px !important; resize: vertical; }
+.ferr { color: var(--accent); font-weight: 700; font-size: 14px; min-height: 0; overflow-wrap: anywhere; } .ferr:empty { display: none; }
+.fadd .hint { font-size: 13px; line-height: 1.35; overflow-wrap: anywhere; }
+.fnotev { font-size: 15px; line-height: 1.4; white-space: pre-wrap; overflow-wrap: anywhere; }
+.froute .kline { fill: none; stroke-linejoin: round; stroke-linecap: round; }

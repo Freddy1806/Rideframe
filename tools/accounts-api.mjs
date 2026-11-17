@@ -70,7 +70,8 @@ let boardCache = null, boardGen = 0; // { at, week, rows } – rebuilt at most e
 const sums = new Map(); /* file -> { m: mtime, date, km, hm } so a rebuild never re-parses big ride files */
 /** what the leaderboard and profiles need of a ride (never the samples) */
 const summary = (m, r) => ({ ...summary0(m, r), segs: Array.isArray(r?.segs) ? r.segs.slice(0, 300).map(e => ({ id: String(e?.id || '').slice(0, 40), t: +e?.t || 0, w: Math.round(+e?.w || 0) })).filter(e => e.id && e.t > 0) : undefined });
-const summary0 = (m, r) => ({ m, id: r?.id, date: +r?.date || 0, km: (+r?.distance || 0) / 1000, hm: +r?.gain || 0, demo: r?.routeId === 'demo', routeId: r?.routeId || '', routeName: r?.routeName || '', workout: r?.workout || '', dur: +r?.duration || 0, pw: +r?.avgPower || 0, complete: !!r?.complete });
+/* demo: also the other sports (ice skating, yoga … imported from Strava or entered by hand): they stay out of the ride leaderboard and profile like demo rides */
+const summary0 = (m, r) => ({ m, id: r?.id, date: +r?.date || 0, km: (+r?.distance || 0) / 1000, hm: +r?.gain || 0, demo: r?.routeId === 'demo' || (!!r?.sportType && !/(Ride|Run)$|^(Velomobile|Handcycle)$/.test(r.sportType)), routeId: r?.routeId || '', routeName: r?.routeName || '', workout: r?.workout || '', dur: +r?.duration || 0, pw: +r?.avgPower || 0, complete: !!r?.complete });
 /** a player's profile for everyone on this host: look, totals, the last 40 rides */
 /** segment times of everyone on this host for one route: { segId: [{ name, t, w }] } best per player, fastest first */
 async function segBoard(a, routeId) {

@@ -19,11 +19,11 @@ export async function stravaStatus() {
   catch { return { configured: false }; }
 }
 
-/** opens Strava's login in a popup; resolves true once this browser holds a key */
-export function stravaConnect() {
-  const before = getKey(), claim = [...crypto.getRandomValues(new Uint8Array(16))].map(b => b.toString(16).padStart(2, '0')).join('');
-  const w = window.open('/api/strava/connect?claim=' + claim, 'strava', 'width=620,height=760');
-  if (!w) { try { localStorage.setItem(PEND, JSON.stringify({ c: claim, t: Date.now() })); } catch {} location.href = '/api/strava/connect?claim=' + claim; return Promise.resolve(false); } // popup blocked: log in in this tab, the key is fetched by the claim code when the app is opened again
+/** opens Strava's login in a popup; resolves true once this browser holds a key. force = ask Strava again (reconnect for the import permission) */
+export function stravaConnect(force = false) {
+  const before = getKey(), claim = [...crypto.getRandomValues(new Uint8Array(16))].map(b => b.toString(16).padStart(2, '0')).join(''), url = '/api/strava/connect?claim=' + claim + (force ? '&force=1' : '');
+  const w = window.open(url, 'strava', 'width=620,height=760');
+  if (!w) { try { localStorage.setItem(PEND, JSON.stringify({ c: claim, t: Date.now() })); } catch {} location.href = url; return Promise.resolve(false); } // popup blocked: log in in this tab, the key is fetched by the claim code when the app is opened again
   let asking = false; // the installed iPhone app logs in in a separate browser: fetch the key by the claim code
   const ask = async () => { if (asking) return; asking = true; try { const j = await (await fetch('/api/strava/claim/' + claim, { cache: 'no-store' })).json(); if (j.key) localStorage.setItem(KEY, j.key); } catch {} asking = false; };
   return new Promise(res => {
@@ -91,12 +91,13 @@ function intervalText(rec) {
   return '\n\nIntervals:\n' + iv.map((x, i) => `${i + 1}. ${x.name} · ${mm(x.t)} · avg ${x.w} W${x.target ? ` (target ${x.target} W)` : ''}`).join('\n');
 }
 
-/** a strength workout as a manual Strava activity (Krafttraining, no file). Returns the activity URL. */
-export async function stravaStrength({ id, name, start, dur, description }) {
+/** a strength workout as a manual Strava activity (Krafttraining, no file). Returns the activity URL.
+ *  Also any hand-written entry from the Activities page: sportType, distance and its own external id prefix. */
+export async function stravaStrength({ id, name, start, dur, description, sportType = 'WeightTraining', distance = 0, prefix = 'rideframe-kraft-' }) {
   const d = new Date(start), p = n => String(n).padStart(2, '0');
   const local = `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}T${p(d.getHours())}:${p(d.getMinutes())}:${p(d.getSeconds())}`;
   const r = await fetch('/api/strava/activity', { method: 'POST', headers: { ...hdr(), 'Content-Type': 'application/json' },
-    body: JSON.stringify({ name, sport_type: 'WeightTraining', start_date_local: local, elapsed_time: dur, description, external_id: 'rideframe-kraft-' + id }) });
+    body: JSON.stringify({ name, sport_type: sportType, start_date_local: local, elapsed_time: dur, description, distance, external_id: prefix + id }) });
   const j = await r.json().catch(() => ({}));
   if (!r.ok) throw new Error(/write|scope|permission/i.test(j.error || '') ? 'Strava does not allow creating activities. Please reconnect Strava once.' : j.error || 'Upload failed');
   return 'https://www.strava.com/activities/' + j.id;
@@ -106,4 +107,11 @@ export async function stravaStrength({ id, name, start, dur, description }) {
 export async function stravaSegments(bounds, type = 'riding') {
   try { const r = await fetch('/api/strava/segments?type=' + type + '&bounds=' + bounds.map(v => v.toFixed(5)).join(','), { headers: hdr(), cache: 'no-store' }); return r.ok ? (await r.json()).segments || [] : []; }
   catch { return []; }
+}
+
+/** one batch of the rider's Strava activities for the import (js/actimport.js): { activities, done, next, rateLimited } or { error, reconnect } */
+export async function stravaActivities(after = 0) {
+  try { const r = await fetch('/api/strava/activities' + (after ? '?after=' + Math.floor(after) : ''), { headers: hdr(), cache: 'no-store' }), j = await r.json().catch(() => ({}));
+    return r.ok ? j : { ...j, error: j.error || 'Strava import failed (' + r.status + ').' }; }
+  catch { return { error: 'No connection to the server.' }; }
 }
