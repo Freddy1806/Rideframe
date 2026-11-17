@@ -25,8 +25,9 @@ Target watches: Forerunner 265 / 265S (416 / 360 px round AMOLED, touch + 5 butt
 | `source/Draw.mc` | every screen drawn with `dc` calls, sizes as fractions of the screen (= `DRAW` in `js/watchsim.js`, `js/watchdraw.js`) |
 | `source/FlowView.mc`, `source/FlowDelegate.mc` | one view, one BehaviorDelegate: buttons, holds, taps, swipes to flow events |
 | `source/Api.mc` | `Communications.makeWebRequest` client, bearer token from `Application.Storage` |
-| `source/Recorder.mc` | run / ride / more: `ActivityRecording` session, GPS (`Position`), one sample a second, the activity POST stub, the demo feed flag |
-| `source/RideframeApp.mc` | app: flow, queue, caches, heart rate, vibration, optional strength `ActivityRecording` |
+| `source/Recorder.mc` | run / ride / more: `ActivityRecording` session, GPS (`Position`), one sample a second, the activity body, segment and route following once a second, the demo feed flag |
+| `source/Feed.mc` | 19.11.: segment timing (`SegFeed`) and route following (`RouteTrack`) on the watch, flat arrays of local metres (= `js/watchfeed.js`, tests: `tools/watchfeed-test.mjs`) |
+| `source/RideframeApp.mc` | app: flow, queues (strength, activities), caches, routes and segments calls, heart rate, vibration, optional strength `ActivityRecording` |
 | `source/Glance.mc` | glance: week points and the change against last week |
 
 One view for all screens on purpose: the flow decides the screen (exactly like the preview), so there is no view
@@ -76,7 +77,7 @@ Command Palette → **Monkey C: Run** (pick `fr265`), or `connectiq` (opens the 
 - Heart rate: Simulator → Simulation → Activity Data (or FIT data playback) feeds the sensor.
 - No phone: Simulator → Settings → Connection Type / "BLE" off (VERIFY menu name) shows the offline queue
   ("Will send when the phone is near").
-- Storage: File → Edit Persistent Storage shows `token`, `setup`, `queue`, `summary`, `cfg`, `last`.
+- Storage: File → Edit Persistent Storage shows `token`, `setup`, `queue`, `summary`, `cfg`, `last`, `aqueue`.
 
 ## Put it on the watch (sideload)
 
@@ -96,6 +97,8 @@ Command Palette → **Monkey C: Run** (pick `fr265`), or `connectiq` (opens the 
   → `{ ok, id, prs, dup? }`; the same `id` twice is stored once. 400 / 413 = never send it again, anything else = retry.
 - `GET /api/watch/summary` → `{ pts, prev, delta, sessions, strength, streak, week }`
 - All with `Authorization: Bearer <token>`; 401 = the watch was removed on the phone (pair again).
+- 19.11.: `POST /api/watch/activity`, `GET /api/watch/segments`, `GET /api/watch/routes`, `GET /api/watch/route`: see
+  "Activities, segments, routes" below.
 
 ## Step 2: start menu, run / ride / more, workouts (18.11., ported to Monkey C, see "Port status" below)
 
@@ -122,9 +125,9 @@ START = pause, BACK = lap, or first closes the segment popup) ⇄ `PAUSE` (Resum
 `cfg.more`, its sports record one fixed page. Strength: `HOME` → `START` → `SMODE` (Workout, Free) → `WPICK` → guided `SET`
 (kg / reps / rest from the plan, the last planned set finishes) or `PICK` (recent, then top 20, then the rest).
 Events: `sample` `{ dt, v, hr, pw, cad, up }` once a second from Position / Sensor (auto lap, auto pause, NP),
-`seg` `{ k: "warn" | "live" | "end", name, len, eta, done, delta, need, time, pr }` for the segment popup (result 5 s).
-Outputs: cues `start`, `stop`, `lap`, `seg` (suppressed while recording with `vib: 0`), `out` `saveAct` (save the activity;
-the preview does not send activities yet).
+`seg` `{ k: "warn" | "live" | "end" | "none", name, len, eta, done, delta, need, time, pr, ref }` for the segment popup (result 5 s).
+Outputs: cues `start`, `stop`, `lap`, `seg` (suppressed while recording with `vib: 0`), `out` `saveAct` (save the activity),
+`routes` / `route` (19.11., the Route choice; answered with `setRoutes` / `setRoute`).
 
 ## Port status (step 2)
 
@@ -155,8 +158,9 @@ Ported from `js/watchflow.js` / `js/watchfields.js` / `js/watchsim.js` / `js/wat
   starts the hold clock (counts up, "of 1:00" below), a triple vibration at the planned time, the second START logs
   the seconds held; BACK while it runs cancels it.
 - **Route page and segment popup**: drawing and state (`Flow.setRoute`, `E_SEG` events, `Draw.routePage`,
-  `Draw.segScreen`) exactly like the preview. Nothing feeds them yet: `DEMO_FEED` in `Recorder.mc` is `false`; set it
-  `true` in the simulator to get the preview's demo route and a demo segment 30 s into a run or ride.
+  `Draw.segScreen`) like the preview, fed since 19.11. by the watch itself (see below). `DEMO_FEED` in `Recorder.mc`
+  (`false`): set it `true` in the simulator without a phone to get the demo routes (Riverside 8k chosen) and a demo
+  segment 30 s into a run or ride; it turns the real segment and route following off.
 - **Colours**: AMOLED (fr265) black with the RIDEFRAME sport colours; MIP (fenix) only 64-colour palette colours,
   white field labels, light grey (not dark grey) far list rows (`Palette` in `Draw.mc`).
 - **Touch** (fr265, fenix 7 Pro): taps on list rows / home rows / START pill, swipes as in the preview (`FlowDelegate.onTap`).
@@ -164,39 +168,77 @@ Ported from `js/watchflow.js` / `js/watchfields.js` / `js/watchsim.js` / `js/wat
 Not ported on purpose: the preview's panel, demo data, keyboard. `js/watchflow.js` is unchanged (its comment in
 `setConfig` says a running recording keeps its pages; the JS does not do that, the watch does).
 
-## Activity upload (not yet: no endpoint)
+## Activities, segments, routes (19.11.)
 
-The activity itself is saved as a normal Garmin activity. RIDEFRAME does not get it yet, because the server has no
-endpoint for it. `Recorder.activityBody()` builds, at Save, what the watch would send; `Api.activity()` and
-`Recorder.postActivityStub()` exist but are **not called**. The request, once the server has it:
+Server: `tools/watch-feed.mjs` (tests: `tools/watch-feed-test.mjs`), wired in `tools/watch-api.mjs`. Watch: `Api.mc`,
+`RideframeApp.mc`, `Recorder.mc`, `Feed.mc`. Preview: `js/watchsim.js` (Route choice), `js/watchfeed.js` (the tested twin
+of `Feed.mc`). All watch calls with the bearer token; 401 = pair again; each limited per watch (429 = later).
+
+**Activity upload.** At Save `Recorder.activityBody()` builds the body, `RideframeApp.queueAct()` puts it into Storage
+`aqueue` (at most 10, oldest first) and sends it like the strength queue: at app start, after Save, and every 30 s while
+something waits. 200 (also `dup` / `merged`) and 400 / 413 drop it, anything else keeps it.
 
 ```
-POST /api/watch/activity            Authorization: Bearer <watch token>
+POST /api/watch/activity            Authorization: Bearer <watch token>, body at most 4 KB, only these keys
 { "id": "3fa2c91b6744e0a1",          6-40 chars [A-Za-z0-9_-], the same id twice = stored once
   "type": "Run" | "Ride" | "<Strava type of a more sport, e.g. Hike>",
-  "start": 1763450000,               Unix seconds (Monkey C numbers are 32 bit)
+  "start": 1763450000,               Unix seconds, within the last 60 days
   "duration": 3720,                  s, start to Save
-  "moving": 3540,                    s, the timer (pauses and auto pauses excluded)
-  "dist": 10230,                     m
-  "climb": 84,                       m
+  "moving": 3540,                    s, the timer (pauses and auto pauses excluded), at most duration + 60
+  "dist": 10230, "climb": 84,        m
   "hr": 151, "maxHr": 178,           bpm, 0 = no sensor
   "kcal": 712,
-  "power": 221,                      W, rides only
-  "laps": 11 }
-→ { "ok": true, "id": "watch-…", "dup"?: true }; 400 / 413 = never again, 401 = pair again, anything else = retry
+  "power": 221,                      W, optional (rides)
+  "laps": 11 }                       optional, a count (stored as nLaps)
+→ { "ok": true, "id": "watch-…", "dup"?: true, "merged"?: true }
 ```
 
-When the endpoint exists: queue it like the strength sessions (Storage `queue`), drop the duplicate the Strava import
-would bring back (same rule as for strength, start within 2 minutes).
+Stored as a ride record `users/<id>/rides/watch-<id>.json` (`source: 'watch'`), synced to the phone like any ride.
+Dedupe with the Strava import, both orders (same family, start ± 2 min, duration ± 5 %): Strava first → the watch numbers
+go into the Strava ride (`merged: true`, `watch: <id>`); watch first → the import links the Strava activity to the watch
+ride (`js/actimport.js` `mergeAct`), and the feed / profile / summary show one entry (`collapse`). Strength the same way:
+a Strava `WeightTraining` within 2 min links to the `kraft/watch-<id>` session (`linkStrength`).
+
+**Segments near the watch.** At the start of a run / ride (with `seg` on, a GPS fix, the phone connected) and again every
+3 km recorded, never while a segment is timed; a failed call is tried again after 60 s.
+
+```
+GET /api/watch/segments?lat=47.37000&lon=8.54000&type=run|ride
+→ { "segs": [{ "id", "n" (name, ≤ 24), "len" (m), "pr" (s, 0 = none), "kom" (s, 0 = none),
+               "p": [[lat, lon], …] (≤ 40 points, 5 decimals) }], "strava": true }      at most 8, nearest first, < 8 KB
+→ { "segs": [], "strava": false }    the account has no Strava link (the phone sends its Strava key with the watch calls)
+```
+
+Cached per watch by rounded position (2 decimals) and type for 5 min. Timed on the watch by `Feed.mc` `SegFeed` (rules
+in its header): warning within 300 m (or under 45 s away) when closing in and heading at the start or along the first
+leg, start within 25 m, progress on the nearest point in a forward window, finish within 25 m of the end, lost after more
+than 60 m off for more than 10 s. Live delta = elapsed - reference × progress, needed speed = `js/navroute.js needSpeed`
+(0 = out of reach: "PR out of reach"); the reference is the PR, else the KOM ("ref"), else none (the time runs).
+
+**Routes.** Sent from the phone: Outdoor → Routes sheet → **Send to watch** per route (signed in only), stored per account
+(`users/<id>/watch-routes.json`, at most 20, a simplified copy of at most 500 points). The ready screen of a run / ride
+has a **Route** line: UP / DOWN or a tap opens the list (None, then the routes with length and climb).
+
+```
+phone (X-RF-Token): GET /api/watch/routes, PUT /api/watch/routes/<id> { name, pts: [[lat, lon, ele?]] } (409 = 20 already),
+                    DELETE /api/watch/routes/<id>, GET /api/watch/route?id= (the preview without a watch)
+watch:  GET /api/watch/routes → { "routes": [{ "id", "name" (≤ 24), "dist" (m), "climb" (m) }] }
+        GET /api/watch/route?id=<id> → { "id", "name", "dist", "climb", "p": [[lat, lon], …] (≤ 200, 5 decimals),
+                                         "turns": [[at (m), "L" | "R" | "U"], …] (≤ 80) }      < 12 KB
+```
+
+`Feed.mc` `RouteTrack` follows it: on the route within 40 m (ahead first, so out and back works), off after 8 s further
+away ("OFF ROUTE, 120 m away" instead of the next turn), metres along for the distance left and the next turn, the real
+position as the dot. The route page draws the flat `u` / `v` points of `RouteTrack.face` (one scale, north up).
 
 ## Permissions (manifest.xml)
 
 | Permission | For |
 | --- | --- |
-| `Communications` | `makeWebRequest` through Garmin Connect Mobile (pair, setup, summary, config, strength upload) |
+| `Communications` | `makeWebRequest` through Garmin Connect Mobile (pair, setup, summary, config, strength and activity upload, segments, routes) |
 | `Sensor` | heart rate between sets (`Sensor.enableSensorEvents`) |
 | `Fit` | `ActivityRecording`: run / ride / more as Garmin activities, the optional strength activity |
-| `Positioning` | GPS for outdoor recordings (`Position.enableLocationEvents`) |
+| `Positioning` | GPS for outdoor recordings (`Position.enableLocationEvents`), segment timing and route following |
 
 ## Memory
 
@@ -212,23 +254,29 @@ no memory limits. They are in the SDK: `~/Library/Application Support/Garmin/Con
 What the app keeps: the strength setup (< 8 KB from the server), the config (up to ~48 KB of JSON at the limits: 30
 workouts × 20 items, usually a few KB), the queue, one `Rec` with two small rings. Look at the peak in View Memory with
 a full config; if it is tight, keep `w` (workouts) out of `cfg` (the setup brings them too). Recorder code is outside
-the `(:glance)` app class so the glance does not load it.
+the `(:glance)` app class so the glance does not load it. 19.11.: segments (8 × 40 points) and the route (200 points) are
+kept as flat `Array<Float>` (x, y, metres along; the route also u, v), about 3 000 numbers at most; no per-second lists.
+The JSON answers (< 8 KB, < 12 KB) are dropped after they are turned into these arrays.
 
-## VERIFY items (24)
+## VERIFY items (30)
 
 `grep -rn VERIFY source manifest.xml resources`
 
-- **Recorder.mc** (3): `createSession` takes `Activity.SPORT_*` / `SUB_SPORT_*` (and the API 4.1.6 constants in
-  Sports.mc); `Position.Info.accuracy` is a `Position.Quality`; `Activity.Info.currentCadence` on a run is steps per minute.
+- **Recorder.mc** (5): `createSession` takes `Activity.SPORT_*` / `SUB_SPORT_*` (and the API 4.1.6 constants in
+  Sports.mc); `Position.Info.accuracy` is a `Position.Quality`; `Activity.Info.currentCadence` on a run is steps per minute;
+  `Position.Location.toDegrees()` gives Doubles; `Position.Info.heading` is radians from north.
+- **Feed.mc** (1): the `d` suffix for Double literals.
 - **Sports.mc** (1): run sub sport `SUB_SPORT_STREET` or `SUB_SPORT_GENERIC` (what the watch's Run app writes).
 - **Fields.mc** (1): `Math.pow` result type for NP.
-- **Draw.mc** (6): `requiresBurnInProtection` tells AMOLED from MIP; `Gregorian.info(...).day_of_week` is a String with
+- **Draw.mc** (7): `requiresBurnInProtection` tells AMOLED from MIP; `Gregorian.info(...).day_of_week` is a String with
   `FORMAT_MEDIUM`; the glyphs of `FONT_NUMBER_*` (digits, `:`, `.`, `-`; anything else uses text fonts) (2×); "PR"
-  in `FONT_LARGE` may look small; the unit's vertical place next to a number.
-- **Api.mc** (2): device label; JSON body / GET without body / negative codes in `makeWebRequest`.
+  in `FONT_LARGE` may look small; the unit's vertical place next to a number; the two XTINY lines on the ready screen
+  (data pages, route) do not touch.
+- **Api.mc** (3): device label; JSON body / GET without body / negative codes in `makeWebRequest`; a query string in
+  the URL of a GET with null params.
 - **FlowDelegate.mc** (1): returning true from `onKeyPressed` / `onKeyReleased` stops onSelect / onBack / onNextPage.
-- **RideframeApp.mc** (6): `(:glance)` on the app class; what onStart may do in the glance; the system closing the app
-  mid-workout; the size limit of one Storage value (queue); which exception a too large value throws (`store`);
+- **RideframeApp.mc** (7): `(:glance)` on the app class; what onStart may do in the glance; the system closing the app
+  mid-workout; the size limit of one Storage value (queue); which exception a too large value throws (`store`, `saveActs`);
   sets as laps in the native strength activity.
 - **Glance.mc** (2): Storage readable in the glance; glance colours.
 - **manifest.xml** (1): product ids.
@@ -237,9 +285,12 @@ the `(:glance)` app class so the glance does not load it.
 Most likely to fail the build, in order: the `Activity.SPORT_*` / `SUB_SPORT_*` enum return types in `Sports.mc` and
 the API 4.1.6 constants; null narrowing of `Rec or Null` / `Dictionary or Null` members (all are copied to a local and
 checked with a plain `if` first); `Math.pow(...) as Float`; `try { } catch (e) { }` in `store`; `String.substring`
-returning `String or Null` (cast with `as String`).
+returning `String or Null` (cast with `as String`). 19.11. (`Feed.mc`): Double literals (`6371008.8d`) and Double / Float
+mixing in `Proj` (untyped members on purpose); `Array` elements cast with `as Float` / `as Number` from `fdNearest`'s
+`[index, distance, along]`; `Lang.Object.toString()` on a segment id that comes as a Number; the same local name (`s`, `o`,
+`rf`) in sibling blocks of `SegFeed.step`.
 
-## Simulator test script (step 2)
+## Simulator test script (step 2, 19.11. additions in 10 to 13)
 
 Build for `fr265` and again for `fenix7xpro`, run, pair (or put a `token` into File → Edit Persistent Storage).
 
@@ -262,19 +313,31 @@ Build for `fr265` and again for `fenix7xpro`, run, pair (or put a `token` into F
    seconds, START logs them.
 7. **Strength, free**: Free → the picker starts with the recent exercises, then the standard 20; the session uploads
    as before (Settings → Connection Type off: "Will send when the phone is near", on again: SAVED).
-8. **Route page / segment** (only with `DEMO_FEED = true`, rebuild): READY says "+ route", the last page is the route
-   with the next turn; 30 s into a run the segment popup counts down, then shows ahead / behind, then the result for
-   5 s (BACK closes it first; BACK again is a lap).
+8. **Route page / segment, demo** (only with `DEMO_FEED = true`, rebuild): READY says "+ route" and "Route: Riverside 8k",
+   the last page is the route with the next turn; 30 s into a run the segment popup counts down, then shows ahead /
+   behind, then the result for 5 s (BACK closes it first; BACK again is a lap). DOWN on READY: None takes the route page away.
 9. **fenix 7X Pro** (MIP): every screen once more; no dark grey text, field labels white, colours unchanged by the
    64-colour palette.
+10. **Activity upload** (`DEMO_FEED = false`, paired): record a short run, Save. File → Edit Persistent Storage: `aqueue`
+    has it while the connection is off, empty after it is back (within 30 s); on the phone it shows under Activities
+    ("Recorded on watch"). With the same run on Strava (or a Strava import afterwards): one entry, not two.
+11. **Routes**: on the phone, Outdoor → Routes → **Send to watch** on a route. On the watch, Run → READY → DOWN: the list
+    (None, the route with km and climb); pick it: "Route: <name>", START: the route page is the last page. Play a GPX of
+    that route (Simulation → playback): the dot moves along, the distance left shrinks, the next turn counts down. Play a
+    GPX that leaves the route: after 8 s "OFF ROUTE" with the metres; back on it, the turn again.
+12. **Segments**: an account linked to Strava (the phone sent its key once with a watch call). Play a GPX along a known
+    segment: about 300 m before the start "SEGMENT IN" with the countdown (only when heading to it), at the start the
+    live delta against the PR (or KOM) with the needed pace / speed, at the end the result for 5 s; leave the segment for
+    more than 10 s: the popup goes. Without a Strava link nothing shows (the answer is `strava: false`).
+13. **Every 3 km**: on a long playback the watch asks again (server log: `GET /api/watch/segments` about every 3 km), never
+    while a segment is timed.
 
 ## Native activity (optional, off by default)
 
 With the app setting **Also save as a Garmin activity** the workout is also recorded as a strength activity
-(`ActivityRecording`, one lap per set) and lands in Garmin Connect. If Garmin Connect passes it on to Strava,
-RIDEFRAME's Strava import would bring it back as a second session. Before turning this on for real: teach
-`js/actimport.js` to skip a Strava `WeightTraining` activity whose start is within 2 minutes of a strength session
-with `source: 'watch'` (not done yet).
+(`ActivityRecording`, one lap per set) and lands in Garmin Connect. If Garmin Connect passes it on to Strava, the
+Strava `WeightTraining` is linked to the watch session (start within 2 minutes, both orders, 19.11.) instead of
+becoming a second session.
 
 ## Check first on a real watch
 
