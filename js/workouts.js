@@ -128,6 +128,18 @@ export function workoutAt(w, t, ftp) {
   return { i: w.steps.length, step: null, next: null, left: 0, target: null, done: true };
 }
 
+/** the big workout timeline (design C) from a workoutState: every step a block by its % FTP (hard steps with the offset),
+ *  hard orange, the rest light; the current step full, the past dimmed; a white marker at time t */
+export function timelineSVG(st, t, w, h = 92) {
+  const W0 = 1280, list = st.steps, total = list.reduce((a, x) => a + x.dur, 0) || 1, mx = Math.max(125, ...list.map(x => Math.max(x.pct, x.to ?? 0)));
+  let x = 0, o = ''; const at = Math.min(total, Math.max(0, t)) / total * W0;
+  list.forEach((s, i) => { const bw = s.dur / total * W0, ph = s.pct / mx * h, cur = i === st.i, done = i < st.i, op = cur ? 1 : done ? .28 : s.hard ? .78 : .42, col = s.hard ? 'var(--accent)' : 'var(--paper)';
+    const x0 = (x + Math.min(1.5, bw / 4)).toFixed(1), x1 = (x + bw - Math.min(1.5, bw / 4)).toFixed(1);
+    o += s.to != null ? `<polygon points="${x0},${h} ${x0},${(h - ph).toFixed(1)} ${x1},${(h - s.to / mx * h).toFixed(1)} ${x1},${h}" fill="${col}" opacity="${op}"/>`
+      : `<rect x="${x0}" y="${(h - ph).toFixed(1)}" width="${Math.max(0.5, x1 - x0).toFixed(1)}" height="${ph.toFixed(1)}" rx="3" fill="${col}" opacity="${op}"/>`; x += bw; });
+  return `<svg class="wtl" viewBox="0 0 ${W0} ${h + 8}" preserveAspectRatio="none"><g transform="translate(0,4)">${o}</g><rect x="${(at - 2).toFixed(1)}" y="0" width="4" height="${h + 8}" fill="#fff"/></svg>`;
+}
+
 /** small block chart of the program (SVG), the current position marked with a line; adj / ftp: hard bars at the tuned target */
 export function workoutSVG(w, t = null, h = 46, adj = 0, ftp = 0) {
   const total = workoutDuration(w), pc = s => adj && ftp ? tunedTarget(s, s.pct / 100 * ftp, adj) / ftp * 100 : s.pct, max = Math.max(...w.steps.map(pc), 120);

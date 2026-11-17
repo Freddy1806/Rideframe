@@ -15,7 +15,7 @@ import { gearsFrom, gearName, parseGear, estimateGear, virtualGrade } from './ge
 import { UEBridge } from './uebridge.js';
 import { MiniMap } from './minimap.js';
 import { fovOf, FOV_MIN, FOV_MAX, FOV_DEFAULT } from './fov.js';
-import { workoutState, workoutSVG, isHard, tunedTarget, tuneAdj, fmtAdj } from './workouts.js';
+import { workoutState, workoutSVG, timelineSVG, isHard, tunedTarget, tuneAdj, fmtAdj } from './workouts.js';
 import { Challenges } from './challenges.js';
 import { findSegments, segmentBests, segmentLast, SEG_KIND } from './segments.js';
 import { testResult } from './stats.js';
@@ -128,7 +128,7 @@ export class RideSession {
       this._poseMod = m; this.pose = new m.PoseCam(this.state.settings.poseCalib || null);
       try { await this.pose.start(); if (this._closed) this.pose.stop(); else this._flash?.('Camera: detecting your position'); }
       catch { this._flash?.('Position camera not available'); this.pose = null; } });
-    el.innerHTML = this._hudHTML();
+    el.innerHTML = this._hudHTML(); if (this.workout) el.classList.add('wk'); // the workout bar (design C) at the bottom
     applyHud(el, hudPrefs(this.state.settings));
     el.querySelector('#hHudBtn')?.addEventListener('click', () => this._hudPanel());
     document.body.append(el);
@@ -213,10 +213,7 @@ export class RideSession {
           <button class="chip glass camchip" id="hHudBtn" title="Choose display (I)"><div class="label">Display</div><div class="v">◧</div></button>
         </div>
       </div>
-      ${this.workout ? `<div class="wpanel glass" id="hWork"><div class="whead"><div class="label" id="hWName">${esc(this.workout.name)}${this.erg ? ' · ERG' : ''}</div><button class="wstop" id="hWStop" title="End workout early">End</button></div><div class="wask" id="hWAsk" hidden><div class="label">End workout?</div><button class="btn small" id="hWFree">Keep riding freely</button><button class="btn ghost small" id="hWSave">Save ride &amp; finish</button><button class="btn ghost small" id="hWNo">Back</button></div>
-        <div class="wstep" id="hWStep">–</div><div class="wtarget num"><span id="hWT">–</span><small>W</small><span class="wleft num" id="hWLeft"></span></div>
-        <div class="wadj" id="hWAdj"><button class="wab" data-wa="-5" title="Intervals −5 W (S, Shift+S 1 W · D-pad ↓)" aria-label="Intervals −5 W">−</button><span class="wapct num"><small>Intervals</small><b id="hWAdjV">±0 W</b></span><button class="wab" data-wa="5" title="Intervals +5 W (W, Shift+W 1 W · D-pad ↑)" aria-label="Intervals +5 W">+</button></div>
-        <div class="wnext" id="hWNext"></div><div id="hWChart">${workoutSVG(this.workout, 0)}</div></div>` : ''}
+      ${this.workout ? this._workoutBarHTML() : ''}
       <div class="minimap glass" data-hud="map"><canvas id="hMap"></canvas></div>
       <div class="grade-tag" data-hud="gradeTag" id="hGradeTag"><div class="g num"><span class="arrow"></span><span id="hGrade">0.0</span><small>%</small></div><div class="next glass" id="hNext"></div></div>
       <div class="hud-bottom glass">
@@ -690,24 +687,62 @@ export class RideSession {
     q('#hWFree').onclick = () => {
       this._wName = this.workout.name + ' (ended early)'; this.workout = null; this.wNow = null;
       if (this.erg) this.state.trainer.setPower(null);
-      q('#hWork')?.remove(); q('.metric.power')?.classList.remove('z-lo', 'z-ok', 'z-hi');
+      q('#hWork')?.remove(); this.el.classList.remove('wk'); q('.metric.power')?.classList.remove('z-lo', 'z-ok', 'z-hi');
       this._flash('Workout ended · ride on freely');
     };
   }
 
+  /** the workout bar, design C (owner 17.11.: "like in the other apps: at the bottom, really big, all the watts"): a ring with
+   *  the time left in the step, step name, the target (tuned, "+10 W") big next to your power with the zone band, the next
+   *  step, and the whole workout as a timeline below (past dimmed, hard steps orange). Keeps the old panel's ids. */
+  _workoutBarHTML() {
+    const C = 2 * Math.PI * 58;
+    return `<div class="wbar glass" id="hWork"><div class="wcd glass" id="hWCue" hidden><div class="num k" id="hWCueN">3</div><div class="w" id="hWCueW"></div></div>
+      <div class="wb-row">
+        <div class="wring"><svg viewBox="0 0 132 132"><circle cx="66" cy="66" r="58" class="tr"/><circle cx="66" cy="66" r="58" class="fg" id="hWArc" stroke-dasharray="${C} ${C}" transform="rotate(-90 66 66)"/></svg><b class="num" id="hWLeft">–</b><span>Left</span></div>
+        <div class="wb-big">
+          <div class="wb-name"><span id="hWStep">–</span><span class="wb-of" id="hWOf"></span><b class="wadjv" id="hWAdjV">±0 W</b></div>
+          <div class="wb-nums"><span class="num wb-t"><span id="hWT">–</span><small>W</small></span><span class="num wb-p" id="hWPow"><span id="hWP">0</span><small>W · <em id="hWState">–</em></small></span>
+            <span class="wadj" id="hWAdj"><button class="wab" data-wa="-5" title="Interval watts −5 W (S · D-pad ↓ · Shift 1 W)" aria-label="Interval watts −5 W">−</button><button class="wab" data-wa="5" title="Interval watts +5 W (W · D-pad ↑ · Shift 1 W)" aria-label="Interval watts +5 W">+</button></span></div>
+          <div class="wzone" id="hWZone"><i class="band"></i><i class="mk" id="hWMk"></i></div>
+        </div>
+        <div class="wb-next"><div class="lbl">Next</div><div class="n" id="hWNextN">–</div><div class="d" id="hWNext">–</div>
+          <div class="wb-end"><span class="lbl" id="hWName">${esc(this.workout.name)}${this.erg ? ' · ERG' : ''}</span><button class="wstop" id="hWStop" title="End workout early">End</button></div></div>
+      </div>
+      <div class="wask" id="hWAsk" hidden><div class="label">End workout?</div><button class="btn small" id="hWFree">Keep riding freely</button><button class="btn ghost small" id="hWSave">Save ride &amp; finish</button><button class="btn ghost small" id="hWNo">Back</button></div>
+      <div class="wb-chart" id="hWChart"></div></div>`;
+  }
+
   _workoutHUD(pShow) {
-    const w = this.wNow, q = this.q; if (!this.workout || !w || !q('#hWork')) return;
-    const av = q('#hWAdjV'); if (av) { av.textContent = fmtAdj(this.wAdj); q('#hWAdj').classList.toggle('adj', !!this.wAdj); q('#hWAdj').hidden = !!w.done; }
-    if (w.done) { q('#hWStep').textContent = 'Done – ride on freely'; q('#hWT').textContent = '✓'; q('#hWLeft').textContent = ''; q('#hWNext').textContent = ''; }
+    const w = this.wNow, q = this.q, bar = q('#hWork'); if (!this.workout || !w || !bar) return;
+    q('#hWAdjV').textContent = fmtAdj(this.wAdj); q('#hWAdj').classList.toggle('adj', !!this.wAdj); bar.classList.toggle('adj', !!this.wAdj);
+    const pw = q('.metric.power'), wp = q('#hWPow'); pw?.classList.remove('z-lo', 'z-ok', 'z-hi'); wp.classList.remove('z-lo', 'z-hi');
+    const cue = q('#hWCue'), arc = q('#hWArc'), C = 2 * Math.PI * 58;
+    if (w.done) { q('#hWStep').textContent = 'Done – ride on freely'; q('#hWOf').textContent = ''; q('#hWT').textContent = '✓'; q('#hWLeft').textContent = '0:00'; q('#hWNextN').textContent = 'Workout done'; q('#hWNext').textContent = ''; q('#hWState').textContent = 'done'; cue.hidden = true; arc.setAttribute('stroke-dasharray', `0 ${C}`); bar.className = 'wbar glass done'; }
     else {
-      q('#hWStep').textContent = (w.step.label || 'Block') + (this.sAdj && !w.hard ? ` ${fmtAdj(this.sAdj)}` : '') + (w.ramp === 'in' ? ' · ramp up' : w.ramp === 'out' ? ' · ramp down' : '');
+      const free = !!w.step.free, hard = w.hard, rest = !hard && !free && !w.ramp && /rest|easy|recover/i.test(w.step.label || '');
+      const z = free || w.ramp ? '' : pShow < w.lo ? 'lo' : pShow > w.hi ? 'hi' : 'ok';
+      q('#hWStep').textContent = (w.step.label || 'Block') + (this.sAdj && !hard ? ` ${fmtAdj(this.sAdj)}` : '');
+      q('#hWOf').textContent = hard ? `interval ${w.hardNo} of ${w.hardCount}` : w.ramp === 'in' ? 'ramp up' : w.ramp === 'out' ? 'ramp down' : '';
       q('#hWT').textContent = w.target;
+      q('#hWP').textContent = pShow;
       q('#hWLeft').textContent = fmtTime(Math.ceil(w.left));
-      q('#hWNext').textContent = w.next ? `Next: ${w.next.label || 'Block'} · ${w.nextTarget} W` : 'Last block';
-      const pw = q('.metric.power'); pw.classList.remove('z-lo', 'z-ok', 'z-hi');
-      pw.classList.add(pShow < w.lo ? 'z-lo' : pShow > w.hi ? 'z-hi' : 'z-ok');
+      arc.setAttribute('stroke-dasharray', `${(C * Math.max(0, Math.min(1, w.left / w.step.dur))).toFixed(1)} ${C.toFixed(1)}`);
+      q('#hWState').textContent = free ? 'free' : w.ramp === 'in' ? 'ramp up' : w.ramp === 'out' ? 'ramp down' : rest ? 'easy' : z === 'ok' ? 'in zone' : z === 'lo' ? `${w.target - pShow} W too low` : `${pShow - w.target} W too high`;
+      if (hard && z && z !== 'ok') { wp.classList.add('z-' + z); pw?.classList.add('z-' + z); } else if (hard) pw?.classList.add('z-ok');
+      // the zone band: ±5 % around the target in the middle of a track from 80 to 120 %; the marker is your power
+      const mk = q('#hWMk'), k = Math.max(0, Math.min(1, (pShow - w.target * 0.8) / (w.target * 0.4)));
+      mk.style.left = `calc(${(k * 100).toFixed(1)}% - 3px)`; q('#hWZone').className = 'wzone' + (hard && z && z !== 'ok' ? ' z-' + z : '');
+      q('#hWNextN').textContent = w.next ? w.nextName : 'Last block';
+      q('#hWNext').textContent = `${w.next ? `${w.nextTarget} W · ${fmtTime(w.nextDur)} · ` : ''}${fmtTime(Math.ceil(w.totalLeft))} left`;
+      bar.className = `wbar glass${hard ? ' hard' : rest ? ' rest' : ''}${w.ramp ? ' ramp' : ''}${this.wAdj ? ' adj' : ''}`;
+      // countdown into the next hard interval: big number above the bar (the ramp is already running), at the change a flash
+      const soon = w.countdown && isHard(w.next); cue.hidden = !soon;
+      if (soon) { q('#hWCueN').textContent = w.countdown; q('#hWCueW').textContent = `${w.nextName} · ${w.nextTarget} W`; }
     }
-    if (!this._wT || this.elapsed - this._wT > 2) { this._wT = this.elapsed; q('#hWChart').innerHTML = workoutSVG(this.workout, this.elapsed, 46, this.wAdj, this.ftp); }
+    if (w.i !== this._barI) { if (this._barI !== undefined && !w.done) this._flash(`${w.step.label || 'Block'} · ${w.target} W`); this._barI = w.i; }
+    if (!this._wT || this.elapsed - this._wT > 1) { this._wT = this.elapsed; q('#hWChart').innerHTML = timelineSVG(w, this.elapsed, this.workout); }
+    const h = bar.offsetHeight; if (h !== this._wbh) { this._wbh = h; this.el.style.setProperty('--wbh', h + 'px'); } // the other HUD parts sit above it
   }
 
   /** share photos of you on the bike: after 800 m, then every 4 km; the highest spot (best view) is used later */
