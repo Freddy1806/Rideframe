@@ -322,28 +322,45 @@ function bigSheet() {
   const s = sheet(`<div class="label">Big field: choose value</div><div class="ppick">${opts.map(([k, l]) => `<button data-k2="${k}" class="${(cfg().big || 'main') === k ? 'on' : ''}">${l}</button>`).join('')}</div>`);
   s.querySelectorAll('[data-k2]').forEach(b => b.onclick = () => { cfg().big = b.dataset.k2; saveSettings(); s.remove(); render(); });
 }
-/** routes (17.11.): import a file or a Strava route, pick, rename, delete. Stored on this phone only. */
+/** the routes on the watch (tools/watch-feed.mjs): ids, null = signed out or not asked yet */
+let onWatch = null;
+async function watchRoutes(method, path = '', body) {
+  const a = (await import('./account.js')).account(); if (!a) { onWatch = null; return null; }
+  let k = ''; try { k = localStorage.getItem('rf_strava_key') || ''; } catch {} // the account's Strava for the watch's segments
+  const r = await fetch('/api/watch/routes' + path, { method, cache: 'no-store', headers: { 'Content-Type': 'application/json', 'X-RF-Token': a.token || '', ...(k ? { 'X-Strava-Key': k } : {}) }, body: body ? JSON.stringify(body) : undefined });
+  const j = await r.json().catch(() => ({})); if (!r.ok) throw new Error(j.error || 'Server is not answering.'); return j;
+}
+/** routes (17.11.): import a file or a Strava route, pick, rename, delete. Stored on this phone; "Send to watch" puts a copy on the host for the Garmin watch. */
 function routesSheet() {
   const s = sheet(`<div class="label">Routes</div>
     <label class="btn kbig ofile">Import route (.gpx, .tcx, .fit)<input type="file" id="rFile" accept=".gpx,.tcx,.fit,application/gpx+xml" hidden></label>
     <button class="btn ghost" id="rStrava" hidden>Import from Strava routes</button>
     <p class="hint" id="rMsg" hidden></p>
     ${routes.length ? routes.map(r => `<div class="oroute ${route?.id === r.id ? 'on' : ''}" data-r="${esc(r.id)}">${shape(null, 52, 52, r.pts)}<div class="oinfo"><b>${esc(r.name)}</b>
-      <div class="khm"><span>${fmtNum(r.len / 1000, 1)} km</span><span>${fmtNum(r.climb)} m climb</span></div></div><button class="kx" data-ren="${esc(r.id)}" title="Rename" aria-label="Rename">✎</button><button class="kx" data-del="${esc(r.id)}" title="Delete" aria-label="Delete">✕</button></div>`).join('')
+      <div class="khm"><span>${fmtNum(r.len / 1000, 1)} km</span><span>${fmtNum(r.climb)} m climb</span></div><button class="owsend" data-w="${esc(r.id)}" aria-pressed="false" hidden>Send to watch</button></div><button class="kx" data-ren="${esc(r.id)}" title="Rename" aria-label="Rename">✎</button><button class="kx" data-del="${esc(r.id)}" title="Delete" aria-label="Delete">✕</button></div>`).join('')
       : `<p class="hint">No routes yet. Export one from Komoot, Strava, Garmin Connect or RideWithGPS as a file and import it here, or open a past ${W.act.toLowerCase()} and tap “Use as route”.</p>`}
     <p class="hint">Routes stay on this phone. Turn hints come from the shape of the route, not from a street map.</p>
     <div class="pfoot">${route ? '<button class="btn ghost" id="rNone">No route</button>' : ''}<button class="btn" id="rDone">Done</button></div>`);
   const msg = t => { const m = $('#rMsg', s); m.textContent = t; m.hidden = !t; };
   const again = () => { s.remove(); render(); routesSheet(); };
+  // "Send to watch" (19.11.): only signed in; the host keeps a simplified copy for the Garmin watch (tools/watch-feed.mjs)
+  const paintW = () => s.querySelectorAll('[data-w]').forEach(b => { const on = !!onWatch?.has(b.dataset.w); b.hidden = !onWatch; b.classList.toggle('on', on); b.setAttribute('aria-pressed', String(on)); b.textContent = on ? 'On watch ✓' : 'Send to watch'; });
+  const sendW = async r => { await watchRoutes('PUT', '/' + encodeURIComponent(r.id), { name: r.name, pts: r.pts }); onWatch?.add(r.id); };
+  paintW(); watchRoutes('GET').then(j => { if (!j) return; onWatch = new Set(j.routes.map(x => x.id)); paintW(); }).catch(() => {});
+  s.querySelectorAll('[data-w]').forEach(b => b.onclick = async () => { const r = routes.find(x => x.id === b.dataset.w); if (!r || b.disabled) return; b.disabled = true; msg('');
+    try { if (onWatch.has(r.id)) { await watchRoutes('DELETE', '/' + encodeURIComponent(r.id)); onWatch.delete(r.id); } else await sendW(r); } catch (e) { msg(e.message); }
+    b.disabled = false; paintW(); });
   const add = async (rt, dup) => { const old = dup && routes.find(dup); if (old) Object.assign(old, { pts: rt.pts, len: rt.len, climb: rt.climb, name: rt.name }); else routes.unshift(rt);
     await saveRoutes(); useRoute(old || rt); return old || rt; };
   $('#rFile', s).onchange = async e => { const f = e.target.files[0]; if (!f) return;
     try { const p = parseRoute(f.name, new Uint8Array(await f.arrayBuffer())); const rt = await add(makeRoute(p.name, p.pts, { src: 'file' })); again(); flash(`Route: ${short(rt.name, 24)}`); }
     catch (err) { msg(err.message || String(err)); } };
   s.querySelectorAll('[data-r]').forEach(b => b.onclick = e => { if (e.target.closest('button')) return; useRoute(routes.find(r => r.id === b.dataset.r)); s.remove(); render(); });
-  s.querySelectorAll('[data-ren]').forEach(b => b.onclick = async () => { const r = routes.find(x => x.id === b.dataset.ren), n = prompt('Route name', r.name); if (!n?.trim()) return; r.name = n.trim().slice(0, 80); await saveRoutes(); again(); });
+  s.querySelectorAll('[data-ren]').forEach(b => b.onclick = async () => { const r = routes.find(x => x.id === b.dataset.ren), n = prompt('Route name', r.name); if (!n?.trim()) return; r.name = n.trim().slice(0, 80); await saveRoutes();
+    if (onWatch?.has(r.id)) await sendW(r).catch(() => {}); again(); });
   s.querySelectorAll('[data-del]').forEach(b => b.onclick = async () => { const r = routes.find(x => x.id === b.dataset.del); if (!confirm(`Delete the route “${r.name}”?`)) return;
-    routes = routes.filter(x => x !== r); await saveRoutes(); if (route === r) useRoute(null); again(); });
+    routes = routes.filter(x => x !== r); await saveRoutes(); if (route === r) useRoute(null);
+    if (onWatch?.has(r.id)) { await watchRoutes('DELETE', '/' + encodeURIComponent(r.id)).catch(() => {}); onWatch.delete(r.id); } again(); });
   const none = $('#rNone', s); if (none) none.onclick = () => { useRoute(null); s.remove(); render(); };
   $('#rDone', s).onclick = () => { s.remove(); render(); };
   import('./stravaup.js').then(async su => { const st = await su.stravaStatus(), b = $('#rStrava', s); if (!b || !st.configured || !st.connected) return; b.hidden = false;

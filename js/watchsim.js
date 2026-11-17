@@ -1,9 +1,10 @@
 // watch.html: design preview of RIDEFRAME on a Garmin watch (17.11. strength, 18.11. start menu, run / ride / other sports with
 // the data pages from the phone, route page, segment popup, guided workouts). Two faces run the same js/watchflow.js:
 // Forerunner 265 (416 px AMOLED) and fenix 7X Pro (280 px MIP, 64 colours: every pixel is snapped to the palette).
+// 19.11.: the ready screen's Route choice: the paired watch's routes (Bearer), else the signed-in phone account's (X-RF-Token), else demo routes.
 // Drawn like the watch draws (dc.fillCircle / drawText / drawArc in garmin/source/Draw.mc), driven by the five buttons,
 // touch (tap, swipe) or the keyboard, with demo data or against the real API (tools/watch-api.mjs) after pairing.
-import { newFlow, handle, SCR, curEx, setNo, restLeft, clock, sent, paired, setSetup, setConfig, setRoute, routeInfo, recPages, homeItems, listItems, workouts, planItem, HOME } from './watchflow.js';
+import { newFlow, handle, SCR, curEx, setNo, restLeft, clock, sent, paired, setSetup, setConfig, setRoute, setRoutes, routeFace, routeInfo, recPages, homeItems, listItems, workouts, planItem, HOME } from './watchflow.js';
 import { compact, defaults, fieldText, labelOf, TOP } from './watchfields.js';
 import { groupOf } from './sports.js';
 import { MODES } from './theme.js';
@@ -28,15 +29,18 @@ Object.assign(DEMO, { top: TOP.map(e => e.id), recent: ['bench', 'squat', 'pull'
 const DEMO_W = [{ id: 'd1', n: 'Push day', it: [['bench', 3, 8, 80, 120], ['ohp', 3, 8, 45, 90], ['dip', 3, 10, 0, 90], ['lateral', 3, 12, 10, 60]] },
   { id: 'd2', n: 'Leg day', it: [['squat', 4, 5, 100, 150], ['rdl', 3, 8, 80, 120], ['lunge', 3, 10, 20, 90], ['plank', 2, 60, 0, 60]] }];
 const demoSetup = () => ({ ...structuredClone(DEMO), workouts: cfg && cfg.w.length ? cfg.w : DEMO_W });
-/** a demo route for the route page: a loop with four turns, as fractions of a square (the watch gets it from the phone later) */
+/** a demo route for the route page: a loop with four turns, as fractions of a square (the real ones: GET /api/watch/route, js/watchflow.js routeFace) */
 function demoRoute(sp) {
   const len = sp === 'ride' ? 42000 : 8000, pts = [];
   for (let i = 0; i <= 60; i++) { const a = i / 60 * Math.PI * 1.7 - 2.2; pts.push([.5 + .42 * Math.cos(a) + .06 * Math.sin(3 * a), .5 + .36 * Math.sin(a) * (1 + .25 * Math.cos(a))]); }
   return { sp, name: sp === 'ride' ? 'Lake loop' : 'Riverside 8k', len, pts, turns: [[.12, 'L', 'Bridge St'], [.38, 'R', 'Harbour Rd'], [.61, 'R', 'Mill Lane'], [.84, 'L', 'Park Ave']].map(([f, dir, txt]) => ({ at: f * len, dir, txt })) };
 }
 
+const DEMO_ROUTES = [{ id: 'demo-run', name: 'Riverside 8k', dist: 8000, climb: 40 }, { id: 'demo-ride', name: 'Lake loop', dist: 42000, climb: 310 }];
+
 /* ---- app state around the flow: mode, token, queue, phone nearby ---- */
 let mode = store.get('mode', 'demo'), token = store.get('token', null), who = store.get('name', ''), F, sum = null, near = true, net = '', light = false, fast = false;
+let rsrc = 'demo', demoAuto = false, demoNone = false; // where the routes come from; the demo route is chosen for the sport until None is picked
 let cfg = null, cfgFrom = 'defaults'; // the watch config: from the paired watch's account, else the signed-in phone account, else the defaults
 const live = () => mode === 'live';
 function boot() {
@@ -44,9 +48,9 @@ function boot() {
   if (live()) { cfg = token ? store.get('cfg', null) : null; cfgFrom = cfg ? 'watch' : 'defaults'; }
   const o = { queue: q, cfg: cfg || compact(defaults()), last: store.get('last', 'run') };
   F = live() ? newFlow(token ? store.get('setup', null) : null, { ...o, paired: !!token }) : newFlow(demoSetup(), o);
-  sum = live() ? store.get('summary', null) : DEMO_SUM; net = '';
+  sum = live() ? store.get('summary', null) : DEMO_SUM; net = ''; rsrc = 'demo'; demoAuto = demoNone = false;
   if (live() && token) { refresh(); push(); }
-  window.__watch = { get F() { return F; }, get mode() { return mode; }, get net() { return net; }, get cfgFrom() { return cfgFrom; }, ev, segDemo, loadCfg };
+  window.__watch = { get F() { return F; }, get mode() { return mode; }, get net() { return net; }, get cfgFrom() { return cfgFrom; }, get rsrc() { return rsrc; }, ev, segDemo, loadCfg };
   panel(); paint(); loadCfg();
 }
 /** the config: the paired watch asks with its token (GET /api/watch/config), the preview without a watch with the phone login */
@@ -58,6 +62,32 @@ async function loadCfg() {
   } catch {}
   if (cfg) { setConfig(F, cfg); if (!live()) setSetup(F, demoSetup()); }
   panel(); paint();
+}
+const acct = () => { try { const a = JSON.parse(LS.getItem('rf_account') || 'null'); return a && a.token ? a.token : null; } catch { return null; } };
+/** a routes call: the paired watch with its token, the preview without a watch with the phone login; null = not available */
+async function routeApi(path) {
+  if (live()) { if (!token || !near) return null; const r = await api('GET', path); if (r.status === 401) unpair('This watch was removed on the phone.'); return r.ok ? r.j : null; }
+  const t = acct(); if (!t) return null;
+  const r = await fetch('/api/watch/' + path, { cache: 'no-store', headers: { 'X-RF-Token': t } }); return r.ok ? r.json() : null;
+}
+/** the list for RPICK (GET /api/watch/routes); in live mode without an answer it stays unknown, so the next ready screen asks again */
+async function loadRoutes() {
+  if (!live() && !acct()) { rsrc = 'demo'; setRoutes(F, DEMO_ROUTES); return; }
+  let j = null; try { j = await routeApi('routes'); } catch {}
+  if (j && Array.isArray(j.routes)) { rsrc = live() ? 'watch' : 'account'; setRoutes(F, j.routes); }
+  else if (!live()) { rsrc = 'demo'; setRoutes(F, DEMO_ROUTES); }
+  autoRoute(); panel(); paint();
+}
+/** one route (GET /api/watch/route?id=), turned into the route page's form; the demo ones are drawn from demoRoute */
+async function loadRoute(id) {
+  if (id.startsWith('demo-')) { setRoute(F, demoRoute(id === 'demo-ride' ? 'ride' : 'run')); return; }
+  let j = null; try { j = await routeApi('route?id=' + encodeURIComponent(id)); } catch {}
+  if (F.routeId !== id) return; const r = routeFace(j); setRoute(F, r); if (!r) { net = 'The route could not be loaded.'; F.routeId = null; } panel(); paint();
+}
+/** demo data: the demo route of the sport is chosen, until None is picked */
+function autoRoute() {
+  if (rsrc !== 'demo' || demoNone || F.scr !== SCR.READY || F.sp === 'other' || !F.routes) return;
+  if (F.routeId == null || (demoAuto && F.routeId !== 'demo-' + F.sp)) { F.routeId = 'demo-' + F.sp; demoAuto = true; setRoute(F, demoRoute(F.sp)); }
 }
 async function api(method, path, body) {
   const r = await fetch('/api/watch/' + path, { method, cache: 'no-store', headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: 'Bearer ' + token } : {}) }, body: body ? JSON.stringify(body) : undefined });
@@ -93,10 +123,12 @@ function drain() {
     else if (o.k === 'setup') { if (live()) refresh(); else { setSetup(F, structuredClone(DEMO)); } }
     else if (o.k === 'exit') F.scr = SCR.GLANCE;
     else if (o.k === 'pair') pairNow(o.code);
-    else if (o.k === 'saveAct') net = `${o.sum.sp === 'other' ? labelOf(o.sum.type) : HOME[o.sum.sp]} saved on the watch (the preview does not send activities yet).`;
+    else if (o.k === 'saveAct') net = `${o.sum.sp === 'other' ? labelOf(o.sum.type) : HOME[o.sum.sp]} saved on the watch. The watch sends it (POST /api/watch/activity), the preview does not.`;
+    else if (o.k === 'routes') loadRoutes();
+    else if (o.k === 'route') { demoAuto = false; loadRoute(o.id); }
   }
   if (F.last !== store.get('last', 'run')) store.set('last', F.last);
-  if (F.scr === SCR.READY && F.sp !== 'other' && (!F.route || F.route.sp !== F.sp)) setRoute(F, demoRoute(F.sp));
+  autoRoute();
   if (live()) store.set('queue', F.queue);
   panel();
 }
@@ -109,7 +141,7 @@ async function pairNow(code) {
   } catch { net = 'Server not reachable.'; paired(F, false); }
   panel(); paint();
 }
-const ev = (e, arg) => { handle(F, e, now(), arg); drain(); paint(); };
+const ev = (e, arg) => { const was = F.scr, rid = F.routeId; handle(F, e, now(), arg); if (was === SCR.RPICK && F.scr === SCR.READY && rid != null && F.routeId == null) demoNone = true; drain(); paint(); };
 
 /* ---- drawing: one function per screen, in watch pixels; the same numbers as Draw.mc ---- */
 function dumbbell(g, x, y, s, col) { g.strokeStyle = col; g.lineWidth = s * .13; g.lineCap = 'round'; g.beginPath(); const p = (a, b, c, d) => { g.moveTo(x + (a - 12) * s / 24, y + (b - 12) * s / 24); g.lineTo(x + (c - 12) * s / 24, y + (d - 12) * s / 24); };
@@ -153,7 +185,12 @@ const DRAW = {
     if (F.sp === 'other') { heart(g, S / 2 - S * .1, S * .565, S * .045, C.hr); txt(g, F.hr ? `${F.hr} bpm` : 'Heart rate', S / 2 - S * .06, S * .565, S * .055, C.fg, { al: 'left', w: 800 }); }
     else { dot(g, S / 2 - S * .135, S * .565, S * .02, C.good); txt(g, 'GPS ready', S / 2 - S * .1, S * .565, S * .055, C.good, { al: 'left', w: 800 }); }
     const pg = recPages(F), n = pg.filter(p => p !== 'route').length;
-    txt(g, `${n} data ${n === 1 ? 'page' : 'pages'}${pg.includes('route') ? ' + route' : ''}`, S / 2, S * .655, S * .048, C.lbl, { w: 800, max: S * .62 });
+    if (F.sp === 'other') txt(g, `${n} data ${n === 1 ? 'page' : 'pages'}`, S / 2, S * .655, S * .048, C.lbl, { w: 800, max: S * .62 });
+    else { // the route line: UP / DOWN or a tap opens the choice (RPICK)
+      txt(g, `${n} data ${n === 1 ? 'page' : 'pages'}${pg.includes('route') ? ' + route' : ''}`, S / 2, S * .64, S * .044, C.lbl, { w: 800, max: S * .62 });
+      const r = F.routeId && F.routes ? F.routes.find(x => x.id === F.routeId) : null;
+      txt(g, r ? (F.route ? 'Route: ' + r.name : 'Loading route') : 'No route', S / 2, S * .7, S * .05, r ? C.acc : C.fg, { w: 900, max: S * .6 });
+    }
     pill(g, S / 2, S * .81, S * .42, S * .13, C.acc); txt(g, 'START', S / 2, S * .812, S * .062, C.ink, { w: 900 });
   },
   [SCR.REC](g, S, C) {
@@ -163,6 +200,8 @@ const DRAW = {
     recRing(g, S, C, !R.auto); pageDots(g, S, C, pages.length, i);
     if (R.auto) { pill(g, S / 2, S * .06, S * .36, S * .062, C.acc); txt(g, 'AUTO PAUSE', S / 2, S * .061, S * .036, C.ink, { w: 900 }); }
   },
+  [SCR.RPICK](g, S, C) { C = tint(C, F.sp); list(g, S, C, listItems(F), F.sel, 'ROUTE', i => { if (!i) return 'Data pages only'; const r = F.routes[i - 1]; return `${kmTxt(r.dist || 0)} km${r.climb ? ` · ${Math.round(r.climb)} m up` : ''}`; });
+    if (F.routes && !F.routes.length) txt(g, rsrc === 'demo' || live() ? 'Send routes from the phone' : 'Phone: Routes > Send to watch', S / 2, S * .81, S * .042, C.lbl, { w: 700, max: S * .62 }); },
   [SCR.PAUSE](g, S, C) { C = tint(C, F.sp); list(g, S, C, listItems(F), F.sel, 'PAUSED · ' + clock(F.rec ? F.rec.t : 0), null, true); },
   [SCR.RSUM](g, S, C) {
     const s = F.rsum || { sp: 'run', t: 0, d: 0, kcal: 0 }; C = tint(C, s.sp);
@@ -250,7 +289,8 @@ const kmTxt = m => m >= 10000 ? (m / 1000).toFixed(1) : (m / 1000).toFixed(2);
 /** the route page: next turn on top, the line with the position dot, the distance left at the bottom */
 function routePage(g, S, C) {
   const r = F.route, ri = routeInfo(F); if (!r || !ri) return;
-  if (ri.turn) { turnArrow(g, S * .28, S * .2, S * .08, ri.turn.dir, C.acc); const d = ri.turn.in < 1000 ? `${Math.round(ri.turn.in / 10) * 10} m` : `${(ri.turn.in / 1000).toFixed(1)} km`;
+  if (ri.off) { txt(g, 'OFF ROUTE', S / 2, S * .165, S * .055, C.bad, { w: 900 }); txt(g, `${ri.off >= 1000 ? (ri.off / 1000).toFixed(1) + ' km' : Math.round(ri.off) + ' m'} away`, S / 2, S * .235, S * .05, C.fg, { w: 800 }); }
+  else if (ri.turn) { turnArrow(g, S * .28, S * .2, S * .08, ri.turn.dir, C.acc); const d = ri.turn.in < 1000 ? `${Math.round(ri.turn.in / 10) * 10} m` : `${(ri.turn.in / 1000).toFixed(1)} km`;
     txt(g, d, S * .37, S * .175, S * .085, C.fg, { al: 'left', w: 900, max: S * .42 }); txt(g, ri.turn.txt || (ri.turn.dir === 'L' ? 'Turn left' : 'Turn right'), S * .37, S * .245, S * .046, C.lbl, { al: 'left', w: 800, max: S * .4 }); }
   else txt(g, 'FINISH AHEAD', S / 2, S * .2, S * .05, C.acc, { w: 900 });
   const bx = S * .2, by = S * .315, bw = S * .6, bh = S * .38, P = r.pts.map(([u, v]) => [bx + u * bw, by + v * bh]);
@@ -279,13 +319,15 @@ function segScreen(g, S, C) {
     return;
   }
   if (sg.k === 'live') {
-    const part = sg.len ? Math.min(1, sg.done / sg.len) : 0, ahead = sg.delta <= 0, col = ahead ? C.good : C.bad;
+    const part = sg.len ? Math.min(1, sg.done / sg.len) : 0, ref = sg.ref == null ? 'PR' : sg.ref, ahead = sg.delta <= 0, col = ahead ? C.good : C.bad;
     arc(g, S / 2, S / 2, S / 2 - S * .03, 0, Math.PI * 2, C.faint, S * .03); arc(g, S / 2, S / 2, S / 2 - S * .03, -Math.PI / 2, -Math.PI / 2 + part * Math.PI * 2, C.acc, S * .03);
     txt(g, sg.name, S / 2, S * .17, S * .052, C.fg, { w: 800, max: S * .6 });
-    txt(g, (ahead ? '−' : '+') + clock(Math.abs(sg.delta)), S / 2, S * .37, S * .22, col, { w: 900 });
-    txt(g, ahead ? 'AHEAD OF PR' : 'BEHIND PR', S / 2, S * .505, S * .05, col, { w: 900 });
-    const need = ride ? `${(sg.need * 3.6).toFixed(1)} km/h` : `${paceTxt(1000 / sg.need, 1000)} /km`;
-    txt(g, `Need ${need}`, S / 2, S * .63, S * .066, C.fg, { w: 900, max: S * .76 }); txt(g, 'FOR PR', S / 2, S * .7, S * .042, C.lbl, { w: 800 });
+    if (!ref) { txt(g, clock(sg.time || 0), S / 2, S * .37, S * .22, C.fg, { w: 900 }); txt(g, 'NO TIME TO BEAT', S / 2, S * .505, S * .05, C.lbl, { w: 900 }); }
+    else { txt(g, (ahead ? '−' : '+') + clock(Math.abs(sg.delta)), S / 2, S * .37, S * .22, col, { w: 900 });
+      txt(g, `${ahead ? 'AHEAD OF' : 'BEHIND'} ${ref}`, S / 2, S * .505, S * .05, col, { w: 900 });
+      if (sg.need > 0) { const need = ride ? `${(sg.need * 3.6).toFixed(1)} km/h` : `${paceTxt(1000 / sg.need, 1000)} /km`;
+        txt(g, `Need ${need}`, S / 2, S * .63, S * .066, C.fg, { w: 900, max: S * .76 }); txt(g, 'FOR ' + ref, S / 2, S * .7, S * .042, C.lbl, { w: 800 }); }
+      else txt(g, `${ref} out of reach`, S / 2, S * .655, S * .058, C.lbl, { w: 900, max: S * .7 }); }
     const left = Math.max(0, sg.len - sg.done); txt(g, `${left >= 1000 ? (left / 1000).toFixed(1) + ' km' : Math.round(left) + ' m'} to go`, S / 2, S * .81, S * .05, C.lbl, { w: 800 });
     return;
   }
@@ -293,7 +335,7 @@ function segScreen(g, S, C) {
   if (sg.pr) dot(g, S / 2, S / 2, S / 2, col);
   txt(g, sg.pr ? 'NEW PR' : 'SEGMENT DONE', S / 2, S * .22, S * .06, sg.pr ? ink : C.acc, { w: 900 });
   txt(g, sg.name, S / 2, S * .31, S * .05, ink, { w: 800, max: S * .66 }); txt(g, clock(sg.time), S / 2, S * .5, S * .22, ink, { w: 900 });
-  txt(g, `${sg.delta <= 0 ? '−' : '+'}${clock(Math.abs(sg.delta))} vs PR`, S / 2, S * .7, S * .075, sg.pr ? ink : col, { w: 900 });
+  const ref = sg.ref == null ? 'PR' : sg.ref; if (ref) txt(g, `${sg.delta <= 0 ? '−' : '+'}${clock(Math.abs(sg.delta))} vs ${ref}`, S / 2, S * .7, S * .075, sg.pr ? ink : col, { w: 900 });
 }
 function lapFlash(g, S, C) {
   const f = F.flash; C = tint(C, F.sp); dot(g, S / 2, S / 2, S / 2, C.acc);
@@ -351,7 +393,8 @@ function tapAt(u, v) {
   const s = F.scr;
   if (F.flash) return ev('tap');
   if (s === SCR.SET) { if (v > .72 && Math.abs(u - .5) < .24) return ev('start'); if (v > .36 && v < .72) return ev('focus', u < .51 ? 0 : 1); return; }
-  const menu = [SCR.MENU, SCR.PAUSE, SCR.SMODE].includes(s), pick = [SCR.PICK, SCR.MORE, SCR.WPICK].includes(s);
+  if (s === SCR.READY && F.sp !== 'other' && v > .665 && v < .74) return ev('down'); // the route line
+  const menu = [SCR.MENU, SCR.PAUSE, SCR.SMODE].includes(s), pick = [SCR.PICK, SCR.MORE, SCR.WPICK, SCR.RPICK].includes(s);
   if (menu || pick || s === SCR.HOME) { const rows = s === SCR.HOME ? [[-1, .31], [0, .5], [1, .69]] : menu ? [[-1, .33], [0, .5], [1, .67]] : [[-2, .24], [-1, .345], [0, .5], [1, .7], [2, .8]];
     const [o] = rows.reduce((a, r) => Math.abs(r[1] - v) < Math.abs(a[1] - v) ? r : a); const n = listItems(F).length, i = F.sel + o;
     if (i >= 0 && i < n) ev('item', i); return; }
@@ -394,6 +437,7 @@ function panel() {
   p.querySelector('#wNet').textContent = [net, q ? `${q} ${q === 1 ? 'session waits' : 'sessions wait'} for the phone.` : ''].filter(Boolean).join(' ');
   p.querySelector('#wUnpair').hidden = !(live() && token);
   p.querySelector('#wCfg').textContent = cfgFrom === 'defaults' ? 'Screens and workouts: defaults. Sign in on the phone (Settings, Devices, Watch) to use your own.' : `Screens and workouts: from ${cfgFrom === 'watch' ? 'the paired account' : 'your account'}.`;
+  p.querySelector('#wRoutes').textContent = rsrc === 'demo' ? 'Routes: two demo routes.' : `Routes: ${F.routes ? F.routes.length : 0} sent from the phone (Routes, Send to watch).`;
   p.querySelector('#wSeg').disabled = !(F.rec && F.sp !== 'other' && F.scr === SCR.REC);
   p.querySelectorAll('[data-mode]').forEach(b => b.onclick = () => { if (mode === b.dataset.mode) return; mode = b.dataset.mode; store.set('mode', mode); boot(); });
 }

@@ -2,7 +2,7 @@
 // prefill, record detection, queue and retry. Usage: node --test tools/watchflow-test.mjs
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { newFlow, handle, SCR, MENU, curEx, setNo, restLeft, sent, paired, setSetup, clock, homeItems, listItems, recPages, routeInfo, setRoute, setConfig, order, planItem, LAP_M } from '../js/watchflow.js';
+import { newFlow, handle, SCR, MENU, curEx, setNo, restLeft, sent, paired, setSetup, clock, homeItems, listItems, recPages, routeInfo, setRoute, setRoutes, routeFace, routeNav, setConfig, order, planItem, LAP_M } from '../js/watchflow.js';
 import { FIELDS, defaults, validate, compact, fieldText, zoneOf, MORE, TOP } from '../js/watchfields.js';
 
 const SETUP = { v: 1, unit: 'kg', rest: 90, ex: [
@@ -206,4 +206,28 @@ test('watchfields: defaults pass the check, compact form, field texts, top 20, m
   const R = { t: 3725, d: 12345, v: 0, hr: 0, cad: 0, pw: 0, p3: [], pwSum: 0, np4: 0, npN: 0, gain: 0, kcal: 1234.4, lapT0: 3600, lapD0: 12000 };
   assert.deepEqual(['time', 'lapTime', 'pace', 'dist', 'lapPace', 'kcal', 'hr', 'np', 'avgSpeed'].map(k => fieldText(k, R, 0)), ['1:02:05', '2:05', '--:--', '12.35', '6:02', '1,234', '--', '--', '11.9']);
   assert.match(fieldText('clock', R, Date.UTC(2026, 0, 1, 9, 5) / 1000), /^\d{1,2}:05$/);
+});
+
+test('route choice (19.11.): READY asks for the list, UP / DOWN opens it, None or a route, the route page follows the watch', () => {
+  const F = newFlow(structuredClone(SETUP), { id: () => 'x' }); F.out = [];
+  go(F, ['start']); assert.equal(F.scr, SCR.READY); assert.deepEqual(F.out, [{ k: 'routes' }]); F.out = [];
+  go(F, ['down']); assert.equal(F.scr, SCR.RPICK); assert.deepEqual(listItems(F), ['None']); assert.deepEqual(F.out, [{ k: 'routes' }], 'still unknown: asked again'); F.out = [];
+  setRoutes(F, [{ id: 'a', name: 'Lake', dist: 4200, climb: 30 }, { id: '', name: 'bad' }, { id: 'b', name: 'Hill', dist: 9000 }]);
+  assert.deepEqual(listItems(F), ['None', 'Lake', 'Hill']);
+  go(F, ['down', 'down', 'start']); assert.equal(F.scr, SCR.READY); assert.equal(F.routeId, 'b'); assert.deepEqual(F.out, [{ k: 'route', id: 'b' }]); F.out = [];
+  // the answer of GET /api/watch/route: a 1 km line north, then 1 km east, one right turn
+  const p = []; for (let i = 0; i <= 10; i++) p.push([47 + i * .0009, 8]); for (let i = 1; i <= 10; i++) p.push([47.009, 8 + i * .00132]);
+  const r = routeFace({ id: 'b', name: 'Hill', dist: 2000, p, turns: [[1000, 'R'], [-5, 'L']] }); setRoute(F, r);
+  assert.equal(r.pts.length, 21); assert.ok(r.pts.every(([u, v]) => u >= -1e-9 && u <= 1 + 1e-9 && v >= -1e-9 && v <= 1 + 1e-9), 'inside the box');
+  assert.deepEqual(r.turns, [{ at: 1000, dir: 'R', txt: 'Turn right' }]); assert.ok(r.pts[0][1] > r.pts[10][1], 'north up');
+  go(F, ['up']); assert.equal(F.scr, SCR.RPICK); assert.equal(F.sel, 2, 'the chosen route is selected'); go(F, ['back']); assert.equal(F.scr, SCR.READY);
+  go(F, ['start']); assert.equal(F.scr, SCR.REC); assert.ok(recPages(F).includes('route'));
+  assert.deepEqual(routeInfo(F), { pos: 0, left: 2000, turn: { dir: 'R', in: 1000, txt: 'Turn right' }, off: 0 });
+  routeNav(F, 600, 0); assert.equal(routeInfo(F).turn.in, 400);
+  routeNav(F, 600, 87.4); const ri = routeInfo(F); assert.equal(ri.off, 87); assert.equal(ri.turn, null, 'off the route: no turn');
+  // None: no route page next time
+  const G = newFlow(structuredClone(SETUP), { id: () => 'y' }); go(G, ['start']); setRoutes(G, [{ id: 'a', name: 'Lake' }]); setRoute(G, r); G.routeId = 'a';
+  go(G, ['down', 'up', 'start']); assert.equal(G.routeId, null); assert.equal(G.route, null); go(G, ['start']); assert.ok(!recPages(G).includes('route'));
+  // other sports have no route choice
+  const H = newFlow(structuredClone(SETUP), { id: () => 'z' }); H.scr = SCR.READY; H.sp = 'other'; go(H, ['down']); assert.equal(H.scr, SCR.READY);
 });

@@ -1,12 +1,14 @@
 // Settings → Devices → Garmin watch (17.11.): pair a watch with a 6-digit code, list paired watches, remove one.
 // Server: tools/watch-api.mjs. The code lives 10 minutes and works once; the watch keeps its own token.
 import { account } from './account.js';
+// the account's Strava connection for the watch's segments (tools/watch-feed.mjs linkStrava): this phone's Strava key, when it has one
+const stravaHdr = () => { try { const k = localStorage.getItem('rf_strava_key'); return k ? { 'X-Strava-Key': k } : {}; } catch { return {}; } };
 
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 let code = null, list = null, msg = '', timer = 0, poll = 0; // kept here, so a redraw of the settings sheet keeps the code on screen
 
 async function api(path, opt = {}) { // own fetch: a 401 here must not sign the phone out (account.js does that)
-  const r = await fetch('/api/watch/' + path, { cache: 'no-store', ...opt, headers: { 'Content-Type': 'application/json', 'X-RF-Token': account()?.token || '' } });
+  const r = await fetch('/api/watch/' + path, { cache: 'no-store', ...opt, headers: { 'Content-Type': 'application/json', 'X-RF-Token': account()?.token || '', ...stravaHdr() } });
   const j = await r.json().catch(() => ({})); if (!r.ok) throw Object.assign(new Error(j.error || 'Server is not answering.'), { status: r.status }); return j;
 }
 const day = t => { const d = Math.floor((Date.now() - t) / 864e5); return d < 1 ? 'today' : d < 2 ? 'yesterday' : new Date(t).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' }); };

@@ -8,6 +8,7 @@ import { profileOf, loadOf, sportOf } from './fitness.js';
 import { labelOf, famOf, paceOf, distOf } from './sports.js';
 import { nm, e1rm, doneSets, sessVol, setTxt, kgTxt, nSets, stravaText } from './kraftlib.js';
 import { nav } from './nav.js';
+import { collapse } from './actimport.js';
 
 const $ = (s, r = document) => r.querySelector(s);
 export const ORDER = ['ride', 'run', 'trainer', 'world', 'kraft', 'walk', 'swim', 'skate', 'ski', 'water', 'fit', 'ball', 'other'];
@@ -17,7 +18,7 @@ export async function loadActs() {
   const S = (await db.kvGet('settings').catch(() => null)) || {};
   const rides = (await db.all('rides').catch(() => [])).filter(r => r.routeId !== 'demo' && !r.unsaved && r.date);
   const kraft = ((await db.kvGet('kraft').catch(() => null)) || []).map(k => ({ ...k, kraft: true, date: k.start || k.date }));
-  const acts = [...rides, ...kraft].sort((a, b) => b.date - a.date);
+  const acts = collapse([...rides, ...kraft]).sort((a, b) => b.date - a.date); // a watch session and its Strava copy are one entry (actimport.js)
   return { S, acts, P: profileOf(S, acts) };
 }
 
@@ -49,7 +50,7 @@ export function wireRows(root, D, onChange) { root.querySelectorAll('[data-act]'
 function flash(t) { let f = $('#fflash'); if (!f) { f = document.createElement('div'); f.id = 'fflash'; f.className = 'pflash'; document.body.append(f); } f.textContent = t; f.classList.add('on'); clearTimeout(flash.t); flash.t = setTimeout(() => f.classList.remove('on'), 3200); }
 function sheet(html) { const s = document.createElement('div'); s.className = 'psheet'; s.innerHTML = `<div class="psheetin fdet">${html}</div>`; s.onclick = e => { if (e.target === s) s.remove(); }; document.body.append(s); return s; }
 
-const SRCN = { strava: 'from Strava', file: 'from a file', manual: 'entered by hand' };
+const SRCN = { strava: 'from Strava', file: 'from a file', manual: 'entered by hand', watch: 'from the watch' };
 const SRC = { power: 'from power', 'heart rate': 'from heart rate', pace: 'from pace', duration: 'from duration' };
 /** calories like the outdoor tile: runs ≈ kg × km, rides from the work (kJ × 1.1), else a flat 8 kcal/kg/h */
 const kcalOf = (a, kg) => sportOf(a) === 'run' ? Math.round(a.distance / 1000 * kg) : a.kj > 0 ? Math.round(a.kj * 1.1) : Math.round(a.duration / 3600 * 8 * kg);
@@ -69,7 +70,7 @@ export function detail(a, P, onChange = () => {}) {
   const laps = (a.laps || []).filter(l => l && l.t > 0);
   const at = ext && a.start ? a.start : a.date; // outside activities show their start, like Strava
   const s = sheet(`<div class="label">${new Date(at).toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short', year: 'numeric' })} · ${new Date(at).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })}${a.sportType ? ' · ' + esc(labelOf(a.sportType)) : ''}${ext ? ' · ' + SRCN[ext] : ''}</div>
-    <div class="fdh" style="${mc(m)}">${icon(m, 'rico')}<h2>${esc(nameOf(a))}</h2></div>${a.kraft && a.source === 'watch' ? '<p class="hint fwsrc">Recorded on watch</p>' : ''}
+    <div class="fdh" style="${mc(m)}">${icon(m, 'rico')}<h2>${esc(nameOf(a))}</h2></div>${a.source === 'watch' ? '<p class="hint fwsrc">Recorded on watch</p>' : ''}
     <div class="psum">${nums}<div class="fldc"><span>Load</span><b>${fmtNum(L.pts)} pts</b><small>${SRC[L.src] || L.src}</small></div></div>
     ${a.kraft ? '' : chart(a)}${ext ? routeSvg(a) : ''}
     ${a.note ? `<p class="fnotev">${esc(a.note)}</p>` : ''}

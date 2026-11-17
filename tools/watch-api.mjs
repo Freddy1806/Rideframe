@@ -9,6 +9,7 @@ import { randomBytes, randomInt } from 'node:crypto';
 import { readdir, stat } from 'node:fs/promises';
 import { join } from 'node:path';
 import { accountOf, userByKey, shared } from './accounts-api.mjs';
+import { linkStrava, validateAct, storeActivity, linkStrength, segQuery, segmentsFor, validateRoute, routeList, putRoute, deleteRoute, routeForWatch } from './watch-feed.mjs';
 
 const { DATA, readJSON, writeJSON, send, body, limited, clientIp, userDir, sha, count, MAX_FILES } = shared;
 const WF = join(DATA, 'watches.json');
@@ -34,7 +35,7 @@ async function sessions(uid) { // every strength session of the account, newest 
   for (const f of (await readdir(d).catch(() => [])).filter(x => x.endsWith('.json'))) {
     const fp = join(d, f), st = await stat(fp).catch(() => null); if (!st) continue;
     let c = cache.get(fp);
-    if (!c || c.m !== st.mtimeMs) { const w = await readJSON(fp, null); c = { m: st.mtimeMs, s: w && { id: w.id, start: +(w.start || w.date) || 0, dur: +w.dur || 0, name: String(w.name || ''),
+    if (!c || c.m !== st.mtimeMs) { const w = await readJSON(fp, null); c = { m: st.mtimeMs, s: w && { id: w.id, start: +(w.start || w.date) || 0, dur: +w.dur || 0, name: String(w.name || ''), source: w.source, stravaId: w.stravaId, strava: w.strava,
       ex: (Array.isArray(w.ex) ? w.ex : []).map(x => ({ k: String(x?.k || ''), n: String(x?.n || ''), t: x?.t, sets: (Array.isArray(x?.sets) ? x.sets : []).filter(y => y && y.done !== false && !y.warm).map(y => [+y.kg || 0, +y.r || 0, +y.s || 0]) })).filter(x => x.k) } };
       cache.set(fp, c); if (cache.size > 20000) cache.clear(); }
     if (c.s) out.push(c.s);
@@ -127,7 +128,7 @@ async function summaryOf(u) {
   const F = await import('../js/fitness.js').catch(() => null), S = await settingsOf(u.id);
   const mon = t => { const d = new Date(t); d.setHours(0, 0, 0, 0); d.setDate(d.getDate() - ((d.getDay() + 6) % 7)); return d.getTime(); };
   const w0 = mon(Date.now()), w1 = mon(w0 - 3 * 864e5), since = Date.now() - 56 * 864e5;
-  const kr = (await sessions(u.id)).map(s => ({ kraft: true, date: s.start, dur: s.dur }));
+  const kr = (await sessions(u.id)).map(s => ({ kraft: true, id: s.id, date: s.start, start: s.start, dur: s.dur, source: s.source, stravaId: s.stravaId, strava: s.strava }));
   // rides: dates of all (the streak) from the leaderboard's summary cache; the full file only for the last 8 weeks (points need the samples)
   const rd = join(userDir(u.id), 'rides'), dates = [], recent = [];
   for (const f of (await readdir(rd).catch(() => [])).filter(x => x.endsWith('.json'))) {
@@ -136,7 +137,8 @@ async function summaryOf(u) {
     else if (s.date >= since && s.routeId !== 'demo') { const r = await readJSON(fp, null); if (r) recent.push(r); }
     if (s.date && s.routeId !== 'demo') dates.push({ date: s.date });
   }
-  const acts = [...recent.filter(r => !r.unsaved && r.date), ...kr.filter(k => k.date >= since)];
+  const AI = await import('../js/actimport.js').catch(() => null), one = l => AI ? AI.collapse(l) : l; // a watch session and its Strava copy count once
+  const acts = one([...recent.filter(r => !r.unsaved && r.date), ...kr.filter(k => k.date >= since)]);
   let pts = null, prev = null;
   if (F) { const P = F.profileOf(S, acts), sum = l => Math.round(l.reduce((a, x) => a + F.loadOf(x, P).pts, 0));
     pts = sum(acts.filter(a => a.date >= w0)); prev = sum(acts.filter(a => a.date >= w1 && a.date < w0)); }
@@ -163,7 +165,7 @@ export async function watchApi(req, res, path) {
   try {
     /* -- phone side (signed in with the normal login token) -- */
     if (op === 'code' && M === 'POST') {
-      const me = await accountOf(req); if (!me) return send(res, 401, { error: 'Not signed in.' });
+      const me = await accountOf(req); if (!me) return send(res, 401, { error: 'Not signed in.' }); await linkStrava(req, me.u.id).catch(() => {});
       if (limited('wcode:' + me.key, 10, 36e5)) return send(res, 429, { error: 'Too many codes. Please try again in an hour.' });
       return await withW(async W => {
         const now = Date.now(); for (const [k, c] of Object.entries(W.codes)) if (!(c.exp > now) || c.key === me.key) delete W.codes[k]; // one live code per account
@@ -174,7 +176,7 @@ export async function watchApi(req, res, path) {
       });
     }
     if (op === 'devices' && M === 'GET') {
-      const me = await accountOf(req); if (!me) return send(res, 401, { error: 'Not signed in.' });
+      const me = await accountOf(req); if (!me) return send(res, 401, { error: 'Not signed in.' }); await linkStrava(req, me.u.id).catch(() => {}); // the watch's segments use the phone's Strava (watch-feed.mjs)
       const W = await readJSON(WF, { codes: {}, devs: {} });
       return send(res, 200, { watches: Object.values(W.devs).filter(d => d.key === me.key && d.uid === me.u.id).sort((a, b) => b.created - a.created).map(watchView) });
     }
@@ -185,7 +187,7 @@ export async function watchApi(req, res, path) {
         delete W.devs[e[0]]; await writeJSON(WF, W); return send(res, 200, { ok: true }); });
     }
     if (op === 'config' && !req.headers.authorization) { // the phone: read / replace the account's watch config (js/watchcfg.js)
-      const me = await accountOf(req); if (!me) return send(res, 401, { error: 'Not signed in.' });
+      const me = await accountOf(req); if (!me) return send(res, 401, { error: 'Not signed in.' }); await linkStrava(req, me.u.id).catch(() => {});
       if (M === 'GET') { const c = await configOf(me.u.id); return send(res, 200, { config: c.cfg, at: c.at, stored: c.stored }); }
       if (M !== 'PUT') return send(res, 405, { error: 'not allowed' });
       if (limited('wcfg:' + me.key, 120, 10 * 60e3)) return send(res, 429, { error: 'Too many saves. Please wait a few minutes.' });
@@ -193,6 +195,22 @@ export async function watchApi(req, res, path) {
       const v = (await WFM()).validate(b); if (v.error) return send(res, 400, { error: v.error });
       const at = Date.now(); await writeJSON(cfgFile(me.u.id), { cfg: v.cfg, at });
       return send(res, 200, { ok: true, config: v.cfg, at });
+    }
+    const rm = op.match(/^routes(?:\/([^/]{1,80}))?$/);
+    if (rm && !req.headers.authorization) { // the phone: routes sent to the watch (js/outdoor.js routes sheet), a simplified copy per account
+      const me = await accountOf(req); if (!me) return send(res, 401, { error: 'Not signed in.' }); await linkStrava(req, me.u.id).catch(() => {});
+      if (!rm[1]) return M === 'GET' ? send(res, 200, { routes: await routeList(me.u.id) }) : send(res, 405, { error: 'not allowed' });
+      const id = rm[1];
+      if (M === 'DELETE') { if (!/^[\w-]{1,64}$/.test(id)) return send(res, 400, { error: 'id: 1–64 letters, digits, _ or -.' }); return send(res, ...await deleteRoute(me.u.id, id)); }
+      if (M !== 'PUT') return send(res, 405, { error: 'not allowed' });
+      if (limited('wrt:' + me.key, 60, 10 * 60e3)) return send(res, 429, { error: 'Too many routes sent. Please wait a few minutes.' });
+      let b; try { b = await body(req, 256e3); } catch (e) { return send(res, e.message === 'too large' ? 413 : 400, { error: e.message === 'too large' ? 'Route too large.' : 'Body must be JSON.' }); }
+      const v = await validateRoute(id, b); if (v.error) return send(res, 400, { error: v.error });
+      return send(res, ...await putRoute(me.u.id, v));
+    }
+    if (op === 'route' && !req.headers.authorization && M === 'GET') { // the preview (watch.html) signed in on the phone, without a paired watch
+      const me = await accountOf(req); if (!me) return send(res, 401, { error: 'Not signed in.' });
+      const r = await routeForWatch(me.u.id, new URL(req.url, 'http://x').searchParams.get('id') || ''); return r ? send(res, 200, r) : send(res, 404, { error: 'Route not found.' });
     }
     /* -- watch side -- */
     if (op === 'pair' && M === 'POST') {
@@ -214,7 +232,7 @@ export async function watchApi(req, res, path) {
         await writeJSON(WF, W); return send(res, 200, { token, name: u.name, label });
       });
     }
-    if (!['strength/setup', 'strength', 'summary', 'me', 'config'].includes(op)) return send(res, 404, { error: 'unknown' });
+    if (!['strength/setup', 'strength', 'summary', 'me', 'config', 'activity', 'segments', 'routes', 'route'].includes(op)) return send(res, 404, { error: 'unknown' });
     const w = await watchOf(req); if (!w) return send(res, 401, { error: 'Not paired.' });
     if (limited('wcall:' + w.h, 120, 10 * 60e3)) return send(res, 429, { error: 'Too many requests.' });
     if (op === 'me') return send(res, 200, { name: w.u.name, label: w.d.label });
@@ -230,10 +248,23 @@ export async function watchApi(req, res, path) {
       const S = await settingsOf(w.u.id), info = new Map((await catalog()).map(e => [e.k, e])), hist = (await sessions(w.u.id)).filter(s => s.start < v.start);
       for (const e of Array.isArray(S.kraftEx) ? S.kraftEx : []) if (e?.k && !info.has(e.k)) info.set(e.k, e);
       for (const s of hist) for (const x of s.ex) if (!info.has(x.k)) info.set(x.k, { n: x.n, t: x.t });
-      const rec = toRecord(v, info, hist);
+      const rec = await linkStrength(w.u.id, toRecord(v, info, hist)).catch(() => toRecord(v, info, hist)); // its Strava copy already here: linked (watch-feed.mjs)
       await writeJSON(f, rec); sumCache.delete(w.u.id);
       return send(res, 200, { ok: true, id: rec.id, prs: rec.prs || 0 });
     }
+    if (op === 'activity' && M === 'POST') { // a run / ride / more recording (19.11.): one ride record, source 'watch' (watch-feed.mjs)
+      let b; try { b = await body(req, 4e3); } catch (e) { return send(res, e.message === 'too large' ? 413 : 400, { error: e.message === 'too large' ? 'Activity too large.' : 'Body must be JSON.' }); }
+      const v = await validateAct(b); if (v.error) return send(res, 400, { error: v.error });
+      const r = await storeActivity(w.u.id, v); if (r[0] === 200) sumCache.delete(w.u.id); return send(res, ...r);
+    }
+    const q = new URL(req.url, 'http://x').searchParams;
+    if (op === 'segments' && M === 'GET') {
+      if (limited('wseg:' + w.h, 30, 10 * 60e3)) return send(res, 429, { error: 'Too many segment requests.' });
+      const v = segQuery(q); if (v.error) return send(res, 400, { error: v.error });
+      return send(res, 200, await segmentsFor(w, v));
+    }
+    if (op === 'routes' && M === 'GET') return send(res, 200, { routes: (await routeList(w.u.id)).map(({ at, ...r }) => ({ ...r, name: r.name.length > 24 ? r.name.slice(0, 23).trim() + '.' : r.name })) });
+    if (op === 'route' && M === 'GET') { const r = await routeForWatch(w.u.id, q.get('id') || ''); return r ? send(res, 200, r) : send(res, 404, { error: 'Route not found.' }); }
     return send(res, 405, { error: 'not allowed' });
   } catch (e) { return send(res, 500, { error: 'Server error.' }); }
 }

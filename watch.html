@@ -20,12 +20,13 @@
     <div class="wseg" id="wMode" role="group" aria-label="Data"></div>
     <p id="wState" class="wstate"></p>
     <p id="wCfg" class="wstate"></p>
+    <p id="wRoutes" class="wstate"></p>
     <p id="wNet" class="wnet" role="status"></p>
     <label class="wnear"><input type="checkbox" id="wNear" checked> Phone nearby (untick to see the offline queue)</label>
     <label class="wnear"><input type="checkbox" id="wFast"> Fast forward while recording (10 s each second)</label>
     <div class="wacts"><button id="wGlance">Glance</button><button id="wRestart">Restart app</button><button id="wSeg" title="While recording a run or ride">Segment demo</button><button id="wUnpair" hidden>Unpair</button></div>
     <p class="wcue" id="wCue" aria-live="polite"></p>
-    <dl class="wkeys"><dt>START · Enter</dt><dd>start, select, pause, set done, skip rest</dd><dt>UP / DOWN · ↑ ↓</dt><dd>scroll, next data page, change the value; hold for 10 kg</dd>
+    <dl class="wkeys"><dt>START · Enter</dt><dd>start, select, pause, set done, skip rest</dd><dt>UP / DOWN · ↑ ↓</dt><dd>scroll, next data page, change the value; hold for 10 kg; on the ready screen: the route</dd>
       <dt>BACK · Esc</dt><dd>back; lap while recording; on a set: weight or reps; hold for the menu</dd><dt>Swipe left · ←</dt><dd>menu</dd><dt>Tap</dt><dd>a value to pick it, DONE to log the set</dd></dl>
     <p class="wfoot">Screen: <span id="wScr"></span> · Prototype only, the watch app itself is in <code>garmin/</code> and not compiled yet.</p>
   </aside>
