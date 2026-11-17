@@ -74,7 +74,7 @@ export async function stravaApi(req, res, path) {
       for (const [c, v] of claims) if (Date.now() - v.t > 15 * 60e3) claims.delete(c);
       for (const [s, t] of pending) if (Date.now() - t > 15 * 60e3) { pending.delete(s); stateClaim.delete(s); }
       const u = new URL(OAUTH + '/authorize'), force = new URL(req.url, 'http://x').searchParams.get('force') === '1'; // force: ask again, so an old connection gets the read permission
-      u.search = new URLSearchParams({ client_id: cfg.client_id, response_type: 'code', redirect_uri: baseUrl(req, cfg) + '/api/strava/callback', approval_prompt: force ? 'force' : 'auto', scope: 'activity:write,activity:read_all,read', state });
+      u.search = new URLSearchParams({ client_id: cfg.client_id, response_type: 'code', redirect_uri: baseUrl(req, cfg) + '/api/strava/callback', approval_prompt: force ? 'force' : 'auto', scope: 'activity:write,activity:read_all,read_all', state });
       res.writeHead(302, { Location: u.toString() }); res.end(); return true;
     }
     if (op.startsWith('callback')) {

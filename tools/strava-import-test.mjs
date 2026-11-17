@@ -107,7 +107,7 @@ test('Strava refuses (permission taken back in Strava): reconnect, not a silent 
 
 test('connect asks for activity:read_all (and again with force), the callback keeps the granted scope', async () => {
   const loc = async q => (await get('/api/strava/connect?claim=' + 'a'.repeat(32) + q, '')).headers.get('location');
-  const u = new URL(await loc('')); assert.equal(u.searchParams.get('scope'), 'activity:write,activity:read_all,read'); assert.equal(u.searchParams.get('approval_prompt'), 'auto'); assert.match(u.pathname, /\/oauth\/authorize$/);
+  const u = new URL(await loc('')); assert.equal(u.searchParams.get('scope'), 'activity:write,activity:read_all,read_all'); assert.equal(u.searchParams.get('approval_prompt'), 'auto'); assert.match(u.pathname, /\/oauth\/authorize$/);
   assert.equal(new URL(await loc('&force=1')).searchParams.get('approval_prompt'), 'force');
   const keyAfter = async scope => { const st = new URL(await loc('')).searchParams.get('state'), h = await (await get(`/api/strava/callback?state=${st}&code=c${scope.length}&scope=${encodeURIComponent(scope)}`, '')).text();
     return (h.match(/rf_strava_key',"([a-f0-9]+)"/) || [])[1]; };
