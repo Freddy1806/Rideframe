@@ -62,7 +62,7 @@ export const avatar = (r, face) => `<span class="lvface"><span class="lvini">${i
 export function riderCard(r, { phone = false, face = null, haveRoute = true } = {}) {
   return `<div class="lvcard" data-sid="${esc(r.id)}">${avatar(r, face)}
     <div class="lvtxt"><b class="lvname">${esc(r.name)}</b><span class="lvroute">${esc(r.routeName)}</span>
-      <span class="lvkm"><i class="lvdot" aria-hidden="true"></i><span>${progress(r)} · ${since(r.since)}</span></span></div>
+      <span class="lvkm"><i class="lvdot" aria-hidden="true"></i><span>${progress(r)} · <span class="nw">${since(r.since)}</span></span></span></div>
     ${phone ? `<div class="lvact"><span class="lvhint">Join on your laptop</span><button class="btn ghost small lvcopy" type="button">Copy link</button></div>`
       : haveRoute ? `<button class="btn small lvjoin" type="button" title="${r.ask ? `${esc(r.name)} gets a short question first` : `You start right next to ${esc(r.name)}`}">Join</button>`
       : '<span class="lvhint" title="Own video routes have to be imported on both computers">Route not on this computer</span>'}</div>`;
