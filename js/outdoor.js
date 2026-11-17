@@ -7,7 +7,7 @@ import { db, uid } from './db.js';
 import { fmtTime, fmtNum, esc, bestAvg, twoWeeks, weekStat } from './util.js';
 import { SegTracker } from './segtrack.js';
 import { applyTheme, icon } from './theme.js';
-import { RouteNav, SegAhead, parseRoute, makeRoute, bearing, deltaTxt, xomSec } from './navroute.js';
+import { RouteNav, SegAhead, parseRoute, makeRoute, bearing, deltaTxt, xomSec, needSpeed } from './navroute.js';
 
 const $ = (s, r = document) => r.querySelector(s);
 const params = new URLSearchParams(location.search), DEMO = params.has('demo');
@@ -247,13 +247,18 @@ function paint() {
 const short = (t, n = 18) => t.length > n ? t.slice(0, n - 1).trim() + '…' : t;
 const kmTxt = m => m < 1000 ? `${Math.round(m / 10) * 10} m` : `${fmtNum(m / 1000, 1)} km`;
 const setHtml = (e, cls, h) => { if (e.className !== cls) e.className = cls; if (e.innerHTML !== h) e.innerHTML = h; };
+/** what it takes to win from here: the speed (pace on foot) over the rest of the segment to beat the PR, else the KOM */
+function needTxt(len, el, pr, kom, prog) {
+  const vp = needSpeed(len, el, pr, prog), vk = vp == null ? needSpeed(len, el, kom, prog) : null, v = vp ?? vk; if (v == null) return '';
+  return `<i class="oneed">Need ${RUN ? pace(v) + ' /km' : (v * 3.6).toFixed(1) + ' km/h'} for ${vp != null ? 'PR' : 'KOM'}</i>`;
+}
 /** the segment banner: the warning with a countdown before the start, live timing against PR and KOM on it */
 function paintSeg() {
   const sb = $('#oSeg'); if (!sb) return; const a = segT.active, w = !a && R.state === 'run' ? segWarn : null; sb.hidden = !a && !w; if (sb.hidden) return;
   if (a) { const s = a.seg, el = R.wall - a.t0, pr = s.pr, kom = s.komS ?? xomSec(s.kom), dv = pr ? deltaTxt(el, pr, a.prog) : null;
-    return setHtml(sb, 'oseg', `<b>◆ ${esc(s.name)}</b><em class="${dv ? (dv[0] === '−' ? 'up' : 'dn') : ''}">${dv || fmtTime(el)}</em><span>${dv ? fmtTime(el) + ' · ' : ''}${Math.round(a.prog * 100)} %${pr ? ` · PR ${fmtTime(pr)}` : ''}${kom ? ` · KOM ${deltaTxt(el, kom, a.prog)}` : ''}</span>`); }
+    return setHtml(sb, 'oseg', `<b>◆ ${esc(s.name)}</b><em class="${dv ? (dv[0] === '−' ? 'up' : 'dn') : ''}">${dv || fmtTime(el)}</em><span>${dv ? fmtTime(el) + ' · ' : ''}${Math.round(a.prog * 100)} %${pr ? ` · PR ${fmtTime(pr)}` : ''}${kom ? ` · KOM ${deltaTxt(el, kom, a.prog)}` : ''}${needTxt(s.len || s.dist, el, pr, kom, a.prog)}</span>`); }
   const eta = Math.max(0, w.eta - (performance.now() - w.at) / 1000), s = w.seg, len = s.len || s.dist;
-  setHtml(sb, 'oseg warn', `<b>◆ Segment in</b><em>${fmtTime(eta)}</em><span>${esc(s.name)}${len ? ' · ' + kmTxt(len) : ''}${s.pr ? ` · PR ${fmtTime(s.pr)}` : ''}</span>`);
+  setHtml(sb, 'oseg warn', `<b>◆ Segment in</b><em>${fmtTime(eta)}</em><span>${esc(s.name)}${len ? ' · ' + kmTxt(len) : ''}${s.pr ? ` · PR ${fmtTime(s.pr)}` : ''}${needTxt(len, 0, s.pr, s.komS ?? xomSec(s.kom), 0)}</span>`);
 }
 /** one line for the route while riding: left and climb, a turn coming, off route with the way back, complete */
 function paintNav() {

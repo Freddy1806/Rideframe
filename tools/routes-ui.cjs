@@ -70,7 +70,9 @@ const routeGpx = (a0, a1, name) => `<?xml version="1.0" encoding="UTF-8"?><gpx v
   // into the segment: live timing against the PR
   while (!(await p.isVisible('#oSeg:not(.warn)')) && a < .3) await fix(at(a += .0105));
   for (let i = 0; i < 12; i++) await fix(at(a += .0105));
+  ok(/Need \d+\.\d km\/h for (PR|KOM)/.test(w1), 'warning says the speed it takes to win: ' + w1);
   const live = await p.textContent('#oSeg'), em = await p.textContent('#oSeg em');
+  ok(/Need \d+\.\d km\/h for (PR|KOM)/.test(live) || /\+/.test(em), 'on the segment: speed still needed (or already behind): ' + live);
   ok(/Demo climb/.test(live) && /%/.test(live) && /PR 0:30/.test(live), 'live timing on the segment: ' + live.replace(/\s+/g, ' ').trim());
   ok(/^[−+]\d:\d\d$/.test(em.trim()), 'delta to the PR shown big: ' + em.trim()); await shot('05_segment_live_pr'); await noSide('segment live');
   ok(await p.evaluate(() => { const s = document.querySelector('#oSeg').getBoundingClientRect(), bf = document.querySelector('#oBigF').getBoundingClientRect(); return s.bottom <= bf.top + 1; }), 'banner does not cover the big number');

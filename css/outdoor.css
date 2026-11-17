@@ -81,3 +81,5 @@ button.obig { width: 100%; text-align: left; color: inherit; font: inherit; }
 .osrow { display: block; width: 100%; text-align: left; background: var(--ink-3); border-radius: 8px; padding: 10px 12px; color: inherit; }
 .osrow b { display: block; font-size: 15px; } .osrow span { font-size: 12px; color: var(--muted); }
 #out .oseg[hidden] { display: none; }
+
+.oseg .oneed { display: block; font-style: normal; font-weight: 800; }

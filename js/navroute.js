@@ -158,6 +158,9 @@ export class SegAhead {
 }
 /** "−0:04" (ahead) / "+0:07" (behind): the time now against a reference time spread evenly over the segment's length */
 export function deltaTxt(elapsed, ref, prog) { const d = Math.round(elapsed - ref * prog), a = Math.abs(d); return (d <= 0 ? '−' : '+') + Math.floor(a / 60) + ':' + String(a % 60).padStart(2, '0'); }
+/** the average speed (m/s) needed over the rest of a segment to still beat `ref` seconds; null when out of reach or unknown */
+export function needSpeed(len, elapsed, ref, prog) { if (!(len > 0) || !(ref > 0)) return null; const left = ref - elapsed, rest = len * (1 - Math.min(1, Math.max(0, prog || 0)));
+  if (left <= 0 || rest <= 0) return null; const v = rest / left; return v > 40 ? null : v; }
 /** Strava's KOM/QOM text ("5:17", "1:02:03", "37s") -> seconds */
 export function xomSec(v) { if (v == null) return null; if (typeof v === 'number') return v; const s = String(v).trim(), m = s.match(/^(\d+)\s*s$/); if (m) return +m[1];
   if (!/^\d+(:\d{1,2}){1,2}$/.test(s)) return null; return s.split(':').reduce((a, x) => a * 60 + +x, 0); }
