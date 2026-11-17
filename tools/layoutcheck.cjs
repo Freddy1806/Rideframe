@@ -47,7 +47,19 @@ const routeRide = (a1, off = 0, name = 'Lofoten Küste über Reine und Hamnøy z
   await p.waitForTimeout(400);
   await p.evaluate(async () => { const { db } = await import('/js/db.js'); const st = (await db.kvGet('settings')) || {}; if (st.outdoor) delete st.outdoor.route; await db.kvSet('settings', st); });
 };
+// "Riding now" (js/live.js): two friends with long names and route names riding right now (answers of /api/live faked)
+const liveFake = (sel = '.live.on .lvcard') => async p => {
+  const now = Date.now(), riders = [{ id: 'a1b2c3d4e5f6', name: 'Konstantin Langenberg', look: null, routeId: 'coast', routeName: 'Lofoten Küste über Reine und Hamnøy zurück mit langem Namen', d: 12400, len: 37000, since: now - 83 * 60e3, me: false, canJoin: true, group: false, code: null, ask: false },
+    { id: 'f6e5d4c3b2a1', name: 'Maximilian Oberhuber', look: null, routeId: 'demo', routeName: 'Passo Demo', d: 812, len: 12400, since: now - 4 * 60e3, me: false, canJoin: true, group: true, code: 'kq7mz', ask: false }];
+  await p.route('**/api/account/**', r => r.fulfill({ status: 200, contentType: 'application/json', body: '{}' })); // signed in (the fake login stays)
+  await p.route(/\/api\/live(\/prefs)?$/, r => r.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(/prefs$/.test(r.request().url()) ? { show: true, auto: true } : { riders, now, every: 20 }) }));
+  await p.route(/\/api\/account\/kraft/, r => r.fulfill({ status: 200, contentType: 'application/json', body: '{"ids":[]}' })); // the strength sync must not sign the fake login out
+  await p.evaluate(n => localStorage.setItem('rf_account', JSON.stringify({ token: 'x', name: n })), NAME); // the first load (unfaked) signed the fake login out
+  await p.reload(); await p.waitForSelector(sel, { timeout: 15000 }); await p.waitForTimeout(600);
+};
 const SCREENS = [
+  ['handy-fahren-gerade', '/handy.html', liveFake()],
+  ['app-strecken-live-handy', '/?desktop&noprofile', liveFake()],
   ['handy', '/handy.html', null],
   ['handy-login', '/handy.html', async p => { await p.evaluate(() => localStorage.removeItem('rf_account')); await p.reload(); await p.waitForTimeout(500); await p.click('#hAcc'); }],
   ['handy-registrieren', '/handy.html', async p => { await p.evaluate(() => localStorage.removeItem('rf_account')); await p.reload(); await p.waitForTimeout(500); await p.click('#hAcc'); await p.click('#aSwitch'); }],
@@ -138,6 +150,8 @@ const SCREENS = [
 ];
 const DESK = [ // the main app with its top bar (account pill, tabs) on tablet, laptop and TV widths
   ['app-strecken', '/?desktop&noprofile', null],
+  ['app-strecken-live', '/?desktop&noprofile', liveFake()],
+  ['app-strecke-live', '/?desktop&noprofile&view=detail&id=coast', liveFake('.livehint')],
   ['app-training', '/?desktop&noprofile&view=training', null],
   ['app-fahrten', '/?desktop&noprofile&view=history', null],
   ['app-einstellungen', '/?desktop&noprofile&view=settings', null],

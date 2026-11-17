@@ -80,7 +80,7 @@ button.wcrow { width: 100%; text-align: left; color: inherit; }
 #handy .live-head { margin-bottom: 8px; }
 #handy .lvgrid { gap: 10px; }
 #handy .lvcard { flex-wrap: wrap; gap: 12px; padding: 12px 14px; border-radius: 14px; }
-#handy .lvface { width: 44px; height: 44px; }
+#handy .lvface { width: 44px; height: 44px; } #handy .lvini { font-size: 14px; letter-spacing: 0; }
 #handy .lvname { font-size: 17px; }
 #handy .lvact { flex: 1 1 100%; display: flex; align-items: center; justify-content: space-between; gap: 10px; padding-top: 10px; border-top: 1px solid var(--line); }
 #handy .lvact .lvhint { min-width: 0; }
