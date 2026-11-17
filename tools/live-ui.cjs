@@ -150,15 +150,15 @@ async function peerOut({ page }, m) {
     await RA.waitForFunction(() => /Freddy/.test(document.querySelector('#hGroup .glist')?.textContent || ''), null, { timeout: 15000 }).catch(() => {});
     ok(/Freddy/.test(await RA.textContent('#hGroup .glist')), 'A sees Freddy in his group chip');
     // ---- A's workout after B joined: the same workout, offsets, ERG and clock; the target is what A's own clock asks for ----
-    const wk = await RA.evaluate(async () => { clearInterval(window.__elT); const { workoutAt } = await import('/js/workouts.js'), r = window.__ride, b = window.__wB, s = window.__elS;
+    const wk = await RA.evaluate(async () => { clearInterval(window.__elT); const { workoutState } = await import('/js/workouts.js'), r = window.__ride, b = window.__wB, s = window.__elS;
       let back = 0, jump = 0, paused = 0; for (let i = 1; i < s.length; i++) { const de = s[i][1] - s[i - 1][1], dw = (s[i][0] - s[i - 1][0]) / 1000; if (de < -1e-9) back++; if (de > dw + 0.3) jump++; if (s[i][2]) paused++; }
-      const tgt = el => { const v = workoutAt(r.workout, el, r.ftp); if (v.done || !v.step || v.step.free) return null; return Math.max(50, Math.round(v.target + (v.step.pct >= 88 ? r.wAdj || 0 : r.wAdjE || 0))); };
+      const tgt = el => { const v = workoutState(r.workout, el, r.ftp, { hardAdj: r.wAdj, easyAdj: r.wAdjE, ramp: r.erg }); return v.done || !v.step || v.step.free ? null : v.target; }; // the ride's own target, from A's clock and offsets only
       const bad = window.__erg.filter(([el, x]) => x !== tgt(el));
       return { same: r.workout.id === b.id && (r.wAdj || 0) === b.wAdj && (r.wAdjE || 0) === b.wAdjE && r.erg === b.erg && r.ftp === b.ftp, adj: b.wAdj + b.wAdjE, n: s.length, back, jump, paused, el0: b.el, el1: r.elapsed,
         own: tgt(r.elapsed), now: r.wNow?.target, trainer: r.state.trainer.erg, calls: window.__erg.length, bad: bad.slice(0, 3) }; });
     ok(wk.same && wk.adj === 10, `A's workout untouched by the join: same workout, ERG on, FTP, his +10 W offset (wAdj / wAdjE) kept`);
     ok(wk.n > 20 && !wk.back && !wk.jump && !wk.paused && wk.el1 > wk.el0, `A's ride clock ran on through the join: ${wk.el0.toFixed(1)} -> ${wk.el1.toFixed(1)} s, ${wk.n} samples, no step back, no jump, never paused`);
-    ok(wk.calls > 20 && !wk.bad.length && wk.now === wk.own && wk.trainer === wk.own, `A's ERG target follows only his own clock: ${wk.calls} trainer targets during the join all = workoutAt(his time) + offset, now ${wk.own} W` + (wk.bad.length ? ' ' + JSON.stringify(wk) : ''));
+    ok(wk.calls > 20 && !wk.bad.length && wk.now === wk.own && wk.trainer === wk.own, `A's ERG target follows only his own clock: ${wk.calls} trainer targets during the join all = workoutState(his time, his offsets), now ${wk.own} W` + (wk.bad.length ? ' ' + JSON.stringify(wk) : ''));
     const wire = await LB.evaluate(() => { const a = window.__ride.group.others().find(r => r.name === 'Max Rider'); return a ? Object.keys(a).sort() : null; });
     ok(wire && !wire.some(k => /target|erg|work|adj|step|pause|^el$/i.test(k)), 'nothing of A\'s workout reaches B (what B knows of A: ' + (wire || []).join(', ') + ')');
     const wb = await LB.evaluate(() => { const r = window.__ride; return { w: r.workout?.id ?? null, erg: r.state.trainer.erg ?? null, adj: (r.wAdj || 0) + (r.wAdjE || 0), wNow: r.wNow?.target ?? null }; });

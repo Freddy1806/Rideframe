@@ -3,7 +3,7 @@
 import { Trainer, HeartRate, BT_HELP } from './trainer.js';
 import { db, uid } from './db.js';
 import { fmtTime, fmtNum, esc, bestAvg } from './util.js';
-import { allWorkouts, workoutById, workoutAt, workoutDuration, workoutSVG, setMyWorkouts } from './workouts.js';
+import { allWorkouts, workoutById, workoutAt, workoutDuration, workoutSVG, setMyWorkouts, isHard, tunedTarget, tuneAdj, fmtAdj } from './workouts.js';
 import { defaultParams, step } from './physics.js';
 import { stravaStatus, stravaConnect, stravaUpload } from './stravaup.js';
 import { stravaExport } from './tcx.js';
@@ -17,7 +17,7 @@ const S = { riderKg: 75, bikeKg: 8.5, ftp: 250, accent: 'orange', shiftMode: 're
 const P = { tiles: ['cad', 'hr', 'time', 'dist', 'speed', 'avg', 'np', 'kj', 'lapTime', 'lapAvg', 'max', 'tss'], smooth: 3, autoPause: true, erg: 200, grade: 0, mode: 'erg', workout: '' };
 
 const trainer = new Trainer(), hrStrap = new HeartRate();
-const R = { state: 'ready', moving: 0, wall: 0, d: 0, v: 0, kj: 0, samples: [], pw: [], laps: [], lap: null, max: 0, hrMax: 0, wT: 0, wDone: false, intensity: 100, lastSec: 0, idle: 0, roll30: [], np4: 0, npN: 0 };
+const R = { state: 'ready', moving: 0, wall: 0, d: 0, v: 0, kj: 0, samples: [], pw: [], laps: [], lap: null, max: 0, hrMax: 0, wT: 0, wDone: false, intensity: 100, wAdj: 0, adjAcc: 0, adjT: 0, lastSec: 0, idle: 0, roll30: [], np4: 0, npN: 0 };
 const live = { power: 0, cad: 0, hr: 0, buf: [] };
 let wake = null, demoW = 0, G = gearSet({}); // G: virtual gears (list, fixed real gear, current index)
 
@@ -82,7 +82,15 @@ const work = () => P.mode === 'work' ? workoutById(P.workout) : null;
 const wAt = () => { const w = work(); return w ? workoutAt(w, R.wT, ftp()) : null; };
 function targetW() {
   if (P.mode === 'erg') return P.erg;
-  const a = wAt(); return a && !a.done ? Math.round(a.target * R.intensity / 100) : null;
+  const a = wAt(); return a && !a.done ? tunedTarget(a.step, Math.round(a.target * R.intensity / 100), R.wAdj) : null;
+}
+/** workout: the hard intervals a few watts up or down (as in the 3D ride), on top of the % intensity; ERG follows */
+function tune(d) {
+  const w = work(); if (!w || R.wDone) return;
+  R.wAdj = tuneAdj(R.wAdj, d); const b = $('#pAdj b'); if (b) { b.textContent = fmtAdj(R.wAdj); $('#pAdj').classList.toggle('adj', !!R.wAdj); }
+  const a = wAt(), i = a?.i ?? 0, st = isHard(w.steps[i]) ? w.steps[i] : w.steps.slice(i).find(isHard) || w.steps.find(isHard);
+  flash(`Intervals ${fmtAdj(R.wAdj)}${st ? ` · target ${tunedTarget(st, Math.round(Math.round(st.pct * ftp() / 100) * R.intensity / 100), R.wAdj)} W` : ''}`, 2000);
+  applyTrainer(); paint(); const sv = $('#pWsvg'); if (sv) sv.innerHTML = workoutSVG(w, R.wT, 40, R.wAdj, ftp());
 }
 function applyTrainer() {
   const t = targetW();
@@ -99,6 +107,7 @@ function simGrade() {
 }
 /** d = +1 harder / −1 easier, from the buttons, Q/E or the Zwift Click (src 'click' switches virtual gears on, like a pad in the 3D ride) */
 function shift(d, src) {
+  if (P.mode === 'work') return tune(d * 5); // in a workout + / − (keys, Zwift Click) move the interval watts
   if (P.mode !== 'grade') return flash(`${P.mode === 'erg' ? 'ERG' : 'The workout'} holds the watts. Gears work in Grade mode.`, 2500);
   if (!VG()) { if (src !== 'click') return flash('Virtual gears are off. Turn them on in Settings.', 2500); S.shiftMode = 'virtual'; saveSettings(); render(); }
   G.gi = Math.max(0, Math.min(G.gears.length - 1, G.gi + d)); paintGear();
@@ -130,7 +139,7 @@ function tick(dt) {
   R.v = step(R.v, live.power, P.mode === 'grade' ? P.grade : 0, dt, pp);
   if (!counting) { R.v = 0; return; }
   R.moving += dt; R.d += R.v * dt; R.kj += live.power * dt / 1000;
-  if (P.mode === 'work' && !R.wDone) { R.wT += dt; const a = wAt(); if (a?.done) { R.wDone = true; flash('Workout done. Keep riding freely or finish.'); P.mode = 'erg'; P.erg = Math.round(ftp() * .5); render(); } }
+  if (P.mode === 'work' && !R.wDone) { R.wT += dt; const a = wAt(); if (a && isHard(a.step)) { R.adjAcc += R.wAdj * dt; R.adjT += dt; } if (a?.done) { R.wDone = true; flash('Workout done. Keep riding freely or finish.'); P.mode = 'erg'; P.erg = Math.round(ftp() * .5); render(); } }
   if (Math.floor(R.moving) > R.lastSec) { // one sample per second
     R.lastSec = Math.floor(R.moving);
     const w = Math.round(live.power); R.pw.push(w); R.max = Math.max(R.max, w); R.hrMax = Math.max(R.hrMax, live.hr || 0);
@@ -155,7 +164,8 @@ function record() {
   const pw = R.pw, w = work();
   return { id: uid(), routeId: 'pure', date: Date.now(), complete: true, duration: Math.round(R.moving), distance: Math.round(R.d), gain: 0, startD: 0,
     workout: w?.name || (P.mode === 'grade' ? 'Grade' : 'ERG'), avgPower: Math.round(avgP()), maxPower: Math.max(0, ...pw), best5: bestAvg(pw, 300), best20: bestAvg(pw, 1200),
-    np: Math.round(NP()), kj: Math.round(R.kj), laps: R.laps.length ? [...R.laps, { t: Math.round(lapNow().t), d: Math.round(lapNow().d), w: Math.round(lapNow().w) }] : undefined, samples: R.samples };
+    np: Math.round(NP()), kj: Math.round(R.kj), laps: R.laps.length ? [...R.laps, { t: Math.round(lapNow().t), d: Math.round(lapNow().d), w: Math.round(lapNow().w) }] : undefined, samples: R.samples,
+    ...(R.wAdj || R.adjAcc ? { wAdj: R.wAdj, wAdjAvg: R.adjT ? Math.round(R.adjAcc / R.adjT) : R.wAdj } : {}) };
 }
 // a reload or crash must not lose the ride: the state goes to kv every 10 s (like outdoor)
 let draftAt = 0;
@@ -175,9 +185,10 @@ function control() {
     ${VG() ? `<div class="pgears"><button data-sh="-1" aria-label="Easier gear">−</button><div class="pgv" id="pGear"><b>${gearName(G.gears[G.gi])}</b><small>Gear ${G.gi + 1}/${G.gears.length}</small></div><button data-sh="1" aria-label="Harder gear">+</button></div>` : ''}`;
   const w = work();
   return `<div class="pwork"><select id="pWork">${allWorkouts().map(x => `<option value="${x.id}" ${x.id === P.workout ? 'selected' : ''}>${x.mine ? '★ ' : ''}${esc(x.name)} · ${Math.round(workoutDuration(x) / 60)} min</option>`).join('')}</select>
-    <div class="pctl small"><button data-i="-5">−5 %</button><span class="pint" id="pInt">${R.intensity} %</span><button data-i="5">+5 %</button></div>
+    <div class="pctl small"><button data-i="-5" aria-label="Intensity −5 %">−5 %</button><span class="pint" id="pInt"><small>Intensity</small><b>${R.intensity} %</b></span><button data-i="5" aria-label="Intensity +5 %">+5 %</button></div>
+    <div class="pctl small"><button data-wa="-5" aria-label="Intervals −5 W">−5 W</button><span class="pint${R.wAdj ? ' adj' : ''}" id="pAdj"><small>Intervals</small><b>${fmtAdj(R.wAdj)}</b></span><button data-wa="5" aria-label="Intervals +5 W">+5 W</button></div>
     ${R.state === 'ready' ? `<div class="pwed"><button class="btn ghost ksmall" id="pWAdapt">Adjust</button><button class="btn ghost ksmall" id="pWNew">+ Build new</button></div>` : ''}</div>
-    ${w ? `<div class="pwsvg" id="pWsvg">${workoutSVG(w, R.wT, 40)}</div><div class="pstep" id="pStep"></div>` : ''}`;
+    ${w ? `<div class="pwsvg" id="pWsvg">${workoutSVG(w, R.wT, 40, R.wAdj, ftp())}</div><div class="pstep" id="pStep"></div>` : ''}`;
 }
 
 function render() {
@@ -229,7 +240,8 @@ function wire() {
     if (P.mode === 'erg') P.erg = Math.max(0, Math.min(2000, P.erg + d)); else P.grade = Math.max(-10, Math.min(20, Math.round((P.grade + d) * 2) / 2));
     $('#pSet b').textContent = P.mode === 'erg' ? P.erg : fmtNum(P.grade, 1); applyTrainer(); saveSettings();
   });
-  el.querySelectorAll('[data-i]').forEach(b => b.onclick = () => { R.intensity = Math.max(50, Math.min(150, R.intensity + +b.dataset.i)); $('#pInt').textContent = R.intensity + ' %'; applyTrainer(); });
+  el.querySelectorAll('[data-i]').forEach(b => b.onclick = () => { R.intensity = Math.max(50, Math.min(150, R.intensity + +b.dataset.i)); $('#pInt b').textContent = R.intensity + ' %'; applyTrainer(); });
+  el.querySelectorAll('[data-wa]').forEach(b => b.onclick = () => tune(+b.dataset.wa));
   const set = $('#pSet'); if (set) set.onclick = () => numberSheet();
   const wed = async from => { const t = await import('./training.js'), wk = await import('./workouts.js'), cur = work();
     const own = !from && cur?.mine ? (S.myWorkouts || []).find(d => d.id === cur.id) : null;
@@ -256,8 +268,8 @@ function paint() {
   el.querySelectorAll('[data-k]').forEach(b => { const v = M[b.dataset.k]?.v(); if (b.textContent !== String(v)) b.textContent = v; });
   const a = wAt();
   if (a && $('#pStep')) {
-    $('#pStep').innerHTML = a.done ? 'Workout done' : `<b>${esc(a.step.label || '')}</b> · ${fmtTime(a.left)} left${a.next ? ` · then ${Math.round(a.nextTarget * R.intensity / 100)} W` : ''}`;
-    const w0 = work(); if (w0 && R.state === 'run') $('#pWsvg').innerHTML = workoutSVG(w0, R.wT, 40);
+    $('#pStep').innerHTML = a.done ? 'Workout done' : `<b>${esc(a.step.label || '')}</b> · ${fmtTime(a.left)} left${a.next ? ` · then ${tunedTarget(a.next, Math.round(a.nextTarget * R.intensity / 100), R.wAdj)} W` : ''}`;
+    const w0 = work(); if (w0 && R.state === 'run') $('#pWsvg').innerHTML = workoutSVG(w0, R.wT, 40, R.wAdj, ftp());
   }
   $('#pSens')?.classList.toggle('on', sensOn());
 }
@@ -416,6 +428,7 @@ document.addEventListener('keydown', e => {
   if (e.target.tagName === 'INPUT' || $('.psheet')) return;
   if (e.code === 'Space') { e.preventDefault(); R.state === 'run' ? pause() : R.state !== 'done' && start(); }
   else if (e.key === 'l' || e.key === 'L') lap();
+  else if ((e.key === 'ArrowUp' || e.key === 'ArrowDown') && P.mode === 'work') { e.preventDefault(); tune((e.key === 'ArrowUp' ? 1 : -1) * (e.shiftKey ? 1 : 5)); } // workout: interval watts, Shift 1 W
   else if (e.key === 'ArrowUp' || e.key === 'ArrowDown') el.querySelector(`[data-d="${e.key === 'ArrowUp' ? (P.mode === 'erg' ? 5 : 0.5) : (P.mode === 'erg' ? -5 : -0.5)}"]`)?.click();
   else if ('qQ,-'.includes(e.key) || e.key === 'PageDown') { e.preventDefault(); shift(-1); } // as in the 3D ride; PageUp/Down: presenters and media remotes
   else if ('eE.+='.includes(e.key) || e.key === 'PageUp') { e.preventDefault(); shift(1); }

@@ -127,7 +127,7 @@ const wait = ms => new Promise(r => setTimeout(r, ms));
     const w1 = await p.evaluate(() => ({ g: window.__fake.grades().length, e: window.__fake.ergs().length }));
     ok('workout: ERG watts were sent', w0.e > 0, JSON.stringify(w0));
     ok('workout: Click + and E send no grade', w1.g === w0.g, `${w0.g} -> ${w1.g}`);
-    ok('workout: hint instead', /holds the watts/.test(await flashText()), await flashText());
+    ok('workout: Click + and E move the interval watts instead (+5 W each)', /^Intervals \+10 W · target \d+ W$/.test(await flashText()), await flashText());
     ok('workout: no gear row', !(await p.$('#pGear')));
     await p.click('#pPause'); await p.click('[data-m="grade"]');
     ok('back in Grade mode: the gear is kept', (await gear())?.name === top.name, JSON.stringify(await gear()));

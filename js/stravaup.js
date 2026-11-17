@@ -43,8 +43,9 @@ export async function stravaUpload(rec, name, eleAt, onState = () => {}, imageUr
   onState('Uploading …');
   const km = (rec.distance / 1000).toFixed(1);
   const r = await fetch('/api/strava/upload', { method: 'POST', headers: { ...hdr(), 'Content-Type': 'application/json' },
-    body: JSON.stringify({ tcx: toTCX(rec, name, eleAt), name: `RIDEFRAME · ${name}`, external_id: 'rideframe-' + rec.id,
+    body: JSON.stringify({ tcx: toTCX(rec, name, eleAt), name: `RIDEFRAME · ${name}${rec.erg ? ' · Workout (ERG)' : ''}`, external_id: 'rideframe-' + rec.id,
       outdoor: !!rec.outdoor, description: rec.sport === 'run' ? `${km} km · ${rec.gain} m climb${rec.distance > 0 ? ` · avg ${paceTxt(rec.duration / rec.distance * 1000)} /km` : ''}\nRun with RIDEFRAME.` : rec.outdoor ? `${km} km · ${rec.gain} m climb${rec.avgPower ? ` · avg ${rec.avgPower} W` : ''}\nRecorded outdoors with RIDEFRAME.`
+      : rec.erg ? `${km} km · ${rec.gain} m climb · avg ${rec.avgPower} W\nWorkout (ERG) in RIDEFRAME (indoor, virtual route): the trainer held the target watts.` + intervalText(rec)
       : `${km} km · ${rec.gain} m climb · avg ${rec.avgPower} W\nRidden in RIDEFRAME (indoor, virtual route).` + intervalText(rec) /* no image link in the description (Freddy 12.11.: it exposed the Mac mini address) */ }) });
   const j = await r.json().catch(() => ({}));
   if (!r.ok) throw new Error(j.error || 'Upload failed');
@@ -85,11 +86,11 @@ export async function stravaButton(btn, rec, name, eleAt, makeImage = null) {
   }
 }
 
-/** the intervals (workout steps or climbs) as lines for the Strava description: name · time · average watts (target) */
+/** the intervals (workout steps or climbs) as lines for the Strava description: name · time · the watts actually ridden (no targets: Freddy 17.11.) */
 function intervalText(rec) {
   const iv = rec.ivs; if (!iv?.length) return '';
   const mm = t => `${Math.floor(t / 60)}:${String(Math.round(t % 60)).padStart(2, '0')}`;
-  return '\n\nIntervals:\n' + iv.map((x, i) => `${i + 1}. ${x.name} · ${mm(x.t)} · avg ${x.w} W${x.target ? ` (target ${x.target} W)` : ''}`).join('\n');
+  return '\n\nIntervals:\n' + iv.map((x, i) => `${i + 1}. ${x.name} · ${mm(x.t)} · avg ${x.w} W`).join('\n');
 }
 
 /** a strength workout as a manual Strava activity (Krafttraining, no file). Returns the activity URL.

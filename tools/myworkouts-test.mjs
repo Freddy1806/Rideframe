@@ -10,7 +10,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import net from 'node:net';
 import * as MW from '../js/myworkouts.js';
-import { WORKOUTS, workoutAt, PERSONAL, workoutById, allWorkouts } from '../js/workouts.js';
+import { WORKOUTS, workoutAt, PERSONAL, workoutById, allWorkouts, workoutState, timelineSVG } from '../js/workouts.js';
 
 const W = (o = {}) => ({ id: 'pw_test1', name: 'My VO2', base: 'vo2_5x3', steps: [{ min: 10, pct: 60, label: 'Warm-up' }, { min: 3, pct: 118, label: 'VO2' }, { min: 3, pct: 50, label: 'Rest' }], ...o });
 
@@ -208,4 +208,17 @@ test('API: ramps are stored, a bad ramp is refused', async () => {
   assert.deepEqual((await call('GET', '/api/account/workouts/pw_ramp1', { token: A })).j.workout.steps[0], { min: 8, pct: 40, pct2: 75, label: 'Warm-up' });
   assert.equal((await call('PUT', '/api/account/workouts/pw_ramp2', { token: A, body: W({ steps: [{ min: 3, pct: 120, pct2: 250 }] }) })).status, 400);
   assert.equal((await call('DELETE', '/api/account/workouts/pw_ramp1', { token: A })).status, 200);
+});
+
+test('interval bar (main 17.11.): a personal workout with ramps runs and draws like a built-in, offsets on the ramp end too', () => {
+  const p = MW.validateWorkout({ id: 'pwramp1', name: 'Ramps', steps: [{ min: 10, pct: 40, pct2: 75 }, { min: 4, pct: 110, pct2: 130 }, { min: 3, pct: 55 }, { min: 2, pct: 90, free: true }] }).w, w = MW.toRide(p);
+  const a = workoutState(w, 300, 250), b = workoutState(w, 600 + 120, 250, { hardAdj: 10, ramp: true }), c = workoutState(w, 600 + 239, 250, { hardAdj: 10 });
+  assert.equal(a.target, Math.round((40 + 35 / 2) / 100 * 250), 'warm-up ramp: half way 57.5 %'); assert.equal(a.ramp, 'step'); assert.equal(a.rampTo, Math.round(0.75 * 250));
+  assert.equal(b.target, Math.round(1.2 * 250) + 10, 'hard ramp half way 120 % + the rider\'s 10 W'); assert.equal(b.hard, true); assert.equal(c.rampTo, Math.round(1.3 * 250) + 10);
+  assert.ok(c.target <= c.rampTo && c.target >= Math.round(1.29 * 250) + 10, 'the end of the hard ramp');
+  const svg = timelineSVG(b, 720, w), polys = svg.match(/<polygon [^>]+>/g) || [], rects = svg.match(/<rect x=[^>]+rx="3"[^>]*>/g) || [];
+  assert.equal(polys.length, 2, 'both ramps drawn sloped'); assert.equal(rects.length, 2, 'the flat and the free step as blocks');
+  const ys = poly => poly.match(/points="([^"]+)"/)[1].split(' ').map(q => +q.split(',')[1]);
+  const [, y0, y1] = ys(polys[1]), [, z0, z1] = ys(polys[0]); assert.ok(y1 < y0, 'the hard ramp rises'); assert.ok(z1 < z0, 'the warm-up rises');
+  const st = b.steps[1]; assert.ok(Math.abs((st.pct2 - st.pct) - 20) < 0.01, `the 10 W offset lifts both ends of the hard ramp (${st.pct.toFixed(1)} -> ${st.pct2.toFixed(1)} %)`);
 });
