@@ -8,8 +8,8 @@ const CANDIDATES = [
   'a026ee01-0a7d-4ab3-97fa-f1500f9feb8b', 'a026e005-0a7d-4ab3-97fa-f1500f9feb8b',
 ];
 // what each gamepad button does during a ride (standard mapping; same numbers as js/ride.js _pollPad)
-export const PAD_MAP = [['L / R', 'Gear easier / harder'], ['D-pad ↓ / ↑', 'Gear easier / harder'], ['A', 'Accept challenge'], ['B', 'Switch display'],
-  ['X', 'Photo'], ['Y', 'Switch view'], ['L2 / R2', 'Field of view wider / narrower'], ['Select (−)', 'Gear mode: real / virtual / auto / climb watts'],
+export const PAD_MAP = [['L / R', 'Gear easier / harder · in a workout: target −1 / +1 W'], ['D-pad ↓ / ↑', 'Gear easier / harder · in a workout: target −1 / +1 W'], ['A', 'Accept challenge'], ['B', 'Switch display'],
+  ['X', 'Photo'], ['Y', 'Switch view'], ['L2 / R2', 'Field of view wider / narrower · in a workout: target −5 / +5 W'], ['Select (−)', 'Gear mode: real / virtual / auto / climb watts'],
   ['Start (+) / Home', 'Pause menu (D-pad to choose, A ok, B back; options in there too)'], ['D-pad ←', 'Music on / off'], ['D-pad →', 'Next song']];
 // the same pad outside the ride, in every menu and window (js/padnav.js)
 export const MENU_MAP = [['D-pad / left stick', 'Move between buttons, lists and fields'], ['A', 'Select (on a list field: A, then ↑ ↓ to change, A to confirm)'],
@@ -56,7 +56,7 @@ export function padButtons(pad) {
   return p;
 }
 const BTN = ['A', 'B', 'X', 'Y', 'L', 'R', 'L2 / ZL', 'R2 / ZR', 'Select (−)', 'Start (+)', 'L3', 'R3', 'D-pad ↑', 'D-pad ↓', 'D-pad ←', 'D-pad →', 'Home'];
-const ACT = ['Accept challenge / menu ok', 'Switch display / back', 'Photo', 'Switch view', 'Gear easier', 'Gear harder', 'Field of view wider (workout: −5 W)', 'Field of view narrower (workout: +5 W)', 'Gear mode', 'Pause menu', '', '', 'Gear harder (workout: +1 W)', 'Gear easier (workout: −1 W)', 'Music on/off', 'Next song', 'Pause menu'];
+const ACT = ['Accept challenge / menu ok', 'Switch display / back', 'Photo', 'Switch view', 'Gear easier (workout: −1 W)', 'Gear harder (workout: +1 W)', 'Field of view wider (workout: −5 W)', 'Field of view narrower (workout: +5 W)', 'Gear mode', 'Pause menu', '', '', 'Gear harder (workout: +1 W)', 'Gear easier (workout: −1 W)', 'Music on/off', 'Next song', 'Pause menu'];
 const hex = dv => [...new Uint8Array(dv.buffer, dv.byteOffset, dv.byteLength)].map(b => b.toString(16).padStart(2, '0')).join(' ');
 
 export function openControllerTest() {
@@ -68,6 +68,7 @@ export function openControllerTest() {
     <p id="ctPad" class="hint" style="margin-top:8px"></p>
     <details style="margin:6px 0 10px"><summary style="cursor:pointer"><b>Gamepad buttons during a ride</b> (e.g. 8BitDo Micro, switch on the back set to D on a Mac, S if D does not work)</summary>
       <table style="margin-top:8px;border-collapse:collapse">${PAD_MAP.map(([k, v]) => `<tr><td style="padding:2px 14px 2px 0;white-space:nowrap"><b>${k}</b></td><td>${v}</td></tr>`).join('')}</table>
+      <p style="margin-top:8px"><b>Keyboard in a workout</b>: W / S target +5 / −5 W (Shift 1 W); with a trainer connected the arrow keys ↑ / ↓ move it 1 W (Shift 5 W) and never set test watts. Hard intervals and easy parts keep their own offset. L switches the interval display (big / compact / focus).</p>
       <p style="margin-top:8px"><b>Zwift Click + / −</b>: Gear harder / easier (connect it in Settings → Trainer)</p></details>
     <details style="margin:0 0 10px"><summary style="cursor:pointer"><b>Gamepad in the menus</b> (everywhere outside the ride, like a TV remote)</summary>
       <table style="margin-top:8px;border-collapse:collapse">${MENU_MAP.map(([k, v]) => `<tr><td style="padding:2px 14px 2px 0;white-space:nowrap"><b>${k}</b></td><td>${v}</td></tr>`).join('')}</table></details>
