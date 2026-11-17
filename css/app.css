@@ -777,7 +777,7 @@ img.face.big{width:96px;height:96px}
 .wbar .wask[hidden], .wcd[hidden] { display: none; }
 .wb-chart { margin: 12px -26px 0; background: rgba(11,11,11,.5); }
 .wb-chart .wtl { display: block; width: 100%; height: 76px; }
-.wcd { position: absolute; left: 50%; bottom: calc(100% + 16px); transform: translateX(-50%); text-align: center; border-radius: 18px; padding: 10px 30px 14px; background: rgba(11,11,11,.72); }
+.wcd { position: absolute; left: 50%; bottom: calc(100% + 92px); transform: translateX(-50%); text-align: center; border-radius: 18px; padding: 10px 30px 14px; background: rgba(11,11,11,.72); }
 .wcd .k { font-size: 96px; font-weight: 900; color: var(--accent); line-height: 1; font-variant-numeric: tabular-nums; }
 .wcd .w { font-size: 22px; font-weight: 900; white-space: nowrap; }
 /* the rest of the HUD makes room: metrics in one slim row right above the bar, no elevation profile, the grade higher up */
@@ -811,7 +811,7 @@ img.face.big{width:96px;height:96px}
   .wb-t { font-size: 46px; } .wb-p { font-size: 24px; padding-bottom: 2px; } .wb-name { font-size: 15px; } .wzone { margin: 4px 0 0; }
   .wb-next .n { font-size: 16px; } .wb-next .d { font-size: 12px; } .wb-end { margin-top: 4px; }
   .wab { width: 34px; height: 34px; }
-  .wcd .k { font-size: 56px; } .wcd { padding: 6px 20px 8px; bottom: calc(100% + 8px); }
+  .wcd .k { font-size: 56px; } .wcd { padding: 6px 20px 8px; bottom: calc(100% + 70px); }
 }
 /* neon look (owner 17.11.): orange stays the one accent; the time ring and the step that runs now glow in it, the timeline's
    blocks carry a neon zone scale (js/workouts.js zoneColor) with a soft glow on the dark glass, text stays white on dark */
