@@ -6,6 +6,7 @@ import { fmtNum, esc } from './util.js';
 import { icon, applyTheme } from './theme.js';
 import { profileOf, loadOf, pmcAll, vo2, streak } from './fitness.js';
 import { nav } from './nav.js';
+import { collapse } from './actimport.js';
 
 const el = document.getElementById('profil'), $ = (s, r = document) => r.querySelector(s);
 let S = {}, acts = [], kraft = [], acc = null, pic = null;
@@ -14,7 +15,7 @@ async function load() {
   S = (await db.kvGet('settings').catch(() => null)) || {}; applyTheme(S, null);
   const rides = (await db.all('rides').catch(() => [])).filter(r => r.routeId !== 'demo' && !r.unsaved && r.date);
   kraft = ((await db.kvGet('kraft').catch(() => null)) || []).map(k => ({ ...k, kraft: true, date: k.start || k.date }));
-  acts = [...rides, ...kraft].sort((a, b) => a.date - b.date);
+  acts = collapse([...rides, ...kraft]).sort((a, b) => a.date - b.date);
   pic = await db.kvGet('profilePic').catch(() => null);
   try { acc = (await import('./account.js')).account(); } catch {}
 }

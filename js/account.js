@@ -44,6 +44,12 @@ export function settingsChanged(settings) {
   const at = Date.now(); db.kvSet('settingsAt', at).catch(() => {});
   if (!acc) return; clearTimeout(pushT); pushT = setTimeout(() => pushSettings(settings, at).catch(() => {}), 1500);
 }
+/** rides on the host that this device does not have yet (the watch's activities, another phone); before the Strava import */
+export async function pullRides() {
+  if (!acc) return 0; const { ids } = await api('rides'), mine = new Set((await db.all('rides')).map(r => r.id)); let n = 0;
+  for (const id of ids) if (!mine.has(id)) { const r = await api('rides/' + id).catch(() => null); if (r?.id) { await db.put('rides', r); n++; } }
+  return n;
+}
 /** call after a ride was saved locally */
 export async function pushRide(rec) { if (acc) await api('rides/' + rec.id, { method: 'PUT', body: JSON.stringify(rec) }).catch(() => {}); }
 

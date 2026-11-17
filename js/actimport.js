@@ -53,13 +53,38 @@ export function plan(local, incoming, gone = []) {
     const m = /^rideframe-(?:kraft-|man-)?([\w-]+?)(?:\.\w+)?$/.exec(r.ext || ''); // uploaded by RIDEFRAME (external_id)
     if (m) { const a = byId.get(m[1]); if (a && !sidOf(a)) link.push({ act: a, sid }); skip.push(r); continue; }
     const a = local.find(x => !sidOf(x) && !link.some(l => l.act === x) && sameAct(x, r));
-    if (a) { link.push({ act: a, sid }); skip.push(r); continue; }
+    if (a) { link.push({ act: a, sid, rec: r }); skip.push(r); continue; }
     const { ext, ...rec } = r; add.push(rec);
   }
   return { add, link, skip };
 }
 /** a local file / manual entry that is already here (start + duration like above) */
 export const dupOf = (local, r) => local.find(a => sameAct(a, r)) || null;
+
+/* ---- the Garmin watch (19.11.): its activities and strength sessions meet the same session from the Strava import ---- */
+const FILL = ['avgHr', 'maxHr', 'kcal', 'avgPower', 'np', 'maxPower', 'kj', 'distance', 'gain', 'laps', 'polyline'];
+/** one record from two: keep = the one that stays (its id), other = the same session from elsewhere. Every number the kept one
+ *  lacks comes from the other; Strava's name and map line win (the watch only knows the sport); the Strava link is kept. */
+export function mergeAct(keep, other) {
+  const m = { ...keep };
+  for (const k of FILL) if (!(+m[k] > 0) && other[k] != null && (k === 'polyline' ? !!other[k] : +other[k] > 0)) m[k] = other[k];
+  if (other.source === 'strava') { if (other.polyline) m.polyline = other.polyline; if (other.workout && !m.kraft) m.workout = other.workout; }
+  const sid = sidOf(other); if (sid && !sidOf(m)) { m.stravaId = sid; m.strava = other.strava || 'https://www.strava.com/activities/' + sid; }
+  return m;
+}
+/** the list as the feed, the week points and the statistics show it: a watch record (ride or strength session, source 'watch')
+ *  and a Strava record of the same session (sameAct) are one entry. Both can be stored when the two met before either was
+ *  on this device (the watch sent while the import ran); the watch's entry stays, with the Strava data merged in. */
+export function collapse(acts) {
+  if (!acts.some(a => a.source === 'watch')) return acts;
+  const gone = new Set(), swap = new Map();
+  for (const w of acts) {
+    if (w.source !== 'watch' || gone.has(w)) continue;
+    const o = acts.find(x => x !== w && !gone.has(x) && !x.kraft && x.source !== 'watch' && (x.source === 'strava' || sidOf(x)) && sameAct(w, x));
+    if (o) { gone.add(o); swap.set(w, mergeAct(w, o)); }
+  }
+  return gone.size ? acts.filter(a => !gone.has(a)).map(a => swap.get(a) || a) : acts;
+}
 
 // ---------------- browser: the import itself ----------------
 const KV = 'stravaImport', GONE = 'stravaGone';
@@ -86,14 +111,16 @@ async function run({ onState = () => {} } = {}) {
   }
   const inc = all.map(fromStrava).filter(r => r.start > 0);
   const cursor = ok ? Math.max(mem.cursor || 0, ...inc.map(r => r.start)) : mem.cursor || 0;
-  const D = await loadActs(), P = plan(D.acts, inc, gone);
   const acc = await import('./account.js').catch(() => null);
+  if (acc?.account?.()) { await acc.pullRides?.().catch(() => {}); await acc.syncKraft?.().catch(() => {}); } // what the watch sent meanwhile is here first, so it is linked, not doubled
+  const D = await loadActs(), P = plan(D.acts, inc, gone);
   for (const r of P.add) { await db.put('rides', r).catch(() => {}); acc?.pushRide?.(r); }
   let kraftList = null;
-  for (const { act, sid } of P.link) {
+  for (const { act, sid, rec } of P.link) {
     const url = 'https://www.strava.com/activities/' + sid;
-    if (act.kraft) { kraftList ||= (await db.kvGet('kraft').catch(() => null)) || []; const w = kraftList.find(x => x.id === act.id); if (w && !w.strava) { w.strava = url; acc?.pushKraft?.(w); } continue; }
-    const r = await db.get('rides', act.id).catch(() => null); if (!r) continue;
+    if (act.kraft) { kraftList ||= (await db.kvGet('kraft').catch(() => null)) || []; const w = kraftList.find(x => x.id === act.id); if (w && !w.strava) { w.strava = url; w.stravaId = sid; acc?.pushKraft?.(w); } continue; }
+    let r = await db.get('rides', act.id).catch(() => null); if (!r) continue;
+    if (r.source === 'watch' && rec) r = mergeAct(r, rec); // a watch activity gets Strava's name, map line and whatever the watch did not measure
     Object.assign(r, { stravaId: sid, strava: r.strava || url }); await db.put('rides', r).catch(() => {}); acc?.pushRide?.(r);
   }
   if (kraftList) await db.kvSet('kraft', kraftList).catch(() => {});

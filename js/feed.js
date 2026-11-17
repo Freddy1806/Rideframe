@@ -8,6 +8,7 @@ import { profileOf, loadOf, sportOf } from './fitness.js';
 import { labelOf, famOf, paceOf, distOf } from './sports.js';
 import { nm, e1rm, doneSets, sessVol, setTxt, kgTxt, nSets, stravaText } from './kraftlib.js';
 import { nav } from './nav.js';
+import { collapse } from './actimport.js';
 
 const $ = (s, r = document) => r.querySelector(s);
 export const ORDER = ['ride', 'run', 'trainer', 'world', 'kraft', 'walk', 'swim', 'skate', 'ski', 'water', 'fit', 'ball', 'other'];
@@ -17,7 +18,7 @@ export async function loadActs() {
   const S = (await db.kvGet('settings').catch(() => null)) || {};
   const rides = (await db.all('rides').catch(() => [])).filter(r => r.routeId !== 'demo' && !r.unsaved && r.date);
   const kraft = ((await db.kvGet('kraft').catch(() => null)) || []).map(k => ({ ...k, kraft: true, date: k.start || k.date }));
-  const acts = [...rides, ...kraft].sort((a, b) => b.date - a.date);
+  const acts = collapse([...rides, ...kraft]).sort((a, b) => b.date - a.date); // a watch session and its Strava copy are one entry (actimport.js)
   return { S, acts, P: profileOf(S, acts) };
 }
 

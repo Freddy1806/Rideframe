@@ -206,6 +206,25 @@ async function segDetail(key, tok, id) {
     kom: d.xoms?.kom || null, qom: d.xoms?.qom || null, komS: xom(d.xoms?.kom), qomS: xom(d.xoms?.qom), efforts: d.athlete_segment_stats?.effort_count ?? null };
   if (segDet.size > 5000) segDet.clear(); segDet.set(ck, { at: Date.now(), v }); return [200, v];
 }
+/* ---- for the Garmin watch (tools/watch-api.mjs, 19.11.): segments near the watch through the account's linked Strava key ---- */
+/** is this a Strava key the host knows (a connected browser)? */
+export async function stravaKnown(key) { return /^[a-f0-9]{32,64}$/.test(String(key || '')) && Object.hasOwn(await readJSON(TOK, {}), key); }
+/** a valid access token for a key, or null (Strava not set up here, key unknown or its refresh failed) */
+export async function stravaToken(key) {
+  const cfg = await readJSON(CFG, {}); if (!cfg.client_id || !cfg.client_secret || !(await stravaKnown(key))) return null;
+  return access(key, cfg).catch(() => null);
+}
+/** GET /segments/explore in a box [s, w, n, e]: [{ id, name, distance, points (encoded) }]; null = not asked (near the limit) or failed */
+export async function exploreSegs(tok, box, type) {
+  if (nearLimit()) return null;
+  const r = await fetch(`${API}/segments/explore?activity_type=${type === 'running' ? 'running' : 'riding'}&bounds=${box.map(v => v.toFixed(5)).join(',')}`, { headers: { Authorization: 'Bearer ' + tok } }).catch(() => null);
+  if (!r) return null; noteRate(r); if (!r.ok) return null;
+  const j = await r.json().catch(() => null); return Array.isArray(j?.segments) ? j.segments : null;
+}
+/** a segment's detail from the 24 h cache only (no call), or null */
+export const segCached = (key, id) => { const c = segDet.get(key + '|' + id); return c && Date.now() - c.at < 864e5 ? c.v : null; };
+export { segDetail, nearLimit };
+
 /** the rider's own Strava routes (Routes sheet on the outdoor page): GET /athletes/{id}/routes, 50 a page, small fields only */
 async function routes(key, tok, q) {
   const t = (await readJSON(TOK, {}))[key];
