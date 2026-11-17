@@ -103,6 +103,7 @@ const SCREENS = [
   ['kraft-uebungen', '/kraft.html', p => p.click('[data-tab="ex"]')],
   ['kraft-graph', '/kraft.html', async p => { await p.click('[data-tab="ex"]'); await p.click('[data-ex="bench"]'); }],
   ['kraft-workout', '/kraft.html', async p => { await p.click('[data-again]'); }],
+  ['kraft-pause', '/kraft.html', async p => { await p.click('[data-again]'); await p.click('#kPause'); }],
   ['kraft-ende', '/kraft.html', async p => { await p.click('[data-again]'); await p.click('.kex[data-i="0"] [data-chk="0"]'); await p.click('#kFin'); }],
   ['rollentrainer', '/pure.html', null],
   ['rollentrainer-entwurf', '/pure.html', async p => { await p.evaluate(async () => { const { db } = await import('/js/db.js'); await db.kvSet('pureDraft', { state: 'pause', moving: 3725, wall: 3800, d: 42345, samples: [[1, 5, 200, 30, 90, 140]], savedAt: Date.now() }); }); await p.reload(); await p.waitForTimeout(700); }],

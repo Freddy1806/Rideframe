@@ -41,6 +41,10 @@
 .kname:focus { outline: none; border-color: var(--accent); }
 .kclock { display: flex; justify-content: space-between; font-size: 13px; color: var(--muted); font-weight: 700; padding: 0 2px; }
 .kclock span:first-child { color: var(--accent); font-variant-numeric: tabular-nums; font-size: 15px; }
+.kclock { align-items: center; gap: 8px; }
+.kpause { height: 32px; padding: 0 12px; border-radius: 16px; border: 1px solid var(--line-2); color: var(--paper); font-size: 13px; font-weight: 800; white-space: nowrap; }
+.kclock.kpaused .kpause { background: var(--accent); border-color: var(--accent); color: #0b0b0b; }
+.kclock.kpaused span:first-child { color: var(--muted); }
 .kexh { display: flex; align-items: center; margin-bottom: 6px; }
 .kexn { font-size: 17px; font-weight: 900; color: var(--accent); text-align: left; flex: 1; padding: 4px 0; }
 .kex .kx { position: static; }

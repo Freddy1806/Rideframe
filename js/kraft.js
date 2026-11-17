@@ -225,10 +225,15 @@ let wake = null;
 async function lockScreen() { try { wake = await navigator.wakeLock?.request('screen'); } catch {} }
 document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible' && W) lockScreen(); });
 
+/* pause (like pure.js #pPause / outdoor.js #oPause): the session clock and a running rest stop; the draft keeps it over a reload */
+const tNow = () => W && W.paused ? W.paused : Date.now();
+const elapsed = () => Math.max(0, (tNow() - W.start - (W.pauseMs || 0)) / 1000); // seconds trained, the pauses left out
+function unpause() { if (!W?.paused) return; const d = Date.now() - W.paused; W.pauseMs = (W.pauseMs || 0) + d; if (rest) rest.end += d; W.paused = 0; }
+function togglePause() { if (!W) return; if (W.paused) unpause(); else W.paused = Date.now(); saveDraft(); render(); }
 function workoutScreen() {
   el.innerHTML = `<header class="ptop"><button class="pback" id="kMin" title="Cancel">✕</button><input class="kname" id="kName" value="${esc(W.name)}">
       <button class="btn ksmall" id="kFin">Finish</button></header>
-    <div class="kclock"><span id="kClock">${fmtTime((Date.now() - W.start) / 1000)}</span><span>${kgTxt(sessVol(W))} · ${nSets(doneSets(W))}</span></div>
+    <div class="kclock${W.paused ? ' kpaused' : ''}"><span id="kClock">${fmtTime(elapsed())}</span><button class="kpause" id="kPause" aria-pressed="${W.paused ? 'true' : 'false'}">${W.paused ? '▶ Resume' : '❚❚ Pause'}</button><span>${kgTxt(sessVol(W))} · ${nSets(doneSets(W))}</span></div>
     <main class="kmain kwork">${W.ex.map((x, i) => exBlock(x, i)).join('')}
       <button class="btn ghost kbig" id="kAdd">+ Add exercise</button>
       <button class="btn ghost ksmall kcancel" id="kDrop">Discard workout</button></main>
@@ -253,6 +258,7 @@ function wireWork() {
   $('#kDrop').onclick = () => { if (confirm('Discard workout? The sets will be lost.')) drop(); };
   $('#kAdd').onclick = () => pickExercise(k => { const e = exOf(k); W.ex.push({ k, n: e.n, t: e.t, sets: fromPrev(k, Math.max(1, prevSets(k).length || 3)) }); saveDraft(); render(); setTimeout(() => el.querySelector(`.kex[data-i="${W.ex.length - 1}"]`)?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 50); });
   $('#kFin').onclick = finishSheet;
+  $('#kPause').onclick = togglePause;
   el.querySelectorAll('.kex').forEach(sec => {
     const x = W.ex[+sec.dataset.i];
     sec.querySelectorAll('.kset[data-j] input').forEach(inp => inp.oninput = () => { const s = x.sets[+inp.closest('.kset').dataset.j], v = inp.value.replace(',', '.'); s[inp.dataset.f] = v === '' ? '' : +v; saveDraft(); });
@@ -261,6 +267,7 @@ function wireWork() {
       const j = +b.dataset.chk, s = x.sets[j], row = b.closest('.kset');
       row.querySelectorAll('input').forEach(inp => { if (inp.value === '' && inp.placeholder !== '') { inp.value = inp.placeholder; s[inp.dataset.f] = +inp.placeholder.replace(',', '.'); } }); // empty = same as last time
       if (!s.done && (x.t === 'time' ? !(+s.s > 0) : !(+s.r > 0))) return flash(x.t === 'time' ? 'Enter the seconds first.' : 'Enter the reps first.');
+      unpause(); // a set ticked while paused: the workout goes on
       s.done = !s.done;
       delete s.pr; if (s.done) { if (beats(x, s, bests(x.k))) { s.pr = true; flash('🏆 New record!'); } if (!s.warm) startRest(); }
       saveDraft();
@@ -323,11 +330,11 @@ function startRest() { const len = +S.kraftRest || 90; rest = { end: Date.now() 
 function paintRest() {
   const r = $('#kRest'); if (!r) return;
   if (!rest) { r.hidden = true; return; }
-  const left = Math.ceil((rest.end - Date.now()) / 1000);
+  const left = Math.ceil((rest.end - tNow()) / 1000);
   if (left <= 0) { rest = null; r.hidden = true; try { navigator.vibrate?.([300, 120, 300]); } catch {} flash('Rest over · next set'); return; }
   r.hidden = false; $('#kRt').textContent = fmtTime(left); $('#kRbar').style.width = Math.max(0, left / rest.len * 100) + '%';
 }
-setInterval(() => { if (!W) return; const c = $('#kClock'); if (c) c.textContent = fmtTime((Date.now() - W.start) / 1000); paintRest(); }, 500);
+setInterval(() => { if (!W || W.paused) return; const c = $('#kClock'); if (c) c.textContent = fmtTime(elapsed()); paintRest(); }, 500);
 
 function drop() { W = null; rest = null; db.kvDel('kraftDraft').catch(() => {}); try { wake?.release(); } catch {} tab = 'start'; render(); }
 
@@ -336,13 +343,14 @@ function finishSheet() {
   if (!sets) return flash('No set ticked yet.');
   const open = W.ex.reduce((a, x) => a + x.sets.filter(y => !y.done).length, 0);
   const s = sheet(`<div class="label">Finish workout</div><h2 class="display" style="font-size:30px;margin:8px 0 12px">${esc(W.name)}</h2>
-    <div class="psum"><div><span>Time</span><b>${fmtTime((Date.now() - W.start) / 1000)}</b></div><div><span>Sets</span><b>${sets}</b></div><div><span>Volume</span><b>${kgTxt(sessVol(W))}</b></div></div>
+    <div class="psum"><div><span>Time</span><b>${fmtTime(elapsed())}</b></div><div><span>Sets</span><b>${sets}</b></div><div><span>Volume</span><b>${kgTxt(sessVol(W))}</b></div></div>
     ${open ? `<p class="hint" style="margin-top:10px">${open} ${open === 1 ? 'set is' : 'sets are'} not ticked and will not be saved.</p>` : ''}
     <label class="prow" style="margin-top:10px">Save as template<input id="fTpl" type="checkbox" class="toggle" ${tpls.some(t => t.name === W.name) ? '' : ''}></label>
     <div class="pfoot col"><button class="btn" id="fSave">Save</button><button class="btn ghost" id="fStrava">Save + Strava</button><button class="btn ghost" id="fBack">Resume</button></div>`);
   $('#fBack', s).onclick = () => s.remove();
   const save = async () => {
-    const w = { ...W, date: Date.now(), dur: Math.round((Date.now() - W.start) / 1000), ex: W.ex.map(x => ({ ...x, sets: x.sets.filter(y => y.done).map(({ done, ...y }) => ({ ...y, done: true })) })).filter(x => x.sets.length) };
+    const { paused: _p, pauseMs: _m, ...W0 } = W;
+    const w = { ...W0, date: Date.now(), dur: Math.round(elapsed()), ex: W.ex.map(x => ({ ...x, sets: x.sets.filter(y => y.done).map(({ done, ...y }) => ({ ...y, done: true })) })).filter(x => x.sets.length) };
     markPrs(w);
     if ($('#fTpl', s).checked) { tpls = tpls.filter(t => t.name !== w.name); tpls.unshift({ name: w.name, ex: w.ex.map(x => ({ k: x.k, n: x.sets.length })) }); saveTpls(); }
     list.unshift(w); await saveList(); import('./account.js').then(a => a.pushKraft?.(w)).catch(() => {});
