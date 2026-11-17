@@ -89,7 +89,7 @@ export async function stravaButton(btn, rec, name, eleAt, makeImage = null) {
 function intervalText(rec) {
   const iv = rec.ivs; if (!iv?.length) return '';
   const mm = t => `${Math.floor(t / 60)}:${String(Math.round(t % 60)).padStart(2, '0')}`;
-  return '\n\nIntervals:\n' + iv.map((x, i) => `${i + 1}. ${x.name} · ${mm(x.t)} · avg ${x.w} W`).join('\n');
+  return '\n\nIntervals:\n' + iv.map((x, i) => `${i + 1}. ${x.name} · ${mm(x.t)} · avg ${x.w} W${x.hr > 0 ? ` · avg HR ${x.hr}` : ''}`).join('\n'); // what was ridden, never the target
 }
 
 /** a strength workout as a manual Strava activity (Krafttraining, no file). Returns the activity URL.

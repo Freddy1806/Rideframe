@@ -366,12 +366,15 @@ function history() {
       <div class="record"><div class="label">Most climbing</div><div class="v">${mostGain ? fmtNum(mostGain.gain) : '–'}<small>m</small></div><div class="s">${mostGain ? esc(routeName(mostGain.routeId) || '') : ''}</div></div>
       <div class="record"><div class="label">Longest ride</div><div class="v">${longest ? fmtKm(longest.distance) : '–'}<small>km</small></div><div class="s">${longest ? fmtTime(longest.duration) : ''}</div></div>
     </div>
+    <h2 class="section">Intervals over time</h2>
+    <div id="ivHist"></div>
     <h2 class="section">All rides</h2>
     ${rides.length ? `<table class="table">
       <tr><th class="label">Date</th><th class="label">Route</th><th class="label">Time</th><th class="label">Distance</th><th class="label">Climb</th><th class="label">Avg W</th><th class="label">Avg km/h</th><th class="label"></th><th class="label"></th></tr>
       ${rides.map(x => { const pb = x.routeId !== 'pure' && x.routeId !== 'outdoor' && bestRide(x.routeId)?.id === x.id; return `<tr class="${pb ? 'pb' : ''}"><td>${new Date(x.date).toLocaleString('en-GB', { dateStyle: 'short', timeStyle: 'short' })}</td><td>${esc((routeName(x.routeId) || 'Deleted route') + ((x.routeId === 'pure' || x.routeId === 'outdoor') && x.workout ? ' · ' + x.workout : ''))}</td><td>${fmtTime(x.duration)}</td><td>${fmtKm(x.distance)} km</td><td>${fmtNum(x.gain)} m</td><td>${x.avgPower} W</td><td>${fmtNum(x.distance / x.duration * 3.6, 1)}</td><td>${pb ? 'BEST TIME' : x.complete ? '' : '<span style="color:var(--muted)">stopped</span>'}</td><td style="white-space:nowrap"><button class="btn ghost small strava" data-id="${x.id}">Strava</button> <button class="btn ghost small share" data-id="${x.id}">Share</button> <button class="btn ghost small rimg" data-id="${x.id}" title="Make a picture of the ride">Image</button> <button class="btn ghost small rdel" data-id="${x.id}" title="Delete ride">✕</button></td></tr>`; }).join('')}
     </table>` : '<div class="empty">No rides yet. Pick a route and start riding.</div>'}
   </section>`;
+  import('./ivview.js').then(m => m.mountIvHistory(main.querySelector('#ivHist'), rides, { kg: state.settings.riderKg })).catch(() => {}); // ivview.js: the ridden watts per interval kind
   wireDashboard(main, { state, saveSettings, toast, rerender: history,
     startTest: id => { state.settings.workout = id; saveSettings(); startRide(routeById('kueste60') ? 'kueste60' : 'demo'); },
     deleteRides: async list => { const { deleteRideRemote } = await import('./account.js'); let n = 0;

@@ -37,8 +37,12 @@ function render() {
       ${row('Strength records', B.prs ? `🏆 ${B.prs}` : '–', 'sets that beat the earlier best')}
       ${B.lifts.map(([n, v]) => row(esc(n), `${fmtNum(v, 1)} kg`, 'estimated 1RM')).join('')}</section>
 
+    <h3 class="ksec">Intervals over time</h3>
+    <section class="kcard ivcard" id="ivHist"></section>
+
     <a class="hrow hlink slink" href="profil.html" style="--mc:var(--accent);--mcl:var(--accent)">${icon('user', 'rico')}<div><b>Fitness, fatigue &amp; form</b><small>Trend and estimates on your profile</small></div><i>›</i></a>`}`;
   el.querySelectorAll('[data-by]').forEach(b => b.onclick = () => { by = b.dataset.by; render(); });
+  const iv = el.querySelector('#ivHist'); if (iv) import('./ivview.js').then(m => m.mountIvHistory(iv, D.acts.filter(a => a.ivs?.length), { kg: D.S.riderKg })).catch(() => {});
 }
 /** the last 8 weeks (Mon–Sun), one stacked bar each: time or load points per sport */
 function weekBars(acts, P) {
