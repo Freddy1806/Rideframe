@@ -135,12 +135,20 @@ const SCREENS = [
   ['handy-aktivitaet', '/handy.html', p => p.click('[data-act]')],
   ['profil', '/profil.html', null],
   ['profil-daten', '/profil.html', p => p.click('#fSet')],
+  // personal workouts (js/myworkouts-ui.js): the profile section with a long name, its editor, the route page editor on the phone
+  ['profil-workouts', '/profil.html', async p => { await p.evaluate(() => localStorage.setItem('rf_myworkouts', JSON.stringify([{ id: 'pw_layout1', name: 'Schwelle lang über den Pass mit Freddy x', base: 'thr2x20', routeId: 'fluss', routeName: 'River Valley mit sehr langem Namen', updated: 1,
+    steps: [{ min: 10, pct: 55, label: 'Einfahren lang benannt' }, ...Array.from({ length: 6 }, (_, i) => ({ min: 7.5, pct: i % 2 ? 55 : 104, label: i % 2 ? 'Pause' : 'Schwelle ' + (i / 2 + 1) })), { min: 0.25, pct: 200, label: 'Sprint', free: true }] }]))); await p.reload(); await p.waitForSelector('.mwitem'); await p.locator('#mwProf').scrollIntoViewIfNeeded(); await p.fill('#mwB20', '312'); }],
+  ['profil-workout-editor', '/profil.html', async p => { await p.evaluate(() => localStorage.setItem('rf_myworkouts', JSON.stringify([{ id: 'pw_layout1', name: 'Schwelle lang über den Pass mit Freddy x', base: null, routeId: 'fluss', routeName: 'River Valley mit sehr langem Namen', updated: 1,
+    steps: [{ min: 10, pct: 55, label: 'Einfahren lang benannt' }, { min: 117.75, pct: 104, label: 'Schwelle über alles' }, { min: 0.25, pct: 200, label: 'Sprint', free: true }] }]))); await p.reload(); await p.waitForSelector('[data-ed]'); await p.click('[data-ed]'); await p.waitForSelector('.mwbox'); }],
 ];
 const DESK = [ // the main app with its top bar (account pill, tabs) on tablet, laptop and TV widths
   ['app-strecken', '/?desktop&noprofile', null],
   ['app-training', '/?desktop&noprofile&view=training', null],
   ['app-fahrten', '/?desktop&noprofile&view=history', null],
   ['app-einstellungen', '/?desktop&noprofile&view=settings', null],
+  ['app-strecke-workout', '/?desktop&noprofile&view=detail&id=fluss', async p => { await p.selectOption('#workSel', 'z2_90'); await p.locator('#wCustom').scrollIntoViewIfNeeded(); }],
+  ['app-workout-editor', '/?desktop&noprofile&view=detail&id=fluss', async p => { await p.evaluate(() => document.querySelectorAll('.modal').forEach(m => m.remove())); // the faked login asks for an email first
+    await p.selectOption('#workSel', 'over_under'); await p.click('#wCustom'); await p.waitForSelector('.mwbox'); }],
 ];
 // Safari on the iPhone sets capitals with letter-spacing a little wider than Chrome: the second pass widens every
 // letter by 0.03 em, so text that only just fits in Chrome is reported too

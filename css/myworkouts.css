@@ -1,0 +1,88 @@
+/* Personal workouts (js/myworkouts-ui.js): the editor, the route page bits, the profile section. Accent: signal orange. */
+.mwmodal { --mwa: #ff5a1f; place-items: start center; overflow-y: auto; padding: 3vh 0; }
+.mwmodal .box.mwbox { width: min(900px, 94vw); padding: 24px 26px; max-height: none; }
+.mwhead { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.mwhead .label { min-width: 0; overflow-wrap: anywhere; }
+.mwx { flex: none; width: 40px; height: 40px; border-radius: 50%; border: 1px solid var(--line-2); background: transparent; color: var(--paper); font-size: 16px; cursor: pointer; }
+.mwx:hover, .mwx:focus-visible { border-color: var(--mwa); }
+.mwname { display: flex; flex-direction: column; gap: 6px; margin: 12px 0 10px; }
+.mwmodal .mwname input { width: 100%; height: 46px; font-size: 20px; font-weight: 900; }
+.mwsum { display: flex; flex-wrap: wrap; gap: 6px 22px; align-items: baseline; margin: 4px 0 8px; }
+.mwsum > span { display: flex; flex-direction: column; min-width: 0; }
+.mwsum b { font-size: 20px; font-weight: 900; font-variant-numeric: tabular-nums; }
+.mwsum small { font-size: 11px; color: var(--muted); font-weight: 700; }
+.mwsum p, .mwmodal .mwsum p { flex: 1 1 100%; margin: 2px 0 0; font-size: 13px; }
+.mwwarn, .mwmodal p.mwwarn { color: #ffb020; font-weight: 700; font-size: 13px; line-height: 1.4; }
+.mwfit, .mwmodal p.mwfit { color: var(--muted); }
+.mwgwrap { background: var(--ink); border: 1px solid var(--line); border-radius: 6px; padding: 8px; color: var(--paper); }
+.mwgraph { display: block; width: 100%; height: 80px; }
+.mwint { display: flex; align-items: center; gap: 12px; margin: 12px 0 6px; flex-wrap: wrap; font-size: 13px; font-weight: 700; }
+.mwint label { flex: 1 1 180px; color: var(--muted); }
+.mwint input[type=range] { flex: 2 1 200px; accent-color: var(--mwa); min-width: 0; }
+.mwint b { min-width: 56px; text-align: right; font-variant-numeric: tabular-nums; color: var(--mwa); }
+.mwcols, .mwstep { display: grid; grid-template-columns: 34px minmax(0, 1fr) 96px 84px 62px auto; gap: 8px; align-items: center; }
+.mwcols { font-size: 10.5px; font-weight: 700; text-transform: uppercase; letter-spacing: .1em; color: var(--muted); padding: 8px 0 2px; }
+.mwsteps { display: flex; flex-direction: column; gap: 6px; }
+.mwstep { padding: 6px 0; border-bottom: 1px solid var(--line); }
+.mwno { display: grid; place-items: center; width: 34px; height: 30px; border-radius: 15px; background: var(--z); color: #0b0b0b; font-weight: 900; font-size: 12px; }
+.mwmodal .mwstep input { height: 38px; width: 100%; min-width: 0; padding: 0 8px; }
+.mwnum { display: flex; align-items: center; gap: 4px; min-width: 0; }
+.mwnum small { font-size: 11px; color: var(--muted); font-weight: 700; }
+.mwmodal .mwstep input.bad { border-color: #ff6b6b; }
+.mww { font-variant-numeric: tabular-nums; font-size: 14px; white-space: nowrap; text-align: right; }
+.mwbtns { display: flex; gap: 4px; }
+.mwbtns button { width: 36px; height: 36px; border-radius: 6px; border: 1px solid var(--line-2); background: transparent; color: var(--paper); font-size: 15px; cursor: pointer; }
+.mwbtns button:hover:not(:disabled), .mwbtns button:focus-visible { border-color: var(--mwa); color: var(--mwa); }
+.mwbtns button:disabled { opacity: .3; cursor: default; }
+.mwtools { display: flex; flex-wrap: wrap; gap: 10px 14px; align-items: center; justify-content: space-between; margin-top: 12px; }
+.mwrep { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; font-size: 13px; font-weight: 700; color: var(--muted); }
+.mwmodal .mwrep input { width: 60px; height: 40px; padding: 0 8px; }
+.mwerr, .mwmodal p.mwerr { color: #ff6b6b; font-size: 13px; font-weight: 700; min-height: 0; margin-top: 8px; }
+.mwerr:empty { display: none; }
+.mwacts { align-items: center; }
+.mwsp { flex: 1; }
+.mwmodal .btn.mwsave, .mwprof .btn.mwsave { background: var(--mwa); color: #0b0b0b; }
+:is(.mwmodal, .mwprof, .workout-pick) .btn:focus-visible, .mwmodal input:focus-visible { outline: 2px solid var(--mwa); outline-offset: 2px; }
+@media (max-width: 640px) {
+  .mwmodal { padding: 0; }
+  .mwmodal .box.mwbox { width: 100vw; min-height: 100dvh; border-radius: 0; padding: 16px 14px 24px; }
+  .mwcols { display: none; }
+  .mwstep { grid-template-columns: 34px minmax(0, 1fr) minmax(0, 1fr) minmax(0, .8fr); grid-template-areas: "no lab lab lab" ". min pct w" ". btn btn btn"; row-gap: 6px; }
+  .mwbtns { justify-self: end; } .mwbtns button { height: 32px; }
+  .mwno { grid-area: no; } .mwlab { grid-area: lab; } .mwbtns { grid-area: btn; }
+  .mwstep > .mwnum:nth-of-type(1) { grid-area: min; } .mwstep > .mwnum:nth-of-type(2) { grid-area: pct; } .mww { grid-area: w; align-self: center; }
+  .mwbtns button { width: 34px; }
+  .mwacts .mwsp { display: none; }
+  .mwacts .btn { flex: 1 1 auto; }
+}
+
+/* route page */
+.mwpick { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; }
+.mwfitinfo:empty { display: none; }
+.mwfitinfo p { margin: 8px 0 0; }
+.mwup { display: flex; align-items: center; flex-wrap: wrap; gap: 10px; font-size: 13px; color: var(--muted); }
+.mwlink { color: var(--muted); font-size: 12px; font-weight: 700; background: none; border: 0; border-bottom: 1px solid var(--line-2); padding: 2px 0; cursor: pointer; }
+.mwlink:hover, .mwlink:focus-visible { color: #ff5a1f; border-color: #ff5a1f; }
+
+/* profile */
+.mwprof { --mwa: #ff5a1f; display: flex; flex-direction: column; gap: 8px; }
+.mwftp { display: flex; align-items: center; gap: 10px; }
+.mwftp label { flex: 1; font-weight: 700; font-size: 15px; }
+.mwprof input[type=number] { height: 40px; width: 96px; background: var(--ink); border: 1px solid var(--line-2); border-radius: 8px; padding: 0 10px; font-weight: 800; color: var(--paper); font-variant-numeric: tabular-nums; }
+.mwprof input:focus-visible { outline: 2px solid var(--mwa); outline-offset: 1px; }
+.mwftp small { color: var(--muted); font-weight: 700; width: 16px; }
+#profil .mwprof .mwhint { margin: 0; }
+.mwest { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; font-size: 13px; font-weight: 700; color: var(--muted); background: color-mix(in srgb, #ff5a1f 8%, transparent); border-radius: 10px; padding: 8px 10px; }
+.mwest label { flex: 1 1 100%; }
+.mwest input[type=number] { width: 84px; }
+.mwest b { color: var(--paper); min-width: 48px; font-variant-numeric: tabular-nums; }
+.mwest .btn { margin-left: auto; }
+.mwupbox { display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap; font-size: 13px; font-weight: 700; padding: 8px 0; }
+.mwlist { display: flex; flex-direction: column; }
+.mwitem { padding: 10px 0; border-bottom: 1px solid var(--line); display: flex; flex-direction: column; gap: 6px; }
+.mwitop b { display: block; font-size: 15px; overflow-wrap: anywhere; }
+.mwitop small { display: block; font-size: 12px; color: var(--muted); overflow-wrap: anywhere; }
+.mwthumb { display: block; width: 100%; height: 34px; color: var(--paper); }
+.mwiacts { display: flex; gap: 8px; flex-wrap: wrap; }
+.mwprof .mwdanger { color: #ff6b6b; }
+.mwnew { align-self: flex-start; margin-top: 4px; }
