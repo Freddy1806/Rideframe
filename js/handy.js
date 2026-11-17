@@ -38,19 +38,41 @@ function render() {
   liveStrip();
   const ib = $('#hInstall'); if (ib) ib.onclick = async () => { installEvt.prompt(); await installEvt.userChoice.catch(() => {}); installEvt = null; render(); };
 }
-/* "Riding now" (17.11.): who rides right now, read-only here (the 3D ride is on the laptop): "Join on your laptop" + Copy link */
-let liveRs = [], liveStop = null;
+/* "Riding now" (17.11.) and the friends with a green dot: read-only here (the 3D ride is on the laptop): invites and riding friends
+   with "Join on your laptop" + Copy link, a row of faces with dots that opens the list of every friend */
+let liveF = null, liveStop = null;
+const FR_FACES = 5;
 function liveStrip() {
   const el = $('#hLive'); if (!el || !acc) return;
-  const keep = liveRs.length ? liveRs : null; // a re-render keeps the cards without a jump
   import('./live.js').then(live => {
-    const draw = async () => { const rs = await live.ridingNow(); if (rs === null || !el.isConnected) return; liveRs = rs; live.showStrip(el, rs, { phone: true }); wire(); };
-    const wire = () => el.querySelectorAll('.lvcopy').forEach(b => b.onclick = async () => { const r = liveRs.find(x => x.id === b.closest('[data-sid]')?.dataset.sid); if (!r) return;
-      const link = live.joinLink(r); try { await navigator.clipboard.writeText(link); b.textContent = 'Copied ✓'; } catch { b.textContent = 'Copy failed'; prompt('Open this link on your laptop:', link); }
-      setTimeout(() => { if (b.isConnected) b.textContent = 'Copy link'; }, 2500); });
-    if (keep) { live.showStrip(el, keep, { phone: true }); el.classList.add('on'); wire(); }
+    const html = F => {
+      const rs = F.friends.filter(f => f.state === 'riding' && f.ride).map(live.asRider), faces = F.friends.slice(0, FR_FACES), more = F.friends.length - faces.length;
+      return F.friends.length || F.invites.length ? `${F.invites.map(v => live.inviteCard(v, true)).join('')}${live.headHTML(F.friends)}${live.ridersGrid(rs, { phone: true })}
+        ${F.friends.length ? `<button type="button" class="frbar" id="hFriends"><span class="frbt"><b>Friends</b><small>${live.onlineCount(F.friends)} online · see all</small></span>
+          <span class="frstack">${faces.map(f => live.friendFace(f)).join('')}${more > 0 ? `<span class="frplus">+${more}</span>` : ''}</span></button>` : ''}` : '';
+    };
+    const copy = async (b, link) => { try { await navigator.clipboard.writeText(link); b.textContent = 'Copied ✓'; } catch { b.textContent = 'Copy failed'; prompt('Open this link on your laptop:', link); }
+      setTimeout(() => { if (b.isConnected) b.textContent = 'Copy link'; }, 2500); };
+    const wire = F => {
+      el.querySelectorAll('.lvcopy').forEach(b => b.onclick = () => { const f = F.friends.find(x => x.ride?.id === b.closest('[data-sid]')?.dataset.sid); if (f) copy(b, live.joinLink(live.asRider(f))); });
+      el.querySelectorAll('[data-inv]').forEach(c => { const v = F.invites.find(x => x.id === c.dataset.inv); if (!v) return;
+        c.querySelector('.lvicopy').onclick = e => copy(e.currentTarget, `${location.origin}/?join=${v.code}`);
+        c.querySelector('.lvix').onclick = () => { live.dismissInvite(v.id); c.remove(); }; });
+      const fb = $('#hFriends', el); if (fb) fb.onclick = () => friendsSheet(live, F, copy);
+    };
+    const draw = async () => { const F = await live.friendsNow(); if (!F || !el.isConnected) return; liveF = F; live.reveal(el, html(F)); wire(F); };
+    if (liveF) { live.reveal(el, html(liveF)); el.classList.add('on'); wire(liveF); } // a re-render keeps the strip without a jump
     liveStop?.(); liveStop = live.every15(el, draw);
+    live.startOnline({ show: () => S.liveShow !== false, onBeat: j => { if (j.invites?.length) draw(); } });
   }).catch(() => {});
+}
+function friendsSheet(live, F, copy) {
+  const s = document.createElement('div'); s.className = 'psheet'; s.id = 'frSheet'; document.body.append(s);
+  s.innerHTML = `<div class="psheetin"><div class="label">Friends · ${live.onlineCount(F.friends)} online</div>
+    <div class="frlist">${F.friends.map(f => live.friendRow(f, null, f.state === 'riding' && f.ride ? `<button class="btn ghost ksmall frcopy" type="button" data-sid="${esc(f.ride.id)}">Copy link</button>` : '')).join('')}</div>
+    <p class="phint">Riding friends: join on your laptop, the link opens it there.</p><div class="pfoot"><button class="btn" id="frOk">Done</button></div></div>`;
+  s.querySelectorAll('.frcopy').forEach(b => b.onclick = () => { const f = F.friends.find(x => x.ride?.id === b.dataset.sid); if (f) copy(b, live.joinLink(live.asRider(f))); });
+  $('#frOk', s).onclick = () => s.remove(); s.onclick = e => { if (e.target === s) s.remove(); };
 }
 async function save() { const st = (await db.kvGet('settings').catch(() => null)) || {}; Object.assign(st, { theme: S.theme, modeColors: S.modeColors, accent: S.accent, autoStrava: S.autoStrava, stravaImport: S.stravaImport, kraftRest: S.kraftRest, liveShow: S.liveShow, liveAuto: S.liveAuto }); await db.kvSet('settings', st).catch(() => {});
   import('./account.js').then(a => a.settingsChanged?.(st)).catch(() => {}); } // to the account too: the watch reads the rest time from there
@@ -68,10 +90,10 @@ function settings() {
       <label class="prow" id="tImpRow" hidden>Import my Strava activities automatically<input id="tImp" type="checkbox" class="toggle" ${S.stravaImport !== false ? 'checked' : ''}></label>
       <p class="hint" id="tImpHint" hidden>Reconnect Strava to import your activities.</p>
       <h3 class="ksec">Strength: rest between sets</h3><div class="pseg" id="tRest">${[60, 90, 120, 180].map(n => `<button data-rest="${n}" class="${(+S.kraftRest || 90) === n ? 'on' : ''}">${n < 120 ? n + ' s' : n / 60 + ' min'}</button>`).join('')}</div>
-      <h3 class="ksec">Riding now</h3>
-      ${acc ? `<label class="prow">Show me when I ride<input id="tLive" type="checkbox" class="toggle" ${S.liveShow !== false ? 'checked' : ''}></label>
+      <h3 class="ksec">Friends &amp; riding now</h3>
+      ${acc ? `<label class="prow">Show me as online<input id="tLive" type="checkbox" class="toggle" ${S.liveShow !== false ? 'checked' : ''}></label>
       <label class="prow">Friends can join me without asking<input id="tLiveAuto" type="checkbox" class="toggle" ${S.liveAuto !== false ? 'checked' : ''}></label>
-      <p class="phint" id="tLiveHint">Friends see your route and kilometre while you ride in the 3D world. Off for joining = a short question in the ride first. Applies on every device.</p>`
+      <p class="phint" id="tLiveHint">Friends see a green dot while RIDEFRAME is open, and your route and kilometre while you ride in the 3D world. Off for joining = a short question in the ride first. Applies on every device.</p>`
       : '<p class="phint">Sign in to see which friends are riding right now and to show up for them.</p>'}
       <h3 class="ksec">Devices</h3>
       <p class="phint">For indoor rides, the smart trainer, heart rate strap and Zwift Click connect on the Indoor page (Indoor trainer → Sensors). Bluetooth does not carry over from page to page, so connect them there.</p>
@@ -93,7 +115,7 @@ function settings() {
       show(await m.stravaStatus()); });
     const liveSet = async (k, v) => { S[k === 'show' ? 'liveShow' : 'liveAuto'] = v; // only here and on the server (the account's settings file), never the whole phone settings over the laptop's
       db.kvGet('settings').then(st => db.kvSet('settings', { ...(st || {}), liveShow: S.liveShow, liveAuto: S.liveAuto })).catch(() => {});
-      try { const l = await import('./live.js'), p = await l.putPrefs({ [k]: v }); S.liveShow = p.show; S.liveAuto = p.auto; } catch { const h = $('#tLiveHint', s); if (h) h.textContent = 'Not saved on the server. Check your connection.'; } };
+      try { const l = await import('./live.js'), p = await l.putPrefs({ [k]: v }); S.liveShow = p.show; S.liveAuto = p.auto; l.startOnline({ show: () => S.liveShow !== false }); } catch { const h = $('#tLiveHint', s); if (h) h.textContent = 'Not saved on the server. Check your connection.'; } };
     $('#tLive', s)?.addEventListener('change', e => liveSet('show', e.target.checked));
     $('#tLiveAuto', s)?.addEventListener('change', e => liveSet('auto', e.target.checked));
     if (acc && !draw.synced) { draw.synced = true; import('./live.js').then(l => l.getPrefs()).then(p => { if (S.liveShow === p.show && S.liveAuto === p.auto) return; S.liveShow = p.show; S.liveAuto = p.auto; if (s.isConnected) draw(); }).catch(() => {}); }

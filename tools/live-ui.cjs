@@ -29,17 +29,18 @@ const FAKE_PEER = `(() => {
     reconnect() {} call() { throw new Error('no voice in the test'); }
     destroy() { Object.values(this.conns).forEach(c => c.close()); window.__peerOut({ t: 'gone', id: this.id }); } };
   window.__peerIn = m => { const p = peers.find(x => x.id === m.to); if (!p) return;
-    if (m.t === 'conn') { const c = new Conn(p, m.cid, m.from); p.conns[m.cid] = c; p.emit('connection', c); setTimeout(() => { c.open = true; c.emit('open'); }, 10); }
-    else if (m.t === 'connopen') { const c = p.conns[m.cid]; if (c) setTimeout(() => { c.open = true; c.emit('open'); }, 15); }
+    if (m.t === 'conn') { const c = new Conn(p, m.cid, m.from); p.conns[m.cid] = c; c.open = true; p.emit('connection', c); }
+    else if (m.t === 'connopen') { const c = p.conns[m.cid]; if (c) { c.open = true; c.emit('open'); } }
+    else if (m.t === 'connready') p.conns[m.cid]?.emit('open');
     else if (m.t === 'data') p.conns[m.cid]?.emit('data', m.data);
     else if (m.t === 'close') { const c = p.conns[m.cid]; if (c?.open) { c.open = false; c.emit('close'); } } };
 })();`;
 const relay = new Map(); // peer id -> page
-const deliver = (id, m) => { const p = relay.get(id); if (p && !p.isClosed()) p.evaluate(x => window.__peerIn?.(x), { ...m, to: id }).catch(() => {}); };
+const deliver = (id, m) => { const p = relay.get(id); return p && !p.isClosed() ? p.evaluate(x => window.__peerIn?.(x), { ...m, to: id }).catch(() => {}) : Promise.resolve(); };
 async function peerOut({ page }, m) {
   if (m.t === 'open') { if (relay.has(m.id) && relay.get(m.id) !== page && !relay.get(m.id).isClosed()) return 'taken'; relay.set(m.id, page); return 'ok'; }
   if (m.t === 'gone') { if (relay.get(m.id) === page) relay.delete(m.id); return 'ok'; }
-  if (m.t === 'connect') { if (!relay.has(m.to)) return 'missing'; deliver(m.to, { t: 'conn', from: m.from, cid: m.cid }); deliver(m.from, { t: 'connopen', cid: m.cid }); return 'ok'; }
+  if (m.t === 'connect') { if (!relay.has(m.to)) return 'missing'; (async () => { await deliver(m.to, { t: 'conn', from: m.from, cid: m.cid }); await deliver(m.from, { t: 'connopen', cid: m.cid }); await deliver(m.to, { t: 'connready', cid: m.cid }); })(); return 'ok'; } // like WebRTC: both ends exist and the joiner is open before the host says hello // the host's side exists before the joiner says hello
   if (m.t === 'data' || m.t === 'close') { deliver(m.to, m); return 'ok'; }
 }
 
@@ -49,7 +50,8 @@ async function peerOut({ page }, m) {
   for (let i = 0; i < 50; i++) { try { await fetch(BASE + '/api/account/ping'); break; } catch { await wait(100); } }
   let ipN = 0; const api = async (method, p, token, body) => { const r = await fetch(BASE + p, { method, headers: { 'Content-Type': 'application/json', 'X-Forwarded-For': '10.7.0.' + ipN++, ...(token ? { 'X-RF-Token': token } : {}) }, body: body && JSON.stringify(body) }); return r.json().catch(() => ({})); };
   const reg = async name => ({ name, token: (await api('POST', '/api/account/register', null, { name, email: name.replace(/\W/g, '') + '@example.org', password: 'secret-pw-1', password2: 'secret-pw-1' })).token });
-  const A = await reg('Max Rider'), B = await reg('Freddy'), C = await reg('Anna'), X = await reg('Konstantin Langenberg');
+  const A = await reg('Max Rider'), B = await reg('Freddy'), C = await reg('Anna'), X = await reg('Konstantin Langenberg'), D = await reg('Dora'), Z = await reg('Zacharias Schlummer');
+  await api('POST', '/api/live/online', Z.token); await api('DELETE', '/api/live/online', Z.token); // offline, "last seen just now"
   // a third rider for the pictures: another account with a long name riding the Rocky Coast, kept alive by the test
   let xD = 12400; const xBeat = () => api('POST', '/api/live', X.token, { routeId: 'coast', routeName: 'Rocky Coast', d: xD += 180, len: 37000, startedAt: Date.now() - 23 * 60e3 });
   await xBeat(); const xT = setInterval(xBeat, 15e3);
@@ -85,6 +87,8 @@ async function peerOut({ page }, m) {
     ok(await LB.locator('.lvcard', { hasText: 'Freddy' }).count() === 0, 'B does not see himself');
     const top = await LB.evaluate(() => { const l = document.querySelector('#live'), h = document.querySelector('.view-head'); return { strip: l.getBoundingClientRect().top, head: h.getBoundingClientRect().top }; });
     ok(top.strip < top.head, 'the strip sits at the top of the library');
+    const zc = LB.locator('.frchip', { hasText: 'Zacharias' });
+    ok(await zc.count() === 1 && /offline/.test(await zc.getAttribute('class')) && /last seen/.test(await zc.textContent()), 'an offline friend: dimmed chip with "last seen"');
     await LB.waitForTimeout(600); await shot(LB, 'library_riding_now_1280.png');
     // route page: "Max Rider is riding this now · Join"
     await LB.click('.card[data-id="demo"]'); await LB.waitForSelector('.livehint', { timeout: 20000 });
@@ -100,16 +104,25 @@ async function peerOut({ page }, m) {
     ok(await PH.locator('#hLive .lvjoin').count() === 0 && /Join on your laptop/.test(await PH.textContent('#hLive')), 'phone: read-only, "Join on your laptop"');
     await PH.waitForTimeout(500);
     ok(await PH.evaluate(() => document.documentElement.scrollWidth <= innerWidth), 'phone strip: no sideways scroll at 390 px');
+    ok(await vis(PH, '#hFriends .frstack .frface'), 'phone: a row of faces with dots');
     await shot(PH, 'phone_home_riding_now_390.png');
     await PH.locator('#hLive .lvcard', { hasText: 'Max Rider' }).locator('.lvcopy').click();
     await PH.waitForFunction(() => /Copied/.test(document.querySelector('#hLive').textContent));
     const link = await PH.evaluate(() => navigator.clipboard.readText());
     ok(/\/\?live=[0-9a-f]{12}$/.test(link), 'Copy link: a join link for the laptop: ' + link.replace(BASE, ''));
+    await PH.click('#hFriends'); await PH.waitForSelector('#frSheet .frrow');
+    ok(/last seen/.test(await PH.textContent('#frSheet')) && await PH.locator('#frSheet .frrow.riding').count() >= 2, 'phone: the friends sheet (riding, offline with last seen)');
+    await shot(PH, 'phone_friends_sheet_390.png'); await PH.click('#frOk');
     await PH.click('#hSet'); await PH.waitForSelector('#tLive');
     ok(await PH.isChecked('#tLive') && await PH.isChecked('#tLiveAuto'), 'phone settings: both switches, on by default');
     await PH.locator('#tLive').scrollIntoViewIfNeeded(); await PH.waitForTimeout(300); await shot(PH, 'phone_settings_riding_now_390.png');
     await PH.click('#tOk');
 
+    await LB.waitForSelector('.frchip.online', { timeout: 20000 }).catch(() => {});
+    ok(/Anna/.test(await LB.textContent('.frchip.online').catch(() => '')), 'B sees Anna online (her phone is open): green dot');
+    const green = await LB.evaluate(() => getComputedStyle(document.querySelector('.frchip.online .frdot')).backgroundColor);
+    ok(green === 'rgb(47, 211, 107)', 'the online dot is green: ' + green);
+    await shot(LB, 'library_friends_online_1280.png');
     // ---- B taps Join: A's ride opens a group by itself, B ends up in it with A's code ----
     const t0 = Date.now();
     await cardA.locator('.lvjoin').click();
@@ -155,7 +168,29 @@ async function peerOut({ page }, m) {
     ok(!(await vis(RA, '#hJoinAsk')), 'pad A on the prompt accepts');
     await RA.evaluate(() => { navigator.getGamepads = () => []; });
     ok(await codeIn(LC) === code, 'C accepted: into the same group with the code');
-    await ctxC.close();
+    await api('DELETE', '/api/live', C.token); await ctxC.close(); // Anna's laptop is closed, her phone stays open
+    await RA.waitForFunction(() => !window.__ride.group.others().some(r => r.name === 'Anna'), null, { timeout: 30000 });
+
+    // ---- invite from the pause menu: Dora (library open) and Anna (phone) see "Max Rider invites you to ride" ----
+    const ctxD = await ctxFor(D), LD = await open(ctxD, '/?desktop&noprofile&demo', 'D');
+    await LD.waitForSelector('#live.on'); await RA.waitForTimeout(500);
+    await RA.click('#hPause'); await RA.click('#pInvite'); await RA.waitForSelector('.invlist [data-fi]');
+    const invTxt = await RA.textContent('.invlist');
+    ok(await RA.locator('.invlist [data-fi]', { hasText: 'Dora' }).count() === 1 && await RA.locator('.invlist [data-fi]', { hasText: 'Freddy' }).count() === 0, 'pause menu: online friends to invite (not the ones already in the group): ' + invTxt.replace(/\s+/g, ' '));
+    await shot(RA, 'ride_invite_menu_1280.png');
+    for (const n of ['Dora', 'Anna']) { await RA.locator('.invlist [data-fi]', { hasText: n }).click(); await RA.waitForFunction(n => [...document.querySelectorAll('.invlist [data-fi]')].some(b => b.textContent.includes(n + ' invited')), n, { timeout: 10000 }); }
+    ok(true, 'Dora and Anna invited');
+    await RA.click('#invBack'); await RA.click('#pResume');
+    await LD.waitForSelector('.lvinvite', { timeout: 40000 });
+    ok(/Max Rider invites you to ride/.test(await LD.textContent('.lvinvite')), 'Dora: "Max Rider invites you to ride · Join"');
+    await LD.waitForTimeout(500); await shot(LD, 'library_invite_1280.png');
+    await PH.waitForSelector('#hLive .lvinvite', { timeout: 40000 });
+    ok(/invites you to ride/.test(await PH.textContent('#hLive .lvinvite')) && await vis(PH, '#hLive .lvicopy'), 'Anna\'s phone: the invite with "join on your laptop" + Copy link');
+    await PH.evaluate(() => scrollTo(0, 0)); await PH.waitForTimeout(400); await shot(PH, 'phone_invite_390.png');
+    ok(await PH.evaluate(() => document.documentElement.scrollWidth <= innerWidth), 'phone invite: no sideways scroll');
+    await LD.click('.lvijoin');
+    ok(await codeIn(LD) === code, 'Dora joins with the invite: same group code');
+    await ctxD.close();
 
     // ---- hidden: "Show me when I ride" off -> gone from the list ----
     await api('PUT', '/api/live/prefs', A.token, { show: false, auto: true });

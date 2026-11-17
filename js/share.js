@@ -81,7 +81,7 @@ export async function hostFromRide(routeId) {
 /** lobby: open a group (host) or join one with a code. startRide(routeId, { group }) starts the ride. */
 export function groupModal({ routeId = null, code = null, startRide }) {
   globalThis.__rfMode ||= state.settings.worldMode || 'voll'; import('./world/lofoten.js').catch(() => {}); /* the models download while the group gathers, so "Alle starten" does not wait minutes */
-  let name = riderName(false);
+  let name = riderName(false), autoJoined = false;
   const m = document.createElement('div'); m.className = 'modal';
   document.body.append(m);
   const updVoice = () => { // only the voice bits, so speaking flags don't rebuild the whole window
@@ -126,7 +126,7 @@ export function groupModal({ routeId = null, code = null, startRide }) {
       if (lg?.host) m.querySelector('#gHost').textContent = 'Reopen group ' + lg.code;
       else if (lg && !code) m.querySelector('#gCode').value = lg.code;
       m.querySelector('#gJoin').onclick = () => { const c = m.querySelector('#gCode').value.trim().toLowerCase(); if (c.length === 5) go({ code: c }); else m.querySelector('#gMsg').textContent = 'The code has 5 characters.'; };
-      if (code) m.querySelector('#gJoin').click();
+      if (code && !autoJoined) { autoJoined = true; m.querySelector('#gJoin').click(); } // once: a re-render while connecting must not open a second connection
       return;
     }
     const route = g.routeId ? routeById(g.routeId) : null;

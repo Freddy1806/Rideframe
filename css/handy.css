@@ -85,3 +85,15 @@ button.wcrow { width: 100%; text-align: left; color: inherit; }
 #handy .lvact { flex: 1 1 100%; display: flex; align-items: center; justify-content: space-between; gap: 10px; padding-top: 10px; border-top: 1px solid var(--line); }
 #handy .lvact .lvhint { min-width: 0; }
 #handy .lvact .btn { flex: none; height: 38px; padding: 0 16px; font-size: 13px; white-space: nowrap; }
+/* friends row on the phone: faces with dots, opens the list */
+.frbar { display: flex; align-items: center; justify-content: space-between; gap: 12px; width: 100%; margin-top: 10px; padding: 10px 12px 10px 14px; border-radius: 14px; background: var(--ink-2); border: 1px solid var(--line); color: var(--paper); font: inherit; text-align: left; }
+#handy .lvgrid + .frbar, #handy .live-head + .frbar { margin-top: 0; }
+#handy .lvgrid { margin-bottom: 10px; }
+.frbt { display: flex; flex-direction: column; min-width: 0; } .frbt b { font-size: 15px; font-weight: 800; } .frbt small { font-size: 12px; color: var(--muted); font-weight: 600; }
+.frstack { display: flex; align-items: center; flex: none; }
+.frstack > * + * { margin-left: -8px; }
+.frstack .frface .lvface { width: 36px; height: 36px; box-shadow: 0 0 0 2px var(--ink-2); }
+.frplus { width: 36px; height: 36px; border-radius: 50%; display: grid; place-items: center; background: var(--ink-3); box-shadow: 0 0 0 2px var(--ink-2); font-size: 12px; font-weight: 800; color: var(--muted); position: relative; }
+#frSheet .frlist { max-height: none; overflow: visible; margin-top: 4px; }
+#frSheet .frrow .btn { height: 36px; white-space: nowrap; }
+#handy .lvinvite { border-radius: 14px; margin-bottom: 10px; }

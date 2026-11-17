@@ -371,7 +371,7 @@ export class RideSession {
       if (hit(12) || hit(14)) this._padFocus((this._padI || 0) - 1);
       if (hit(13) || hit(15)) this._padFocus((this._padI || 0) + 1);
       if (hit(0)) this.q('#pauseOverlay')?.querySelectorAll('.padmenu button')[this._padI || 0]?.click();
-      if (hit(1)) this.q('#oBack') ? this.q('#oBack').click() : this._resume();
+      if (hit(1)) this.q('#oBack, #invBack') ? this.q('#oBack, #invBack').click() : this._resume();
       return;
     }
     if (this.finished) return;
@@ -880,7 +880,7 @@ export class RideSession {
     this.q('#pauseOverlay')?.remove();
     const o = document.createElement('div'); o.className = 'paused'; o.id = 'pauseOverlay';
     o.innerHTML = `<div class="box"><div class="label">${fmtKm(this.d)} km · ${fmtTime(this.elapsed)}</div><h2 class="display">Pause</h2>
-      <div class="row-actions padmenu"><button class="btn" id="pResume">Resume</button><button class="btn ghost" id="pOpts">Options</button><button class="btn ghost" id="pSave">Finish &amp; save</button><button class="btn ghost" id="pDiscard">Discard</button>${this.group?.voice?.on ? '<button class="btn ghost" id="pVoice">Voice chat off</button>' : ''}${this.group ? this.group.others().filter(r => r.riding || r.d > 0).slice(0, 4).map((r, i) => `<button class="btn ghost" data-jump="${i}">⇢ Jump to ${esc(r.name)}</button>`).join('') : this.autopilot ? '' : '<button class="btn ghost" id="pGroup">Open group</button>'}</div>
+      <div class="row-actions padmenu"><button class="btn" id="pResume">Resume</button><button class="btn ghost" id="pOpts">Options</button><button class="btn ghost" id="pSave">Finish &amp; save</button><button class="btn ghost" id="pDiscard">Discard</button>${this.group?.voice?.on ? '<button class="btn ghost" id="pVoice">Voice chat off</button>' : ''}${this.group ? this.group.others().filter(r => r.riding || r.d > 0).slice(0, 4).map((r, i) => `<button class="btn ghost" data-jump="${i}">⇢ Jump to ${esc(r.name)}</button>`).join('') : this.autopilot ? '' : '<button class="btn ghost" id="pGroup">Open group</button>'}${this.presence?.on ? '<button class="btn ghost" id="pInvite">Invite friends</button>' : ''}</div>
       <div class="hint pad-hint" style="margin-top:12px;opacity:.7">🎮 D-pad to choose · A ok · B back</div></div>`;
     this.el.append(o);
     o.querySelector('#pResume').onclick = () => this._resume();
@@ -891,6 +891,7 @@ export class RideSession {
     const os = this.group ? this.group.others().filter(r => r.riding || r.d > 0).slice(0, 4) : [];
     o.querySelectorAll('[data-jump]').forEach(b => b.onclick = () => { const r = os[+b.dataset.jump]; if (r) { this._resume(); this._jump(r); } });
     o.querySelector('#pGroup')?.addEventListener('click', () => this._openGroup());
+    o.querySelector('#pInvite')?.addEventListener('click', () => this._inviteMenu());
     this._padFocus(0);
   }
   /** in-ride options (game-style, all reachable with the controller): each button shows its current state and toggles it */
@@ -979,6 +980,27 @@ export class RideSession {
       this._ask = { answer };
       c.querySelector('#jqYes').onclick = () => answer(true); c.querySelector('#jqNo').onclick = () => answer(false);
     });
+  }
+  /** pause menu "Invite friends" (owner 17.11. (2)): the friends online right now (green dot), one button each (pad: D-pad + A);
+   *  the group opens by itself if this is still a solo ride, the friend sees "Max invites you to ride · Join" */
+  async _inviteMenu() {
+    const box = this.q('#pauseOverlay .box'); if (!box) return;
+    box.innerHTML = '<div class="label">Invite friends</div><h2 class="display">Online now</h2><p class="dim">Loading …</p>';
+    const live = await import('./live.js'), F = await live.friendsNow(); if (!box.isConnected) return;
+    const inGroup = new Set((this.group?.others() || []).map(r => r.name)), fs = (F?.friends || []).filter(f => f.state !== 'offline' && !inGroup.has(f.name));
+    box.innerHTML = `<div class="label">Invite friends</div><h2 class="display">Online now</h2>
+      ${fs.length ? '<p style="margin:6px 0 4px;opacity:.85">They see your invite on their library or phone and start right next to you.</p>' : '<p style="margin:6px 0 4px;opacity:.85">Nobody else is online right now. Friends with a green dot show up here.</p>'}
+      <div class="row-actions padmenu invlist">${fs.map((f, i) => `<button class="btn ghost" data-fi="${i}"><i class="frdot ${f.state}"></i>Invite ${esc(f.name)}${f.state === 'riding' ? ' · riding' : ''}</button>`).join('')}<button class="btn" id="invBack">Back</button></div>
+      <div class="hint pad-hint" style="margin-top:12px;opacity:.7">🎮 D-pad to choose · A invite · B back</div>`;
+    box.querySelector('#invBack').onclick = () => this._pause();
+    box.querySelectorAll('[data-fi]').forEach(b => b.onclick = async () => {
+      const f = fs[+b.dataset.fi]; if (!f || b.disabled) return; b.disabled = true; b.textContent = `Inviting ${f.name} …`;
+      try { await this._hostGroup(); await this.presence?.beat();
+        try { await live.inviteFriend(f.key); } catch (e) { if (e.status !== 409) throw e; await new Promise(r => setTimeout(r, 700)); await this.presence?.beat(); await live.inviteFriend(f.key); }
+        b.textContent = `${f.name} invited ✓`; }
+      catch (e) { b.disabled = false; b.textContent = `Invite ${f.name} · ${e.message || 'failed'}`; }
+    });
+    this._padFocus(0);
   }
   /** the group chip: the code copies the link, a click on a rider jumps to him */
   _wireGroupChip() {

@@ -67,19 +67,21 @@ export function riderCard(r, { phone = false, face = null, haveRoute = true } = 
       : haveRoute ? `<button class="btn small lvjoin" type="button" title="${r.ask ? `${esc(r.name)} gets a short question first` : `You start right next to ${esc(r.name)}`}">Join</button>`
       : '<span class="lvhint" title="Own video routes have to be imported on both computers">Route not on this computer</span>'}</div>`;
 }
-export function stripHTML(riders, opts) {
-  return `<div class="live-in"><div class="live-head"><span class="label"><i class="lvdot" aria-hidden="true"></i>Riding now</span><span class="live-n">${riders.length === 1 ? '1 friend on the road' : riders.length + ' friends on the road'}</span></div>
-    <div class="lvgrid">${riders.map(r => riderCard(r, { ...opts, haveRoute: opts?.have ? opts.have(r) : true })).join('')}</div></div>`;
+export const ridersGrid = (riders, opts) => riders.length ? `<div class="lvgrid">${riders.map(r => riderCard(r, { ...opts, haveRoute: opts?.have ? opts.have(r) : true })).join('')}</div>` : '';
+/** the head line of the strip: "Friends · 1 riding · 2 online" */
+export function headHTML(fs, extra = '') {
+  const nr = fs.filter(f => f.state === 'riding').length, no = fs.filter(f => f.state === 'online').length;
+  return `<div class="live-head"><span class="label"><i class="frdot ${nr ? 'riding' : no ? 'online' : ''}" aria-hidden="true"></i>${nr ? 'Riding now' : 'Friends'}</span><span class="live-n">${[nr ? nr + ' riding' : '', no ? no + ' online' : '', !nr && !no ? 'nobody online' : ''].filter(Boolean).join(' · ')}</span>${extra}</div>`;
 }
 /** the link a laptop opens to join: the group code when it is known, else a join request for this rider */
 export const joinLink = r => `${location.origin}/${r.code ? '?join=' + r.code : '?live=' + r.id}`;
 
-/** show or update a strip in el (no space taken while nobody rides, slides in when someone starts) */
-export function showStrip(el, riders, opts) {
+/** show or update a strip in el (no space taken while empty, slides in the first time) */
+export function reveal(el, html) {
   if (!el) return;
-  if (!riders?.length) { el.classList.remove('on'); el.dataset.n = '0'; clearTimeout(el._t); el._t = setTimeout(() => { if (el.dataset.n === '0') el.innerHTML = ''; }, 400); return; }
-  el.dataset.n = String(riders.length); clearTimeout(el._t);
-  el.innerHTML = stripHTML(riders, opts);
+  if (!html) { el.classList.remove('on'); el.dataset.n = '0'; clearTimeout(el._t); el._t = setTimeout(() => { if (el.dataset.n === '0') el.innerHTML = ''; }, 400); return; }
+  el.dataset.n = '1'; clearTimeout(el._t);
+  el.innerHTML = `<div class="live-in">${html}</div>`;
   if (!el.classList.contains('on')) requestAnimationFrame(() => requestAnimationFrame(() => el.classList.add('on')));
 }
 
@@ -121,3 +123,49 @@ export class Presence {
     const a = account(); if (tell && a?.token) fetch('/api/live', { method: 'DELETE', keepalive: true, headers: { 'X-RF-Token': a.token } }).catch(() => {});
   }
 }
+
+// ---------- online (owner 17.11. (2): "who is online right now, like on the PlayStation, with a green dot") ----------
+export const ONLINE_EVERY = 30e3, HIDDEN_GRACE = 60e3;
+/** { friends: [{ key, name, look, state: riding | online | offline, lastSeen, ride }], invites: [{ id, from, code, routeId, routeName }] } or null */
+export async function friendsNow() { if (!account()) return null; try { return await call('/friends'); } catch { return null; } }
+export const inviteFriend = key => call('/invite', { method: 'POST', body: JSON.stringify({ to: key }) });
+export const dismissInvite = id => call('/invite/' + id, { method: 'DELETE' }).catch(() => {});
+/** a friend's ride in the shape of the "Riding now" cards */
+export const asRider = f => ({ ...f.ride, name: f.name, look: f.look, key: f.key });
+
+/** the light heartbeat while the app is open and visible (library, phone home, ride); stops sending after a minute in a
+ *  hidden tab, says goodbye on pagehide. show() = the "Show me as online" setting. onBeat(answer) gets the invites. */
+let onlineBeat = null;
+export function startOnline({ show = () => true, onBeat } = {}) {
+  if (onlineBeat) { onlineBeat.onBeat = onBeat || onlineBeat.onBeat; onlineBeat.show = show; onlineBeat.beat(); return onlineBeat; }
+  const o = onlineBeat = { show, onBeat, hiddenAt: document.hidden ? Date.now() : 0, on: false };
+  o.beat = async () => {
+    if (!account() || !o.show()) { if (o.on) { o.on = false; bye(); } return; }
+    if (document.hidden && Date.now() - o.hiddenAt > HIDDEN_GRACE) return;
+    try { const j = await call('/online', { method: 'POST' }); o.on = !j.hidden; o.onBeat?.(j); } catch {}
+  };
+  const bye = () => { const a = account(); if (a?.token) fetch('/api/live/online', { method: 'DELETE', keepalive: true, headers: { 'X-RF-Token': a.token } }).catch(() => {}); };
+  document.addEventListener('visibilitychange', () => { if (document.hidden) o.hiddenAt = Date.now(); else o.beat(); });
+  addEventListener('pagehide', () => { if (o.on) bye(); o.on = false; });
+  addEventListener('pageshow', e => { if (e.persisted) o.beat(); });
+  setInterval(o.beat, ONLINE_EVERY); o.beat();
+  return o;
+}
+
+export function lastSeen(t, now = Date.now()) {
+  if (!t) return 'offline';
+  const m = Math.max(0, Math.round((now - t) / 60e3));
+  return m < 2 ? 'last seen just now' : m < 60 ? `last seen ${m} min ago` : m < 48 * 60 ? `last seen ${Math.round(m / 60)} h ago` : `last seen ${Math.round(m / 1440)} days ago`;
+}
+const STATE = { riding: 'riding', online: 'online', offline: 'offline' };
+/** a friend's face with the status dot: green = online, orange = riding, none = offline */
+export const friendFace = (f, face) => `<span class="frface ${STATE[f.state] || 'offline'}">${avatar(f, face)}<i class="frdot" aria-hidden="true"></i></span>`;
+export const friendStatus = f => f.state === 'riding' ? `${esc(f.ride.routeName)} · ${progress(f.ride)}` : f.state === 'online' ? 'Online' : esc(lastSeen(f.lastSeen));
+/** desktop: one slim chip per friend (face + dot, name, status) */
+export const friendChip = (f, face) => `<button type="button" class="frchip ${STATE[f.state] || 'offline'}" data-key="${esc(f.key)}" title="${esc(f.name)} · ${friendStatus(f)}">${friendFace(f, face)}<span class="frtx"><b>${esc(f.name)}</b><small>${f.state === 'riding' ? 'Riding · ' + progress(f.ride) : friendStatus(f)}</small></span></button>`;
+/** one row of the full list (desktop modal, phone sheet) */
+export const friendRow = (f, face, act = '') => `<div class="frrow ${STATE[f.state] || 'offline'}" data-key="${esc(f.key)}">${friendFace(f, face)}<span class="frtx"><b>${esc(f.name)}</b><small>${friendStatus(f)}</small></span>${act}</div>`;
+export const onlineCount = fs => fs.filter(f => f.state !== 'offline').length;
+/** "Max invites you to ride · Rocky Coast": Join on the laptop, laptop hint + Copy link on the phone */
+export const inviteCard = (v, phone) => `<div class="lvinvite" data-inv="${esc(v.id)}"><i class="lvdot" aria-hidden="true"></i><span class="lvitx"><b>${esc(v.from)}</b> invites you to ride<small>${esc(v.routeName)}${phone ? ' · join on your laptop' : ''}</small></span>
+  ${phone ? '<button class="btn ghost small lvicopy" type="button">Copy link</button>' : '<button class="btn small lvijoin" type="button">Join</button>'}<button class="lvix" type="button" aria-label="Dismiss" title="Dismiss">✕</button></div>`;
