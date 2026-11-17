@@ -526,8 +526,7 @@ export class RideSession {
     if (!w.done && isHard(w.step) && dt > 0) { this._adjAcc += this.wAdj * dt; this._adjT += dt; const sa = this._stepAdj[w.i] ||= [0, 0]; sa[0] += this.wAdj * dt; sa[1] += dt; } // time-weighted, for the saved ride
     if (this.erg) this.state.trainer.setPower(w.done || w.step?.free ? null : w.target); // a test block is ridden freely
     if (dt > 0) this._ergSpan(this.erg && !w.done && !w.step?.free);
-        if (w.done && !this.wDone) { this.wDone = true; this._flash?.('Workout done!'); this.coach?.say('done', 0); }
-    this._coachTick(w, dt);
+        if (w.done && !this.wDone) { this.wDone = true; this._flash?.('Workout done!'); } // no coach voice in workouts (owner 17.11.): the bar shows it all
   }
 
   /** ERG control on / off over the ride (seconds): no climb, no route times, flat altitude in the Strava file for these parts */
@@ -538,31 +537,6 @@ export class RideSession {
     this._ergOn = on;
   }
   _ergRec() { const sp = (this._ergSpans || []).map(([a, b]) => [a, b ?? Math.round(this.elapsed)]).filter(([a, b]) => b > a); return sp.length ? { erg: true, mode: 'Workout (ERG)', ergSpans: sp } : {}; }
-
-  /** coach: announces blocks, counts down into hard ones, says when you are too soft */
-  _coachTick(w, dt) {
-    const c = this.coach; if (!c || w.done) return;
-    const hard = s => s && s.pct >= 88, steps = this.workout.steps;
-    if (w.i !== this._wi) {
-      const first = this._wi === undefined; this._wi = w.i; this._lowT = 0;
-      const lbl = w.step.label || '', m = lbl.match(/(\d+)\/(\d+)/);
-      if (first) c.say('warm', 0);
-      else if (/Sprint/i.test(lbl)) c.say('sprint', 0);
-      else if (hard(w.step)) c.say(m && m[1] === m[2] ? 'last' : 'go', 0);
-      else if (/Ausfahren/i.test(lbl)) c.say('cool', 0);
-      else if (hard(steps[w.i - 1])) c.say('rest', 0);
-      const total = steps.reduce((a, x) => a + x.dur, 0); this._half ||= total / 2;
-    }
-    if (hard(w.next) && !hard(w.step)) {
-      if (w.left <= 10.5 && w.left > 9.5) c.say('ten', 3);
-      else if (w.left <= 3.4 && w.left > 2.6) c.say('three', 2);
-    }
-    if (this._half && this.elapsed >= this._half && !this._halfSaid) { this._halfSaid = true; c.say('half', 0); }
-    if (hard(w.step) && this.state.trainer.connected) { // with real watts only
-      if (this.power < w.target * 0.9) { this._lowT = (this._lowT || 0) + dt; if (this._lowT > 8) { c.say('low', 25); this._lowT = -10; } }
-      else if (Math.abs(this.power - w.target) < w.target * 0.05) { this._goodT = (this._goodT || 0) + dt; if (this._goodT > 60) { c.say('good', 90); this._goodT = 0; } }
-    }
-  }
 
   // ---------- challenges (never in a workout; in a group ride (Freddy 12.11.) the same challengers wait at the same spots for
   // everyone, dice seeded with the group code; each races against his own FTP, the results are shared with the group) ----------
