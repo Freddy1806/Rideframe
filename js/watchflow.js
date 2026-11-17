@@ -46,6 +46,13 @@ export const workouts = F => (F.setup.workouts || F.cfg.w || []).filter(w => w.i
 export const planItem = F => F.plan ? (workouts(F)[F.plan.w] || { it: [] }).it[F.plan.i] || null : null;
 /** start menu: the sport used last on top */
 export const homeItems = F => [F.last, ...Object.keys(HOME).filter(k => k !== F.last)];
+/** start menu: HOME_FIT rows fit on the round screen at once (all four entries); the first row shown, so the selection stays visible
+ *  if the list ever grows longer (then it scrolls page-wise and the scroll arc shows) */
+export const HOME_FIT = 4;
+/** its layout in screen fractions (watchsim DRAW / tapAt, garmin Draw.drawHome / FlowDelegate.onTap): logo y, first row y, row step
+ *  (= the touch target: 64 px on the 416 px screen), selected pill width and height, week points y */
+export const HOME_LAY = { logo: .12, y0: .27, dy: .155, w: .74, h: .13, pts: .87 };
+export const homeTop = (sel, n) => sel < HOME_FIT ? 0 : Math.min(sel - HOME_FIT + 1, n - HOME_FIT);
 export const restLeft = (F, now) => Math.max(0, Math.ceil(F.restEnd - now));
 export const volume = sets => sets.reduce((a, s) => a + s.kg * s.reps, 0);
 export const exCount = sets => sets.filter((s, i) => sets.findIndex(x => x.ex === s.ex) === i).length;

@@ -187,26 +187,26 @@ module Draw {
         txtL(dc, x0, y, Graphics.FONT_XTINY, "RIDE", P.fg);
         txtL(dc, x0 + wR, y, Graphics.FONT_XTINY, "FRAME", col);
     }
-    // the start menu: Run, Ride, Strength, More (the last used on top), the week points at the bottom
+    // the start menu (js/watchsim.js DRAW[SCR.HOME]): Run, Ride, Strength, More (the last used on top) all at once, the selected
+    // one as the orange pill, the week points below; rows at HOME_Y0 + r * HOME_DY (the tap table in FlowDelegate.onTap)
     function drawHome(dc as Dc, F as Flow, S as Number, P as Palette, sum) as Void {
-        var items = F.homeItems(), n = items.size(), c = S / 2;
-        logo(dc, S, S * 0.135, P.cKraft, P);
-        var offs = [-1, 0, 1] as Array<Number>, ys = [0.31, 0.5, 0.69] as Array<Float>; // the tap table in FlowDelegate.onTap
-        for (var r = 0; r < offs.size(); r++) {
-            var o = offs[r], y = S * ys[r], i = F.sel + o;
-            if (i < 0 || i >= n) { continue; }
-            var k = items[i], col = P.sport(k), lab = F.homeLabel(k);
-            if (o == 0) {
-                pill(dc, c, y, S * 0.8, S * 0.17, col);
-                icon(dc, k, S * 0.24, y, S * 0.1, P.ink);
-                txtL(dc, S * 0.32, y, Graphics.FONT_MEDIUM, fit(dc, lab, Graphics.FONT_MEDIUM, (S * 0.48).toNumber()), P.ink);
+        var items = F.homeItems(), n = items.size(), c = S / 2, top = F.homeTop(n);
+        logo(dc, S, S * 0.12, P.cKraft, P);
+        for (var r = 0; r < HOME_FIT; r++) {
+            var i = top + r;
+            if (i >= n) { break; }
+            var k = items[i], y = S * (HOME_Y0 + r * HOME_DY), lab = F.homeLabel(k);
+            if (i == F.sel) {
+                pill(dc, c, y, S * 0.74, S * 0.13, P.acc);
+                icon(dc, k, S * 0.25, y, S * 0.085, P.ink);
+                txtL(dc, S * 0.33, y, Graphics.FONT_MEDIUM, fit(dc, lab, Graphics.FONT_MEDIUM, (S * 0.45).toNumber()), P.ink);
             } else {
-                icon(dc, k, S * 0.27, y, S * 0.075, col);
-                txtL(dc, S * 0.34, y, Graphics.FONT_SMALL, fit(dc, lab, Graphics.FONT_SMALL, (S * 0.44).toNumber()), P.fg);
+                icon(dc, k, S * 0.25, y, S * 0.075, P.acc);
+                txtL(dc, S * 0.33, y, Graphics.FONT_SMALL, fit(dc, lab, Graphics.FONT_SMALL, (S * 0.45).toNumber()), P.fg);
             }
         }
-        if (sum instanceof Dictionary) { points(dc, S, P, sum as Dictionary, S * 0.855); }
-        scrollArc(dc, S, P, F.sel, n);
+        if (sum instanceof Dictionary) { points(dc, S, P, sum as Dictionary, S * 0.87); }
+        if (n > HOME_FIT) { scrollArc(dc, S, P, F.sel, n); }
         startHint(dc, S, P);
     }
     // "245 pts" and the change against last week (GET /api/watch/summary)

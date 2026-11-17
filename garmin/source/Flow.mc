@@ -28,6 +28,10 @@ const S_REC = 13;
 const S_PAUSE = 14;
 const S_RSUM = 15;
 const S_RPICK = 16;
+// the start menu (js/watchflow.js HOME_FIT, HOME_LAY): four rows at once; first row y, row step (= touch target) in screen fractions
+const HOME_FIT = 4;
+const HOME_Y0 = 0.27;
+const HOME_DY = 0.155;
 // events (js: the ev strings of handle())
 const E_UP = 1;
 const E_DOWN = 2;
@@ -306,6 +310,12 @@ class Flow {
         var r = [last] as Array<String>, k = homeKeys();
         for (var i = 0; i < k.size(); i++) { if (!k[i].equals(last)) { r.add(k[i]); } }
         return r;
+    }
+    // js: homeTop(sel, n): the first row shown (0 while all entries fit; a longer list keeps the selection on the last row)
+    function homeTop(n as Number) as Number {
+        if (sel < HOME_FIT) { return 0; }
+        var t = sel - HOME_FIT + 1, m = n - HOME_FIT;
+        return t < m ? t : m;
     }
     function homeLabel(k as String) as String {
         if (k.equals("run")) { return "Run"; }

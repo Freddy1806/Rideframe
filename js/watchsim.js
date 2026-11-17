@@ -4,7 +4,7 @@
 // 19.11.: the ready screen's Route choice: the paired watch's routes (Bearer), else the signed-in phone account's (X-RF-Token), else demo routes.
 // Drawn like the watch draws (dc.fillCircle / drawText / drawArc in garmin/source/Draw.mc), driven by the five buttons,
 // touch (tap, swipe) or the keyboard, with demo data or against the real API (tools/watch-api.mjs) after pairing.
-import { newFlow, handle, SCR, curEx, setNo, restLeft, clock, sent, paired, setSetup, setConfig, setRoute, setRoutes, routeFace, routeInfo, recPages, homeItems, listItems, workouts, planItem, HOME } from './watchflow.js';
+import { newFlow, handle, SCR, curEx, setNo, restLeft, clock, sent, paired, setSetup, setConfig, setRoute, setRoutes, routeFace, routeInfo, recPages, homeItems, listItems, workouts, planItem, HOME, HOME_FIT, HOME_LAY, homeTop } from './watchflow.js';
 import { compact, defaults, fieldText, labelOf, TOP } from './watchfields.js';
 import { groupOf } from './sports.js';
 import { MODES } from './theme.js';
@@ -165,16 +165,16 @@ const DRAW = {
   [SCR.PICK](g, S, C) { list(g, S, C, listItems(F), F.sel, 'EXERCISE', i => { const e = F.setup.ex[F.list[i]]; return e.s ? setTxt(e, e.s[0][0], e.s[0][1]) : 'New'; }); },
   [SCR.SMODE](g, S, C) { list(g, S, C, listItems(F), F.sel, 'STRENGTH', null, true); txt(g, F.sel ? 'Pick as you go' : `${workouts(F).length} from the phone`, S / 2, S * .81, S * .05, C.fg, { w: 700, max: S * .6 }); },
   [SCR.WPICK](g, S, C) { list(g, S, C, listItems(F), F.sel, 'WORKOUT', i => { const w = workouts(F)[i]; return `${w.it.length} exercises · ${w.it.reduce((a, x) => a + x[1], 0)} sets`; }); },
-  [SCR.HOME](g, S, C) {
-    const items = homeItems(F), rows = [[-1, .31], [0, .5], [1, .69]];
+  [SCR.HOME](g, S, C) { // all four entries at once (HOME_FIT rows), the selected one as the orange pill; the week points below
+    const items = homeItems(F), n = items.length, top = homeTop(F.sel, n), V = HOME_LAY;
     let w = txt(g, 'RIDE', 0, -99, S * .045, C.fg, { w: 900 }); const w2 = g.measureText('FRAME').width, x0 = S / 2 - (w + w2) / 2;
-    txt(g, 'RIDE', x0, S * .135, S * .045, C.fg, { al: 'left', w: 900 }); txt(g, 'FRAME', x0 + w, S * .135, S * .045, C.acc, { al: 'left', w: 900 });
-    for (const [o, y] of rows) { const i = F.sel + o; if (i < 0 || i >= items.length) continue; const k = items[i], col = C.sp[k === 'more' ? 'other' : k];
-      if (!o) { pill(g, S / 2, S * y, S * .8, S * .17, col); icon(g, SPORT_ICON[k], S * .24, S * y, S * .1, C.ink, 2.6); txt(g, HOME[k], S * .32, S * y + 1, S * .085, C.ink, { al: 'left', w: 900, max: S * .48 }); }
-      else { icon(g, SPORT_ICON[k], S * .27, S * y, S * .075, col, 2.4); txt(g, HOME[k], S * .34, S * y, S * .066, C.fg, { al: 'left', w: 800, max: S * .44 }); } }
-    if (sum && sum.pts != null) { const t = `${Math.round(sum.pts)} pts`, d = Math.round(sum.delta || 0), tw = txt(g, t, 0, -99, S * .055, C.fg, { w: 800 }), dw = d ? S * .07 + String(Math.abs(d)).length * S * .03 : 0, x = S / 2 - (tw + dw) / 2;
-      txt(g, t, x, S * .855, S * .055, C.fg, { al: 'left', w: 800 }); if (d) { tri(g, x + tw + S * .035, S * .855, S * .018, d > 0, C.good); txt(g, Math.abs(d), x + tw + S * .06, S * .855, S * .05, C.good, { al: 'left', w: 800 }); } }
-    scrollArc(g, S, C, F.sel, items.length); startHint(g, S, C);
+    txt(g, 'RIDE', x0, S * V.logo, S * .045, C.fg, { al: 'left', w: 900 }); txt(g, 'FRAME', x0 + w, S * V.logo, S * .045, C.acc, { al: 'left', w: 900 });
+    for (let r = 0; r < HOME_FIT; r++) { const i = top + r; if (i >= n) break; const k = items[i], y = S * (V.y0 + r * V.dy);
+      if (i === F.sel) { pill(g, S / 2, y, S * V.w, S * V.h, C.acc); icon(g, SPORT_ICON[k], S * .25, y, S * .085, C.ink, 2.6); txt(g, HOME[k], S * .33, y + 1, S * .075, C.ink, { al: 'left', w: 900, max: S * .45 }); }
+      else { icon(g, SPORT_ICON[k], S * .25, y, S * .075, C.acc, 2.4); txt(g, HOME[k], S * .33, y, S * .07, C.fg, { al: 'left', w: 800, max: S * .45 }); } }
+    if (sum && sum.pts != null) { const t = `${Math.round(sum.pts)} pts`, d = Math.round(sum.delta || 0), tw = txt(g, t, 0, -99, S * .05, C.fg, { w: 800 }), dw = d ? S * .07 + String(Math.abs(d)).length * S * .03 : 0, x = S / 2 - (tw + dw) / 2;
+      txt(g, t, x, S * V.pts, S * .05, C.fg, { al: 'left', w: 800 }); if (d) { tri(g, x + tw + S * .035, S * V.pts, S * .018, d > 0, C.good); txt(g, Math.abs(d), x + tw + S * .06, S * V.pts, S * .045, C.good, { al: 'left', w: 800 }); } }
+    if (n > HOME_FIT) scrollArc(g, S, C, F.sel, n); startHint(g, S, C);
   },
   [SCR.MORE](g, S, C) { C = tint(C, 'other'); const n = listItems(F).length; list(g, S, C, listItems(F), F.sel, 'MORE SPORTS', i => (MODES[groupOf(F.cfg.more[i][0])] || MODES.other).name);
     if (!n) { txt(g, 'Choose sports in the app:', S / 2, S * .62, S * .048, C.fg, { w: 700, max: S * .7 }); txt(g, 'Settings > Watch > More', S / 2, S * .69, S * .048, C.fg, { w: 700, max: S * .7 }); } },
@@ -395,7 +395,9 @@ function tapAt(u, v) {
   if (s === SCR.SET) { if (v > .72 && Math.abs(u - .5) < .24) return ev('start'); if (v > .36 && v < .72) return ev('focus', u < .51 ? 0 : 1); return; }
   if (s === SCR.READY && F.sp !== 'other' && v > .665 && v < .74) return ev('down'); // the route line
   const menu = [SCR.MENU, SCR.PAUSE, SCR.SMODE].includes(s), pick = [SCR.PICK, SCR.MORE, SCR.WPICK, SCR.RPICK].includes(s);
-  if (menu || pick || s === SCR.HOME) { const rows = s === SCR.HOME ? [[-1, .31], [0, .5], [1, .69]] : menu ? [[-1, .33], [0, .5], [1, .67]] : [[-2, .24], [-1, .345], [0, .5], [1, .7], [2, .8]];
+  if (s === SCR.HOME) { const n = listItems(F).length, r = Math.round((v - HOME_LAY.y0) / HOME_LAY.dy), i = homeTop(F.sel, n) + r; // the rows as DRAW[SCR.HOME] draws them
+    if (r >= 0 && r < HOME_FIT && i < n) ev('item', i); return; }
+  if (menu || pick) { const rows = menu ? [[-1, .33], [0, .5], [1, .67]] : [[-2, .24], [-1, .345], [0, .5], [1, .7], [2, .8]];
     const [o] = rows.reduce((a, r) => Math.abs(r[1] - v) < Math.abs(a[1] - v) ? r : a); const n = listItems(F).length, i = F.sel + o;
     if (i >= 0 && i < n) ev('item', i); return; }
   if (s === SCR.PAIR) { if (v > .4 && v < .6 && u > .13 && u < .87) return ev('focus', Math.min(5, Math.max(0, Math.floor((u - .146) / .118)))); return ev('tap'); }

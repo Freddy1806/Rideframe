@@ -82,11 +82,16 @@ class FlowDelegate extends WatchUi.BehaviorDelegate {
         }
         if (s == S_READY && !flow.sp.equals("other") && v > 0.665 && v < 0.74) { app.input(E_DOWN, null); return true; } // the route line
         var menu = s == S_MENU || s == S_PAUSE || s == S_SMODE, pick = s == S_PICK || s == S_MORE || s == S_WPICK || s == S_RPICK;
-        if (menu || pick || s == S_HOME) {
-            // [offset, y] of the rows as Draw.list / Draw.drawHome draw them
+        if (s == S_HOME) {
+            // the rows as Draw.drawHome draws them: row r at HOME_Y0 + r * HOME_DY, all four entries at once
+            var hr = ((v - HOME_Y0) / HOME_DY + 0.5).toNumber(), hn = flow.listItems().size(), hi = flow.homeTop(hn) + hr;
+            if (v >= HOME_Y0 - HOME_DY / 2 && hr < HOME_FIT && hi < hn) { app.input(E_ITEM, hi); }
+            return true;
+        }
+        if (menu || pick) {
+            // [offset, y] of the rows as Draw.list draws them
             var offs = [-2, -1, 0, 1, 2] as Array<Number>, ys = [0.24, 0.345, 0.5, 0.7, 0.8] as Array<Float>;
-            if (s == S_HOME) { offs = [-1, 0, 1] as Array<Number>; ys = [0.31, 0.5, 0.69] as Array<Float>; }
-            else if (menu) { offs = [-1, 0, 1] as Array<Number>; ys = [0.33, 0.5, 0.67] as Array<Float>; }
+            if (menu) { offs = [-1, 0, 1] as Array<Number>; ys = [0.33, 0.5, 0.67] as Array<Float>; }
             var best = 0;
             for (var i = 1; i < ys.size(); i++) { if ((ys[i] - v).abs() < (ys[best] - v).abs()) { best = i; } }
             var n = flow.listItems().size(), idx = flow.sel + offs[best];

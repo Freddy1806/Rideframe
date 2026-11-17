@@ -2,7 +2,7 @@
 // prefill, record detection, queue and retry. Usage: node --test tools/watchflow-test.mjs
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { newFlow, handle, SCR, MENU, curEx, setNo, restLeft, sent, paired, setSetup, clock, homeItems, listItems, recPages, routeInfo, setRoute, setRoutes, routeFace, routeNav, setConfig, order, planItem, LAP_M } from '../js/watchflow.js';
+import { newFlow, handle, SCR, MENU, curEx, setNo, restLeft, sent, paired, setSetup, clock, homeItems, HOME_FIT, HOME_LAY, homeTop, listItems, recPages, routeInfo, setRoute, setRoutes, routeFace, routeNav, setConfig, order, planItem, LAP_M } from '../js/watchflow.js';
 import { FIELDS, defaults, validate, compact, fieldText, zoneOf, MORE, TOP } from '../js/watchfields.js';
 
 const SETUP = { v: 1, unit: 'kg', rest: 90, ex: [
@@ -112,6 +112,16 @@ test('glance opens the app; new setup keeps the current exercise; clock', () => 
 const CFG = () => compact({ ...defaults(), more: ['Basketball', 'Yoga'], workouts: [{ id: 'w1', name: 'Push day', items: [{ ex: 'bench', sets: 2, reps: 6, kg: 85, rest: 120 }, { ex: 'curl', sets: 1, reps: 12, kg: 0, rest: 45 }, { ex: 'plank', sets: 1, reps: 60, kg: 0, rest: 0 }] }] });
 const fl = (o = {}) => newFlow({ ...structuredClone(SETUP), ex: [...structuredClone(SETUP.ex), { id: 'plank', n: 'Plank', t: 'time' }], top: ['squat', 'curl'], recent: ['pull'] }, { id: () => 'x' + (++n), cfg: CFG(), ...o });
 const move = (F, secs, v, x = {}, t0 = 2000) => { for (let i = 0; i < secs; i++) handle(F, 'sample', t0 + i, { v, hr: 150, cad: 170, pw: 240, up: .1, ...x }); return F; };
+test('start menu layout: all four rows at once, 64 px touch rows on 416 px, nothing outside the round screen', () => {
+  assert.equal(HOME_FIT, 4); for (let sel = 0; sel < 4; sel++) assert.equal(homeTop(sel, 4), 0, 'four entries never scroll');
+  assert.equal(homeTop(5, 7), 2, 'a longer list keeps the selection on the last row'); assert.equal(homeTop(6, 7), 3);
+  const L = HOME_LAY, r = L.h / 2, half = L.w / 2 - r; assert.ok(L.dy * 416 >= 64, `row step ${L.dy * 416} px`); assert.ok(L.h * 280 >= 32);
+  for (let i = 0; i < HOME_FIT; i++) { const y = L.y0 + i * L.dy - .5; // the pill: a rect with half-circle ends; its farthest point from the centre
+    assert.ok(Math.hypot(half, Math.abs(y)) + r <= .5 - .02, `row ${i} pill inside the circle`);
+    const yt = Math.abs(y) + r, hw = Math.sqrt(.25 - yt * yt); assert.ok(.25 - .045 >= .5 - hw && .33 + .45 <= .5 + hw, `row ${i}: icon and text inside the circle at the pill edge`); }
+  assert.ok(L.y0 - L.dy / 2 > L.logo + .02 && L.y0 + (HOME_FIT - .5) * L.dy < L.pts - .02, 'logo and week points clear of the rows');
+  const hp = Math.sqrt(.25 - (L.pts - .5 + .03) ** 2); assert.ok(hp * 2 > .5, 'the points line has room at its y');
+});
 test('start menu: run, ride, strength, more with the last used on top; BACK leaves the app', () => {
   const F = fl(); assert.equal(F.scr, SCR.HOME); assert.deepEqual(listItems(F), ['Run', 'Ride', 'Strength', 'More']);
   const G = fl({ last: 'kraft' }); assert.deepEqual(homeItems(G), ['kraft', 'run', 'ride', 'more']); go(G, ['start']); assert.equal(G.scr, SCR.START, 'Strength: its ready screen');
