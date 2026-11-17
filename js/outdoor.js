@@ -182,7 +182,7 @@ function render() {
     <section class="ptiles n${cfg().n}" id="oTiles">${tilesOf(curPage()).map((k, i) => `<button class="ptile" data-t="${i}"><span class="label">${M[k]?.l || k}</span><b data-k="${k}">–</b><small>${M[k]?.u || ''}</small></button>`).join('')}</section>
     ${pages().length > 1 ? `<div class="odots">${pages().map((_, i) => `<button data-pg="${i}" class="${i === (O.pg || 0) ? 'on' : ''}" aria-label="Page ${i + 1}"></button>`).join('')}</div>` : ''}
     <footer class="pfoot">${R.state === 'run' ? `<button class="btn ghost" id="oPause">Pause</button><button class="btn ghost" id="oLap">Lap</button><button class="btn ghost" id="oPocket" title="Screen goes black, recording continues">Lock</button>`
-      : `${R.state === 'ready' ? '<button class="btn ghost" id="oList">${W.acts}</button>' : ''}<button class="btn" id="oStart">${R.state === 'pause' ? 'Resume' : 'Start'}</button>${R.state === 'pause' ? '<button class="btn ghost" id="oEnd">Finish</button>' : ''}`}</footer>`;
+      : `${R.state === 'ready' ? `<button class="btn ghost" id="oList">${W.acts}</button>` : ''}<button class="btn" id="oStart">${R.state === 'pause' ? 'Resume' : 'Start'}</button>${R.state === 'pause' ? '<button class="btn ghost" id="oEnd">Finish</button>' : ''}`}</footer>`;
   initMap();
   const on = (id, f) => { const x = $(id); if (x) x.onclick = f; };
   on('#oStart', start); on('#oPause', pause); on('#oLap', lap); on('#oEnd', endSheet); on('#oList', () => { view = 'list'; render(); }); on('#oSet', settingsSheet);

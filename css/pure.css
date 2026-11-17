@@ -60,7 +60,10 @@ body.pure { overflow: hidden; height: 100dvh; }
 .pflash.on { opacity: 1; transform: translate(-50%, 0); }
 
 .psheet { position: fixed; inset: 0; background: rgba(0,0,0,.6); display: flex; align-items: flex-end; justify-content: center; z-index: 50; }
-.psheetin { width: 100%; max-width: 560px; max-height: 88dvh; overflow-y: auto; background: var(--ink-2); border-top: 1px solid var(--line-2); border-radius: 16px 16px 0 0;
+/* an open sheet owns the scrolling: the page behind must not move with it */
+html:has(.psheet), body:has(.psheet) { overflow: hidden !important; }
+.psheet { overscroll-behavior: contain; }
+.psheetin { width: 100%; max-width: 560px; max-height: 88dvh; overflow-y: auto; overscroll-behavior: contain; background: var(--ink-2); border-top: 1px solid var(--line-2); border-radius: 16px 16px 0 0;
   padding: 18px 16px calc(env(safe-area-inset-bottom) + 16px); display: flex; flex-direction: column; gap: 10px; }
 .psheetin input[type=number], .psheetin select { height: 52px; border-radius: 8px; background: var(--ink-3); border: 1px solid var(--line-2); padding: 0 14px; font-size: 22px; font-weight: 800; width: 100%; color: var(--paper); }
 .psheetin input:focus, .psheetin select:focus { outline: none; border-color: var(--accent); }
