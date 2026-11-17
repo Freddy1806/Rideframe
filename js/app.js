@@ -85,6 +85,7 @@ async function boot() {
     }
     if (!state.settings.profileDone && !params.has('noprofile') && v !== 'ride') profileModal();
     else if (params.get('join')) groupModal({ code: params.get('join'), startRide });
+    else if (/^[0-9a-f]{12}$/.test(params.get('live') || '')) liveJoinById(params.get('live')); /* "Copy link" on the phone's "Riding now" */
   })();
   db.persist();
   showVersion();
@@ -152,6 +153,7 @@ function library() {
   const routes = allRoutes();
   main.innerHTML = `
   <section class="view">
+    <div id="live" class="live" aria-live="polite"></div>
     <div class="view-head">
       <div>
         <div class="label">Library</div>
@@ -179,6 +181,48 @@ function library() {
   main.querySelectorAll('[data-wgo]').forEach(b => b.onclick = () => { state.settings.workout = b.dataset.wgo; saveSettings(); startRide(routeById('kueste60') ? 'kueste60' : 'demo'); });
   main.querySelectorAll('[data-wtab]').forEach(b => b.onclick = () => go('training'));
   showBoard();
+  showLive();
+}
+
+/* "Riding now" (owner 17.11.: "he is online, I can just join"): friends in a 3D ride right now, one tap on Join (js/live.js, tools/live-api.mjs) */
+let liveRiders = [];
+async function showLive() {
+  if (!account()) return;
+  const el = $('#live'), hint = $('#liveHint'), host = el || hint; if (!host) return;
+  const [live, prof] = await Promise.all([import('./live.js'), el ? import('./profiles.js').catch(() => null) : null]);
+  const draw = async () => {
+    const rs = await live.ridingNow(); if (rs === null) return; liveRiders = rs;
+    if (el?.isConnected) { live.showStrip(el, rs, { face: prof?.faceImg, have: r => !!routeById(r.routeId) }); if (prof) prof.fillFaces(el); wireLive(el); }
+    if (hint?.isConnected) { const here = rs.filter(r => r.routeId === hint.dataset.route);
+      hint.innerHTML = here.slice(0, 3).map(r => `<div class="livehint" data-sid="${esc(r.id)}"><i class="lvdot" aria-hidden="true"></i><span><b>${esc(r.name)}</b> is riding this now · ${live.progress(r)}</span><button class="btn small lvjoin" type="button">Join</button></div>`).join('');
+      hint.hidden = !here.length; wireLive(hint); }
+  };
+  live.every15(host, draw);
+}
+function wireLive(root) {
+  root.querySelectorAll('.lvjoin').forEach(b => b.onclick = e => { e.stopPropagation(); const r = liveRiders.find(x => x.id === b.closest('[data-sid]')?.dataset.sid); if (r) liveJoin(r); });
+}
+/** Join: a group is open (and he lets friends in) = straight into the group with its code, else ask him and wait (max. 45 s) */
+async function liveJoin(r) {
+  if (r.code) return groupModal({ code: r.code, startRide });
+  const live = await import('./live.js'), ac = new AbortController();
+  const m = document.createElement('div'); m.className = 'modal'; m.id = 'liveAsk';
+  m.innerHTML = `<div class="box lvask"><div class="label"><i class="lvdot" aria-hidden="true"></i>Riding now · ${esc(r.routeName)}</div><h2 class="display">Asking ${esc(r.name)}<br>to let you in …</h2>
+    <p>${r.ask ? `${esc(r.name)} gets a short question in the ride and taps Accept.` : `${esc(r.name)}'s ride opens a group for you. You start right next to ${esc(r.name)}.`} This takes a few seconds.</p>
+    <div class="lvwait"><i></i></div><div class="actions"><button class="btn ghost" id="laCancel">Cancel</button></div></div>`;
+  document.body.append(m);
+  m.querySelector('#laCancel').onclick = () => { ac.abort(); m.remove(); };
+  const res = await live.askToJoin(r, { signal: ac.signal });
+  if (!m.isConnected || res.state === 'cancelled') return;
+  if (res.state === 'ready' && res.code) { m.remove(); return groupModal({ code: res.code, startRide }); }
+  const [h, p] = live.askResult(res);
+  m.querySelector('.box').innerHTML = `<div class="label">Riding now</div><h2 class="display" id="laMsg">${h}</h2><p>${p}</p><div class="actions"><button class="btn" id="laOk">OK</button></div>`;
+  m.querySelector('#laOk').onclick = () => m.remove();
+}
+async function liveJoinById(id) {
+  if (!account()) return toast('Sign in to join your friend.', 4000);
+  const rs = await (await import('./live.js')).ridingNow(), r = rs?.find(x => x.id === id);
+  if (r) liveJoin(r); else toast('Your friend is not riding any more.', 4000);
 }
 
 /* friends leaderboard: every account on this host, this week (Monday to Sunday) */
@@ -256,6 +300,7 @@ function detail(id) {
           <div><div class="label">${r.source === 'demo' ? 'Approx. time' : 'Video'}</div><div class="v">${fmtTime(t.duration)}</div></div>
           <div><div class="label">Rides</div><div class="v">${rides.length}</div></div>
         </div>
+        <div id="liveHint" class="livehints" data-route="${esc(id)}" hidden></div>
         <div class="row-actions">
           <button class="btn" id="rideBtn">Ride ▸</button>
           <button class="btn ghost" id="groupBtn">Ride together</button>
@@ -330,6 +375,7 @@ function detail(id) {
   main.querySelectorAll('.share').forEach(b => b.onclick = () => shareRide(rides.find(r => r.id === b.dataset.id)));
   $('#ghostSel').onchange = e => { state.settings.ghost = e.target.value; saveSettings(); };
   $('#rideBtn').onclick = () => startRide(id);
+  showLive();
   const prof = $('#detailProfile');
   requestAnimationFrame(() => drawDetailProfile(prof, t));
   if ($('#renameBtn')) $('#renameBtn').onclick = async () => {
@@ -499,6 +545,11 @@ function settings() {
         <label class="field"><div>Push-to-Talk<div class="hint">Off = open mic, key T mutes. On = you are only heard while you hold T (or the “Mic” button).</div></div><input type="checkbox" class="toggle" id="voicePtt" ${s.voicePtt ? 'checked' : ''}></label>
         <label class="field"><div>Volume of the others <b id="voiceVolV">${s.voiceVol ?? 100}%</b><div class="hint">How loud you hear your friends. The music gets quieter while someone speaks.</div></div><input type="range" id="voiceVol" min="0" max="100" step="5" value="${s.voiceVol ?? 100}"></label>
       </div>
+      <div class="panel" id="livePanel"><h3>Riding now</h3>
+        <label class="field"><div>Show me when I ride<div class="hint">Friends with an account on this RIDEFRAME see you in “Riding now” while you are in a ride: route and kilometre, never your watts.</div></div><input type="checkbox" class="toggle" id="liveShow" ${s.liveShow !== false ? 'checked' : ''}></label>
+        <label class="field"><div>Friends can join me without asking<div class="hint">Their Join opens a group in your ride by itself and they start right next to you. Off = a short question in the ride first (Accept / Not now, controller A / B).</div></div><input type="checkbox" class="toggle" id="liveAuto" ${s.liveAuto !== false ? 'checked' : ''}></label>
+        ${account() ? '' : '<div class="hint" style="padding-top:10px">Needs an account: sign in at the top right.</div>'}
+      </div>
       <div class="panel"><h3>Your rider</h3>
         <div class="field"><div>Look<div class="hint">Type, height, build, face, hair, outfits (including 80s and really funny ones) and shoes. Your friends see it when riding together, you see it in the chase camera (key V).</div></div><button class="btn ghost small" id="lookBtn">Design rider</button></div>
       </div>
@@ -547,6 +598,8 @@ function settings() {
     off.onclick = async () => { await om.forgetOwnMusic(); off.hidden = true; v.textContent = 'No own folder, the game music plays.'; };
   });
   $('#cockpit').onchange = e => { s.cockpit = e.target.checked; saveSettings(); };
+  $('#liveShow').onchange = e => { s.liveShow = e.target.checked; saveSettings(); };
+  $('#liveAuto').onchange = e => { s.liveAuto = e.target.checked; saveSettings(); };
   $('#together').onchange = e => { s.together = e.target.checked; saveSettings(); };
   { const pv = $('#poseV'), cal = async which => { // 3-2-1, then 2.5 s of that posture in front of the camera
       const m = await import('./posecam.js'); const pc = new m.PoseCam(s.poseCalib || null);

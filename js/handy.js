@@ -17,6 +17,7 @@ async function load() {
   applyTheme(S, null);
   D = await loadActs(); rides = D.acts.filter(a => !a.kraft); kraft = D.acts.filter(a => a.kraft); // one loader for all sports (feed.js)
   try { acc = (await import('./account.js')).account(); } catch {}
+  if (acc && !load.prefs) { load.prefs = true; import('./live.js').then(l => l.getPrefs()).then(p => { S.liveShow = p.show; S.liveAuto = p.auto; }).catch(() => {}); } // the account's switches, so a later save keeps them
 }
 
 function render() {
@@ -25,6 +26,7 @@ function render() {
   el.innerHTML = `<header class="ptop"><div class="pbrand" style="font-size:22px">RIDE<span>FRAME</span></div>
       <button class="ppill ${acc ? 'on' : ''}" id="hAcc"><i></i><span class="pname">${acc ? esc(acc.name) : 'Sign in'}</span></button>
       <button class="pgear" id="hSet" title="Settings" aria-label="Settings">${icon('gear', 'gico')}</button></header>
+    <div id="hLive" class="live"></div>
     ${installEvt && !window.__rfNative ? `<button class="btn ghost" id="hInstall">Install as app</button>` : ''}
     <section class="hweek"><div class="hwhead"><span class="label">This week</span><span class="wdl">▲▼ vs last week</span></div><div class="kstats">
       ${weekStat(nb(R2.cur), nb(R2.prev), 'Rides')}${weekStat(nr(R2.cur), nr(R2.prev), 'Runs')}${weekStat(km(R2.cur), km(R2.prev), 'km')}${weekStat(K2.cur.length, K2.prev.length, 'Strength')}</div></section>
@@ -33,9 +35,24 @@ function render() {
   wireRows(el, D, async () => { await load(); render(); });
   $('#hAcc').onclick = async () => { const a = await import('./account.js'); await a.accountModal({ settings: S }, async () => { await load(); render(); }); };
   $('#hSet').onclick = settings;
+  liveStrip();
   const ib = $('#hInstall'); if (ib) ib.onclick = async () => { installEvt.prompt(); await installEvt.userChoice.catch(() => {}); installEvt = null; render(); };
 }
-async function save() { const st = (await db.kvGet('settings').catch(() => null)) || {}; Object.assign(st, { theme: S.theme, modeColors: S.modeColors, accent: S.accent, autoStrava: S.autoStrava, stravaImport: S.stravaImport, kraftRest: S.kraftRest }); await db.kvSet('settings', st).catch(() => {});
+/* "Riding now" (17.11.): who rides right now, read-only here (the 3D ride is on the laptop): "Join on your laptop" + Copy link */
+let liveRs = [], liveStop = null;
+function liveStrip() {
+  const el = $('#hLive'); if (!el || !acc) return;
+  const keep = liveRs.length ? liveRs : null; // a re-render keeps the cards without a jump
+  import('./live.js').then(live => {
+    const draw = async () => { const rs = await live.ridingNow(); if (rs === null || !el.isConnected) return; liveRs = rs; live.showStrip(el, rs, { phone: true }); wire(); };
+    const wire = () => el.querySelectorAll('.lvcopy').forEach(b => b.onclick = async () => { const r = liveRs.find(x => x.id === b.closest('[data-sid]')?.dataset.sid); if (!r) return;
+      const link = live.joinLink(r); try { await navigator.clipboard.writeText(link); b.textContent = 'Copied ✓'; } catch { b.textContent = 'Copy failed'; prompt('Open this link on your laptop:', link); }
+      setTimeout(() => { if (b.isConnected) b.textContent = 'Copy link'; }, 2500); });
+    if (keep) { live.showStrip(el, keep, { phone: true }); el.classList.add('on'); wire(); }
+    liveStop?.(); liveStop = live.every15(el, draw);
+  }).catch(() => {});
+}
+async function save() { const st = (await db.kvGet('settings').catch(() => null)) || {}; Object.assign(st, { theme: S.theme, modeColors: S.modeColors, accent: S.accent, autoStrava: S.autoStrava, stravaImport: S.stravaImport, kraftRest: S.kraftRest, liveShow: S.liveShow, liveAuto: S.liveAuto }); await db.kvSet('settings', st).catch(() => {});
   import('./account.js').then(a => a.settingsChanged?.(st)).catch(() => {}); } // to the account too: the watch reads the rest time from there
 function settings() {
   const s = document.createElement('div'); s.className = 'psheet'; document.body.append(s);
@@ -51,6 +68,11 @@ function settings() {
       <label class="prow" id="tImpRow" hidden>Import my Strava activities automatically<input id="tImp" type="checkbox" class="toggle" ${S.stravaImport !== false ? 'checked' : ''}></label>
       <p class="hint" id="tImpHint" hidden>Reconnect Strava to import your activities.</p>
       <h3 class="ksec">Strength: rest between sets</h3><div class="pseg" id="tRest">${[60, 90, 120, 180].map(n => `<button data-rest="${n}" class="${(+S.kraftRest || 90) === n ? 'on' : ''}">${n < 120 ? n + ' s' : n / 60 + ' min'}</button>`).join('')}</div>
+      <h3 class="ksec">Riding now</h3>
+      ${acc ? `<label class="prow">Show me when I ride<input id="tLive" type="checkbox" class="toggle" ${S.liveShow !== false ? 'checked' : ''}></label>
+      <label class="prow">Friends can join me without asking<input id="tLiveAuto" type="checkbox" class="toggle" ${S.liveAuto !== false ? 'checked' : ''}></label>
+      <p class="phint" id="tLiveHint">Friends see your route and kilometre while you ride in the 3D world. Off for joining = a short question in the ride first. Applies on every device.</p>`
+      : '<p class="phint">Sign in to see which friends are riding right now and to show up for them.</p>'}
       <h3 class="ksec">Devices</h3>
       <p class="phint">For indoor rides, the smart trainer, heart rate strap and Zwift Click connect on the Indoor page (Indoor trainer → Sensors). Bluetooth does not carry over from page to page, so connect them there.</p>
       <a class="hrow hlink" href="pure.html#sensors" id="tDev"><div><b>Indoor trainer: Sensors</b><small>Trainer, heart rate, Zwift Click</small></div><i>›</i></a>
@@ -69,6 +91,12 @@ function settings() {
         if (x.connected && x.canImport) { b.textContent = 'Connected ✓'; b.disabled = true; } else if (x.connected) b.textContent = 'Reconnect'; };
       b.onclick = async () => { const re = !!st.connected; b.textContent = 'Waiting …'; const ok = await m.stravaConnect(re); b.textContent = re ? 'Reconnect' : 'Connect'; if (ok) show(await m.stravaStatus()); };
       show(await m.stravaStatus()); });
+    const liveSet = async (k, v) => { S[k === 'show' ? 'liveShow' : 'liveAuto'] = v; // only here and on the server (the account's settings file), never the whole phone settings over the laptop's
+      db.kvGet('settings').then(st => db.kvSet('settings', { ...(st || {}), liveShow: S.liveShow, liveAuto: S.liveAuto })).catch(() => {});
+      try { const l = await import('./live.js'), p = await l.putPrefs({ [k]: v }); S.liveShow = p.show; S.liveAuto = p.auto; } catch { const h = $('#tLiveHint', s); if (h) h.textContent = 'Not saved on the server. Check your connection.'; } };
+    $('#tLive', s)?.addEventListener('change', e => liveSet('show', e.target.checked));
+    $('#tLiveAuto', s)?.addEventListener('change', e => liveSet('auto', e.target.checked));
+    if (acc && !draw.synced) { draw.synced = true; import('./live.js').then(l => l.getPrefs()).then(p => { if (S.liveShow === p.show && S.liveAuto === p.auto) return; S.liveShow = p.show; S.liveAuto = p.auto; if (s.isConnected) draw(); }).catch(() => {}); }
     s.querySelectorAll('[data-rest]').forEach(b => b.onclick = () => { S.kraftRest = +b.dataset.rest; save(); draw(); });
     s.querySelectorAll('[data-th]').forEach(b => b.onclick = () => { S.theme = b.dataset.th; applyTheme(S, null); save(); draw(); });
     $('#tMc', s).onchange = e => { S.modeColors = e.target.checked; save(); draw(); render(); };

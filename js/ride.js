@@ -190,6 +190,7 @@ export class RideSession {
     this._initStory();
     if (!this.group) this.player?.events?.surprises?.startArch?.(this.d + 14); // ride off under the START arch
     this.running = true; this.last = performance.now();
+    this._startPresence();
     this._updateHUD(true);
     if (!this.autopilot) await this._countdown();
     this.last = performance.now();
@@ -364,6 +365,7 @@ export class RideSession {
     this.padPrev = b;
     if (!this.padSeen) { this.padSeen = true; this._flash('🎮 Controller ready · Start = pause · L/R = shift'); }
     const hit = i => b[i] && !was[i];
+    if (this._ask && (hit(0) || hit(1))) { this._ask.answer(hit(0)); return; } // "Freddy wants to join you": A = accept, B = not now
     if (hit(9) || hit(16)) { this.paused ? this._resume() : this._pause(); return; } // Start or Home: pause menu
     if (this.paused) { // menu navigation like on a console
       if (hit(12) || hit(14)) this._padFocus((this._padI || 0) - 1);
@@ -867,9 +869,9 @@ export class RideSession {
     s.musicVol = m.on ? 0 : (s.musicVolOn || 0.45); if (m.on) s.musicVolOn = m.vol;
     m.setVolume(s.musicVol); this._flash(m.on ? '♫ ' + m.title() : 'Music off'); import('./app.js').then(x => x.saveSettings());
   }
-  _flash(text) {
+  _flash(text, ms = 1600) {
     let f = this.q('#hFlash'); if (!f) { f = document.createElement('div'); f.id = 'hFlash'; f.className = 'flash glass'; this.el.append(f); }
-    f.textContent = text; f.classList.add('on'); clearTimeout(this._flashT); this._flashT = setTimeout(() => f.classList.remove('on'), 1600);
+    f.textContent = text; f.classList.add('on'); clearTimeout(this._flashT); this._flashT = setTimeout(() => f.classList.remove('on'), ms);
   }
 
   _pause() {
@@ -922,19 +924,61 @@ export class RideSession {
   /** pause menu "Gruppe öffnen" (Freddy 15.11.): this solo ride becomes a group ride, friends join with the code and start next to you */
   async _openGroup() {
     const box = this.q('#pauseOverlay .box'); if (box) box.innerHTML = '<div class="label">Group</div><h2 class="display">Opening …</h2>';
-    let g; try { g = await (await import('./share.js')).hostFromRide(this.route.id); }
+    let g; try { g = await this._hostGroup(); }
     catch (e) { this._flash('Group failed: ' + (e.message || e)); return this._pause(); }
-    this.group = g; this.laps = Math.max(this.laps, this.lap); // from now on a group ride: everyone rides the same d (no more planned extra laps)
-    const right = this.q('.hud-right'), gear = this.q('#hGearChip');
-    if (right && !this.q('#hGroup')) { gear.insertAdjacentHTML('beforebegin', `<div class="chip glass groupchip" id="hGroup"><div class="label">Group <button class="gcode" id="hGCode" title="Code for friends: click to copy the invite link">${esc(g.code)}</button></div><div class="glist">waiting …</div></div>`);
-      this.q('#hMusic')?.insertAdjacentHTML('beforebegin', `<button class="chip glass camchip voicechip" id="hVoice" title="Voice chat on: you hear each other"><div class="label">Voice</div><div class="v">${MIC_SVG}</div></button>`);
-      this._wireVoice(); this._wireGroupChip(); }
     if (box) { box.innerHTML = `<div class="label">Group open</div><h2 class="display" style="letter-spacing:.12em">${esc(g.code)}</h2>
       <p style="margin:6px 0 14px;opacity:.85">Friends tap “Ride together” in RIDEFRAME and enter the code, or open the link. They start right next to you.</p>
       <div class="row-actions padmenu"><button class="btn" id="pgOn">Ride on</button><button class="btn ghost" id="pgLink">Copy link</button></div>`;
       box.querySelector('#pgOn').onclick = () => this._resume();
       box.querySelector('#pgLink').onclick = e => navigator.clipboard?.writeText(g.link).then(() => { e.target.textContent = 'Link copied ✓'; }, () => { e.target.textContent = g.link; });
       this._padFocus(0); }
+  }
+  /** the solo ride becomes a group ride (hostFromRide), the ride itself goes on: from the pause menu and, without pausing,
+   *  in the background when a friend taps Join in "Riding now" (js/live.js). Two requests at once open one group. */
+  _hostGroup() {
+    if (this.group?.open) return Promise.resolve(this.group);
+    return this._hosting ||= (async () => {
+      const g = await (await import('./share.js')).hostFromRide(this.route.id);
+      if (this._closed) return g;
+      this.group = g; this.laps = Math.max(this.laps, this.lap); // from now on a group ride: everyone rides the same d (no more planned extra laps)
+      const right = this.q('.hud-right'), gear = this.q('#hGearChip');
+      if (right && !this.q('#hGroup')) { gear.insertAdjacentHTML('beforebegin', `<div class="chip glass groupchip" id="hGroup"><div class="label">Group <button class="gcode" id="hGCode" title="Code for friends: click to copy the invite link">${esc(g.code)}</button></div><div class="glist">waiting …</div></div>`);
+        this.q('#hMusic')?.insertAdjacentHTML('beforebegin', `<button class="chip glass camchip voicechip" id="hVoice" title="Voice chat on: you hear each other"><div class="label">Voice</div><div class="v">${MIC_SVG}</div></button>`);
+        this._wireVoice(); this._wireGroupChip(); }
+      this.presence?.beat(); // the code goes to "Riding now" right away
+      return g;
+    })().finally(() => { this._hosting = null; });
+  }
+  /** "Riding now" (js/live.js): signed-in riders show up for their friends while they ride; never in the autopilot / screenshot ride */
+  _startPresence() {
+    if (this.autopilot || this.presence) return;
+    import('./live.js').then(m => { if (this._closed || this.finished) return;
+      this.presence = new m.Presence({ info: () => ({ routeId: this.route.id, routeName: this.route.name, d: this.d, len: this.track.length, code: this.group?.open ? this.group.code : null }),
+        alive: () => !this._closed && !this.finished && this.state.settings.liveShow !== false, onRequest: r => this._joinRequest(r) });
+      if (!this.presence.start()) this.presence = null; }).catch(() => {});
+  }
+  /** a friend tapped Join: with "Friends can join me without asking" (default) the group opens in the background, else a small
+   *  question in the HUD (Accept / Not now, pad A / B). One question at a time; the friend waits at most 45 s. */
+  _joinRequest(r) {
+    this._askQ = (this._askQ || Promise.resolve()).then(async () => {
+      const p = this.presence; if (!p) return;
+      if (this.finished || this._closed) return p.answer(r.id, false);
+      if (!r.auto && !(await this._askJoin(r.from))) return p.answer(r.id, false);
+      try { await this._hostGroup(); } catch (e) { this._flash('Group failed: ' + (e.message || e), 3000); return p.answer(r.id, false); }
+      p.answer(r.id, true); this._flash(`${r.from} is joining you`, 3500);
+    }).catch(() => {});
+  }
+  _askJoin(name) {
+    return new Promise(done => {
+      const c = document.createElement('div'); c.className = 'joinask glass'; c.id = 'hJoinAsk';
+      c.innerHTML = `<div class="label">Riding now</div><div class="jqt"><b>${esc(name)}</b> wants to join you</div>
+        <div class="jqbtns"><button class="btn small" id="jqYes">Accept</button><button class="btn ghost small" id="jqNo">Not now</button></div><div class="jqpad">🎮 A accept · B not now</div>`;
+      this.el.append(c);
+      const answer = ok => { if (!this._ask) return; this._ask = null; clearTimeout(t); c.classList.add('out'); setTimeout(() => c.remove(), 250); done(ok); };
+      const t = setTimeout(() => answer(false), 40e3); // the friend gives up after 45 s anyway
+      this._ask = { answer };
+      c.querySelector('#jqYes').onclick = () => answer(true); c.querySelector('#jqNo').onclick = () => answer(false);
+    });
   }
   /** the group chip: the code copies the link, a click on a rider jumps to him */
   _wireGroupChip() {
@@ -1102,6 +1146,7 @@ export class RideSession {
   }
 
   _summary(rec, prev, note) {
+    this.presence?.stop(); this._ask?.answer(false); // the ride is over: off the "Riding now" list
     const pb = prev && (!prev.length || rec.duration < prev[0].duration);
     const rank = prev ? prev.filter(r => r.duration < rec.duration).length + 1 : 0;
     const delta = prev?.length ? rec.duration - prev[0].duration : 0;
@@ -1158,7 +1203,7 @@ export class RideSession {
   }
 
   _close(saved) {
-    this._closed = true; this.pose?.stop(); this._clickOff?.();
+    this._closed = true; this.pose?.stop(); this._clickOff?.(); this.presence?.stop(); this._ask?.answer(false);
     this.running = false; this.ue?.close(); this.state.trainer.setPower?.(null); this.music?.destroy();
     if (this.group?.voice) { this.group.voice.stop(); this.group.voice = null; } // ride over: microphone off, indicator off
     if (this._voiceUI) window.removeEventListener('rf-voicechange', this._voiceUI);

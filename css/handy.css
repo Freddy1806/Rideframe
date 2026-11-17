@@ -74,3 +74,14 @@ button.wcrow { width: 100%; text-align: left; color: inherit; }
 .wcexl { display: flex; flex-direction: column; gap: 4px; } .wcex { display: flex; justify-content: space-between; align-items: center; gap: 10px; min-height: 46px; padding: 6px 12px; border-radius: 8px; background: var(--ink-3); border: 1px solid var(--line-2); text-align: left; }
 .wcex b { font-size: 15px; min-width: 0; overflow-wrap: anywhere; } .wcex small { font-size: 11px; color: var(--muted); font-weight: 700; white-space: nowrap; } .wcex[hidden], .wcexl [hidden] { display: none; }
 @media (max-width: 360px) { .wcmv button { width: 30px; } .wcslot b { font-size: 15px; } }
+/* "Riding now" on the phone (js/live.js): read-only, "Join on your laptop" + Copy link */
+#handy .live:empty { display: none; }
+#handy .live-in { padding-bottom: 0; }
+#handy .live-head { margin-bottom: 8px; }
+#handy .lvgrid { gap: 10px; }
+#handy .lvcard { flex-wrap: wrap; gap: 12px; padding: 12px 14px; border-radius: 14px; }
+#handy .lvface { width: 44px; height: 44px; }
+#handy .lvname { font-size: 17px; }
+#handy .lvact { flex: 1 1 100%; display: flex; align-items: center; justify-content: space-between; gap: 10px; padding-top: 10px; border-top: 1px solid var(--line); }
+#handy .lvact .lvhint { min-width: 0; }
+#handy .lvact .btn { flex: none; height: 38px; padding: 0 16px; font-size: 13px; white-space: nowrap; }

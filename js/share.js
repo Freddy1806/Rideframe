@@ -6,10 +6,11 @@ import { Group, lastGroup, rejoinAt } from './group.js';
 import { Voice, voiceStatus, MIC_SVG, SPK_SVG } from './voice.js';
 import { cleanLook } from './look.js';
 import { esc, fmtTime, fmtKm } from './util.js';
+import { account } from './account.js';
 
 // ---------- name ----------
 export function riderName(ask = true) {
-  let n = state.settings.riderName;
+  let n = state.settings.riderName || account()?.name || ''; // signed in: the account name, as in "Riding now"
   if (!n && ask) { try { n = (prompt('Your name (others see it when riding together)', '') || '').trim().slice(0, 20); } catch { n = ''; } if (n) { state.settings.riderName = n; saveSettings(); } }
   return n || 'Rider';
 }
@@ -97,7 +98,7 @@ export function groupModal({ routeId = null, code = null, startRide }) {
     if (!g) {
       m.innerHTML = `<div class="box"><div class="label">Ride together</div><h2 class="display">Live with<br>friends</h2>
         <p>Everyone rides at home on their own trainer. You see each other on the route and the gap in metres. You both need RIDEFRAME and internet.</p>
-        <label class="field"><div style="min-width:110px;white-space:nowrap">Your name</div><input type="text" id="gName" maxlength="20" placeholder="Name" value="${esc(state.settings.riderName || '')}"></label>
+        <label class="field"><div style="min-width:110px;white-space:nowrap">Your name</div><input type="text" id="gName" maxlength="20" placeholder="Name" value="${esc(state.settings.riderName || account()?.name || '')}"></label>
         <div class="actions" style="justify-content:flex-start;gap:10px;flex-wrap:wrap">
           <button class="btn" id="gHost">Create group</button>
           <input type="text" id="gCode" placeholder="Code" maxlength="5" style="width:120px;height:48px;text-transform:lowercase;text-align:center;letter-spacing:.15em" value="${esc(code || '')}">
@@ -110,7 +111,7 @@ export function groupModal({ routeId = null, code = null, startRide }) {
       const go = async opts => {
         const nn = (m.querySelector('#gName')?.value || '').trim().slice(0, 20);
         if (nn && nn !== state.settings.riderName) { state.settings.riderName = nn; saveSettings(); }
-        name = nn || state.settings.riderName || 'Rider';
+        name = nn || riderName(false);
         m.querySelector('#gMsg').textContent = 'Connecting …';
         const g2 = new Group({ name, look: state.settings.look, ...opts, onChange: () => render(), onError: msg => { const el = m.querySelector('#gMsg'); if (el) el.textContent = msg; else toast(msg, 5000); },
           onStart: ({ routeId: rid, at, d }) => { const r = routeById(rid); if (!r) return toast("You don't have this route."); close(); const own = rejoinAt(g2.code, rid, null), dd = own ?? d, el = own != null ? lastGroup()?.el || 0 : 0; setTimeout(() => startRide(rid, { group: g2, ...(dd ? { at: dd } : {}), elapsed0: el, catchUp: own == null }), Math.max(0, at - Date.now())); toast('Starting in a moment!', 3000); } });
