@@ -85,11 +85,11 @@ export async function stravaButton(btn, rec, name, eleAt, makeImage = null) {
   }
 }
 
-/** the intervals (workout steps or climbs) as lines for the Strava description: name · time · average watts (target) */
+/** the intervals (workout steps or climbs) as lines for the Strava description: name · time · the watts actually ridden (no targets: Freddy 17.11.) */
 function intervalText(rec) {
   const iv = rec.ivs; if (!iv?.length) return '';
   const mm = t => `${Math.floor(t / 60)}:${String(Math.round(t % 60)).padStart(2, '0')}`;
-  return '\n\nIntervals:\n' + iv.map((x, i) => `${i + 1}. ${x.name} · ${mm(x.t)} · avg ${x.w} W${x.target ? ` (target ${x.target} W)` : ''}`).join('\n');
+  return '\n\nIntervals:\n' + iv.map((x, i) => `${i + 1}. ${x.name} · ${mm(x.t)} · avg ${x.w} W`).join('\n');
 }
 
 /** a strength workout as a manual Strava activity (Krafttraining, no file). Returns the activity URL.
