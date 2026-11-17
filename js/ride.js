@@ -753,19 +753,19 @@ export class RideSession {
       const sp = this._sensors().pw; // no power source: "–", no verdict
       const z = free || w.ramp || sp !== 'ok' ? '' : pShow < w.lo ? 'lo' : pShow > w.hi ? 'hi' : 'ok';
       q('#hWStep').textContent = w.step.label || 'Block';
-      q('#hWOf').textContent = hard ? `interval ${w.hardNo} of ${w.hardCount}` : w.ramp === 'in' ? 'ramp up' : w.ramp === 'out' ? 'ramp down' : '';
+      q('#hWOf').textContent = hard ? `${/^opener/i.test(w.series) ? 'opener' : 'interval'} ${w.hardNo} of ${w.hardCount}` : w.ramp === 'in' ? 'ramp up' : w.ramp === 'out' ? 'ramp down' : w.ramp === 'step' ? `ramp to ${w.rampTo} W` : '';
       q('#hWT').textContent = w.target;
       q('#hWP').textContent = sp === 'ok' ? pShow : '–'; q('#hWRc').hidden = sp !== 'lost';
       q('#hWLeft').textContent = q('#hWTime').textContent = fmtTime(Math.ceil(w.left));
       arc.setAttribute('stroke-dasharray', `${(C * Math.max(0, Math.min(1, w.left / w.step.dur))).toFixed(1)} ${C.toFixed(1)}`);
-      q('#hWState').textContent = sp !== 'ok' ? (sp === 'lost' ? 'connection lost' : 'no connection') : free ? 'free' : w.ramp === 'in' ? 'ramp up' : w.ramp === 'out' ? 'ramp down' : rest ? 'easy' : z === 'ok' ? 'in zone' : z === 'lo' ? `${w.target - pShow} W too low` : `${pShow - w.target} W too high`;
+      q('#hWState').textContent = sp !== 'ok' ? (sp === 'lost' ? 'connection lost' : 'no connection') : free ? 'free' : w.ramp === 'in' ? 'ramp up' : w.ramp === 'out' ? 'ramp down' : w.ramp === 'step' ? 'ramp' : rest || !z ? 'easy' : z === 'ok' ? 'in zone' : z === 'lo' ? `${w.target - pShow} W too low` : `${pShow - w.target} W too high`;
       wp.classList.toggle('off', sp !== 'ok');
       if (hard && z && z !== 'ok') { wp.classList.add('z-' + z); pw?.classList.add('z-' + z); } else if (hard) pw?.classList.add('z-ok');
       // the zone band: ±5 % around the target in the middle of a track from 80 to 120 %; the marker is your power
       const mk = q('#hWMk'), k = Math.max(0, Math.min(1, (pShow - w.target * 0.8) / (w.target * 0.4)));
       mk.style.left = `calc(${(k * 100).toFixed(1)}% - 3px)`; q('#hWZone').className = 'wzone' + (hard && z && z !== 'ok' ? ' z-' + z : '');
       q('#hWNextN').textContent = w.next ? w.nextName : 'Last block';
-      q('#hWNext').textContent = `${w.next ? `${w.nextTarget} W · ${fmtTime(w.nextDur)} · ` : ''}${fmtTime(Math.ceil(w.totalLeft))} left`;
+      q('#hWNext').textContent = `${w.next ? `${w.nextRampTo != null ? `${w.nextTarget} → ${w.nextRampTo}` : w.nextTarget} W · ${fmtTime(w.nextDur)} · ` : ''}${fmtTime(Math.ceil(w.totalLeft))} left`;
       bar.className = `wbar glass v-${this._wbView()}${hard ? ' hard' : rest ? ' rest' : ''}${w.ramp ? ' ramp' : ''}${ca ? ' adj' : ''}`;
       // countdown into the next hard interval: big number above the bar (the ramp is already running), at the change a flash
       const soon = w.countdown && isHard(w.next); cue.hidden = !soon;
