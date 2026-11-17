@@ -109,6 +109,18 @@ export class ZwiftClick {
     try { d?.gatt?.disconnect(); } catch {}
     this._set('off');
   }
+  /** a Click the browser already allowed on this site (navigator.bluetooth.getDevices, newer Chrome): connect without
+   *  the chooser, as long as it is awake and in range. Never throws: false when it did not work within `ms` */
+  async resume(dev, ms = 8000) {
+    if (this.device || !dev?.gatt) return false;
+    this.device = dev; this._wanted = true; this.locked = false;
+    dev.addEventListener('gattserverdisconnected', this._onDrop);
+    this._set('connecting');
+    let t; const late = new Promise((_, no) => { t = setTimeout(() => no(new Error('timeout')), ms); });
+    try { await Promise.race([this._setup(), late]); return this.device === dev; }
+    catch { if (this.device === dev) this.disconnect(); return false; }
+    finally { clearTimeout(t); }
+  }
 
   async _setup() {
     let step = 'Connecting';

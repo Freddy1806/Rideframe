@@ -8,28 +8,31 @@ import { defaultParams, step } from './physics.js';
 import { stravaStatus, stravaConnect, stravaUpload } from './stravaup.js';
 import { stravaExport } from './tcx.js';
 import { applyTheme, icon } from './theme.js';
+import { gearSet, gearName, parseGear, parseRings, shiftGrade, CASSETTES, COG_TEETH } from './gears.js';
+import { click } from './zwiftclick.js';
 
 const $ = (s, r = document) => r.querySelector(s);
 const params = new URLSearchParams(location.search), DEMO = params.has('demo');
-const S = { riderKg: 75, bikeKg: 8.5, ftp: 250, accent: 'orange' };
+const S = { riderKg: 75, bikeKg: 8.5, ftp: 250, accent: 'orange', shiftMode: 'real' };
 const P = { tiles: ['cad', 'hr', 'time', 'dist', 'speed', 'avg', 'np', 'kj', 'lapTime', 'lapAvg', 'max', 'tss'], smooth: 3, autoPause: true, erg: 200, grade: 0, mode: 'erg', workout: '' };
 
 const trainer = new Trainer(), hrStrap = new HeartRate();
 const R = { state: 'ready', moving: 0, wall: 0, d: 0, v: 0, kj: 0, samples: [], pw: [], laps: [], lap: null, max: 0, hrMax: 0, wT: 0, wDone: false, intensity: 100, lastSec: 0, idle: 0, roll30: [], np4: 0, npN: 0 };
 const live = { power: 0, cad: 0, hr: 0, buf: [] };
-let wake = null, demoW = 0;
+let wake = null, demoW = 0, G = gearSet({}); // G: virtual gears (list, fixed real gear, current index)
 
 // ---------------- settings ----------------
 async function loadSettings() {
   const saved = await db.kvGet('settings').catch(() => null);
   if (saved) Object.assign(S, saved);
   Object.assign(P, S.pure || {});
-  setMyWorkouts(S.myWorkouts);
+  setMyWorkouts(S.myWorkouts); G = gearSet(S);
   applyTheme(S, 'trainer');
 }
 async function saveSettings() {
   const saved = (await db.kvGet('settings').catch(() => null)) || {}; // keep everything the main app stored
   saved.pure = { ...P }; if (S.myWorkouts) saved.myWorkouts = S.myWorkouts; saved.ftp = S.ftp; saved.riderKg = S.riderKg; saved.bikeKg = S.bikeKg;
+  saved.shiftMode = S.shiftMode; if (S.realGear) saved.realGear = S.realGear; // the same switch and bike gear as the 3D ride
   await db.kvSet('settings', saved).catch(() => {});
 }
 
@@ -82,12 +85,32 @@ function targetW() {
 }
 function applyTrainer() {
   const t = targetW();
-  if (P.mode === 'grade' || t == null) { trainer.setPower(null); trainer.setGrade(P.mode === 'grade' ? P.grade : 0); }
+  if (P.mode === 'grade' || t == null) { trainer.setPower(null); trainer.setGrade(P.mode === 'grade' ? simGrade() : 0); }
   else trainer.setPower(t);
+}
+// ---------------- virtual gears (Grade mode only: in ERG the trainer holds the watts whatever the gear) ----------------
+const VG = () => S.shiftMode === 'virtual';
+/** what goes to the trainer in Grade mode: the grade, with virtual gears the same maths as the 3D ride (gears.js) */
+function simGrade() {
+  if (!VG()) return P.grade;
+  const k = G.gears[G.gi].ratio / G.real.ratio, ws = trainer.data?.speed > 0.5 ? trainer.data.speed : Math.max(1, R.v / k);
+  return shiftGrade(P.grade, k, ws, (S.riderKg || 75) + (S.bikeKg || 8.5));
+}
+/** d = +1 harder / −1 easier, from the buttons, Q/E or the Zwift Click (src 'click' switches virtual gears on, like a pad in the 3D ride) */
+function shift(d, src) {
+  if (P.mode !== 'grade') return flash(`${P.mode === 'erg' ? 'ERG' : 'The workout'} holds the watts. Gears work in Grade mode.`, 2500);
+  if (!VG()) { if (src !== 'click') return flash('Virtual gears are off. Turn them on in Settings.', 2500); S.shiftMode = 'virtual'; saveSettings(); render(); }
+  G.gi = Math.max(0, Math.min(G.gears.length - 1, G.gi + d)); paintGear();
+  if (trainer.connected) trainer.setGrade(simGrade(), true);
+}
+function paintGear() {
+  const g = $('#pGear'); if (!g) return;
+  g.querySelector('b').textContent = gearName(G.gears[G.gi]); g.querySelector('small').textContent = `Gear ${G.gi + 1}/${G.gears.length}`;
+  g.classList.remove('hit'); void g.offsetWidth; g.classList.add('hit');
 }
 function setMode(m) {
   P.mode = m; if (m === 'work' && !workoutById(P.workout)) P.workout = allWorkouts()[0]?.id || '';
-  if (m === 'grade') { trainer.setPower(null); trainer.setGrade(P.grade, true); }
+  if (m === 'grade') { trainer.setPower(null); trainer.setGrade(simGrade(), true); }
   saveSettings(); render(); applyTrainer();
 }
 
@@ -147,7 +170,8 @@ window.addEventListener('beforeunload', e => { if (R.samples.length && R.state !
 
 function control() {
   if (P.mode === 'erg') return `<div class="pctl"><button data-d="-25">−25</button><button data-d="-5">−5</button><button class="pval" id="pSet"><b>${P.erg}</b><small>W</small></button><button data-d="5">+5</button><button data-d="25">+25</button></div>`;
-  if (P.mode === 'grade') return `<div class="pctl"><button data-d="-1">−1</button><button data-d="-0.5">−½</button><button class="pval" id="pSet"><b>${fmtNum(P.grade, 1)}</b><small>%</small></button><button data-d="0.5">+½</button><button data-d="1">+1</button></div>`;
+  if (P.mode === 'grade') return `<div class="pctl${VG() ? ' tight' : ''}"><button data-d="-1">−1</button><button data-d="-0.5">−½</button><button class="pval" id="pSet"><b>${fmtNum(P.grade, 1)}</b><small>%</small></button><button data-d="0.5">+½</button><button data-d="1">+1</button></div>
+    ${VG() ? `<div class="pgears"><button data-sh="-1" aria-label="Easier gear">−</button><div class="pgv" id="pGear"><b>${gearName(G.gears[G.gi])}</b><small>Gear ${G.gi + 1}/${G.gears.length}</small></div><button data-sh="1" aria-label="Harder gear">+</button></div>` : ''}`;
   const w = work();
   return `<div class="pwork"><select id="pWork">${allWorkouts().map(x => `<option value="${x.id}" ${x.id === P.workout ? 'selected' : ''}>${x.mine ? '★ ' : ''}${esc(x.name)} · ${Math.round(workoutDuration(x) / 60)} min</option>`).join('')}</select>
     <div class="pctl small"><button data-i="-5">−5 %</button><span class="pint" id="pInt">${R.intensity} %</span><button data-i="5">+5 %</button></div>
@@ -161,8 +185,8 @@ function render() {
   el.innerHTML = `
   <header class="ptop">
     <a class="pback" href="handy.html" title="Back to app">‹</a><div class="pbrand"><b>RIDEFRAME </b><span>Indoor</span></div>
-    <button class="ppill ${trainer.connected || DEMO ? 'on' : ''}" id="pTr"><i></i>${DEMO ? 'Demo' : trainer.connected ? esc(trainer.device?.name || 'Trainer') : 'Trainer'}</button>
-    <button class="ppill ${hrStrap.connected ? 'on' : ''}" id="pHr"><i></i>HR</button>
+    <button class="ppill ${trainer.connected || DEMO ? 'on' : ''}" id="pTr"><i></i><span class="pname">${DEMO ? 'Demo' : trainer.connected ? esc(trainer.device?.name || 'Trainer') : 'Trainer'}</span></button>
+    <button class="ppill ${sensOn() ? 'on' : ''}" id="pSens"><i></i>Sensors</button>
     <button class="pgear" id="pSetBtn" title="Settings" aria-label="Settings">${icon('gear', 'gico')}</button>
   </header>
   ${!bleOk && !DEMO ? `<div class="pnote">${BT_HELP}</div>` : ''}
@@ -194,8 +218,9 @@ function fitTiles() {
 
 function wire() {
   // the message comes AFTER render(): render rebuilds the page and would wipe it (Freddy 16.11.: "der Button reagiert gar nicht" on the iPhone)
-  $('#pTr').onclick = async () => { if (DEMO) return; let err = ''; try { await trainer.connect(); trainer.setSim({ riderKg: S.riderKg, bikeKg: S.bikeKg, crr: .004, cw: .51 }); applyTrainer(); } catch (e) { if (e.name !== 'NotFoundError') err = e.message || String(e); } render(); if (err) flash(err, 9000); };
-  $('#pHr').onclick = async () => { let err = ''; try { await hrStrap.connect(); } catch (e) { if (e.name !== 'NotFoundError') err = e.message || String(e); } render(); if (err) flash(err, 9000); };
+  $('#pTr').onclick = async () => { if (DEMO) return; const err = await connectTrainer(); render(); if (err) flash(err, 9000); };
+  $('#pSens').onclick = sensorsSheet;
+  el.querySelectorAll('[data-sh]').forEach(b => b.onclick = () => shift(+b.dataset.sh));
   $('#pSetBtn').onclick = settingsSheet;
   el.querySelectorAll('[data-m]').forEach(b => b.onclick = () => setMode(b.dataset.m));
   el.querySelectorAll('[data-d]').forEach(b => b.onclick = () => {
@@ -233,7 +258,7 @@ function paint() {
     $('#pStep').innerHTML = a.done ? 'Workout done' : `<b>${esc(a.step.label || '')}</b> · ${fmtTime(a.left)} left${a.next ? ` · then ${Math.round(a.nextTarget * R.intensity / 100)} W` : ''}`;
     const w0 = work(); if (w0 && R.state === 'run') $('#pWsvg').innerHTML = workoutSVG(w0, R.wT, 40);
   }
-  $('.ppill#pHr')?.classList.toggle('on', hrStrap.connected);
+  $('#pSens')?.classList.toggle('on', sensOn());
 }
 
 // ---------------- sheets ----------------
@@ -265,13 +290,77 @@ function settingsSheet() {
     <label class="prow">Weight<input id="sKg" type="number" inputmode="decimal" value="${S.riderKg}"><small>kg</small></label>
     <label class="prow">Smooth power<select id="sSm">${[1, 3, 5, 10].map(n => `<option value="${n}" ${P.smooth === n ? 'selected' : ''}>${n} s</option>`).join('')}</select></label>
     <label class="prow">Auto-Pause<input id="sAp" type="checkbox" class="toggle" ${P.autoPause ? 'checked' : ''}></label>
+    <label class="prow">Virtual gears<input id="sVg" type="checkbox" class="toggle" ${VG() ? 'checked' : ''}></label>
+    <label class="prow pwide" id="sRgRow" ${VG() ? '' : 'hidden'}>Gear on the bike<select id="sRg">${bikeGears().map(([v, l]) => `<option value="${v}" ${v === curGear() ? 'selected' : ''}>${l}</option>`).join('')}</select></label>
+    <p class="phint">One sprocket (Zwift Cog: big ring × ${COG_TEETH}) or a bike left in one gear: − / + or a Zwift Click shift like real gears. Grade mode only, ERG holds the watts.</p>
     <button class="btn ghost small" id="sReset" style="margin-top:6px">Reset fields</button>
     <div class="pfoot"><button class="btn" id="sOk">Done</button></div>`);
+  $('#sVg', s).onchange = e => { $('#sRgRow', s).hidden = !e.target.checked; };
   $('#sReset', s).onclick = () => { P.tiles = ['cad', 'hr', 'time', 'dist', 'speed', 'avg', 'np', 'kj', 'lapTime', 'lapAvg', 'max', 'tss']; };
   $('#sOk', s).onclick = () => {
     S.ftp = Math.max(50, Math.min(700, +$('#sFtp', s).value || S.ftp)); S.riderKg = Math.max(30, Math.min(200, parseFloat($('#sKg', s).value.replace(',', '.')) || S.riderKg));
-    P.smooth = +$('#sSm', s).value; P.autoPause = $('#sAp', s).checked; saveSettings(); s.remove(); render();
+    P.smooth = +$('#sSm', s).value; P.autoPause = $('#sAp', s).checked;
+    S.shiftMode = $('#sVg', s).checked ? 'virtual' : 'real';
+    const rg = $('#sRg', s).value; if (rg !== curGear()) { S.realGear = rg; G = gearSet(S); }
+    saveSettings(); s.remove(); render(); applyTrainer();
   };
+}
+/** the fixed gear on the bike for virtual shifting: every ring × cog (plus the Cog's 14), as "50x14" like the 3D ride stores it */
+const curGear = () => { const g = parseGear(S.realGear); return `${g.f}x${g.r}`; };
+function bikeGears() {
+  const rings = (parseRings(S.chainrings) || [50, 34]).sort((a, b) => b - a), cass = CASSETTES[S.cassette] || CASSETTES['11-34'];
+  const cogs = [...new Set([...cass, COG_TEETH])].sort((a, b) => a - b), out = rings.flatMap(f => cogs.map(r => [`${f}x${r}`, `${f}×${r}${r === COG_TEETH ? ' · Cog' : ''}`]));
+  if (!out.some(o => o[0] === curGear())) out.unshift([curGear(), curGear().replace('x', '×')]);
+  return out;
+}
+
+// ---------------- sensors: trainer, heart rate strap, Zwift Click (Bluetooth lives as long as this page) ----------------
+const CLICK_ID = 'rf_click';
+const sensOn = () => hrStrap.connected || click.connected;
+async function connectTrainer() {
+  try { await trainer.connect(); trainer.setSim({ riderKg: S.riderKg, bikeKg: S.bikeKg, crr: .004, cw: .51 }); applyTrainer(); return ''; }
+  catch (e) { return e.name === 'NotFoundError' ? '' : e.message || String(e); }
+}
+function clickLine() {
+  const c = click, s = c.status;
+  if (s === 'on') return `${esc(c.name)} · connected${c.battery != null ? ` · battery ${c.battery}&nbsp;%` : ''}${c.locked ? ' · locked: open the Zwift app' : ''}`;
+  return { connecting: 'Connecting …', reconnecting: 'Connection lost, reconnecting …', lost: 'Connection lost. Wake it up and connect again.' }[s] || 'Not connected';
+}
+let sensDraw = null;
+function sensorsSheet() {
+  const s = sheet(''), box = $('.psheetin', s), ok = Trainer.supported(); let err = '';
+  const row = (id, name, st, on) => `<div class="psens"><div><b>${name}</b><small>${st}</small></div><button class="btn ${on ? 'ghost ' : ''}psm" id="${id}" ${ok && !DEMO ? '' : 'disabled'}>${on ? 'Disconnect' : 'Connect'}</button></div>`;
+  const go = async f => { err = ''; try { await f(); } catch (e) { if (e.name !== 'NotFoundError') err = e.message || String(e); } render(); sensDraw?.(); };
+  (sensDraw = () => {
+    if (!s.isConnected) return void (sensDraw = null);
+    box.innerHTML = `<div class="label">Sensors</div>${ok ? '' : `<p class="phint">${BT_HELP}</p>`}
+      ${row('sTr', 'Smart trainer', trainer.connected ? `${esc(trainer.device?.name || 'Trainer')} · connected` : 'Not connected', trainer.connected)}
+      ${row('sHr', 'Heart rate strap', hrStrap.connected ? `${esc(hrStrap.device?.name || 'Strap')} · connected${hrStrap.battery != null ? ` · battery ${hrStrap.battery}&nbsp;%` : ''}` : 'Not connected', hrStrap.connected)}
+      ${row('sClk', 'Zwift Click', clickLine(), !!click.device)}
+      ${err ? `<p class="phint perr">${esc(err)}</p>` : ''}
+      <p class="phint">Zwift Click: + harder, − easier (virtual gears in Grade mode). Click v2: open it in the Zwift app once a day, or it drops after a minute.</p>
+      <p class="phint">Connections belong to this page and end when you leave it.</p>
+      <div class="pfoot"><button class="btn ghost" id="sDone">Done</button></div>`;
+    $('#sTr', s).onclick = () => trainer.connected ? (trainer.disconnect(), render(), sensDraw?.()) : go(async () => { const e = await connectTrainer(); if (e) throw new Error(e); });
+    $('#sHr', s).onclick = () => hrStrap.connected ? (hrStrap.disconnect(), render(), sensDraw?.()) : go(() => { hrStrap.closing = false; return hrStrap.connect(); });
+    $('#sClk', s).onclick = () => { if (!click.device) return go(() => click.connect()); click.disconnect(); try { localStorage.removeItem(CLICK_ID); } catch {} };
+    $('#sDone', s).onclick = () => { s.remove(); sensDraw = null; };
+  })();
+}
+click.on('state', c => {
+  if (c.status === 'on' && c.device?.id) try { localStorage.setItem(CLICK_ID, c.device.id); } catch {} // for the silent reconnect next time
+  if (c.locked && !click._said) { click._said = true; flash('Zwift Click is locked: open it in the Zwift app once, then connect again.', 6000); }
+  $('#pSens')?.classList.toggle('on', sensOn()); sensDraw?.();
+});
+click.on('shift', d => { if (R.state !== 'done') shift(d, 'click'); });
+/** the Click from last time, without the chooser where the browser allows it (Chrome getDevices; not Bluefy): never throws */
+async function clickResume() {
+  try {
+    const id = localStorage.getItem(CLICK_ID), bt = navigator.bluetooth;
+    if (!id || click.device || typeof bt?.getDevices !== 'function') return;
+    const d = (await bt.getDevices()).find(x => x.id === id);
+    if (d && await click.resume(d)) flash(`${click.name} connected · + / − shift`, 2500);
+  } catch {}
 }
 function endSheet() {
   const rec = record(), rows = [['Time', fmtTime(rec.duration)], ['Distance', fmtNum(rec.distance / 1000, 2) + ' km'], ['Avg power', rec.avgPower + ' W'], ['NP', rec.np + ' W'],
@@ -308,9 +397,9 @@ function doneScreen(rec) {
 
 // ---------------- data ----------------
 trainer.addEventListener('data', e => { live.power = e.detail.power || 0; live.cad = e.detail.cadence || 0; if (!hrStrap.connected && e.detail.hr) live.hr = e.detail.hr; });
-trainer.addEventListener('status', () => { if (R.state !== 'done') render(); });
+trainer.addEventListener('status', () => { if (R.state !== 'done') render(); sensDraw?.(); });
 hrStrap.addEventListener('hr', e => { live.hr = e.detail; });
-hrStrap.addEventListener('change', () => { if (!hrStrap.connected) live.hr = 0; });
+hrStrap.addEventListener('change', () => { if (!hrStrap.connected) live.hr = 0; sensDraw?.(); });
 
 let last = performance.now(), bufAt = 0;
 setInterval(() => {
@@ -327,6 +416,8 @@ document.addEventListener('keydown', e => {
   if (e.code === 'Space') { e.preventDefault(); R.state === 'run' ? pause() : R.state !== 'done' && start(); }
   else if (e.key === 'l' || e.key === 'L') lap();
   else if (e.key === 'ArrowUp' || e.key === 'ArrowDown') el.querySelector(`[data-d="${e.key === 'ArrowUp' ? (P.mode === 'erg' ? 5 : 0.5) : (P.mode === 'erg' ? -5 : -0.5)}"]`)?.click();
+  else if ('qQ,-'.includes(e.key) || e.key === 'PageDown') { e.preventDefault(); shift(-1); } // as in the 3D ride; PageUp/Down: presenters and media remotes
+  else if ('eE.+='.includes(e.key) || e.key === 'PageUp') { e.preventDefault(); shift(1); }
 });
 
 await loadSettings();
@@ -338,5 +429,6 @@ if (draft?.samples?.length && Date.now() - draft.savedAt < 12 * 3600e3) {
     <div class="pfoot col"><button class="btn" id="rGo">Resume ride</button><button class="btn danger" id="rDrop">Discard</button></div>`);
   $('#rGo', s).onclick = () => { const { savedAt, ...r } = draft; Object.assign(R, r, { state: 'pause' }); s.remove(); start(); };
   $('#rDrop', s).onclick = () => { dropDraft(); s.remove(); };
-} else { if (draft) dropDraft(); if (DEMO && params.has('run')) start(); }
+} else { if (draft) dropDraft(); if (DEMO && params.has('run')) start(); if (location.hash === '#sensors') sensorsSheet(); } // handy.html settings → Devices
+clickResume();
 if ('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js').catch(() => {});

@@ -4,7 +4,7 @@
 const C = 'rf-shell-v2';
 const SHELL = ['handy.html', 'outdoor.html', 'kraft.html', 'pure.html', 'profil.html', 'aktivitaeten.html', 'statistik.html', 'app.webmanifest', 'css/app.css', 'css/pure.css', 'css/kraft.css', 'css/outdoor.css', 'css/handy.css', 'css/profil.css', 'css/feed.css', 'js/native.js',
   'js/handy.js', 'js/feed.js', 'js/statpage.js', 'js/nav.js', 'js/profil.js', 'js/fitness.js', 'js/stats.js', 'js/kraftlib.js', 'js/theme.js', 'js/outdoor.js', 'js/kraft.js', 'js/quick.js', 'js/pure.js', 'js/db.js', 'js/util.js', 'js/account.js', 'js/trainer.js', 'js/stravaup.js', 'js/tcx.js', 'js/track.js',
-  'js/workouts.js', 'js/physics.js', 'vendor/leaflet/leaflet.js', 'vendor/leaflet/leaflet.css', 'fonts/archivo-latin.woff2', 'img/icon-192.png', 'img/icon-180.png', 'img/icon.svg'];
+  'js/workouts.js', 'js/physics.js', 'js/gears.js', 'js/zwiftclick.js', 'vendor/leaflet/leaflet.js', 'vendor/leaflet/leaflet.css', 'fonts/archivo-latin.woff2', 'img/icon-192.png', 'img/icon-180.png', 'img/icon.svg'];
 self.addEventListener('install', e => { e.waitUntil(caches.open(C).then(c => Promise.all(SHELL.map(u => c.add(u).catch(() => {})))).then(() => self.skipWaiting())); });
 self.addEventListener('activate', e => { e.waitUntil(caches.keys().then(k => Promise.all(k.filter(x => x.startsWith('rf-') && x !== C && x !== 'rf-tiles-2').map(x => caches.delete(x)))).then(() => self.clients.claim())); });
 const shell = p => /^\/(handy|outdoor|kraft|pure|profil|aktivitaeten|statistik)\.html$|^\/app\.webmanifest$|^\/(css|js|fonts|img|vendor\/leaflet)\//.test(p) && !p.startsWith('/js/world/');

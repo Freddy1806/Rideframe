@@ -52,6 +52,13 @@ const SCREENS = [
   ['kraft-ende', '/kraft.html', async p => { await p.click('[data-again]'); await p.click('.kex[data-i="0"] [data-chk="0"]'); await p.click('#kFin'); }],
   ['rollentrainer', '/pure.html', null],
   ['rollentrainer-entwurf', '/pure.html', async p => { await p.evaluate(async () => { const { db } = await import('/js/db.js'); await db.kvSet('pureDraft', { state: 'pause', moving: 3725, wall: 3800, d: 42345, samples: [[1, 5, 200, 30, 90, 140]], savedAt: Date.now() }); }); await p.reload(); await p.waitForTimeout(700); }],
+  // virtual gears in Grade mode (Zwift Cog), the sensors sheet with a Zwift Click connected, the settings with the gear switch
+  ...[['rollentrainer-gaenge', null], ['rollentrainer-sensoren-click', async p => { await p.evaluate(async () => { const { click } = await import('/js/zwiftclick.js'); click.device = { name: 'Zwift Click', gatt: { connected: true } }; click.battery = 77; click._set('on'); }); await p.click('#pSens'); }],
+    ['rollentrainer-einstellungen-gaenge', p => p.click('#pSetBtn')]].map(([nm, act]) => [nm, '/pure.html', async p => {
+    await p.evaluate(async () => { const { db } = await import('/js/db.js'); const st = (await db.kvGet('settings')) || {}; await db.kvSet('settings', { ...st, shiftMode: 'virtual', realGear: '50x14', pure: { ...st.pure, mode: 'grade' } }); }); await p.reload(); await p.waitForTimeout(700);
+    await p.evaluate(async () => { const { db } = await import('/js/db.js'); const st = (await db.kvGet('settings')) || {}; delete st.shiftMode; delete st.realGear; delete st.pure; await db.kvSet('settings', st); });
+    if (act) await act(p); }]),
+  ['rollentrainer-sensoren', '/pure.html', p => p.click('#pSens')],
   ['kraft-schnell', '/kraft.html', async p => { await p.click('#kQuick'); await p.fill('#qT', 'Ich habe gerade 100 Liegestütze und 50 Klimmzüge gemacht, 3x10 Bankdrücken mit 80 kg, 30 Hampelmänner mit Klatschen, 2 Minuten Plank, blabla, ungefähr 45 Minuten trainiert'); await p.click('#qGo'); }],
   ['kraft-schnell-ki', '/kraft.html', async p => { await p.click('#kQuick'); await p.click('#qAi'); }],
   ['aktivitaeten', '/aktivitaeten.html', null],

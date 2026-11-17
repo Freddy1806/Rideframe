@@ -148,3 +148,25 @@ body.handy, body.kraft, body.outdoor { height: auto; min-height: 100dvh; overflo
   .pbig { padding: 8px 14px 10px; } .pbigv b { font-size: clamp(56px, 18vw, 96px); } .pbigs { margin-top: 4px; } .pzbar { margin-top: 8px; }
   .pctl button { height: 46px; } .pctl.small button, .pwed .btn { height: 36px; } .pwork select { height: 40px; } .pseg button { height: 36px; }
 }
+/* virtual gears (Grade mode): one calm row under the grade, big − / + (Zwift Cog, Zwift Click) */
+.pctl.tight button { height: 44px; }
+.pgears { display: grid; grid-template-columns: 1fr 1.5fr 1fr; gap: 6px; }
+.pgears button { height: 52px; border-radius: 8px; background: var(--ink-3); border: 1px solid var(--line-2); font-weight: 900; font-size: 28px; line-height: 1; }
+.pgears button:active { background: var(--accent); color: var(--accent-ink); }
+.pgv { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px; border: 1px solid var(--line-2); border-radius: 8px; min-width: 0; padding: 0 8px; }
+.pgv b { font-size: 22px; font-weight: 900; font-variant-numeric: tabular-nums; line-height: 1; white-space: nowrap; }
+.pgv small { font-size: 10px; font-weight: 800; letter-spacing: .1em; text-transform: uppercase; color: var(--muted); white-space: nowrap; }
+.pgv.hit { animation: pgflash .35s; }
+@keyframes pgflash { from { border-color: var(--accent); background: color-mix(in srgb, var(--accent) 22%, transparent); } }
+@media (orientation: portrait) and (max-height: 740px) { .pctl.tight button { height: 40px; } .pgears button { height: 46px; } }
+/* sensors sheet: trainer, heart rate strap, Zwift Click */
+.psens { display: flex; align-items: center; gap: 10px; background: var(--ink-3); border-radius: 8px; padding: 10px 12px; }
+.psens div { flex: 1; min-width: 0; } .psens b { display: block; font-size: 15px; } .psens small { display: block; font-size: 12px; line-height: 1.35; color: var(--muted); }
+.psens .psm { flex: none; height: 38px; min-height: 0; padding: 0 14px; font-size: 12px; }
+.psens .btn:disabled { opacity: .35; }
+.phint { font-size: 12.5px; line-height: 1.4; color: var(--muted); margin: 0; }
+.phint.perr { color: #ff6b6b; }
+.prow.pwide select { grid-column: 2 / 4; font-size: 15px !important; }
+/* the trainer pill gives way (its name gets "…") so Sensors and the settings button always fit, down to 320 px */
+#pTr { flex: 0 1 auto; min-width: 0; }
+@media (max-width: 400px) { body.pure .ptop .pbrand { display: none; } } /* Trainer + Sensors + settings: the word "Indoor" only where it fits whole */

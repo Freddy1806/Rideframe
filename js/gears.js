@@ -51,3 +51,22 @@ export function virtualGrade(gradePct, k, wheelSpeed, massKg, crr = 0.004, cw = 
   const g = (want - cw * wheelSpeed * wheelSpeed - mg * crr) / mg * 100;
   return Math.max(-10, Math.min(20, g));
 }
+
+/** the gear list and the start gear (nearest to the fixed real one) from the settings; the 3D ride's defaults when unset */
+export function gearSet(st = {}) {
+  let gears = gearsFrom({ chainrings: st.chainrings || '50,34', cassette: st.cassette || '11-34' });
+  if (!gears.length) gears = gearsFrom({ chainrings: st.chainrings || '50,34', cassette: '11-34' }); // cassette text without numbers
+  const real = parseGear(st.realGear), d = g => Math.abs(Math.log(g.ratio / real.ratio));
+  return { gears, real, gi: gears.reduce((b, g, i) => d(g) < d(gears[b]) ? i : b, 0) };
+}
+/** Zwift Cog: the bike keeps one 14-tooth sprocket, so the real gear is "big ring x 14" */
+export const COG_TEETH = 14;
+/**
+ * virtualGrade for a trainer that can brake but never push (a freewheel): where the virtual road would push the rider
+ * (steep descent, light gear) the trainer just goes as light as it can at this wheel speed. So a harder gear is never
+ * easier, downhill too; uphill and on the flat this is exactly virtualGrade.
+ */
+export function shiftGrade(gradePct, k, wheelSpeed, massKg, crr = 0.004, cw = 0.51) {
+  const free = -(cw * wheelSpeed * wheelSpeed / (massKg * 9.81) + crr) * 100; // trainer force 0 at this wheel speed
+  return Math.max(-10, Math.min(20, Math.max(virtualGrade(gradePct, k, wheelSpeed, massKg, crr, cw), free)));
+}
