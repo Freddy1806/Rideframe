@@ -101,6 +101,12 @@ let fails = 0; const ok = (c, m) => { console.log(`${c ? '✓' : '✗'} ${m}`); 
     const until = async (fn, ms = 20000) => { for (let t = 0; t < ms; t += 100) { if (await D.evaluate(fn)) return true; await D.waitForTimeout(100); } return false; };
     let d = await G(); ok(d.scr === 'home', 'demo: the start menu'); ok((await D.evaluate(() => __watch.cfgFrom)) === 'defaults', 'no account: default screens'); await dsnap('01_start_menu');
     await dbtn('start'); d = await G(); ok(d.scr === 'ready' && d.sp === 'run', 'Run: ready screen'); await dsnap('02_run_ready');
+    // 19.11.: the Route choice (demo routes without an account): DOWN opens it, None leaves the route page out, a route brings it back
+    const RT = () => D.evaluate(() => ({ scr: __watch.F.scr, sel: __watch.F.sel, id: __watch.F.routeId, has: !!__watch.F.route, src: __watch.rsrc }));
+    await dbtn('down'); let rt = await RT(); ok(rt.scr === 'rpick' && rt.sel === 1 && rt.id === 'demo-run' && rt.src === 'demo', 'DOWN: the route list, the demo route chosen'); await dsnap('02b_route_list');
+    await dbtn('up'); await dbtn('start'); rt = await RT(); ok(rt.scr === 'ready' && rt.id === null && !rt.has, 'None: no route'); await dsnap('02c_ready_no_route');
+    await D.click('[data-face="fr265"] canvas', { position: { x: 208, y: 291 } }); rt = await RT(); ok(rt.scr === 'rpick' && rt.sel === 0, 'tap on the route line: the list');
+    await dbtn('down'); await dbtn('start'); rt = await RT(); ok(rt.scr === 'ready' && rt.id === 'demo-run' && rt.has, 'a route chosen again');
     await dbtn('start'); d = await G(); ok(d.scr === 'rec' && d.pg === 0, 'START: recording, page 1');
     await D.evaluate(() => { for (let i = 0; i < 36; i++) __watch.ev('sample', { dt: 10, v: 3.2, hr: 151, cad: 172, up: .3 }); }); d = await G(); ok(d.laps === 1 && d.flash === 'lap', 'auto lap after 1 km: the lap banner'); await dsnap('03_run_lap');
     await dbtn('down'); d = await G(); ok(d.flash === null && d.pg === 0, 'the first key closes the banner'); await dsnap('04_run_page1');
@@ -131,6 +137,18 @@ let fails = 0; const ok = (c, m) => { console.log(`${c ? '✓' : '✗'} ${m}`); 
     d = await G(); ok(d.scr === 'pick' && d.plan === null, 'Change exercise: the free list, the workout is left'); await dsnap('20_free_list');
     ok((await D.evaluate(async () => (await import('/js/watchflow.js')).listItems(__watch.F).slice(0, 4))).join() === 'Bench press,Squat,Pull-ups,Incline bench press', 'free: recent first, then the top 20');
     ok(!derr.length, 'no page errors in the new flows' + (derr.length ? ': ' + derr.join(' | ') : '')); await demo.close();
+
+    // ---- 19.11.: routes sent from the phone reach the paired preview watch (GET /api/watch/routes, /route) ----
+    const pts = []; for (let i = 0; i <= 40; i++) pts.push([47.37 + i * .0004, 8.54 + (i > 20 ? (i - 20) * .0005 : 0)]);
+    const put = await fetch(BASE + '/api/watch/routes/r-test', { method: 'PUT', headers: { 'Content-Type': 'application/json', 'X-RF-Token': token }, body: JSON.stringify({ name: 'Test loop to the lake', pts }) }).then(r => r.json());
+    ok(put.ok, 'phone: a route sent to the watch');
+    const keep = await W.evaluate(() => ({ scr: __watch.F.scr, sel: __watch.F.sel }));
+    await W.evaluate(async () => { const fl = await import('/js/watchflow.js'); __watch.F.routes = null; __watch.F.scr = 'home'; __watch.ev('item', fl.homeItems(__watch.F).indexOf('run')); });
+    await W.waitForFunction(() => __watch.F.routes && __watch.F.routes.length === 1 && __watch.rsrc === 'watch'); ok(true, 'paired: the route list from the account');
+    await btn('down'); await btn('down'); await btn('start'); await W.waitForFunction(() => __watch.F.route && __watch.F.route.pts.length > 2);
+    const wr = await W.evaluate(() => ({ id: __watch.F.routeId, len: __watch.F.route.len, turns: __watch.F.route.turns.length }));
+    ok(wr.id === 'r-test' && wr.len > 1500 && wr.len < 3500 && wr.turns >= 1, `paired: the route loaded (${Math.round(wr.len)} m, ${wr.turns} turn)`); await snap('route_ready_paired');
+    await W.evaluate(k => { __watch.F.scr = k.scr; __watch.F.sel = k.sel; }, keep);
 
     // overview of the whole page at 1280 px on the set screen
     await btn('start'); await btn('start'); await W.waitForTimeout(300);
