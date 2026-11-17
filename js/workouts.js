@@ -2,6 +2,8 @@
 // in ERG mode the trainer holds the target power itself (the road grade then only sets the speed you see),
 // without ERG the trainer keeps simulating the road and the HUD shows the target to hit.
 const W = (min, pct, label = '') => ({ dur: Math.round(min * 60), pct, label });
+/** a ramp step (opt-in, e.g. a warm-up from 45 to 75 %): the target moves linearly from pct to `to` over the step */
+export const Ramp = (min, from, to, label = '') => ({ ...W(min, from, label), to });
 const warm = [W(4, 50, 'Warm-up'), W(3, 65, 'Warm-up'), W(3, 75, 'Warm-up')];
 const cool = [W(5, 50, 'Cool-down')];
 const reps = (n, on, off) => Array.from({ length: n }, (_, i) => [{ ...on, label: `${on.label} ${i + 1}/${n}` }, ...(i < n - 1 && off ? [off] : [])]).flat();
@@ -48,15 +50,15 @@ const num = (v, d, lo, hi) => { const x = +v; return Number.isFinite(x) ? Math.m
 export function buildMy(def) {
   const rows = (def.rows || []).flatMap(r => r.t === 'i'
     ? reps(num(r.n, 3, 1, 30), W(num(r.onMin, 1, 0.25, 120), num(r.onPct, 105, 30, 200), r.label || 'Interval'), W(num(r.offMin, 1, 0, 120), num(r.offPct, 55, 30, 200), 'Rest')).filter(x => x.dur > 0)
-    : [W(num(r.min, 5, 0.25, 240), num(r.pct, 70, 30, 200), r.label || 'Block')]);
+    : [{ ...W(num(r.min, 5, 0.25, 240), num(r.pct, 70, 30, 200), r.label || 'Block'), ...(r.toPct != null && r.toPct !== '' ? { to: num(r.toPct, 70, 30, 200) } : {}) }]); // toPct: a ramp
   const steps = [...(def.warm !== false ? warm : []), ...rows, ...(def.cool !== false ? cool : [])];
-  const what = (def.rows || []).map(r => r.t === 'i' ? `${r.n} × ${r.onMin} min ${r.onPct} % / ${r.offMin} min ${r.offPct} %` : `${r.min} min ${r.pct} %`).join(', ');
+  const what = (def.rows || []).map(r => r.t === 'i' ? `${r.n} × ${r.onMin} min ${r.onPct} % / ${r.offMin} min ${r.offPct} %` : `${r.min} min ${r.pct}${r.toPct != null && r.toPct !== '' ? `–${r.toPct}` : ''} %`).join(', ');
   return { id: def.id, name: def.name || 'My workout', what: `Own workout: ${what || 'empty'}.`, steps: steps.length ? steps : [W(5, 50, 'Easy')], mine: true };
 }
 /** a standard workout as an editable definition (Freddy 16.11.: "2× Schwelle 20 min anpassen: Watt, Länge, mehr Runden"):
  *  warm-up and cool-down become the switches, "Name 1/n" + pause runs become interval rows, everything else single blocks */
 export function defFrom(w) {
-  let st = w.steps.slice(); const isWarm = s => /^(Warm-up|Easy spin|Ein(fahren|rollen))$/.test(s.label), isCool = s => /^(Cool-down|Easy spin down|Aus(fahren|rollen))$/.test(s.label);
+  let st = w.steps.slice(); const isWarm = s => s.to == null && /^(Warm-up|Easy spin|Ein(fahren|rollen))$/.test(s.label), isCool = s => s.to == null && /^(Cool-down|Easy spin down|Aus(fahren|rollen))$/.test(s.label); // a ramp stays a row
   const hadWarm = st.length && isWarm(st[0]); while (st.length && isWarm(st[0])) st.shift();
   const hadCool = st.length && isCool(st[st.length - 1]); while (st.length && isCool(st[st.length - 1])) st.pop();
   const rows = [], min = s => +(s.dur / 60).toFixed(2);
@@ -65,7 +67,7 @@ export function defFrom(w) {
     if (m) { const n = +m[2], off = st[i + 1] && st[i + 1].label === 'Rest' ? st[i + 1] : null, len = off ? 2 * n - 1 : n;
       const same = st.slice(i, i + len).every((x, j) => off && j % 2 ? x.label === 'Rest' && x.dur === off.dur && x.pct === off.pct : x.dur === s.dur && x.pct === s.pct);
       if (same) { rows.push({ t: 'i', n, onMin: min(s), onPct: s.pct, offMin: off ? min(off) : 0, offPct: off ? off.pct : 55, label: m[1] }); i += len - 1; continue; } }
-    rows.push({ t: 'b', min: min(s), pct: s.pct, label: (s.label || 'Block').replace(/ \d+\/\d+$/, '') });
+    rows.push({ t: 'b', min: min(s), pct: s.pct, ...(s.to != null ? { toPct: s.to } : {}), label: (s.label || 'Block').replace(/ \d+\/\d+$/, '') });
   }
   return { id: 'my_' + Date.now().toString(36), name: w.name + ' (adjusted)', warm: hadWarm, cool: hadCool, rows };
 }
@@ -82,12 +84,45 @@ export const tuneAdj = (adj, d) => Math.max(-WADJ_MAX, Math.min(WADJ_MAX, Math.r
 export const tunedTarget = (step, target, adj) => target == null || !adj || !isHard(step) ? target : Math.max(50, target + adj);
 export const fmtAdj = a => `${a > 0 ? '+' : a < 0 ? '−' : '±'}${Math.abs(a || 0)} W`;
 
+/** % FTP of a step at fraction f (0..1) of it: flat, or linear for a ramp step */
+export const pctAt = (st, f = 0) => st.to == null ? st.pct : st.pct + (st.to - st.pct) * Math.max(0, Math.min(1, f));
+
+/** everything a workout display needs at time t, with the rider's offsets and the ERG ramps (pure, tested):
+ *  o.hardAdj  W on every hard interval (pct >= 88, not free), kept for the whole workout
+ *  o.stepAdj  W on the current step when it is not hard (warm-up, rest, cool-down); the caller resets it at the next step
+ *  o.ramp     true (ERG): no wall into a hard interval: the last o.rampIn s (10) before it the target rises linearly from
+ *             this step's to the interval's, and over the first o.rampOut s (5) after it falls back
+ *  Returns { done, i, step, next, prev, left, inStep, target (W, ramped and adjusted: what the trainer gets and compliance
+ *  uses), plateau (the step's own adjusted target), lo / hi (±5 % zone), ramp ('in' | 'out' | 'step' | null), hard,
+ *  hardNo / hardCount / nextHardNo, name, nextTarget / nextName / nextDur, totalLeft, countdown (whole s, last 3 s before a
+ *  change, else 0), steps: [{ dur, pct (height incl. offset), to, hard, label }] } */
+export function workoutState(w, t, ftp, o = {}) {
+  const hardAdj = o.hardAdj || 0, stepAdj = o.stepAdj || 0, rampIn = o.rampIn ?? 10, rampOut = o.rampOut ?? 5, steps = w.steps;
+  const W0 = (st, f, own) => { const b = Math.round(pctAt(st, f) / 100 * ftp); return isHard(st) ? tunedTarget(st, b, hardAdj) : own && stepAdj ? Math.max(50, b + stepAdj) : b; };
+  const hardCount = steps.filter(isHard).length, total = workoutDuration(w);
+  const list = steps.map(st => ({ dur: st.dur, pct: ftp && hardAdj && isHard(st) ? tunedTarget(st, st.pct / 100 * ftp, hardAdj) / ftp * 100 : st.pct, to: st.to, hard: isHard(st), label: st.label || '' }));
+  let s = 0, i = 0; for (; i < steps.length && t >= s + steps[i].dur; i++) s += steps[i].dur;
+  if (i >= steps.length) return { done: true, i: steps.length, step: null, next: null, prev: steps[steps.length - 1] || null, left: 0, inStep: 0, target: null, plateau: null, lo: null, hi: null, ramp: null, hard: false,
+    hardNo: 0, hardCount, nextHardNo: 0, name: '', nextTarget: null, nextName: '', nextDur: 0, totalLeft: 0, countdown: 0, steps: list };
+  const st = steps[i], next = steps[i + 1] || null, prev = steps[i - 1] || null, inStep = t - s, left = st.dur - inStep, f = inStep / st.dur;
+  const plateau = W0(st, f, true); let target = plateau, ramp = st.to != null ? 'step' : null;
+  if (o.ramp && !isHard(st) && !st.free) {
+    if (next && isHard(next) && left < rampIn && rampIn > 0) { const k = 1 - left / rampIn, a = W0(st, 1, true), b = W0(next, 0); target = Math.round(a + (b - a) * k); ramp = 'in'; }
+    else if (prev && isHard(prev) && inStep < rampOut && rampOut > 0) { const k = inStep / rampOut, a = W0(prev, 1), b = W0(st, 0, true); target = Math.round(a + (b - a) * k); ramp = 'out'; }
+  }
+  const hardBefore = steps.slice(0, i).filter(isHard).length;
+  return { done: false, i, step: st, next, prev, left, inStep, target, plateau, lo: Math.round(target * .95), hi: Math.round(target * 1.05), ramp, hard: isHard(st),
+    hardNo: isHard(st) ? hardBefore + 1 : 0, hardCount, nextHardNo: hardBefore + (isHard(st) ? 2 : 1) <= hardCount ? hardBefore + (isHard(st) ? 2 : 1) : 0,
+    name: st.label || 'Block', nextTarget: next ? W0(next, 0) : null, nextName: next ? next.label || 'Block' : '', nextDur: next ? next.dur : 0,
+    totalLeft: Math.max(0, total - t), countdown: next && left <= 3 ? Math.max(1, Math.ceil(left)) : 0, steps: list };
+}
+
 /** where in the program we are at time t (seconds since start) */
 export function workoutAt(w, t, ftp) {
   let s = 0;
   for (let i = 0; i < w.steps.length; i++) {
     const st = w.steps[i];
-    if (t < s + st.dur) return { i, step: st, next: w.steps[i + 1] || null, left: s + st.dur - t, target: Math.round(st.pct / 100 * ftp), nextTarget: w.steps[i + 1] ? Math.round(w.steps[i + 1].pct / 100 * ftp) : null, done: false };
+    if (t < s + st.dur) return { i, step: st, next: w.steps[i + 1] || null, left: s + st.dur - t, target: Math.round(pctAt(st, (t - s) / st.dur) / 100 * ftp), nextTarget: w.steps[i + 1] ? Math.round(w.steps[i + 1].pct / 100 * ftp) : null, done: false };
     s += st.dur;
   }
   return { i: w.steps.length, step: null, next: null, left: 0, target: null, done: true };
@@ -99,7 +134,8 @@ export function workoutSVG(w, t = null, h = 46, adj = 0, ftp = 0) {
   let x = 0;
   const bars = w.steps.map(s => {
     const bw = s.dur / total * 1000, bh = pc(s) / max * h, col = s.pct >= 105 ? 'var(--accent)' : s.pct >= 88 ? '#f2b630' : s.pct >= 70 ? '#2fb36b' : '#6b7480';
-    const r = `<rect x="${x.toFixed(1)}" y="${(h - bh).toFixed(1)}" width="${Math.max(0.5, bw - 0.6).toFixed(1)}" height="${bh.toFixed(1)}" fill="${col}"/>`;
+    const r = s.to != null ? `<polygon points="${x.toFixed(1)},${h} ${x.toFixed(1)},${(h - bh).toFixed(1)} ${(x + Math.max(0.5, bw - 0.6)).toFixed(1)},${(h - s.to / max * h).toFixed(1)} ${(x + Math.max(0.5, bw - 0.6)).toFixed(1)},${h}" fill="${col}"/>` // a ramp step: a slope
+      : `<rect x="${x.toFixed(1)}" y="${(h - bh).toFixed(1)}" width="${Math.max(0.5, bw - 0.6).toFixed(1)}" height="${bh.toFixed(1)}" fill="${col}"/>`;
     x += bw; return r;
   }).join('');
   const mark = t != null ? `<rect x="${Math.min(1000, t / total * 1000).toFixed(1)}" y="0" width="3" height="${h}" fill="#fff"/>` : '';
