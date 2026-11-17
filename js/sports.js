@@ -31,6 +31,17 @@ export const famOf = g => ['ride', 'trainer', 'world'].includes(g) ? 'bike' : g;
 const TOP = ['Ride', 'Run', 'Walk', 'Hike', 'Swim', 'IceSkate', 'NordicSki', 'AlpineSki', 'WeightTraining', 'Workout', 'Yoga', 'VirtualRide'];
 export const PICK = [...TOP, ...Object.keys(STRAVA).filter(k => !TOP.includes(k)).sort((a, b) => labelOf(a).localeCompare(labelOf(b)))];
 
+/** pace the way each sport says it (17.11.): swims per 100 m, rowing and paddling per 500 m, walks and hikes per km like runs;
+ *  null = keep km/h (bikes, skating, sailing …). g = group, t = sport_type, d metres, s seconds */
+const PER500 = ['Rowing', 'VirtualRow', 'Kayaking', 'Canoeing', 'StandUpPaddling'];
+export function paceOf(g, t, d, s) {
+  const p = g === 'swim' ? [100, '/100 m'] : g === 'run' || g === 'walk' ? [1000, '/km'] : g === 'water' && PER500.includes(t) ? [500, '/500 m'] : null;
+  if (!p || !(d > 0) || !(s > 0)) return null; const x = Math.round(s / d * p[0]);
+  return `${Math.floor(x / 60)}:${String(x % 60).padStart(2, '0')} ${p[1]}`;
+}
+/** swims under 10 km in metres ("1,850 m"), everything else in km with one decimal */
+export const distOf = (g, d) => g === 'swim' && d < 10000 ? `${Math.round(d).toLocaleString('en-GB')} m` : `${(d / 1000).toLocaleString('en-GB', { minimumFractionDigits: 1, maximumFractionDigits: 1 })} km`;
+
 /** a sport_type for what a file says (GPX <type>, TCX Sport="…"); the person can still change it before saving */
 export function typeFromText(s) {
   const t = String(s || '').toLowerCase();

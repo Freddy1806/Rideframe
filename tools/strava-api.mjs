@@ -11,7 +11,12 @@ const DATA = process.env.RIDEFRAME_DATA || join(homedir(), 'RIDEFRAME_data');
 const CFG = join(DATA, 'strava.json'), TOK = join(DATA, 'strava_tokens.json');
 const BASE = (process.env.STRAVA_BASE || 'https://www.strava.com').replace(/\/$/, ''), API = BASE + '/api/v3', OAUTH = BASE + '/oauth'; // STRAVA_BASE: a fake Strava for the tests (tools/import-test.mjs)
 const READ = /\bactivity:read(_all)?\b/; // the permission the import needs; connections from before 17.11. only have activity:write,read
+const ROUTES = /(^|,)read(_all)?(,|$)/; // routes: "read" gives the public ones, "read_all" the private ones too
 const rate = { u15: 0, uDay: 0, l15: 100, lDay: 1000, at: 0 }; // Strava's app-wide limits, from the X-RateLimit headers of the last answer
+const noteRate = r => { const u = String(r.headers.get('x-ratelimit-usage') || '').split(',').map(Number), l = String(r.headers.get('x-ratelimit-limit') || '').split(',').map(Number);
+  if (u.length === 2 && u.every(Number.isFinite)) Object.assign(rate, { u15: u[0], uDay: u[1], at: Date.now() }, l.length === 2 && l.every(v => v > 0) ? { l15: l[0], lDay: l[1] } : {}); };
+const nearLimit = () => Date.now() - rate.at < 15 * 60e3 && (rate.u15 >= rate.l15 - 3 || rate.uDay >= rate.lDay - 10); // keep a few calls for uploads
+const segDet = new Map(); // "key|segment id" -> { at, v }: one detail call per segment and rider a day
 const imgDay = new Map(); // strava key -> { d: day, n: share images today }
 const pending = new Map(); // oauth state -> time
 const claims = new Map(), stateClaim = new Map(); // installed phone app (iOS): the login runs in a separate browser with its own storage, so the app fetches its key by a one-time claim code
@@ -129,6 +134,18 @@ export async function stravaApi(req, res, path) {
       await mkdir(DATA, { recursive: true }); await writeFile(cacheF, JSON.stringify(cache));
       return send(res, 200, { segments: [...out.values()] }), true;
     }
+    const sd = op.match(/^segment\/(\d{1,20})$/); // one segment's detail (PR, KOM/QOM) while approaching or riding it: outdoor.js asks a few times per ride at most
+    if (sd && req.method === 'GET') return send(res, ...await segDetail(key, tok, sd[1])), true;
+    if (op === 'routes' && req.method === 'GET') return send(res, ...await routes(key, tok, new URL(req.url, 'http://x').searchParams)), true;
+    const rg = op.match(/^routes\/(\d{1,20})\.gpx$/); // one Strava route as GPX, parsed in the browser like any route file
+    if (rg && req.method === 'GET') {
+      if (!ROUTES.test((await readJSON(TOK, {}))[key]?.scope || '')) return send(res, 403, { error: 'Reconnect Strava to import your routes.', reconnect: true }), true;
+      if (nearLimit()) return send(res, 429, { error: 'Strava limit reached. Try again in 15 minutes.', rateLimited: true }), true;
+      const r = await fetch(`${API}/routes/${rg[1]}/export_gpx`, { headers: { Authorization: 'Bearer ' + tok } }); noteRate(r);
+      if (!r.ok) return send(res, r.status === 429 ? 429 : r.status === 404 ? 404 : 502, { error: r.status === 404 ? 'Route not found on Strava.' : 'Strava answered ' + r.status }), true;
+      const t = await r.text(); if (t.length > 10e6 || !/<gpx[\s>]/i.test(t)) return send(res, 502, { error: 'Strava sent no GPX.' }), true;
+      res.writeHead(200, { 'Content-Type': 'application/gpx+xml; charset=utf-8', 'Cache-Control': 'no-store' }); res.end(t); return true;
+    }
     if (op === 'activity' && req.method === 'POST') { // strength workouts (kraft.html): no file, a manual activity "Krafttraining"
       const b = await body(req, 1e5), f = new URLSearchParams({ name: String(b.name || 'Strength training').slice(0, 200), sport_type: String(b.sport_type || 'WeightTraining').replace(/[^A-Za-z]/g, '') || 'Workout',
         start_date_local: String(b.start_date_local || ''), elapsed_time: String(Math.max(60, Math.round(+b.elapsed_time || 0))), description: String(b.description || '').slice(0, 4000) });
@@ -160,10 +177,8 @@ async function activities(key, tok, q) {
   const after = Math.max(0, Math.floor(+q.get('after') || 0)) || Math.floor(Date.now() / 1000) - 365 * 86400, out = [];
   let done = false, rateLimited = false, asc = true, pages = 0, error = null;
   for (let page = 1; page <= 10; page++) {
-    if (Date.now() - rate.at < 15 * 60e3 && (rate.u15 >= rate.l15 - 3 || rate.uDay >= rate.lDay - 10)) { rateLimited = true; break; } // keep a few calls for uploads
-    const r = await fetch(`${API}/athlete/activities?per_page=100&page=${page}&after=${after}`, { headers: { Authorization: 'Bearer ' + tok } });
-    const u = String(r.headers.get('x-ratelimit-usage') || '').split(',').map(Number), l = String(r.headers.get('x-ratelimit-limit') || '').split(',').map(Number);
-    if (u.length === 2 && u.every(Number.isFinite)) Object.assign(rate, { u15: u[0], uDay: u[1], at: Date.now() }, l.length === 2 && l.every(v => v > 0) ? { l15: l[0], lDay: l[1] } : {});
+    if (nearLimit()) { rateLimited = true; break; }
+    const r = await fetch(`${API}/athlete/activities?per_page=100&page=${page}&after=${after}`, { headers: { Authorization: 'Bearer ' + tok } }); noteRate(r);
     if (r.status === 429) { rateLimited = true; break; }
     const j = await r.json().catch(() => null);
     if (r.status === 401 || r.status === 403) return [403, { error: 'Reconnect Strava to import your activities.', reconnect: true }];
@@ -176,4 +191,30 @@ async function activities(key, tok, q) {
   // next: where a following call goes on (with "after" Strava answers oldest first; only then is the newest start a safe cursor)
   const next = !done && asc && out.length ? Math.floor(Date.parse(out[out.length - 1].start_date) / 1000) - 1 : null;
   return [error && !out.length ? 502 : 200, { activities: out, done, rateLimited, next, pages, error }];
+}
+
+/** a segment's detail for the live screen: the rider's PR and the KOM/QOM time (Strava's leaderboard and ranks are not open to apps).
+ *  24 h in memory per rider and segment; nothing is asked close to Strava's limits. */
+const xom = v => { const s = String(v ?? '').trim(), m = s.match(/^(\d+)\s*s$/); return m ? +m[1] : /^\d+(:\d{1,2}){1,2}$/.test(s) ? s.split(':').reduce((a, x) => a * 60 + +x, 0) : null; };
+async function segDetail(key, tok, id) {
+  const ck = key + '|' + id, c = segDet.get(ck); if (c && Date.now() - c.at < 864e5) return [200, c.v];
+  if (nearLimit()) return [429, { error: 'Strava limit reached.', rateLimited: true }];
+  const r = await fetch(`${API}/segments/${id}`, { headers: { Authorization: 'Bearer ' + tok } }); noteRate(r);
+  if (r.status === 429) return [429, { error: 'Strava limit reached.', rateLimited: true }];
+  const d = await r.json().catch(() => null); if (!r.ok || !d) return [r.status === 404 ? 404 : 502, { error: 'Strava answered ' + r.status }];
+  const v = { id: String(d.id ?? id), name: d.name || '', dist: d.distance || 0, grade: d.average_grade ?? null, pr: d.athlete_segment_stats?.pr_elapsed_time || null,
+    kom: d.xoms?.kom || null, qom: d.xoms?.qom || null, komS: xom(d.xoms?.kom), qomS: xom(d.xoms?.qom), efforts: d.athlete_segment_stats?.effort_count ?? null };
+  if (segDet.size > 5000) segDet.clear(); segDet.set(ck, { at: Date.now(), v }); return [200, v];
+}
+/** the rider's own Strava routes (Routes sheet on the outdoor page): GET /athletes/{id}/routes, 50 a page, small fields only */
+async function routes(key, tok, q) {
+  const t = (await readJSON(TOK, {}))[key];
+  if (!ROUTES.test(t?.scope || '') || !t?.athlete?.id) return [403, { error: 'Reconnect Strava to import your routes.', reconnect: true }];
+  if (nearLimit()) return [429, { error: 'Strava limit reached. Try again in 15 minutes.', rateLimited: true }];
+  const page = Math.max(1, Math.min(50, Math.floor(+q.get('page') || 1)));
+  const r = await fetch(`${API}/athletes/${encodeURIComponent(t.athlete.id)}/routes?per_page=50&page=${page}`, { headers: { Authorization: 'Bearer ' + tok } }); noteRate(r);
+  if (r.status === 429) return [429, { error: 'Strava limit reached. Try again in 15 minutes.', rateLimited: true }];
+  if (r.status === 401 || r.status === 403) return [403, { error: 'Reconnect Strava to import your routes.', reconnect: true }];
+  const j = await r.json().catch(() => null); if (!r.ok || !Array.isArray(j)) return [502, { error: j?.message || 'Strava answered ' + r.status }];
+  return [200, { routes: j.map(x => ({ id: String(x.id_str || x.id), name: String(x.name || 'Route').slice(0, 120), distance: Math.round(x.distance || 0), elevation_gain: Math.round(x.elevation_gain || 0), type: x.type === 2 ? 'run' : 'ride' })), more: j.length === 50, page }];
 }

@@ -56,3 +56,28 @@ button.obig { width: 100%; text-align: left; color: inherit; font: inherit; }
 .opg { display: flex; gap: 8px; flex-wrap: wrap; }
 .opg button { width: 44px; height: 44px; border-radius: 10px; border: 1px solid var(--line-2); font-weight: 900; color: var(--muted); }
 .opg button.on { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); }
+/* routes (17.11.): chip on the map before the start, one route line while riding, the segment warning with a countdown */
+.omapchip { position: absolute; z-index: 500; left: 8px; top: 8px; height: 34px; padding: 0 12px; border-radius: 99px; background: #000b; color: #fff; border: 1px solid #fff3; font-size: 13px; font-weight: 800; white-space: nowrap; max-width: calc(100% - 16px); overflow: hidden; }
+:root[data-theme="light"] .omapchip { background: #fffd; color: #151515; border-color: #0002; }
+.onav { display: flex; align-items: baseline; flex-wrap: wrap; column-gap: 7px; background: var(--ink-2); border: 1px solid var(--line-2); border-radius: 10px; padding: 8px 14px; font-weight: 900; font-size: 22px; font-variant-numeric: tabular-nums; flex: none; }
+.onav[hidden] { display: none; }
+.onav span { font-size: 13px; font-weight: 700; color: var(--muted); }
+.onav.off { background: #d4301f; border-color: #d4301f; color: #fff; justify-content: space-between; align-items: center; }
+.onav.turn { background: var(--paper); border-color: var(--paper); color: var(--ink); align-items: center; }
+.onav.done { background: #2fb36b; border-color: #2fb36b; color: #04140a; }
+.onav i { font-style: normal; font-size: 30px; line-height: 1; }
+.onav .oarr { display: inline-block; width: 34px; text-align: center; transition: transform .4s; }
+#out .oseg { display: grid; grid-template-columns: minmax(0, 1fr) auto; column-gap: 12px; row-gap: 2px; align-items: center; }
+.oseg b { grid-column: 1; grid-row: 1; font-size: 17px; }
+.oseg em { grid-column: 2; grid-row: 1 / 3; font-style: normal; font-size: 34px; font-weight: 900; font-variant-numeric: tabular-nums; line-height: 1; }
+.oseg em.up { color: #07531f; } .oseg em.dn { color: #8c1208; }
+.oseg span { grid-column: 1; grid-row: 2; font-size: 13px; font-weight: 700; white-space: normal; }
+.oseg.warn { background: #fff; color: #0b0b0b; box-shadow: inset 0 0 0 3px #f2b630; }
+.oroute { display: flex; align-items: center; gap: 10px; background: var(--ink-3); border-radius: 8px; padding: 8px 10px; cursor: pointer; border: 2px solid transparent; }
+.oroute.on { border-color: var(--accent); }
+.oroute .oshape { width: 52px; height: 52px; background: var(--ink-2); }
+.oroute .kx { position: static; flex: none; }
+.ofile { cursor: pointer; text-align: center; }
+.osrow { display: block; width: 100%; text-align: left; background: var(--ink-3); border-radius: 8px; padding: 10px 12px; color: inherit; }
+.osrow b { display: block; font-size: 15px; } .osrow span { font-size: 12px; color: var(--muted); }
+#out .oseg[hidden] { display: none; }

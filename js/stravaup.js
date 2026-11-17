@@ -115,3 +115,21 @@ export async function stravaActivities(after = 0) {
     return r.ok ? j : { ...j, error: j.error || 'Strava import failed (' + r.status + ').' }; }
   catch { return { error: 'No connection to the server.' }; }
 }
+
+/** one segment's PR and KOM/QOM (seconds in komS / qomS) for the live screen; null without Strava or near its limits */
+export async function stravaSegment(id) {
+  try { const r = await fetch('/api/strava/segment/' + encodeURIComponent(id), { headers: hdr(), cache: 'no-store' }); return r.ok ? await r.json() : null; }
+  catch { return null; }
+}
+/** the rider's Strava routes, 50 a page: { routes: [{ id, name, distance, elevation_gain, type }], more } or { error, reconnect } */
+export async function stravaRoutes(page = 1) {
+  try { const r = await fetch('/api/strava/routes?page=' + page, { headers: hdr(), cache: 'no-store' }), j = await r.json().catch(() => ({}));
+    return r.ok ? j : { ...j, error: j.error || 'Strava routes failed (' + r.status + ').' }; }
+  catch { return { error: 'No connection to the server.' }; }
+}
+/** one Strava route as GPX text */
+export async function stravaRouteGpx(id) {
+  const r = await fetch('/api/strava/routes/' + encodeURIComponent(id) + '.gpx', { headers: hdr(), cache: 'no-store' });
+  if (!r.ok) throw new Error((await r.json().catch(() => ({}))).error || 'Strava route failed (' + r.status + ').');
+  return r.text();
+}

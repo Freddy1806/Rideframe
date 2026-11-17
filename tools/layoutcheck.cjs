@@ -30,6 +30,21 @@ const seed = async p => p.evaluate(async ([long, NAME]) => { const { db } = awai
 }, [LONG, NAME]);
 // a Strava connection from before the read permission (the import asks to reconnect): only the status answer is faked
 const stravaOld = p => p.route('**/api/strava/status', r => r.fulfill({ status: 200, contentType: 'application/json', body: '{"configured":true,"connected":true,"canImport":false}' }));
+// a route around the demo loop (outdoor.js ?demo&feed): seeded, chosen, then ridden with fixes the check feeds itself (to angle a1, off = metres off the loop at the end)
+const routeRide = (a1, off = 0, name = 'Lofoten Küste über Reine und Hamnøy zurück') => async p => {
+  await p.evaluate(async name => { const { db } = await import('/js/db.js'), { makeRoute } = await import('/js/navroute.js'), C = [67.9326, 13.0890], r = .006, pts = [];
+    for (let a = -1; a <= 2.4; a += .01) pts.push([C[0] + Math.sin(a) * r, C[1] + Math.cos(a) * r * 2.4, 20 + a * 20]);
+    const rt = makeRoute(name, pts); await db.kvSet('navRoutes', [rt]); const st = (await db.kvGet('settings')) || {}; st.outdoor = { ...st.outdoor, route: rt.id }; await db.kvSet('settings', st); }, name);
+  await p.reload(); await p.waitForTimeout(700); if (a1 == null) return;
+  await p.evaluate(() => window.__rfFix({ timestamp: Date.now() - 600e3, coords: { latitude: 67.9326 - Math.sin(1) * .006, longitude: 13.0890 + Math.cos(1) * .0144, accuracy: 5, altitude: 30, speed: 0 } }));
+  await p.waitForTimeout(300); await p.click('#oStart'); // the first fix loads the (demo) segments
+  await p.evaluate(([a1, off]) => { const C = [67.9326, 13.0890], r = .006; let t = Date.now();
+    const at = (a, m = 0) => { const k = 1 + m / 667; return [C[0] + Math.sin(a) * r * k, C[1] + Math.cos(a) * r * 2.4 * k]; };
+    const fix = (q, sp = 7) => window.__rfFix({ timestamp: t += 1000, coords: { latitude: q[0], longitude: q[1], accuracy: 5, altitude: 30, speed: sp } });
+    let a = -1; for (; a < a1; a += .0105) fix(at(a)); for (let m = 15; m <= off; m += 15) fix(at(a += .003, m), 4); }, [a1, off]);
+  await p.waitForTimeout(400);
+  await p.evaluate(async () => { const { db } = await import('/js/db.js'); const st = (await db.kvGet('settings')) || {}; if (st.outdoor) delete st.outdoor.route; await db.kvSet('settings', st); });
+};
 const SCREENS = [
   ['handy', '/handy.html', null],
   ['handy-login', '/handy.html', async p => { await p.evaluate(() => localStorage.removeItem('rf_account')); await p.reload(); await p.waitForTimeout(500); await p.click('#hAcc'); }],
@@ -46,6 +61,12 @@ const SCREENS = [
   ['laufen', '/outdoor.html?sport=run&demo&run', null],
   ['laufen-ende', '/outdoor.html?sport=run&demo&fast&run', async p => { await p.waitForTimeout(3000); await p.click('#oPause'); await p.click('#oEnd'); }],
   ['draussen-einstellungen', '/outdoor.html?demo', p => p.click('#oSet')],
+  ['draussen-routen', '/outdoor.html?demo', async p => { await routeRide(null)(p); await p.click('#oRoute'); }],
+  ['draussen-route-karte', '/outdoor.html?demo&feed', routeRide(null)],
+  ['draussen-route-segment-bald', '/outdoor.html?demo&feed', routeRide(-.05)],
+  ['draussen-route-segment', '/outdoor.html?demo&feed', routeRide(.3)],
+  ['draussen-route-ab', '/outdoor.html?demo&feed', routeRide(.8, 180)],
+  ['laufen-route', '/outdoor.html?sport=run&demo&feed', async p => { await routeRide(null)(p); await p.evaluate(async () => { const { db } = await import('/js/db.js'); const st = (await db.kvGet('settings')) || {}; st.run = { ...st.run, route: st.outdoor.route }; await db.kvSet('settings', st); }); await p.reload(); await p.waitForTimeout(700); }],
   ['draussen-4felder', '/outdoor.html?demo&run', async p => { await p.evaluate(async () => { const { db } = await import('/js/db.js'); const st = (await db.kvGet('settings')) || {}; st.outdoor = { n: 4, map: 'small' }; await db.kvSet('settings', st); }); await p.reload(); await p.waitForTimeout(1500);
     await p.evaluate(async () => { const { db } = await import('/js/db.js'); const st = (await db.kvGet('settings')) || {}; delete st.outdoor; await db.kvSet('settings', st); }); }],
   ['draussen-6felder-hell', '/outdoor.html?demo&run', async p => { await p.evaluate(async () => { const { db } = await import('/js/db.js'); const st = (await db.kvGet('settings')) || {}; st.outdoor = { n: 6, map: 'off', big: 'hr' }; st.theme = 'light'; await db.kvSet('settings', st); }); await p.reload(); await p.waitForTimeout(1500);
@@ -137,7 +158,7 @@ function measure(minGap) { // runs in the page
       const p = await c.newPage(); p.setDefaultTimeout(4000);
       if (!mobile) await p.route('**/api/account/**', r => r.fulfill({ status: 200, contentType: 'application/json', body: '{}' })); // signed in: the pill shows the long name
       const errs = []; p.on('pageerror', e => errs.push(e.message));
-      await p.goto(BASE + '/handy.html'); await p.evaluate(async () => { const { db } = await import('/js/db.js'); await db.kvDel('outdoorDraft'); await db.kvDel('runDraft'); await db.kvDel('kraftDraft'); await db.kvDel('pureDraft'); }); // each screen starts clean
+      await p.goto(BASE + '/handy.html'); await p.evaluate(async () => { const { db } = await import('/js/db.js'); await db.kvDel('outdoorDraft'); await db.kvDel('runDraft'); await db.kvDel('kraftDraft'); await db.kvDel('pureDraft'); await db.kvDel('navRoutes'); }); // each screen starts clean
       await p.goto(BASE + url); await p.waitForTimeout(mobile ? 700 : 1500);
       try { if (act) { await act(p); await p.waitForTimeout(400); } } catch (e) { errs.push('Schritt ging nicht: ' + e.message.split('\n').slice(0, 6).join(' | ')); }
       if (safari) await p.evaluate(SAFARI);

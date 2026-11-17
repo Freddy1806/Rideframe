@@ -77,7 +77,7 @@ export function decodeFIT(input) {
   const read = d => { const m = {}; for (const [n, size, bt] of d.fields) { if (p + size > end) throw new Error('The FIT file is damaged.'); m[n] = val(size, bt, d.le); p += size; } p += d.dev; return m; };
   const take = (g, m) => {
     if (g === 0) out.fileType = m[0];
-    else if (g === 20 && m[253] != null) out.records.push({ t: (m[253] + FIT_EPOCH) * 1000, lat: m[0] != null ? m[0] * 180 / 2 ** 31 : null, lon: m[1] != null ? m[1] * 180 / 2 ** 31 : null,
+    else if (g === 20 && (m[253] != null || m[0] != null)) out.records.push({ t: m[253] != null ? (m[253] + FIT_EPOCH) * 1000 : NaN /* untimed points (course files) only serve routes */, lat: m[0] != null ? m[0] * 180 / 2 ** 31 : null, lon: m[1] != null ? m[1] * 180 / 2 ** 31 : null,
       ele: m[78] != null ? m[78] / 5 - 500 : m[2] != null ? m[2] / 5 - 500 : null, hr: m[3], cad: m[4], d: m[5] != null ? m[5] / 100 : null, v: m[73] != null ? m[73] / 1000 : m[6] != null ? m[6] / 1000 : null, w: m[7] });
     else if (g === 18) out.sessions.push({ start: m[2] != null ? (m[2] + FIT_EPOCH) * 1000 : null, sport: m[5], sub: m[6], elapsed: m[7] != null ? m[7] / 1000 : null, timer: m[8] != null ? m[8] / 1000 : null,
       dist: m[9] != null ? m[9] / 100 : null, kcal: m[11], avgHr: m[16], maxHr: m[17], avgW: m[20], ascent: m[22] });

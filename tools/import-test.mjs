@@ -3,7 +3,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
-import { STRAVA, groupOf, labelOf, pretty, famOf, typeFromText, PICK } from '../js/sports.js';
+import { STRAVA, groupOf, labelOf, pretty, famOf, typeFromText, PICK, paceOf, distOf } from '../js/sports.js';
 import { sportOf, isBike, loadOf, profileOf, bests, totals } from '../js/fitness.js';
 import { fromStrava, fromEntry, plan, sameAct, sidOf, startOf, dupOf } from '../js/actimport.js';
 import { parseGPX, parseTCX, parseFIT, parseActivity, decodeFIT, crc16 } from '../js/actfile.js';
@@ -134,4 +134,12 @@ test('FIT: checksum, ice skating watch file, indoor ride with compressed timesta
   assert.equal(parseActivity('watch.FIT', iceSkateFit()).sportType, 'IceSkate'); assert.equal(parseActivity('x.gpx', fx('hike.gpx')).sportType, 'Hike'); assert.equal(parseActivity('noext', fx('ride.tcx')).sportType, 'Ride');
   assert.throws(() => parseActivity('a.csv', new TextEncoder().encode('a,b')), /Unknown file type/);
   assert.equal(fitTime(Date.UTC(1989, 11, 31)), 0);
+});
+
+test('pace per sport: swim /100 m and metres, walk /km, rowing /500 m, bikes and skating keep km/h', () => {
+  assert.equal(paceOf('swim', 'Swim', 1850, 2072), '1:52 /100 m'); assert.equal(distOf('swim', 1850), '1,850 m'); assert.equal(distOf('swim', 12500), '12.5 km');
+  assert.equal(paceOf('walk', 'Hike', 8000, 8 * 720), '12:00 /km'); assert.equal(paceOf('run', 'Run', 10000, 3000), '5:00 /km');
+  assert.equal(paceOf('water', 'Rowing', 4000, 1000), '2:05 /500 m'); assert.equal(paceOf('water', 'VirtualRow', 2000, 480), '2:00 /500 m');
+  assert.equal(paceOf('water', 'Sail', 20000, 7200), null); assert.equal(paceOf('ride', 'Ride', 40000, 3600), null); assert.equal(paceOf('skate', 'IceSkate', 14000, 3600), null);
+  assert.equal(paceOf('swim', 'Swim', 0, 1800), null); assert.equal(distOf('ride', 42195), '42.2 km');
 });

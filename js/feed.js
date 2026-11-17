@@ -5,7 +5,7 @@ import { db } from './db.js';
 import { fmtTime, fmtNum, esc, weekStart } from './util.js';
 import { MODES, icon, applyTheme } from './theme.js';
 import { profileOf, loadOf, sportOf } from './fitness.js';
-import { labelOf, famOf } from './sports.js';
+import { labelOf, famOf, paceOf, distOf } from './sports.js';
 import { nm, e1rm, doneSets, sessVol, setTxt, kgTxt, nSets, stravaText } from './kraftlib.js';
 import { nav } from './nav.js';
 
@@ -29,7 +29,7 @@ const kmTxt = a => `${fmtNum(a.distance / 1000, 1)} km`;
 export function lineOf(a) {
   if (a.kraft) return `${fmtTime(a.dur || 0)} · ${nSets(doneSets(a))}`;
   const g = sportOf(a);
-  if (g !== 'run' && famOf(g) !== 'bike') return [esc(labelOf(a.sportType)), a.distance > 0 && kmTxt(a), fmtTime(a.duration)].filter(Boolean).join(' · '); // the other sports: what it was, then the numbers
+  if (g !== 'run' && famOf(g) !== 'bike') return [esc(labelOf(a.sportType)), a.distance > 0 && distOf(g, a.distance), paceOf(g, a.sportType, a.distance, a.duration), fmtTime(a.duration)].filter(Boolean).join(' · '); // the other sports: what it was, then the numbers
   return (g === 'run' ? [kmTxt(a), paceS(a.distance, a.duration) + ' /km', fmtTime(a.duration)] : [kmTxt(a), fmtTime(a.duration), a.avgPower > 0 && `${a.avgPower} W avg`]).filter(Boolean).join(' · ');
 }
 const day = t => new Date(t).toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short' });
@@ -59,10 +59,11 @@ export function detail(a, P, onChange = () => {}) {
   if (!a) return;
   const m = sportOf(a), run = m === 'run', L = loadOf(a, P), hr = (a.samples || []).map(s => s[5]).filter(v => v > 0), ext = a.source;
   const cell = (l, v) => v ? `<div><span>${l}</span><b>${v}</b></div>` : '';
+  const pc = !run && !a.kraft && paceOf(m, a.sportType, a.distance, a.duration); // swim /100 m, walk /km, rowing /500 m
   const nums = a.kraft ? cell('Time', fmtTime(a.dur || 0)) + cell('Sets', String(doneSets(a))) + cell('Volume', kgTxt(sessVol(a))) + cell('Records', a.prs ? '🏆 ' + a.prs : '')
-    : cell('Distance', a.distance > 0 && `${fmtNum(a.distance / 1000, 2)} km`) + cell('Time', fmtTime(a.duration))
+    : cell('Distance', a.distance > 0 && (m === 'swim' && a.distance < 10000 ? distOf(m, a.distance) : `${fmtNum(a.distance / 1000, 2)} km`)) + cell('Time', fmtTime(a.duration))
       + (run ? cell('Avg pace', `${paceS(a.distance, a.duration)} /km`) + cell('Fastest km', a.kmSplits?.length && fmtTime(Math.min(...a.kmSplits)))
-        : cell('Avg speed', a.duration && a.distance && `${fmtNum(a.distance / a.duration * 3.6, 1)} km/h`) + cell('Avg power', a.avgPower > 0 && `${a.avgPower} W`) + cell('NP', a.np > 0 && `${a.np} W`))
+        : pc ? cell('Avg pace', pc) : cell('Avg speed', a.duration && a.distance && `${fmtNum(a.distance / a.duration * 3.6, 1)} km/h`) + cell('Avg power', a.avgPower > 0 && `${a.avgPower} W`) + cell('NP', a.np > 0 && `${a.np} W`))
       + cell('Avg HR', hr.length ? String(Math.round(hr.reduce((x, y) => x + y, 0) / hr.length)) : a.avgHr > 0 && String(a.avgHr)) + cell('Max HR', hr.length ? String(Math.max(...hr)) : a.maxHr > 0 && String(a.maxHr))
       + cell('Climb', a.gain > 0 && `${fmtNum(a.gain)} m`) + cell('Work', a.kj > 0 && `${fmtNum(a.kj)} kJ`) + cell('Calories', `${fmtNum(a.kcal > 0 ? a.kcal : kcalOf(a, P.kg))} kcal`);
   const laps = (a.laps || []).filter(l => l && l.t > 0);
@@ -76,7 +77,12 @@ export function detail(a, P, onChange = () => {}) {
     ${laps.length > 1 ? `<div class="label">Laps</div><div class="kdet">${laps.map((l, i) => `<div><span>${i + 1}</span><span>${l.d ? fmtNum(l.d / 1000, 2) + ' km' : ''}${l.w ? ` · ${l.w} W` : ''}</span><span>${fmtTime(l.t)}</span></div>`).join('')}</div>` : ''}
     ${a.kraft ? (a.ex || []).map(x => `<div class="kdet"><b>${esc(nm(x))}</b>${x.sets.filter(y => y.done).map((y, j) => `<div><span>${y.warm ? 'W' : j + 1}</span><span>${setTxt(x.t, y)}${y.pr ? ' 🏆' : ''}</span><span>${x.t === 'w' ? fmtNum(e1rm(+y.kg, +y.r), 1) + ' kg 1RM' : ''}</span></div>`).join('')}</div>`).join('') : ''}
     <div class="pfoot col">${a.strava ? `<a class="btn ghost" href="${esc(a.strava)}" target="_blank" rel="noopener">View on Strava</a>` : !ext || ext === 'manual' ? '<button class="btn ghost" id="dStrava">Upload to Strava</button>' : ''}
-      ${ext === 'manual' ? '<button class="btn ghost" id="dEdit">Edit</button>' : ''}<button class="btn danger" id="dDel">Delete</button></div>`);
+      ${ext === 'manual' ? '<button class="btn ghost" id="dEdit">Edit</button>' : ''}${!a.kraft && (m === 'ride' || run) && ptsOf(a).length > 1 ? '<button class="btn ghost" id="dRoute">Use as route</button>' : ''}<button class="btn danger" id="dDel">Delete</button></div>`);
+  const ur = $('#dRoute', s); if (ur) ur.onclick = async () => { // ride (or run) it again: saved as a route, selected on the outdoor page, which opens
+    const { makeRoute } = await import('./navroute.js'), list = (await db.kvGet('navRoutes').catch(() => null)) || [];
+    let rt = list.find(r => r.from === a.id); if (!rt) { rt = makeRoute(nameOf(a), ptsOf(a), { from: a.id }); list.unshift(rt); await db.kvSet('navRoutes', list).catch(() => {}); }
+    const st = (await db.kvGet('settings').catch(() => null)) || {}, k = run ? 'run' : 'outdoor'; st[k] = { ...st[k], route: rt.id }; await db.kvSet('settings', st).catch(() => {});
+    location.href = run ? 'outdoor.html?sport=run' : 'outdoor.html'; };
   const st = $('#dStrava', s); if (st) st.onclick = async () => { st.disabled = true; const url = await (a.kraft ? stravaKraft(a) : ext === 'manual' ? (await import('./addact.js')).manualToStrava(a, flash) : stravaRide(a, st)); st.disabled = false;
     if (url) { st.outerHTML = `<a class="btn ghost" href="${esc(url)}" target="_blank" rel="noopener">View on Strava</a>`; onChange(); } };
   const ed = $('#dEdit', s); if (ed) ed.onclick = async () => { s.remove(); (await import('./addact.js')).addSheet({ edit: a, onSaved: (r, t) => { flash(t); onChange(); } }); };
@@ -140,11 +146,15 @@ function chart(a) {
 }
 
 /** the route as a line: Strava's summary polyline (imported) or the GPS of a file; no map tiles, just the shape */
-function routeSvg(a) {
-  let pts = (a.samples || []).filter(s => s[6] != null).map(s => [s[6], s[7]]);
+function ptsOf(a) {
+  let pts = (a.samples || []).filter(s => s[6] != null).map(s => [s[6], s[7], s[8] ?? null]);
   if (pts.length < 2 && a.polyline) { pts = []; const p = a.polyline; let i = 0, la = 0, lo = 0; // Google encoded polyline (Strava map.summary_polyline)
     const nx = () => { let r = 0, sh = 0, b; do { b = p.charCodeAt(i++) - 63; r |= (b & 31) << sh; sh += 5; } while (b >= 32 && i < p.length); return r & 1 ? ~(r >> 1) : r >> 1; };
-    while (i < p.length) { la += nx(); if (i >= p.length) break; lo += nx(); pts.push([la / 1e5, lo / 1e5]); } }
+    while (i < p.length) { la += nx(); if (i >= p.length) break; lo += nx(); pts.push([la / 1e5, lo / 1e5, null]); } }
+  return pts;
+}
+function routeSvg(a) {
+  const pts = ptsOf(a);
   if (pts.length < 2) return '';
   const k = Math.cos(pts[0][0] * Math.PI / 180), xs = pts.map(q => q[1] * k), ys = pts.map(q => -q[0]), x0 = Math.min(...xs), y0 = Math.min(...ys), w = Math.max(...xs) - x0 || 1e-6, h = Math.max(...ys) - y0 || 1e-6;
   const W0 = 320, H = 150, sc = Math.min((W0 - 16) / w, (H - 16) / h), ox = (W0 - w * sc) / 2, oy = (H - h * sc) / 2, step = Math.max(1, Math.floor(pts.length / 600));
