@@ -40,3 +40,37 @@ a.hrow { color: inherit; text-decoration: none; }
 .wcode { font-size: 46px; font-weight: 900; font-stretch: 110%; letter-spacing: .06em; font-variant-numeric: tabular-nums; line-height: 1.05; color: var(--paper); }
 .wleft { font-size: 13px; color: var(--muted); margin-top: 4px; } .wleft b { color: var(--paper); font-variant-numeric: tabular-nums; }
 .wsteps { text-align: left; margin: 12px 0 0 22px; font-size: 13.5px; line-height: 1.45; display: grid; gap: 4px; }
+/* Settings → Devices → Watch screens & workouts (js/watchcfg.js) */
+button.wcrow { width: 100%; text-align: left; color: inherit; }
+.wctabs { grid-template-columns: repeat(4, minmax(0, 1fr)); } .wctabs button { padding: 0 2px; letter-spacing: .03em; font-size: 11.5px; }
+.wcfg .wcbody { display: flex; flex-direction: column; gap: 10px; min-width: 0; }
+.wcprev { align-self: center; width: min(220px, 62vw); aspect-ratio: 1; border-radius: 50%; padding: 10px; background: radial-gradient(circle, #1b1b1b 62%, #2c2c2c 72%, #0e0e0e 100%); box-shadow: 0 10px 26px rgba(0,0,0,.45), inset 0 0 0 2px #333; margin: 2px 0 0; }
+.wcprev canvas { width: 100%; height: 100%; display: block; border-radius: 50%; background: #000; } .wcprev canvas.mip { image-rendering: pixelated; }
+.wcface { grid-template-columns: 1fr 1fr; align-self: center; width: min(100%, 320px); } .wcface button { height: 34px; font-size: 11px; }
+.wcpages { display: flex; flex-wrap: wrap; gap: 6px; } .wcpages > * { height: 36px; padding: 0 12px; border-radius: 99px; border: 1px solid var(--line-2); font-weight: 800; font-size: 13px; display: inline-flex; align-items: center; }
+.wcpages button.on { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); } .wcpages .wcadd { color: var(--accent); } .wcpages .wcfixed { color: var(--muted); border-style: dashed; }
+.wcfields { display: flex; flex-direction: column; gap: 6px; } .wcf { display: flex; gap: 6px; align-items: stretch; min-width: 0; }
+.wcslot { flex: 1; min-width: 0; min-height: 52px; display: grid; grid-template-columns: minmax(0, 1fr) auto auto; grid-template-rows: auto auto; align-items: center; column-gap: 8px; text-align: left; padding: 6px 12px; border-radius: 10px; background: var(--ink-3); border: 1px solid var(--line-2); }
+.wcslot small { grid-column: 1 / -1; font-size: 10.5px; font-weight: 800; letter-spacing: .1em; text-transform: uppercase; color: var(--muted); }
+.wcslot b { font-size: 16px; font-weight: 800; overflow-wrap: anywhere; } .wcslot span { font-size: 12px; color: var(--muted); font-weight: 700; white-space: nowrap; } .wcslot i { font-style: normal; color: var(--muted); font-size: 18px; }
+.wcx { flex: none; width: 44px; border-radius: 10px; border: 1px solid var(--line-2); font-size: 20px; color: var(--muted); }
+.wcrowbtns { display: flex; flex-wrap: wrap; gap: 8px; } .wcrowbtns .btn { flex: 1 1 auto; white-space: nowrap; }
+.wcsw span, .wcsp span { min-width: 0; } .wcsw b { display: block; font-size: 15px; } .wcsw small { display: block; font-size: 12px; color: var(--muted); font-weight: 600; line-height: 1.3; }
+.psheetin .prow.wcsw, .psheetin .prow.wcsp { grid-template-columns: minmax(0, 1fr) auto; padding: 4px 0; } .prow.wcsp { font-size: 14.5px; }
+.wcgrp h4 { font-size: 12px; font-weight: 800; color: var(--muted); margin: 6px 0 2px; }
+.wccount { float: right; font-size: 12px; letter-spacing: 0; text-transform: none; }
+.wclead { font-size: 13px; }
+#wcState { min-height: 1.4em; } #wcState.wcok { color: var(--paper); }
+.wcpick button { height: auto; min-height: 50px; padding: 6px 12px; display: flex; flex-direction: column; align-items: flex-start; justify-content: center; gap: 1px; }
+.wcpick small { font-size: 11px; color: var(--muted); font-weight: 600; } .wcpick button.on small { color: inherit; }
+.wcname { display: flex; flex-direction: column; gap: 4px; font-size: 12px; font-weight: 700; color: var(--muted); }
+.wcname input, .wcsearch { height: 48px; border-radius: 8px; background: var(--ink-3); border: 1px solid var(--line-2); padding: 0 12px; font-size: 17px; font-weight: 700; color: var(--paper); width: 100%; min-width: 0; }
+.wcitems { display: flex; flex-direction: column; gap: 6px; } .wci { display: flex; align-items: center; gap: 6px; min-width: 0; }
+.wcno { flex: none; width: 22px; text-align: center; font-weight: 900; color: var(--muted); font-variant-numeric: tabular-nums; }
+.wcit { flex: 1; min-width: 0; text-align: left; padding: 7px 10px; border-radius: 10px; background: var(--ink-3); border: 1px solid var(--line-2); }
+.wcit b { display: block; font-size: 15px; overflow-wrap: anywhere; } .wcit small { display: block; font-size: 12px; color: var(--muted); font-weight: 600; font-variant-numeric: tabular-nums; }
+.wcmv { flex: none; display: flex; gap: 4px; } .wcmv button { width: 34px; height: 40px; border-radius: 8px; border: 1px solid var(--line-2); font-weight: 900; font-size: 15px; } .wcmv button:disabled { opacity: .3; }
+.wcnum { grid-template-columns: minmax(0, 1fr) 130px; } .wcnum input, .wcnum select { width: 100%; }
+.wcexl { display: flex; flex-direction: column; gap: 4px; } .wcex { display: flex; justify-content: space-between; align-items: center; gap: 10px; min-height: 46px; padding: 6px 12px; border-radius: 8px; background: var(--ink-3); border: 1px solid var(--line-2); text-align: left; }
+.wcex b { font-size: 15px; min-width: 0; overflow-wrap: anywhere; } .wcex small { font-size: 11px; color: var(--muted); font-weight: 700; white-space: nowrap; } .wcex[hidden], .wcexl [hidden] { display: none; }
+@media (max-width: 360px) { .wcmv button { width: 30px; } .wcslot b { font-size: 15px; } }

@@ -13,18 +13,20 @@
 <body>
 <!-- Design preview of the Garmin watch app (garmin/). Linked nowhere in the app on purpose. -->
 <header class="whead"><div class="wbrand">RIDE<span>FRAME</span> <small>for Garmin</small></div>
-  <p>Strength on the wrist: a preview of the watch app on a Forerunner 265 and a fenix 7X Pro, each at its real pixel size. Use the buttons around the watch, tap and swipe the screen, or the keyboard.</p></header>
+  <p>Run, ride, strength and more on the wrist: a preview of the watch app on a Forerunner 265 and a fenix 7X Pro, each at its real pixel size. The data pages and workouts come from the phone (Settings, Devices, Watch). Use the buttons around the watch, tap and swipe the screen, or the keyboard.</p></header>
 <main class="wmain">
   <section id="faces" class="wfaces" aria-label="Watch previews"></section>
   <aside id="wPanel" class="wpanel">
     <div class="wseg" id="wMode" role="group" aria-label="Data"></div>
     <p id="wState" class="wstate"></p>
+    <p id="wCfg" class="wstate"></p>
     <p id="wNet" class="wnet" role="status"></p>
     <label class="wnear"><input type="checkbox" id="wNear" checked> Phone nearby (untick to see the offline queue)</label>
-    <div class="wacts"><button id="wGlance">Glance</button><button id="wRestart">Restart app</button><button id="wUnpair" hidden>Unpair</button></div>
+    <label class="wnear"><input type="checkbox" id="wFast"> Fast forward while recording (10 s each second)</label>
+    <div class="wacts"><button id="wGlance">Glance</button><button id="wRestart">Restart app</button><button id="wSeg" title="While recording a run or ride">Segment demo</button><button id="wUnpair" hidden>Unpair</button></div>
     <p class="wcue" id="wCue" aria-live="polite"></p>
-    <dl class="wkeys"><dt>START · Enter</dt><dd>start, select, set done, skip rest</dd><dt>UP / DOWN · ↑ ↓</dt><dd>scroll, change the value; hold for 10 kg</dd>
-      <dt>BACK · Esc</dt><dd>back; on a set: weight or reps; hold for the menu</dd><dt>Swipe left · ←</dt><dd>menu</dd><dt>Tap</dt><dd>a value to pick it, DONE to log the set</dd></dl>
+    <dl class="wkeys"><dt>START · Enter</dt><dd>start, select, pause, set done, skip rest</dd><dt>UP / DOWN · ↑ ↓</dt><dd>scroll, next data page, change the value; hold for 10 kg</dd>
+      <dt>BACK · Esc</dt><dd>back; lap while recording; on a set: weight or reps; hold for the menu</dd><dt>Swipe left · ←</dt><dd>menu</dd><dt>Tap</dt><dd>a value to pick it, DONE to log the set</dd></dl>
     <p class="wfoot">Screen: <span id="wScr"></span> · Prototype only, the watch app itself is in <code>garmin/</code> and not compiled yet.</p>
   </aside>
 </main>

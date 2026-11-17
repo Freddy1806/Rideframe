@@ -55,7 +55,7 @@ function settings() {
       <p class="phint">For indoor rides, the smart trainer, heart rate strap and Zwift Click connect on the Indoor page (Indoor trainer → Sensors). Bluetooth does not carry over from page to page, so connect them there.</p>
       <a class="hrow hlink" href="pure.html#sensors" id="tDev"><div><b>Indoor trainer: Sensors</b><small>Trainer, heart rate, Zwift Click</small></div><i>›</i></a>
       <p class="phint">Click v2: open it in the Zwift app once a day, or it drops after a minute.</p>
-      <div id="tWatch"></div>
+      <div id="tWatch"></div><div id="tWcfg"></div>
       <h3 class="ksec">More</h3>
       <a class="hrow hlink" href="profil.html"><div><b>My data</b><small>Weight, FTP, heart rate, export</small></div><i>›</i></a>
       <a class="hrow hlink" href="datenschutz.html"><div><b>Privacy</b></div><i>›</i></a>
@@ -74,6 +74,7 @@ function settings() {
     $('#tMc', s).onchange = e => { S.modeColors = e.target.checked; save(); draw(); render(); };
     s.querySelectorAll('[data-ac]').forEach(b => b.onclick = () => { S.accent = b.dataset.ac; applyTheme(S, null); save(); draw(); render(); });
     import('./watchpair.js').then(m => m.watchRow($('#tWatch', s), async () => { s.remove(); const a = await import('./account.js'); await a.accountModal({ settings: S }, async () => { await load(); render(); }); })).catch(() => {});
+    import('./watchcfg.js').then(m => m.cfgRow($('#tWcfg', s))).catch(() => {}); // Watch screens & workouts (signed in only)
     $('#tOk', s).onclick = () => s.remove();
   };
   s.onclick = e => { if (e.target === s) s.remove(); }; draw();

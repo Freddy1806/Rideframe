@@ -20,7 +20,7 @@ export const MODES = {
 export const ACCENTS = { orange: ['#ff5a1f', '#e04a12'], violet: ['#8b6cff', '#6446e8'], lime: ['#c6f432', '#5f8a00'], cyan: ['#2fd3e0', '#0a8f9c'], pink: ['#ff4f9a', '#d62c78'] };
 
 // simple line icons (24×24, stroke = currentColor)
-const P = {
+export const ICONS = {
   ride: '<circle cx="5.5" cy="16.5" r="3.5"/><circle cx="18.5" cy="16.5" r="3.5"/><path d="M5.5 16.5 9 9h6l3.5 7.5M9 9 12 16.5h-1M15 9l-1.5-3H11"/>',
   run: '<circle cx="15" cy="4.5" r="2"/><path d="m8 21 3-6 3 2v4M6 12l3-4 4 1 2 4 3 1M11 15l-2-3"/>',
   trainer: '<circle cx="12" cy="12" r="8"/><path d="M12 7v5l3 2"/><path d="M4 20h16"/>',
@@ -41,7 +41,7 @@ const P = {
   list: '<path d="M9 6h11M9 12h11M9 18h11"/><circle cx="4.5" cy="6" r="1"/><circle cx="4.5" cy="12" r="1"/><circle cx="4.5" cy="18" r="1"/>',
   chart: '<path d="M4 20h16"/><path d="M7 16v-5M12 16V6M17 16v-8"/>',
 };
-export const icon = (k, cls = 'mico') => `<svg class="${cls}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${P[k] || ''}</svg>`;
+export const icon = (k, cls = 'mico') => `<svg class="${cls}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${ICONS[k] || ''}</svg>`;
 
 const mq = matchMedia('(prefers-color-scheme: light)');
 let last = null;

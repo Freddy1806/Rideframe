@@ -41,7 +41,7 @@ button { font: inherit; color: inherit; background: none; border: 0; cursor: poi
 .wstate { font-size: 14px; line-height: 1.45; } .wnet { font-size: 13px; color: var(--acc); min-height: 1em; } .wnet:empty { display: none; }
 .wnear { display: flex; gap: 10px; align-items: center; font-size: 14px; } .wnear input { width: 18px; height: 18px; accent-color: var(--acc); flex: none; }
 .wacts { display: flex; flex-wrap: wrap; gap: 8px; } .wacts button { min-height: 38px; padding: 0 14px; border: 1px solid rgba(244, 244, 239, .25); border-radius: 8px; font-weight: 700; font-size: 13.5px; } .wacts button:hover { border-color: var(--paper); }
-.wacts button[hidden] { display: none; }
+.wacts button[hidden] { display: none; } .wacts button:disabled { opacity: .45; cursor: default; border-color: rgba(244, 244, 239, .25); }
 .wcue { font-size: 13px; color: var(--muted); min-height: 1.2em; }
 .wkeys { display: grid; grid-template-columns: minmax(0, auto) minmax(0, 1fr); gap: 4px 14px; font-size: 13px; line-height: 1.4; } .wkeys dt { font-weight: 800; white-space: nowrap; } .wkeys dd { color: var(--muted); }
 .wfoot { font-size: 12px; color: var(--muted); } .wfoot code { font-size: 12px; }
