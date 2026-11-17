@@ -30,6 +30,8 @@ export const WORKOUTS = [
     steps: [...warm, ...reps(2, W(12, 90, 'Sweet Spot'), W(4, 55, 'Rest')), ...cool] },
   { id: 'vo2_4x4', name: 'VO2max 4 × 4', what: '4 × 4 min at 115 % FTP, 4 min easy. Raises oxygen uptake, helps on climbs.',
     steps: [...warm, ...reps(4, W(4, 115, 'VO2max'), W(4, 50, 'Rest')), ...cool] },
+  { id: 'vo2_5x5', name: 'VO2max 5 × 5', what: '5 × 5 min at 110 % FTP, 5 min easy. Long VO2max intervals, hard but steady.',
+    steps: [...warm, ...reps(5, W(5, 110, 'VO2max'), W(5, 50, 'Rest')), ...cool] },
   { id: 'z2_90', name: 'Endurance 90 min', what: '90 min steady at 65–70 % FTP with three short tempo blocks. The long ride.',
     steps: [W(10, 55, 'Warm-up'), W(20, 66, 'Endurance'), W(5, 80, 'Tempo'), W(20, 66, 'Endurance'), W(5, 80, 'Tempo'), W(15, 66, 'Endurance'), W(5, 80, 'Tempo'), W(10, 50, 'Cool-down')] },
   { id: 'ramp', name: 'Ramp test (FTP)', what: 'Every minute +6 % FTP until you cannot go on. New FTP ≈ 75 % of the best minute. Press space to finish.',

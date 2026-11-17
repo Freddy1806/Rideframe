@@ -374,8 +374,11 @@ export class RideSession {
     }
     if (this.finished) return;
     const sh = d => this._padShift(d);
-    if (hit(4) || hit(13)) sh(-1);
-    if (hit(5) || hit(12)) sh(1);
+    const tune = this.workout && !this.wDone; // in a workout the D-pad moves the interval target, the bumpers keep shifting
+    if (hit(4) || (!tune && hit(13))) sh(-1);
+    if (hit(5) || (!tune && hit(12))) sh(1);
+    if (tune && hit(12)) this._wTune(5);
+    if (tune && hit(13)) this._wTune(-5);
     if (hit(0)) { this._chKey = true; if (this.ch?.active?.state === 'offer') this._flash('Accepted!'); }
     if (hit(1)) this._cycleHud();
     if (hit(2) && this.player?.snapshot) { this._takePhoto(); this._flash('📸 Foto'); }
@@ -491,10 +494,19 @@ export class RideSession {
     }
   }
 
+  /** live in a workout (Freddy 17.11.): the hard intervals a few watts up or down, with the controller's D-pad or W / S */
+  _wTune(d) {
+    if (!this.workout || this.wDone) return;
+    this.wAdj = Math.max(-150, Math.min(150, (this.wAdj || 0) + d));
+    const st = this.workout.steps.find(x => x.pct >= 88 && !x.free), base = st && this.ftp ? Math.round(st.pct * this.ftp / 100) : 0;
+    this._flash(`Intervals ${this.wAdj > 0 ? '+' : this.wAdj < 0 ? '−' : '±'}${Math.abs(this.wAdj)} W${base ? ` · target ${Math.max(50, base + this.wAdj)} W` : ''}`);
+    this._wT = 0;
+  }
   /** training program: target power for now; in ERG mode the trainer holds it */
   _workout(dt = 0.016) {
     if (!this.workout) return;
     const w = this.wNow = workoutAt(this.workout, this.elapsed, this.ftp);
+    if (this.wAdj && !w.done && w.step && !w.step.free && w.step.pct >= 88) w.target = Math.max(50, w.target + this.wAdj); // the rider's own offset on the hard intervals (_wTune)
     if (this.erg) this.state.trainer.setPower(w.done || w.step?.free ? null : w.target); // a test block is ridden freely
         if (w.done && !this.wDone) { this.wDone = true; this._flash?.('Workout done!'); this.coach?.say('done', 0); }
     this._coachTick(w, dt);
@@ -812,6 +824,8 @@ export class RideSession {
     if (e.key === 'ArrowUp' || e.key === 'ArrowDown') this.keyPower = true; /* watts from the keyboard: fine for trying things out, never a saved ride (Freddy 12.11.) */
     if (e.key === 'ArrowUp') { this.manualPower = Math.min(1500, this.manualPower + (e.shiftKey ? 50 : 10)); e.preventDefault(); }
     else if (e.key === 'ArrowDown') { this.manualPower = Math.max(0, this.manualPower - (e.shiftKey ? 50 : 10)); e.preventDefault(); }
+    else if (e.key === 'w' || e.key === 'W') this._wTune(e.shiftKey ? 1 : 5); /* interval target up / down: 5 W, with Shift 1 W */
+    else if (e.key === 's' || e.key === 'S') this._wTune(e.shiftKey ? -1 : -5);
     else if (e.key === 'g' || e.key === 'G') this.toggleShift();
     else if (e.key === 'q' || e.key === ',' || e.key === '-' || e.key === 'PageDown') { e.preventDefault?.(); this.shift(-1); } /* PageUp/PageDown: Bluetooth presenters and many media remotes */
     else if (e.key === 'e' || e.key === '.' || e.key === '+' || e.key === 'PageUp') { e.preventDefault?.(); this.shift(1); }
