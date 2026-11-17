@@ -334,7 +334,7 @@ export class RideSession {
       const d0 = this.d, g0 = this.gainAcc;
       this.d = Math.min(this.track.length, this.d + this.v * dt);
       this.elapsed += dt;
-      const e = eleAt(this.track, this.d); if (e > this.lastEle && !this._ergOn) this.gainAcc += e - this.lastEle; this.lastEle = e; // ERG workout: the trainer held watts, the gradient was not ridden: no climb
+      const e = eleAt(this.track, this.d); if (e > this.lastEle) this.gainAcc += e - this.lastEle; this.lastEle = e;
       this.story?.tick(dt, { dd: this.d - d0, dh: this.gainAcc - g0, power: this.power, cadence: this.source === 'trainer' && (this._cadSeen ||= this.cadence > 0) ? this.cadence : null, moving: this.wiz?.state !== 'fly' });
       this._workout(dt);
       this._chTick(dt);
@@ -544,14 +544,15 @@ export class RideSession {
         if (w.done && !this.wDone) { this.wDone = true; this._flash?.('Workout done!'); } // no coach voice in workouts (owner 17.11.): the bar shows it all
   }
 
-  /** ERG control on / off over the ride (seconds): no climb, no route times, flat altitude in the Strava file for these parts */
+  /** ERG control on / off over the ride (seconds): only a marker (owner 17.11.: the climb, best times, segments and the export
+   *  stay as on any ride, speed comes from the power on the route's grade); in ERG no shifting advice and no auto shifting */
   _ergSpan(on) {
     if (on === !!this._ergOn) return;
     const sp = this._ergSpans ||= [], t = Math.round(this.elapsed);
-    if (on) { sp.push([t, null]); this._segs = []; this._segCard?.(null); } else if (sp.length) sp[sp.length - 1][1] = t; // segments are not raced in ERG
+    if (on) sp.push([t, null]); else if (sp.length) sp[sp.length - 1][1] = t;
     this._ergOn = on;
   }
-  _ergRec() { const sp = (this._ergSpans || []).map(([a, b]) => [a, b ?? Math.round(this.elapsed)]).filter(([a, b]) => b > a); return sp.length ? { erg: true, mode: 'Workout (ERG)', ergSpans: sp } : {}; }
+  _ergRec() { const sp = (this._ergSpans || []).map(([a, b]) => [a, b ?? Math.round(this.elapsed)]).filter(([a, b]) => b > a); return sp.length ? { erg: true, mode: 'Workout (ERG)' } : {}; } // a structured ERG workout: a marker, nothing else
 
   // ---------- challenges (never in a workout; in a group ride (Freddy 12.11.) the same challengers wait at the same spots for
   // everyone, dice seeded with the group code; each races against his own FTP, the results are shared with the group) ----------
@@ -1088,12 +1089,12 @@ export class RideSession {
 
   async _finish() {
     this.finished = true; this.player.pause();
-    const full = this.startD < 50 && this.laps === 1 && !this._jumps && !this._ergSpans?.length; // ERG workout: the route was not climbed, no time on it; jumped to a friend: no time on this route // only a ride from the start line is a time on this route (one lap)
+    const full = this.startD < 50 && this.laps === 1 && !this._jumps; // jumped to a friend: no time on this route // only a ride from the start line is a time on this route (one lap)
     const rec = this._rideRecord(full);
     if (this.keyPower) { rec.unsaved = true; return this._summary(rec, null, 'Ridden with the arrow keys: not saved'); }
     const prev = (await db.ridesFor(this.route.id)).filter(r => r.complete).sort((a, b) => a.duration - b.duration);
     await db.put('rides', rec); import('./account.js').then(a => a.pushRide(rec)); this._keepPhoto(rec);
-    this._summary(rec, full ? prev : null, full ? '' : this._ergSpans?.length ? 'Workout (ERG): the trainer held the watts, so no climb and no best time on this route' : this._jumps && this.laps === 1 ? 'Jumped to other riders, does not count as best time' : this.laps > 1 ? `${this.laps} laps: ` + rec.laps.map((l, i) => `${i + 1}. ${fmtTime(l.t)}`).join(' · ') : 'Started at km ' + fmtKm(this.startD) + ', does not count as best time');
+    this._summary(rec, full ? prev : null, full ? '' : this._jumps && this.laps === 1 ? 'Jumped to other riders, does not count as best time' : this.laps > 1 ? `${this.laps} laps: ` + rec.laps.map((l, i) => `${i + 1}. ${fmtTime(l.t)}`).join(' · ') : 'Started at km ' + fmtKm(this.startD) + ', does not count as best time');
   }
 
   /** End screen; prev = completed rides to rank against (null: not ranked, note says why). */
@@ -1117,7 +1118,7 @@ export class RideSession {
       const vsLast = last ? ` · ${t <= last.t ? fmtTime(last.t - t) + ' faster' : fmtTime(t - last.t) + ' slower'} than last time` : '';
       this._flash(`${k.icon} ${s.seg.name}: ${fmtTime(t)}${pr && best ? ' · new best time!' : !best ? ' · first time' : ''}${vsLast}${field.length ? ` · rank ${rank} of ${field.length + 1}` : ''}`);
     }
-    if (!this._ergOn) for (const seg of this.segs) if (d0 <= seg.from && this.d > seg.from && !act.some(s => s.seg === seg)) { // crossed a start line (never joined mid-segment)
+    for (const seg of this.segs) if (d0 <= seg.from && this.d > seg.from && !act.some(s => s.seg === seg)) { // crossed a start line (never joined mid-segment)
       act.push({ seg, t: Math.max(0, (this.d - seg.from) / Math.max(0.1, this.v)), e: 0 });
       if (seg.kind === 'sprint') this._flash(`⚡ ${seg.name}: 300 m flat out!`);
       if (seg.kind === 'climb') { this.lapMarks.push(Math.round(this.elapsed)); const b = this.segBest[seg.id]; // the climb starts: big and clear, and a new lap
@@ -1221,7 +1222,7 @@ export class RideSession {
         <div><div class="label">Work</div><div class="v">${fmtNum(rec.avgPower * rec.duration / 1000)}<small>kJ</small></div></div>
       </div>
       ${this._segSummary()}
-      ${rec.erg ? `<div class="chsum">Workout (ERG) · the trainer held the watts: ${rec.gain ? `${fmtNum(rec.gain)} m climb from the simulated parts only` : 'no climb counted'}, uploaded as a flat workout</div>` : ''}
+      ${rec.erg ? '<div class="chsum">Workout (ERG) · the trainer held the target watts</div>' : ''}
       ${rec.wAdj || rec.wAdjAvg ? `<div class="chsum">Intervals ${fmtAdj(rec.wAdj)}${rec.wAdjAvg !== rec.wAdj ? ` · average ${fmtAdj(rec.wAdjAvg)}` : ''} ${rec.wAdjE ? ` · easy parts ${fmtAdj(rec.wAdjE)}` : ''} · targets tuned live</div>` : rec.wAdjE ? `<div class="chsum">Easy parts ${fmtAdj(rec.wAdjE)} · targets tuned live</div>` : ''}
       ${this._testHTML(rec)}
       ${rec.challenges ? `<div class="chsum">⚔ ${rec.challenges.offered} challenges · ${rec.challenges.accepted} accepted · ${rec.challenges.won} won</div>` : ''}

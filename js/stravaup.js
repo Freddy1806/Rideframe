@@ -45,7 +45,7 @@ export async function stravaUpload(rec, name, eleAt, onState = () => {}, imageUr
   const r = await fetch('/api/strava/upload', { method: 'POST', headers: { ...hdr(), 'Content-Type': 'application/json' },
     body: JSON.stringify({ tcx: toTCX(rec, name, eleAt), name: `RIDEFRAME · ${name}${rec.erg ? ' · Workout (ERG)' : ''}`, external_id: 'rideframe-' + rec.id,
       outdoor: !!rec.outdoor, description: rec.sport === 'run' ? `${km} km · ${rec.gain} m climb${rec.distance > 0 ? ` · avg ${paceTxt(rec.duration / rec.distance * 1000)} /km` : ''}\nRun with RIDEFRAME.` : rec.outdoor ? `${km} km · ${rec.gain} m climb${rec.avgPower ? ` · avg ${rec.avgPower} W` : ''}\nRecorded outdoors with RIDEFRAME.`
-      : rec.erg ? `${km} km · ${rec.gain} m climb · avg ${rec.avgPower} W\nWorkout (ERG) in RIDEFRAME (indoor, virtual route): the trainer held the target watts, the route's climbing was not ridden${rec.gain ? ' (climb only from the simulated parts)' : ''}.` + intervalText(rec)
+      : rec.erg ? `${km} km · ${rec.gain} m climb · avg ${rec.avgPower} W\nWorkout (ERG) in RIDEFRAME (indoor, virtual route): the trainer held the target watts.` + intervalText(rec)
       : `${km} km · ${rec.gain} m climb · avg ${rec.avgPower} W\nRidden in RIDEFRAME (indoor, virtual route).` + intervalText(rec) /* no image link in the description (Freddy 12.11.: it exposed the Mac mini address) */ }) });
   const j = await r.json().catch(() => ({}));
   if (!r.ok) throw new Error(j.error || 'Upload failed');
