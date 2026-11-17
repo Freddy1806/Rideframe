@@ -52,7 +52,8 @@ export async function stravaUpload(rec, name, eleAt, onState = () => {}, imageUr
   for (let i = 0; i < 40; i++) { // Strava needs a few seconds to process
     await new Promise(r => setTimeout(r, i < 5 ? 1500 : 3000));
     const s = await (await fetch('/api/strava/upload/' + j.id + (rec.outdoor ? '' : '?indoor=1'), { headers: hdr(), cache: 'no-store' })).json().catch(() => ({}));
-    if (s.activity_id) return 'https://www.strava.com/activities/' + s.activity_id;
+    const act = s.activity_id_str ?? s.activity_id; // 64-bit ids from June 2027: the string form when sent
+    if (act) return 'https://www.strava.com/activities/' + act;
     if (s.error) throw new Error(/duplicate/i.test(s.error) ? 'This ride is already on Strava.' : s.error);
   }
   throw new Error('Strava is not answering. Check your Strava profile in a moment, the ride usually arrives anyway.');
@@ -100,7 +101,7 @@ export async function stravaStrength({ id, name, start, dur, description, sportT
     body: JSON.stringify({ name, sport_type: sportType, start_date_local: local, elapsed_time: dur, description, distance, external_id: prefix + id }) });
   const j = await r.json().catch(() => ({}));
   if (!r.ok) throw new Error(/write|scope|permission/i.test(j.error || '') ? 'Strava does not allow creating activities. Please reconnect Strava once.' : j.error || 'Upload failed');
-  return 'https://www.strava.com/activities/' + j.id;
+  return 'https://www.strava.com/activities/' + (j.id_str ?? j.id);
 }
 
 /** Strava segments for the outdoor map: starred ones + popular ones in bounds [swLat, swLon, neLat, neLon]; [] without Strava */

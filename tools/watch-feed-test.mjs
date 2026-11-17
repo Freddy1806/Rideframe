@@ -185,8 +185,9 @@ test('segments: the phone links its Strava; nearest first, max 8, short names, 4
 });
 test('segments: near Strava\'s limit nothing is asked; a fat answer is cut to 8 KB', async () => {
   const A = await register('Seg Limit'), t = await pairWith(A); await call('POST', '/api/watch/code', { token: A, strava: KEY2 });
-  fake.explore = [...Array(10)].map((_, i) => ({ ...SEGS[i], id: 8000 + i, points: enc([...Array(40)].map((_, k) => [C0[0] + i * .01 + (k % 2) * .003, C0[1] + k * .002])) }));
+  fake.explore = [...Array(10)].map((_, i) => ({ ...SEGS[i], id: 8000 + i, ...(i === 9 ? { id_str: '9223372036854775807' } : {}), points: enc([...Array(40)].map((_, k) => [C0[0] + i * .01 + (k % 2) * .003, C0[1] + k * .002])) }));
   const big = await call('GET', `/api/watch/segments?lat=${C0[0] + 2}&lon=${C0[1]}&type=run`, { bearer: t }); assert.ok(big.size < 8192 && big.j.segs.length <= 8, `${big.size} bytes, ${big.j.segs.length} segments`);
+  assert.ok(big.j.segs.some(s => s.id === '9223372036854775807'), '64-bit segment ids: id_str is used'); assert.ok(big.j.segs.every(s => typeof s.id === 'string'));
   fake.usage = '98,500'; await call('GET', `/api/watch/segments?lat=${C0[0] + 3}&lon=${C0[1]}&type=run`, { bearer: t }); // this answer brings the usage
   fake.log = []; const r = await call('GET', `/api/watch/segments?lat=${C0[0] + 4}&lon=${C0[1]}&type=run`, { bearer: t });
   assert.equal(r.status, 200); assert.deepEqual(r.j.segs, []); assert.equal(r.j.limited, true); assert.equal(fake.log.length, 0, 'no call close to the limit');
