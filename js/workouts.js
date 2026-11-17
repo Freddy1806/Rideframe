@@ -74,6 +74,14 @@ export const allWorkouts = () => [...MY, ...WORKOUTS];
 export const workoutById = id => MY.find(w => w.id === id) || WORKOUTS.find(w => w.id === id) || null;
 export const workoutDuration = w => w.steps.reduce((s, x) => s + x.dur, 0);
 
+/** live watt tuning in a workout (Freddy 17.11.: "turn the watts up when I can push more"): an offset in W on the hard
+ *  intervals only (pct >= 88, not a free test block), ±150 W, never below 50 W; rest and warm-up stay as they are */
+export const WADJ_MAX = 150;
+export const isHard = s => !!s && !s.free && s.pct >= 88;
+export const tuneAdj = (adj, d) => Math.max(-WADJ_MAX, Math.min(WADJ_MAX, Math.round((+adj || 0) + (+d || 0))));
+export const tunedTarget = (step, target, adj) => target == null || !adj || !isHard(step) ? target : Math.max(50, target + adj);
+export const fmtAdj = a => `${a > 0 ? '+' : a < 0 ? '−' : '±'}${Math.abs(a || 0)} W`;
+
 /** where in the program we are at time t (seconds since start) */
 export function workoutAt(w, t, ftp) {
   let s = 0;
@@ -85,12 +93,12 @@ export function workoutAt(w, t, ftp) {
   return { i: w.steps.length, step: null, next: null, left: 0, target: null, done: true };
 }
 
-/** small block chart of the program (SVG), the current position marked with a line */
-export function workoutSVG(w, t = null, h = 46) {
-  const total = workoutDuration(w), max = Math.max(...w.steps.map(s => s.pct), 120);
+/** small block chart of the program (SVG), the current position marked with a line; adj / ftp: hard bars at the tuned target */
+export function workoutSVG(w, t = null, h = 46, adj = 0, ftp = 0) {
+  const total = workoutDuration(w), pc = s => adj && ftp ? tunedTarget(s, s.pct / 100 * ftp, adj) / ftp * 100 : s.pct, max = Math.max(...w.steps.map(pc), 120);
   let x = 0;
   const bars = w.steps.map(s => {
-    const bw = s.dur / total * 1000, bh = s.pct / max * h, col = s.pct >= 105 ? 'var(--accent)' : s.pct >= 88 ? '#f2b630' : s.pct >= 70 ? '#2fb36b' : '#6b7480';
+    const bw = s.dur / total * 1000, bh = pc(s) / max * h, col = s.pct >= 105 ? 'var(--accent)' : s.pct >= 88 ? '#f2b630' : s.pct >= 70 ? '#2fb36b' : '#6b7480';
     const r = `<rect x="${x.toFixed(1)}" y="${(h - bh).toFixed(1)}" width="${Math.max(0.5, bw - 0.6).toFixed(1)}" height="${bh.toFixed(1)}" fill="${col}"/>`;
     x += bw; return r;
   }).join('');
