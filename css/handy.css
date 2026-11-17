@@ -42,7 +42,7 @@ a.hrow { color: inherit; text-decoration: none; }
 .wsteps { text-align: left; margin: 12px 0 0 22px; font-size: 13.5px; line-height: 1.45; display: grid; gap: 4px; }
 /* Settings → Devices → Watch screens & workouts (js/watchcfg.js) */
 button.wcrow { width: 100%; text-align: left; color: inherit; }
-.wctabs { grid-template-columns: repeat(4, minmax(0, 1fr)); } .wctabs button { padding: 0 2px; letter-spacing: .03em; font-size: 11.5px; }
+.wctabs { display: flex; } .wctabs button { flex: 1 1 auto; padding: 0 7px; } /* "Strength" takes the room it needs at 320 px */
 .wcfg .wcbody { display: flex; flex-direction: column; gap: 10px; min-width: 0; }
 .wcprev { align-self: center; width: min(220px, 62vw); aspect-ratio: 1; border-radius: 50%; padding: 10px; background: radial-gradient(circle, #1b1b1b 62%, #2c2c2c 72%, #0e0e0e 100%); box-shadow: 0 10px 26px rgba(0,0,0,.45), inset 0 0 0 2px #333; margin: 2px 0 0; }
 .wcprev canvas { width: 100%; height: 100%; display: block; border-radius: 50%; background: #000; } .wcprev canvas.mip { image-rendering: pixelated; }

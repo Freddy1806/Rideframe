@@ -42,11 +42,12 @@ async function load() {
   try { const r = await api('GET'); C = r.config; st = { at: r.at, dirty: false }; keep(); msg = r.stored ? 'Saved ✓' : 'Defaults. Changes are saved automatically.'; bad = false; }
   catch (e) { msg = e.status === 401 ? 'Sign in again to load your watch setup.' : 'Offline: showing the copy on this phone.'; bad = !!e.status; }
 }
-/** every exercise of the app: catalogue, own ones (kv 'kraftEx' and the settings), with the watch's short names for the top 20 */
+/** every exercise of the app: catalogue, own ones (kv 'kraftEx' and the settings), whatever a session used; then the top 20 */
 async function exercises() {
   const S = (await db.kvGet('settings').catch(() => null)) || {}, own = [...((await db.kvGet('kraftEx').catch(() => null)) || []), ...(S.kraftEx || [])];
   const m = new Map(CATALOG.map(e => [e.k, { k: e.k, n: e.n, t: e.t, g: e.g }]));
   for (const e of own) if (e?.k && !m.has(e.k)) m.set(e.k, { k: e.k, n: e.n || e.k, t: e.t || 'w', g: 'Custom', own: true });
+  for (const w of (await db.kvGet('kraft').catch(() => null)) || []) for (const x of w.ex || []) if (x?.k && !m.has(x.k)) m.set(x.k, { k: x.k, n: x.n || x.k, t: x.t || 'w', g: 'Custom', own: true }); // done on another device
   for (const e of TOP) if (!m.has(e.id)) m.set(e.id, { k: e.id, n: e.n, t: e.t, g: 'Other' });
   return [...m.values()];
 }

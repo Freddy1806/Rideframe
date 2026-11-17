@@ -5,6 +5,8 @@
 // touch (tap, swipe) or the keyboard, with demo data or against the real API (tools/watch-api.mjs) after pairing.
 import { newFlow, handle, SCR, curEx, setNo, restLeft, clock, sent, paired, setSetup, setConfig, setRoute, routeInfo, recPages, homeItems, listItems, workouts, planItem, HOME } from './watchflow.js';
 import { compact, defaults, fieldText, labelOf, TOP } from './watchfields.js';
+import { groupOf } from './sports.js';
+import { MODES } from './theme.js';
 import { FACES, tint, DEG, txt, pill, arc, line, dot, startHint, tri, heart, icon, SPORT_ICON, drawPage, pageDots, recRing, snap64 } from './watchdraw.js';
 
 const $ = s => document.querySelector(s), LS = window.localStorage;
@@ -142,7 +144,7 @@ const DRAW = {
       txt(g, t, x, S * .855, S * .055, C.fg, { al: 'left', w: 800 }); if (d) { tri(g, x + tw + S * .035, S * .855, S * .018, d > 0, C.good); txt(g, Math.abs(d), x + tw + S * .06, S * .855, S * .05, C.good, { al: 'left', w: 800 }); } }
     scrollArc(g, S, C, F.sel, items.length); startHint(g, S, C);
   },
-  [SCR.MORE](g, S, C) { C = tint(C, 'other'); const n = listItems(F).length; list(g, S, C, listItems(F), F.sel, 'MORE SPORTS', null);
+  [SCR.MORE](g, S, C) { C = tint(C, 'other'); const n = listItems(F).length; list(g, S, C, listItems(F), F.sel, 'MORE SPORTS', i => (MODES[groupOf(F.cfg.more[i][0])] || MODES.other).name);
     if (!n) { txt(g, 'Choose sports in the app:', S / 2, S * .62, S * .048, C.fg, { w: 700, max: S * .7 }); txt(g, 'Settings > Watch > More', S / 2, S * .69, S * .048, C.fg, { w: 700, max: S * .7 }); } },
   [SCR.READY](g, S, C) {
     C = tint(C, F.sp); startHint(g, S, C);

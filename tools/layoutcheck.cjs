@@ -64,6 +64,22 @@ const SCREENS = [
     await p.evaluate(n => localStorage.setItem('rf_account', JSON.stringify({ token: 'x', name: n })), NAME); await p.reload(); await p.waitForTimeout(500); // the login screens before signed out
     await p.click('#hSet'); await p.waitForSelector('#wPair', { timeout: 15000 }); await p.click('#wPair'); await p.waitForSelector('.wcode'); await p.waitForTimeout(300); await p.locator('#tWatch').scrollIntoViewIfNeeded(); }],
   ['menu-einstellungen-uhr-abgemeldet', '/handy.html', async p => { await p.evaluate(() => localStorage.removeItem('rf_account')); await p.reload(); await p.waitForTimeout(500); await p.click('#hSet'); await p.waitForSelector('#wIn'); await p.locator('#tWatch').scrollIntoViewIfNeeded(); }],
+  // Settings -> Devices -> Watch screens & workouts (js/watchcfg.js): signed in, the account's watch config faked with long names (regex routes)
+  ...[['uhr-setup-laufen', null], ['uhr-setup-rad', p => p.click('#wcSheet [data-tab="ride"]')], ['uhr-setup-feld', p => p.click('#wcSheet [data-slot="0"]')],
+    ['uhr-setup-kraft', p => p.click('#wcSheet [data-tab="kraft"]')], ['uhr-setup-workout', async p => { await p.click('#wcSheet [data-tab="kraft"]'); await p.click('[data-w="0"]'); await p.waitForSelector('#wcWork'); }],
+    ['uhr-setup-uebung', async p => { await p.click('#wcSheet [data-tab="kraft"]'); await p.click('[data-w="0"]'); await p.click('#wcWork [data-it="1"]'); await p.waitForSelector('#wcItem'); }],
+    ['uhr-setup-uebungen', async p => { await p.click('#wcSheet [data-tab="kraft"]'); await p.click('[data-w="0"]'); await p.click('#wcAddEx'); await p.waitForSelector('#wcEx'); }],
+    ['uhr-setup-mehr', p => p.click('#wcSheet [data-tab="more"]')]].map(([nm, act]) => [nm, '/handy.html', async p => {
+    const W = { id: 'wl', name: 'Oberkörper schwer und lang benannt xx', items: [{ ex: 'bench', sets: 10, reps: 100, kg: 487.75, rest: 600 }, { ex: 'my_x', sets: 4, reps: 12, kg: 140, rest: 150 }, { ex: 'plank', sets: 3, reps: 95, kg: 0, rest: 45 }] };
+    const cfg = { v: 1, sports: { run: { pages: [{ fields: ['lapPace', 'avgPace', 'lapDist', 'hrZone'] }, { fields: ['pace'] }, { fields: ['kcal', 'climb'] }, { fields: ['clock', 'cadence', 'lapTime'] }], map: true, segWarn: true, autoLap: true, autoPause: false, vibrate: true },
+      ride: { pages: [{ fields: ['power3s', 'avgSpeed', 'avgPower', 'time'] }], map: false, segWarn: true, autoLap: false, autoPause: true, vibrate: true }, other: { pages: [{ fields: ['hr', 'time', 'clock', 'kcal'] }] } },
+      more: ['HighIntensityIntervalTraining', 'StandUpPaddling', 'BackcountrySki'], workouts: [W, { ...W, id: 'w2', name: 'Beine' }] };
+    await p.route(/\/api\/watch\/config$/, r => r.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ config: cfg, at: Date.now(), stored: true }) }));
+    await p.route(/\/api\/watch\/devices$/, r => r.fulfill({ status: 200, contentType: 'application/json', body: '{"watches":[]}' }));
+    await p.route(/\/api\/account\/kraft/, r => r.fulfill({ status: 200, contentType: 'application/json', body: '{"ids":[]}' })); // the strength sync must not sign the fake login out
+    await p.evaluate(async n => { localStorage.setItem('rf_account', JSON.stringify({ token: 'x', name: n })); const { db } = await import('/js/db.js'); await db.kvDel('watchCfg'); }, NAME); await p.reload(); await p.waitForTimeout(500);
+    await p.click('#hSet'); await p.waitForSelector('#wcOpen', { timeout: 15000 }); await p.click('#wcOpen'); await p.waitForFunction(() => /Saved/.test(document.querySelector('#wcState')?.textContent || ''), null, { timeout: 15000 });
+    if (act) await act(p); }]),
   ['app-strecken-handy', '/?desktop&noprofile', null],
   ['app-training-handy', '/?desktop&noprofile', p => p.click('[data-view="training"]')],
   ['app-fahrten-handy', '/?desktop&noprofile', p => p.click('[data-view="history"]')],

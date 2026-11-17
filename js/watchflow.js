@@ -118,8 +118,8 @@ export function sent(F, id, res) {
 }
 export function paired(F, ok, setup) {
   if (!ok) { F.pair.st = 'fail'; return; }
-  F.paired = true; F.pair = { d: [0, 0, 0, 0, 0, 0], i: 0, st: 'enter' }; if (setup) F.setup = setup;
-  F.scr = SCR.HOME; F.cues.push('done'); F.out.push({ k: 'setup' }, { k: 'send' });
+  F.paired = true; F.pair = { d: [0, 0, 0, 0, 0, 0], i: 0, st: 'enter' }; if (setup) setSetup(F, setup);
+  F.sel = 0; F.scr = SCR.HOME; F.cues.push('done'); F.out.push({ k: 'setup' }, { k: 'send' });
 }
 export function setSetup(F, setup) { if (setup && Array.isArray(setup.ex)) { const id = curEx(F).id; F.setup = setup; F.list = order(setup); const i = setup.ex.findIndex(e => e.id === id); F.cur = i < 0 ? 0 : i; } }
 /** a new config from the phone (GET /api/watch/config); a running recording keeps its pages */
@@ -186,11 +186,11 @@ export function handle(F, ev, now, arg) {
   if (ev === 'swipeUp') ev = list || s === SCR.REC ? 'down' : 'up';     // a list (and the data pages) scroll with the finger, a number counts up
   if (ev === 'swipeDown') ev = list || s === SCR.REC ? 'up' : 'down';
   if (ev === 'menu') { if (s === SCR.HOME || s === SCR.START || s === SCR.PICK || s === SCR.SET || s === SCR.REST) openMenu(F); return; }
-  if (s === SCR.GLANCE) { if (ev === 'start' || ev === 'tap') F.scr = F.paired ? SCR.HOME : SCR.PAIR; return; }
+  if (s === SCR.GLANCE) { if (ev === 'start' || ev === 'tap') { F.sel = 0; F.scr = F.paired ? SCR.HOME : SCR.PAIR; } return; }
   if (s === SCR.START) {
     if (ev === 'start' || ev === 'tap') { if (!F.setup.ex.length) { F.out.push({ k: 'setup' }); return; } F.start = now; F.sets = []; F.sum = null; F.plan = null; F.last = 'kraft';
       if (workouts(F).length) { F.sel = 0; F.scr = SCR.SMODE; } else toPick(F); }
-    else if (ev === 'back') F.scr = SCR.HOME;
+    else if (ev === 'back') { F.sel = 0; F.scr = SCR.HOME; }
     return;
   }
   if (s === SCR.READY) {
@@ -245,7 +245,7 @@ export function handle(F, ev, now, arg) {
     else if (ev === 'down') P.d[P.i] = (P.d[P.i] + 9) % 10;
     else if (ev === 'focus') P.i = clamp(arg | 0, 0, 5);
     else if (ev === 'start' || ev === 'tap') { if (P.i < 5) P.i++; else { P.st = 'sending'; F.out.push({ k: 'pair', code: P.d.join('') }); } }
-    else if (ev === 'back') { if (P.i > 0) P.i--; else if (F.paired) F.scr = SCR.HOME; else F.out.push({ k: 'exit' }); }
+    else if (ev === 'back') { if (P.i > 0) P.i--; else if (F.paired) { F.sel = 0; F.scr = SCR.HOME; } else F.out.push({ k: 'exit' }); }
   }
 }
 /** the rows of the list on screen */

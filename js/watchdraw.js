@@ -61,9 +61,9 @@ export function drawPage(g, S, C, sp, ids, val = null) {
   for (const y of L.h) { const hw = Math.sqrt(Math.max(0, .25 - (y - .5) ** 2)) * S - S * .05; line(g, S / 2 - hw, y * S, S / 2 + hw, y * S, C.line, Math.max(2, S * .006)); }
   if (L.v) line(g, S / 2, L.v[0] * S, S / 2, L.v[1] * S, C.line, Math.max(2, S * .006));
   ids.slice(0, 4).forEach((id, i) => { const [x, y, ly, px, mw] = L.c[i], f = F[id] || { l: id, u: '', demo: '--' }, small = px < .15;
-    txt(g, f.l.toUpperCase(), x * S, ly * S, lpx, C.lbl, { w: 800, max: mw * S });
-    const v = val ? val(id) : f.demo; valUnit(g, x * S, y * S, v, small && ids.length > 1 ? '' : f.u, px * S, mw * S, id === 'hr' ? C.fg : C.fg, C.lbl);
-    if (id === 'hr' && !small) heart(g, x * S - S * .2, ly * S, S * .035, C.hr); });
+    const hrt = id === 'hr' && !small, lw = txt(g, f.l.toUpperCase(), x * S + (hrt ? S * .022 : 0), ly * S, lpx, C.lbl, { w: 800, max: mw * S - (hrt ? S * .05 : 0) });
+    if (hrt) heart(g, x * S + S * .022 - lw / 2 - S * .035, ly * S, S * .034, C.hr); // the heart before "HEART RATE"
+    valUnit(g, x * S, y * S, val ? val(id) : f.demo, small && ids.length > 1 ? '' : f.u, px * S, mw * S, C.fg, C.lbl); });
 }
 /** page dots on the left edge: where the UP / DOWN buttons are */
 export function pageDots(g, S, C, n, i) {

@@ -94,6 +94,35 @@ Command Palette → **Monkey C: Run** (pick `fr265`), or `connectiq` (opens the 
 - `GET /api/watch/summary` → `{ pts, prev, delta, sessions, strength, streak, week }`
 - All with `Authorization: Bearer <token>`; 401 = the watch was removed on the phone (pair again).
 
+## Next port: start menu, run / ride / more, workouts (18.11., not in Monkey C yet)
+
+Set up on the phone (Settings → Devices → **Watch screens & workouts**, `js/watchcfg.js`), kept per account in
+`users/<id>/watch.json`, tried out in `watch.html` (it loads the signed-in account's config, else the defaults).
+The tables (fields, defaults, top 20, "more" sports, limits) are in `js/watchfields.js`; the flow additions in
+`js/watchflow.js` (tests: `tools/watchflow-test.mjs`). Port both like `Flow.mc`, one function per function.
+
+API:
+
+- `GET /api/watch/config` (watch token) → the compact form to keep in `Application.Storage` (`cfg`):
+  `{ v: 1, run: { p: [["pace", "dist", "time", "hr"], …], map, seg, lap, pause, vib }, ride: { … }, other: { p: [[…]] },
+  more: [["Basketball", "Basketball"], …], w: [{ id, n, it: [[ex, sets, reps, kg, rest], …] }], at }` (flags 0 / 1, at = Unix s).
+  Up to 4 pages per sport, 1 to 4 field ids per page (field ids per sport in `FIELDS`), up to 40 more sports, 30 workouts × 20 items.
+- `GET /api/watch/strength/setup` also brings `workouts` (the same `w`), `top` (the 20 standard exercise ids) and `recent`
+  (ids done in the last 90 days, newest first, up to 8); every id in them is described in `ex`. Plank comes as `t: "time"`:
+  its `reps` are seconds (stored as seconds in the strength record).
+- Phone only (login token): `GET /api/watch/config` → `{ config, at, stored }`, `PUT /api/watch/config` (strict check, 400 with
+  the reason, 413 over 64 KB).
+
+Flow additions (`SCR`): `HOME` (start menu: Run, Ride, Strength, More, the last used on top, week points) → `READY` (GPS ready,
+START) → `REC` (data pages from `cfg`, then the fixed route page when `map` is on and a route is loaded; UP / DOWN = page,
+START = pause, BACK = lap, or first closes the segment popup) ⇄ `PAUSE` (Resume, Save, Discard) → `RSUM`. `MORE` lists
+`cfg.more`, its sports record one fixed page. Strength: `HOME` → `START` → `SMODE` (Workout, Free) → `WPICK` → guided `SET`
+(kg / reps / rest from the plan, the last planned set finishes) or `PICK` (recent, then top 20, then the rest).
+Events: `sample` `{ dt, v, hr, pw, cad, up }` once a second from Position / Sensor (auto lap, auto pause, NP),
+`seg` `{ k: "warn" | "live" | "end", name, len, eta, done, delta, need, time, pr }` for the segment popup (result 5 s).
+Outputs: cues `start`, `stop`, `lap`, `seg` (suppressed while recording with `vib: 0`), `out` `saveAct` (save the activity;
+the preview does not send activities yet).
+
 ## Native activity (optional, off by default)
 
 With the app setting **Also save as a Garmin activity** the workout is also recorded as a strength activity
