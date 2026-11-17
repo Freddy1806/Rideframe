@@ -69,11 +69,13 @@ test('stick: on beyond 0.6, held until under 0.35, dominant axis picks the direc
 });
 
 test('A / B swap only for pads that report as a Switch controller (8BitDo in "D" is taken as it comes)', () => {
-  const pad = (id, pressed) => ({ id, buttons: Array.from({ length: 17 }, (_, i) => ({ pressed: i === pressed })) });
+  const pad = (id, pressed, mapping = 'standard') => ({ id, mapping, buttons: Array.from({ length: 17 }, (_, i) => ({ pressed: i === pressed })) });
   assert.equal(NINTENDO('Pro Controller (STANDARD GAMEPAD Vendor: 057e Product: 2009)'), true);
   assert.equal(NINTENDO('Joy-Con (L/R)'), true);
   assert.equal(NINTENDO('8BitDo Micro gamepad (Vendor: 2dc8 Product: 9020)'), false);
   assert.equal(NINTENDO('Xbox Wireless Controller (STANDARD GAMEPAD Vendor: 045e)'), false);
   assert.equal(padButtons(pad('Pro Controller (Vendor: 057e)', 1))[0], true, 'Switch layout: bottom-right index 1 is the printed A');
-  assert.equal(padButtons(pad('8BitDo Micro gamepad (Vendor: 2dc8)', 0))[0], true, '8BitDo in D: index 0 stays A');
+  assert.equal(padButtons(pad('8BitDo Micro gamepad (Vendor: 2dc8)', 0, ''))[0], true, '8BitDo in D: raw 0 is A');
+  assert.equal(padButtons(pad('8BitDo Micro gamepad (Vendor: 2dc8)', 11, ''))[9], true, '8BitDo in D: raw 11 is Start');
+  assert.equal(padButtons({ id: '8BitDo', mapping: '', axes: [0, 0, 0, 0, 0, 0, 0, 0, 0, -1], buttons: [] })[12], true, 'hat up is D-pad up');
 });
