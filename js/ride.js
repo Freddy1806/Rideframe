@@ -375,6 +375,7 @@ export class RideSession {
     if (this.finished) return;
     const sh = d => this._padShift(d);
     const tune = this.workout && !this.wDone; // in a workout the D-pad moves the interval target, the bumpers keep shifting
+    if (tune && (hit(4) || hit(5))) { this._wTune(hit(5) ? 1 : -1); return; } // L / R: 1 W steps while a workout runs (gears mean nothing in ERG)
     if (hit(4) || (!tune && hit(13))) sh(-1);
     if (hit(5) || (!tune && hit(12))) sh(1);
     if (tune && hit(12)) this._wTune(1);

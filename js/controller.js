@@ -32,7 +32,7 @@ export function setPadSwapped(pad, on) { const p = swapPrefs(); p[pad.id] = !!on
  *  neutral is outside −1…1) or plain left/right, up/down axes. Returns [up, down, left, right]. */
 export function hatDirs(axes = []) {
   const out = [false, false, false, false];
-  for (const i of [9, 4, 5, 6, 7, 8]) {
+  for (const i of [9]) { // only the hat axis: the others are sticks and analog triggers (read as a hat they gave ±1 W on L2 / R2)
     const v = axes[i]; if (typeof v !== 'number' || v === 0 || Math.abs(v) > 1.05) continue;
     const k = Math.round((v + 1) * 3.5), err = Math.abs((v + 1) * 3.5 - k); if (err > 0.08) continue;
     out[0] = k === 7 || k === 0 || k === 1; out[3] = k >= 1 && k <= 3; out[1] = k >= 3 && k <= 5; out[2] = k >= 5 && k <= 7;
