@@ -11,6 +11,10 @@ const CANDIDATES = [
 export const PAD_MAP = [['L / R', 'Gear easier / harder'], ['D-pad ↓ / ↑', 'Gear easier / harder'], ['A', 'Accept challenge'], ['B', 'Switch display'],
   ['X', 'Photo'], ['Y', 'Switch view'], ['L2 / R2', 'Field of view wider / narrower'], ['Select (−)', 'Gear mode: real / virtual / auto / climb watts'],
   ['Start (+) / Home', 'Pause menu (D-pad to choose, A ok, B back; options in there too)'], ['D-pad ←', 'Music on / off'], ['D-pad →', 'Next song']];
+// the same pad outside the ride, in every menu and window (js/padnav.js)
+export const MENU_MAP = [['D-pad / left stick', 'Move between buttons, lists and fields'], ['A', 'Select (on a list field: A, then ↑ ↓ to change, A to confirm)'],
+  ['B', 'Back: closes the window, otherwise one screen back'], ['D-pad ← → on a slider', 'Change the value'], ['L / R', 'Previous / next tab'],
+  ['Keyboard', 'Arrow keys, Enter and Escape work the same in the menus']];
 /** pressed state per standard button index, so the printed letters mean the same on every pad. Nintendo-style pads
  *  (8BitDo in Switch mode "S", Switch Pro): Chrome reports them by position (0 = bottom = their "B"), so A/B and X/Y are swapped
  *  back here: "A" in PAD_MAP is the button printed A (Freddy's 8BitDo Micro). */
@@ -32,6 +36,8 @@ export function openControllerTest() {
     <details style="margin:6px 0 10px"><summary style="cursor:pointer"><b>Gamepad buttons during a ride</b> (e.g. 8BitDo Micro, switch on the back set to S)</summary>
       <table style="margin-top:8px;border-collapse:collapse">${PAD_MAP.map(([k, v]) => `<tr><td style="padding:2px 14px 2px 0;white-space:nowrap"><b>${k}</b></td><td>${v}</td></tr>`).join('')}</table>
       <p style="margin-top:8px"><b>Zwift Click + / −</b>: Gear harder / easier (connect it in Settings → Trainer)</p></details>
+    <details style="margin:0 0 10px"><summary style="cursor:pointer"><b>Gamepad in the menus</b> (everywhere outside the ride, like a TV remote)</summary>
+      <table style="margin-top:8px;border-collapse:collapse">${MENU_MAP.map(([k, v]) => `<tr><td style="padding:2px 14px 2px 0;white-space:nowrap"><b>${k}</b></td><td>${v}</td></tr>`).join('')}</table></details>
     <div class="actions" style="justify-content:flex-start"><button class="btn small" id="ctScan">Find device</button><button class="btn ghost small" id="ctCopy">Copy log</button><button class="btn ghost small" id="ctClose">Close</button></div>
     <pre id="ctLog" style="margin-top:18px;height:340px;overflow:auto;background:#000;border:1px solid var(--line-2);border-radius:4px;padding:12px;font:12px/1.5 ui-monospace,Menlo,monospace;white-space:pre-wrap"></pre></div>`;
   document.body.append(m);

@@ -194,7 +194,7 @@ async function showBoard() {
     el.innerHTML = `<div class="board">
       <div class="board-head"><div class="label">Leaderboard this week <button class="betinfo" id="betInfoBtn" title="What do the blue, yellow and red points mean?">?</button></div>
         <div class="board-tabs">${Object.entries(BOARD_SORT).map(([id, [t]]) => `<button class="${id === k ? 'on' : ''}" data-k="${id}">${t}</button>`).join('')}</div></div>
-      <table><tbody>${rows.map((r, i) => `<tr class="${r.me ? 'me' : ''}" data-key="${esc(r.key || '')}" title="View profile"><td class="rank">${i + 1}</td><td class="nm"><span class="who">${faceImg(r.look)}${esc(r.name)}</span></td>
+      <table><tbody>${rows.map((r, i) => `<tr class="${r.me ? 'me' : ''}" data-key="${esc(r.key || '')}" title="View profile" tabindex="0"><td class="rank">${i + 1}</td><td class="nm"><span class="who">${faceImg(r.look)}${esc(r.name)}</span></td>
         <td>${fmtNum(r.km, 1)} km</td><td>${fmtNum(r.hm)} m</td><td class="dim">${r.days} ${r.days === 1 ? 'day' : 'days'}</td>
         <td class="pts">${r.pts ? `<span class="wz">${r.pts.wizard}</span><span class="kg">${r.pts.king}</span><span class="dv">${r.pts.devil}</span>` : '<span class="dim">–</span>'}</td></tr>`).join('')}</tbody></table></div>`;
     el.querySelector('#betInfoBtn')?.addEventListener('click', () => import('./story.js').then(m => m.betInfo()));
@@ -208,7 +208,7 @@ async function showBoard() {
 function card(r) {
   const best = bestRide(r.id);
   const t = r.track;
-  return `<div class="card" data-id="${r.id}">
+  return `<div class="card" data-id="${r.id}" tabindex="0" role="button">
     <div class="thumb" style="background-image:url('${r.thumb || ''}')">
       ${best ? `<span class="badge">PB ${fmtTime(best.duration)}</span>` : ''}
       <span class="go"><svg width="18" height="18" viewBox="0 0 24 24"><path d="M7 4l12 8-12 8z" fill="currentColor"/></svg></span>
@@ -483,7 +483,7 @@ function settings() {
       <div class="panel"><h3>Trainer</h3>
         <label class="field"><div>Gradient realism <b id="diffV">${s.difficulty}%</b><div class="hint">100 % = real gradient. 50 % = climbs feel half as steep.</div></div><input type="range" id="difficulty" min="0" max="100" step="5" value="${s.difficulty}"></label>
         <label class="field"><div>Descents <b id="downV">${s.downhill}%</b><div class="hint">How much the trainer eases off downhill.</div></div><input type="range" id="downhill" min="0" max="100" step="5" value="${s.downhill}"></label>
-        <div class="field"><div>Test controller<div class="hint">E.g. Di2 extra buttons (D-FLY), Zwift Click, gamepad. Shows what the buttons send.</div></div><button class="btn ghost small" id="ctBtn">Test</button></div>
+        <div class="field"><div>Test controller<div class="hint">E.g. Di2 extra buttons (D-FLY), Zwift Click, gamepad. Shows what the buttons send. A gamepad also drives all menus: D-pad move · A select · B back · L / R tabs (keyboard: arrows, Enter, Escape).</div></div><button class="btn ghost small" id="ctBtn">Test</button></div>
         <div class="field"><div>Zwift Click<div class="hint">Its + / − buttons shift the virtual gears in the ride. Click v2: open it in the Zwift app once a day, or it drops after a minute.</div><div class="hint" id="zcState">${clickState()}</div></div><button class="btn ghost small" id="zcBtn">${click.device ? 'Disconnect' : 'Connect'}</button></div>
         <div class="field"><div>Heart rate strap<div class="hint">Optional, via Bluetooth.</div></div><div style="display:flex;gap:8px"><button class="btn ghost small" id="hrAll" title="If the strap is missing in the normal search">All devices</button><button class="btn ghost small" id="hrBtn">${state.hr?.connected ? 'Connected' : 'Connect'}</button></div></div>
       </div>
