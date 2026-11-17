@@ -2,7 +2,7 @@
 // prefill, record detection, queue and retry. Usage: node --test tools/watchflow-test.mjs
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { newFlow, handle, SCR, MENU, curEx, setNo, restLeft, sent, paired, setSetup, clock, homeItems, HOME_FIT, HOME_LAY, homeTop, listItems, recPages, routeInfo, setRoute, setRoutes, routeFace, routeNav, setConfig, order, planItem, LAP_M } from '../js/watchflow.js';
+import { newFlow, handle, SCR, MENU, curEx, setNo, restLeft, sent, paired, setSetup, clock, homeItems, HOME_FIT, HOME_LAY, homeTop, listItems, recPages, routeInfo, setRoute, setRoutes, routeFace, routeNav, setConfig, order, planItem, LAP_M, HOLD_S, holdPart, pausedTime } from '../js/watchflow.js';
 import { FIELDS, defaults, validate, compact, fieldText, zoneOf, MORE, TOP } from '../js/watchfields.js';
 
 const SETUP = { v: 1, unit: 'kg', rest: 90, ex: [
@@ -62,11 +62,11 @@ test('record: flashes when a set beats the stored best and the session so far, o
 });
 test('menu on BACK hold or swipe left: change exercise, undo, finish', () => {
   const F = go(mk(), ['start', 'start', 'start', 'start', 'start']); // two bench sets, resting
-  assert.equal(F.sets.length, 2); go(F, ['menu']); assert.equal(F.scr, SCR.MENU); assert.deepEqual(F.menu, [MENU.EX, MENU.UNDO, MENU.FIN]);
+  assert.equal(F.sets.length, 2); go(F, ['menu']); assert.equal(F.scr, SCR.MENU); assert.deepEqual(F.menu, [MENU.EX, MENU.UNDO, MENU.FIN, MENU.PAUSE]);
   go(F, ['back']); assert.equal(F.scr, SCR.REST, 'BACK closes the menu'); go(F, ['swipeLeft', 'down', 'start']); // undo
   assert.equal(F.sets.length, 1); assert.equal(F.scr, SCR.SET); assert.deepEqual([F.kg, F.reps], [80, 8]); assert.equal(setNo(F), 2);
   go(F, ['menu', 'start']); assert.equal(F.scr, SCR.PICK); go(F, ['down', 'start']); assert.equal(curEx(F).id, 'squat'); assert.deepEqual([F.kg, F.reps], [100, 5]);
-  const G = go(mk(), ['start', 'start', 'menu']); assert.deepEqual(G.menu, [MENU.EX, MENU.FIN], 'no undo without sets');
+  const G = go(mk(), ['start', 'start', 'menu']); assert.deepEqual(G.menu, [MENU.EX, MENU.FIN, MENU.PAUSE], 'no undo without sets');
   go(G, ['down', 'start']); assert.equal(G.scr, SCR.START, 'finish without sets saves nothing'); assert.equal(G.queue.length, 0);
   const S = go(mk(), ['menu']); assert.deepEqual(S.menu, [MENU.SYNC, MENU.PAIR]); go(S, ['start']); assert.deepEqual(S.out.map(o => o.k), ['setup', 'send']); assert.equal(S.scr, SCR.START);
 });
@@ -142,17 +142,46 @@ test('run: ready, data pages from the config, values tick, UP / DOWN switch page
   go(F, ['down']); assert.equal(F.rec.pg, 1); go(F, ['down']); assert.equal(F.rec.pg, 0, 'wraps'); go(F, ['swipeUp']); assert.equal(F.rec.pg, 1, 'swipe up = next page');
   go(F, ['back']); assert.equal(F.rec.laps.length, 2, 'BACK = manual lap'); assert.ok(F.flash);
 });
-test('pause, resume, save, discard; auto pause stops the clock on the bike', () => {
+test('pause, resume, save by holding BACK, discard; auto pause stops the clock on the bike', () => {
   const F = fl(); go(F, ['start', 'start']); move(F, 60, 3); F.cues = [];
-  go(F, ['start']); assert.equal(F.scr, SCR.PAUSE); assert.equal(F.rec.st, 'pause'); assert.deepEqual(listItems(F), ['Resume', 'Save', 'Discard']); assert.deepEqual(F.cues, ['stop']);
-  move(F, 30, 3); assert.equal(F.rec.t, 60, 'paused: nothing counts'); go(F, ['back']); assert.equal(F.scr, SCR.REC); assert.equal(F.rec.st, 'run');
-  go(F, ['start', 'start']); assert.equal(F.scr, SCR.REC, 'Resume'); go(F, ['start', 'down', 'start']);
-  assert.equal(F.scr, SCR.RSUM); assert.equal(F.rsum.t, 60); assert.equal(Math.round(F.rsum.d), 180); assert.equal(F.out.at(-1).k, 'saveAct'); assert.equal(F.rec, null);
+  go(F, ['start']); assert.equal(F.scr, SCR.PAUSE); assert.equal(F.rec.st, 'pause'); assert.deepEqual(F.cues, ['stop']); assert.equal(pausedTime(F), 60);
+  move(F, 30, 3); assert.equal(F.rec.t, 60, 'paused: nothing counts'); go(F, ['back']); assert.equal(F.scr, SCR.PAUSE, 'a short BACK resumes nothing, exits nothing'); assert.ok(F.pz.hint > 1000, 'it shows the hint');
+  go(F, ['start']); assert.equal(F.scr, SCR.REC, 'START resumes'); assert.equal(F.rec.st, 'run');
+  go(F, ['start']); handle(F, 'holdStart', 3000); handle(F, 'tick', 3001.5); assert.equal(F.scr, SCR.PAUSE); assert.deepEqual(holdPart(F, 3001.5), { p: .5, n: 2 }, 'half full, count 2');
+  handle(F, 'tick', 3000 + HOLD_S); assert.equal(F.scr, SCR.RSUM, 'held 3 s: saved'); assert.equal(F.rsum.t, 60); assert.equal(Math.round(F.rsum.d), 180); assert.equal(F.out.at(-1).k, 'saveAct'); assert.equal(F.rec, null); assert.equal(F.cues.at(-1), 'done');
+  handle(F, 'holdEnd', 3003.2); assert.equal(F.scr, SCR.RSUM, 'the release after the save changes nothing');
   go(F, ['start']); assert.equal(F.scr, SCR.HOME);
   const G = fl({ last: 'ride' }); go(G, ['start', 'start']); assert.equal(G.sp, 'ride'); assert.deepEqual(recPages(G)[0], ['power3s', 'speed', 'hr', 'time']);
-  move(G, 40, 9); move(G, 20, .3, {}, 2040); assert.equal(G.rec.t, 40, 'auto pause below 0.7 m/s'); assert.ok(G.rec.auto); move(G, 1, 9, {}, 2060); assert.equal(G.rec.t, 41);
+  move(G, 40, 9); move(G, 20, .3, {}, 2040); assert.equal(G.rec.t, 40, 'auto pause below 0.7 m/s'); assert.ok(G.rec.auto); assert.equal(G.scr, SCR.REC, 'auto pause is not the pause screen'); move(G, 1, 9, {}, 2060); assert.equal(G.rec.t, 41);
   assert.equal(fieldText('speed', G.rec, 0), '32.4'); assert.equal(fieldText('power3s', G.rec, 0), '240'); assert.equal(fieldText('np', G.rec, 0), '240'); assert.equal(fieldText('avgPower', G.rec, 0), '240');
-  go(G, ['start', 'down', 'down', 'start']); assert.equal(G.scr, SCR.HOME, 'Discard'); assert.equal(G.rec, null); assert.ok(!G.out.some(o => o.k === 'saveAct'));
+  go(G, ['start', 'down', 'start']); assert.equal(G.scr, SCR.PAUSE, 'Discard asks first'); assert.ok(G.pz.conf); go(G, ['back']); assert.ok(!G.pz.conf, 'BACK: no'); assert.ok(G.rec);
+  go(G, ['start']); assert.ok(G.pz.conf, 'Discard still selected: START asks again'); go(G, ['start']); assert.equal(G.scr, SCR.HOME, 'START: yes, discarded'); assert.equal(G.rec, null); assert.ok(!G.out.some(o => o.k === 'saveAct'));
+});
+/** the four recording modes on the watch, each brought to its recording state; returns [flow, what resumes] */
+const MODES4 = {
+  run: () => { const F = fl(); go(F, ['start', 'start']); move(F, 30, 3); return [F, SCR.REC]; },
+  ride: () => { const F = fl({ last: 'ride' }); go(F, ['start', 'start']); move(F, 30, 9); return [F, SCR.REC]; },
+  more: () => { const F = fl({ last: 'more' }); go(F, ['start', 'start', 'start']); assert.equal(F.sp, 'other'); move(F, 30, 0); return [F, SCR.REC]; },
+  strength: () => { const F = fl({ last: 'kraft' }); go(F, ['start', 'start', 'down', 'start', 'start']); assert.equal(F.scr, SCR.SET); go(F, ['start']); assert.equal(F.scr, SCR.REST); return [F, SCR.REST]; },
+  workout: () => { const F = fl({ last: 'kraft' }); go(F, ['start', 'start', 'start', 'start']); assert.ok(F.plan); go(F, ['start']); assert.equal(F.scr, SCR.REST); return [F, SCR.REST]; },
+};
+const doPause = (F, t = 1000) => { if (F.rec) handle(F, 'start', t); else { handle(F, 'menu', t); handle(F, 'item', t, F.menu.indexOf(MENU.PAUSE)); } };
+for (const [k, mk4] of Object.entries(MODES4)) test(`pause in every mode (${k}): resume, early release, hold to finish, discard with confirm`, () => {
+  let [F, back] = mk4(); const strength = !F.rec;
+  doPause(F, 1000); assert.equal(F.scr, SCR.PAUSE); assert.equal(F.cues.at(-1), 'stop');
+  if (strength) { const left = F.restEnd - 1000; handle(F, 'tick', 1000 + 500); assert.equal(F.scr, SCR.PAUSE, 'the rest does not run out while paused');
+    handle(F, 'start', 1500); assert.equal(F.scr, back, 'resumed where it was'); assert.equal(F.restEnd - 1500, left, 'the rest goes on from where it stopped'); assert.equal(F.pauseT, 500, 'the session clock stopped'); }
+  else { move(F, 20, 3, {}, 1100); const t = F.rec.t; handle(F, 'start', 1200); assert.equal(F.scr, back); assert.equal(F.rec.t, t, 'nothing counted while paused'); }
+  doPause(F, 2000); handle(F, 'holdStart', 2000); handle(F, 'tick', 2002); assert.equal(holdPart(F, 2002).n, 1); handle(F, 'holdEnd', 2002.5);
+  assert.equal(F.scr, SCR.PAUSE, 'released early: nothing'); assert.equal(holdPart(F, 2003), null, 'the ring is empty again'); assert.ok(F.pz.hint > 2002.5, 'the hint shows');
+  handle(F, 'tick', 2010); assert.equal(F.scr, SCR.PAUSE, 'no late finish after the release');
+  handle(F, 'down', 2010); handle(F, 'start', 2010); assert.ok(F.pz.conf, 'Discard: confirm'); handle(F, 'holdStart', 2010); handle(F, 'tick', 2014); assert.equal(F.scr, SCR.PAUSE, 'no finish while the confirm shows');
+  handle(F, 'back', 2014); handle(F, 'up', 2014); assert.equal(F.pz.sel, 0);
+  handle(F, 'holdStart', 2020); handle(F, 'tick', 2020 + HOLD_S);
+  if (strength) { assert.equal(F.scr, SCR.SUM, 'held 3 s: the session is saved'); assert.equal(F.queue.length, 1); assert.equal(F.queue[0].duration, 500, 'its time without the pauses (1000 to 2000, 500 s of it paused)'); }
+  else { assert.equal(F.scr, SCR.RSUM, 'held 3 s: saved'); assert.equal(F.out.at(-1).k, 'saveAct'); }
+  [F] = mk4(); doPause(F, 3000); handle(F, 'item', 3000, 1); assert.ok(F.pz.conf, 'a tap on Discard asks'); handle(F, 'start', 3000);
+  assert.equal(F.scr, strength ? SCR.START : SCR.HOME, 'discarded'); assert.equal(F.rec, null); assert.equal(F.queue.length, 0); assert.ok(!F.out.some(o => o.k === 'saveAct'));
 });
 test('route page: only with a route and the switch on; position, distance left, next turn', () => {
   const F = fl(); go(F, ['start', 'start']); assert.equal(routeInfo(F), null);
@@ -197,7 +226,7 @@ test('workout: guided set by set with its kg, reps and rest, next exercise, time
   handle(F, 'tick', 5180); assert.equal(F.scr, SCR.SET); assert.deepEqual([curEx(F).id, F.kg, F.reps, setNo(F)], ['bench', 85, 6, 2]);
   go(F, ['down']); handle(F, 'start', 5200); assert.equal(F.sets.at(-1).kg, 82.5); handle(F, 'start', 5201); assert.equal(curEx(F).id, 'curl', 'next exercise after its sets');
   assert.deepEqual([F.kg, F.reps, setNo(F)], [20, 12, 1], 'no kg in the plan: from history, else a start value'); assert.deepEqual(planItem(F), ['curl', 1, 12, 0, 45]);
-  go(F, ['menu']); assert.deepEqual(F.menu, [MENU.EX, MENU.SKIP, MENU.UNDO, MENU.FIN]); go(F, ['down', 'down', 'start']); assert.equal(curEx(F).id, 'bench', 'undo goes back into the plan');
+  go(F, ['menu']); assert.deepEqual(F.menu, [MENU.EX, MENU.SKIP, MENU.UNDO, MENU.FIN, MENU.PAUSE]); go(F, ['down', 'down', 'start']); assert.equal(curEx(F).id, 'bench', 'undo goes back into the plan');
   assert.deepEqual([setNo(F), F.kg], [2, 82.5]); handle(F, 'start', 5300); handle(F, 'start', 5301);
   handle(F, 'start', 5350); assert.equal(F.restLen, 45); handle(F, 'start', 5351);
   assert.equal(curEx(F).id, 'plank'); assert.equal(curEx(F).t, 'time'); assert.equal(F.focus, 1); assert.equal(F.reps, 60); go(F, ['up']); assert.equal(F.reps, 65, 'seconds in 5 s steps');

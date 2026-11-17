@@ -4,7 +4,7 @@
 // 19.11.: the ready screen's Route choice: the paired watch's routes (Bearer), else the signed-in phone account's (X-RF-Token), else demo routes.
 // Drawn like the watch draws (dc.fillCircle / drawText / drawArc in garmin/source/Draw.mc), driven by the five buttons,
 // touch (tap, swipe) or the keyboard, with demo data or against the real API (tools/watch-api.mjs) after pairing.
-import { newFlow, handle, SCR, curEx, setNo, restLeft, clock, sent, paired, setSetup, setConfig, setRoute, setRoutes, routeFace, routeInfo, recPages, homeItems, listItems, workouts, planItem, HOME, HOME_FIT, HOME_LAY, homeTop } from './watchflow.js';
+import { newFlow, handle, SCR, curEx, setNo, restLeft, clock, sent, paired, setSetup, setConfig, setRoute, setRoutes, routeFace, routeInfo, recPages, homeItems, listItems, workouts, planItem, HOME, HOME_FIT, HOME_LAY, homeTop, holdPart, pausedTime, HOLD_S } from './watchflow.js';
 import { compact, defaults, fieldText, labelOf, TOP } from './watchfields.js';
 import { groupOf } from './sports.js';
 import { MODES } from './theme.js';
@@ -146,6 +146,8 @@ const ev = (e, arg) => { const was = F.scr, rid = F.routeId; handle(F, e, now(),
 /* ---- drawing: one function per screen, in watch pixels; the same numbers as Draw.mc ---- */
 function dumbbell(g, x, y, s, col) { g.strokeStyle = col; g.lineWidth = s * .13; g.lineCap = 'round'; g.beginPath(); const p = (a, b, c, d) => { g.moveTo(x + (a - 12) * s / 24, y + (b - 12) * s / 24); g.lineTo(x + (c - 12) * s / 24, y + (d - 12) * s / 24); };
   p(3, 9, 3, 15); p(6, 7, 6, 17); p(18, 7, 18, 17); p(21, 9, 21, 15); p(6, 12, 18, 12); g.stroke(); }
+/** the pause screen's rows (screen fractions; the same in garmin/source/Draw.mc drawPause and the tap table) */
+const PAUSE_LAY = { title: .17, sport: .235, time: .37, hint1: .5, hint2: .57, discard: .68, pill: .82 };
 const kgTxt = kg => (Math.round(kg * 10) / 10).toString();
 const volTxt = v => v >= 10000 ? (Math.round(v / 100) / 10) + ' t' : Math.round(v).toLocaleString('en-GB');
 const ago = t => { const d = Math.floor((now() - t) / 86400); return d < 1 ? 'Today' : d < 2 ? 'Yesterday' : new Date(t * 1000).toLocaleDateString('en-GB', { weekday: 'short' }); };
@@ -202,7 +204,26 @@ const DRAW = {
   },
   [SCR.RPICK](g, S, C) { C = tint(C, F.sp); list(g, S, C, listItems(F), F.sel, 'ROUTE', i => { if (!i) return 'Data pages only'; const r = F.routes[i - 1]; return `${kmTxt(r.dist || 0)} km${r.climb ? ` · ${Math.round(r.climb)} m up` : ''}`; });
     if (F.routes && !F.routes.length) txt(g, rsrc === 'demo' || live() ? 'Send routes from the phone' : 'Phone: Routes > Send to watch', S / 2, S * .81, S * .042, C.lbl, { w: 700, max: S * .62 }); },
-  [SCR.PAUSE](g, S, C) { C = tint(C, F.sp); list(g, S, C, listItems(F), F.sel, 'PAUSED · ' + clock(F.rec ? F.rec.t : 0), null, true); },
+  [SCR.PAUSE](g, S, C, f) { // one screen in every mode: PAUSED, the time, START resume, Hold BACK to finish, Discard (with a confirm step)
+    const P = F.pz || { sel: 0, conf: false, hint: 0 }, h = holdPart(F, now()), touch = !f.mip, T = PAUSE_LAY;
+    if (h) { arc(g, S / 2, S / 2, S / 2 - S * .035, 0, Math.PI * 2, C.faint, S * .05); arc(g, S / 2, S / 2, S / 2 - S * .035, -Math.PI / 2, -Math.PI / 2 + h.p * Math.PI * 2, C.acc, S * .05); }
+    txt(g, 'PAUSED', S / 2, S * T.title, S * .058, C.acc, { w: 900 });
+    txt(g, F.rec ? (F.sp === 'other' ? labelOf(F.type) : HOME[F.sp]) : 'Strength', S / 2, S * T.sport, S * .045, C.lbl, { w: 800, max: S * .5 });
+    if (P.conf) {
+      txt(g, 'Discard?', S / 2, S * T.time, S * .11, C.fg, { w: 900 });
+      txt(g, 'START yes · BACK no', S / 2, S * T.hint1, S * .048, C.lbl, { w: 800, max: S * .74 });
+      pill(g, S / 2, S * T.discard, S * .46, S * .1, C.acc); txt(g, 'Discard', S / 2, S * T.discard + 1, S * .052, C.ink, { w: 900 });
+      if (touch) { pill(g, S / 2, S * T.pill, S * .4, S * .1, C.faint); txt(g, 'Keep', S / 2, S * T.pill + 1, S * .05, C.fg, { w: 900 }); }
+      return;
+    }
+    if (h) txt(g, h.n, S / 2, S * T.time, S * .2, C.acc, { w: 900 });
+    else txt(g, clock(pausedTime(F)), S / 2, S * T.time, S * .15, C.fg, { w: 900 });
+    txt(g, 'START resume', S / 2, S * T.hint1, S * .05, C.fg, { w: 800, max: S * .7 });
+    txt(g, 'Hold BACK to finish', S / 2, S * T.hint2, S * .048, P.hint > now() || h ? C.acc : C.lbl, { w: 800, max: S * .72 });
+    if (P.sel) pill(g, S / 2, S * T.discard, S * .46, S * .1, C.acc, false);
+    txt(g, 'Discard', S / 2, S * T.discard, S * .05, P.sel ? C.fg : C.dim, { w: 800 });
+    if (touch) { pill(g, S / 2, S * T.pill, S * .5, S * .11, h ? C.acc : C.faint); txt(g, 'Hold to finish', S / 2, S * T.pill + 1, S * .048, h ? C.ink : C.fg, { w: 900, max: S * .44 }); }
+  },
   [SCR.RSUM](g, S, C) {
     const s = F.rsum || { sp: 'run', t: 0, d: 0, kcal: 0 }; C = tint(C, s.sp);
     txt(g, '✓ SAVED', S / 2, S * .16, S * .058, C.acc, { w: 900 });
@@ -216,7 +237,7 @@ const DRAW = {
   [SCR.MENU](g, S, C) { list(g, S, C, F.menu, F.sel, 'MENU', null, true); },
   [SCR.SET](g, S, C) {
     const e = curEx(F); startHint(g, S, C);
-    txt(g, clock(now() - F.start), S / 2, S * .12, S * .048, C.dim, { w: 700 });
+    txt(g, clock(now() - F.start - F.pauseT), S / 2, S * .12, S * .048, C.dim, { w: 700 });
     txt(g, e.n, S / 2, S * .22, S * .08, C.fg, { w: 800, max: S * .74 });
     const it = planItem(F); txt(g, it ? `SET ${setNo(F)} OF ${it[1]}` : 'SET ' + setNo(F), S / 2, S * .315, S * .055, C.acc, { w: 900 });
     if (e.t === 'time') { txt(g, clock(F.reps), S / 2, S * .5, S * .23, C.acc, { w: 900 }); g.fillStyle = C.acc; g.fillRect(S * .36, S * .615, S * .28, S * .016); txt(g, 'hold', S / 2, S * .665, S * .048, C.fg, { w: 700 }); }
@@ -371,18 +392,22 @@ function scale() { // phones: the watch shrinks to fit (the buttons stay clickab
 }
 function holdable(el, k) { // UP / DOWN: short = one step, held = big steps every 350 ms; BACK held = menu
   let t = 0, rep = 0, held = false;
-  const down = e => { e.preventDefault(); el.classList.add('on'); held = false; clearTimeout(t); clearInterval(rep);
+  const down = e => { e.preventDefault(); el.classList.add('on'); held = false; clearTimeout(t); clearInterval(rep); if (k === 'back') ev('holdStart'); // the pause screen's hold to finish
     if (k === 'up' || k === 'down') t = setTimeout(() => { held = true; ev(k + 'Hold'); rep = setInterval(() => ev(k + 'Hold'), 350); }, 500);
     if (k === 'back') t = setTimeout(() => { held = true; ev('menu'); }, 700); };
-  const up = e => { if (!el.classList.contains('on')) return; el.classList.remove('on'); clearTimeout(t); clearInterval(rep); if (held) return;
+  const up = e => { if (!el.classList.contains('on')) return; el.classList.remove('on'); clearTimeout(t); clearInterval(rep); if (k === 'back') ev('holdEnd'); if (held) return;
     if (k === 'light') { light = !light; paint(); return; } ev(k); };
-  el.addEventListener('pointerdown', down); el.addEventListener('pointerup', up); el.addEventListener('pointerleave', () => { if (el.classList.contains('on')) { el.classList.remove('on'); clearTimeout(t); clearInterval(rep); } });
+  el.addEventListener('pointerdown', down); el.addEventListener('pointerup', up); el.addEventListener('pointerleave', () => { if (el.classList.contains('on')) { el.classList.remove('on'); clearTimeout(t); clearInterval(rep); if (k === 'back') ev('holdEnd'); } });
   el.addEventListener('contextmenu', e => e.preventDefault());
 }
 function touch(cv, f) {
   let p0 = null;
-  cv.addEventListener('pointerdown', e => { p0 = { x: e.clientX, y: e.clientY }; cv.setPointerCapture?.(e.pointerId); });
+  let pillHold = false; // the pause screen's "Hold to finish" pill (touch face): pressed = holdStart, lifted = holdEnd
+  const onPill = e => { const r = cv.getBoundingClientRect(), u = (e.clientX - r.left) / r.width, v = (e.clientY - r.top) / r.height; return !f.mip && F.scr === SCR.PAUSE && F.pz && !F.pz.conf && v > PAUSE_LAY.pill - .07 && Math.abs(u - .5) < .27; };
+  cv.addEventListener('pointerdown', e => { p0 = { x: e.clientX, y: e.clientY }; cv.setPointerCapture?.(e.pointerId); if (onPill(e)) { pillHold = true; ev('holdStart'); } });
+  cv.addEventListener('pointercancel', () => { if (pillHold) { pillHold = false; ev('holdEnd'); } p0 = null; });
   cv.addEventListener('pointerup', e => {
+    if (pillHold) { pillHold = false; p0 = null; ev('holdEnd'); return; }
     if (!p0) return; const r = cv.getBoundingClientRect(), k = f.S / r.width, dx = (e.clientX - p0.x) * k, dy = (e.clientY - p0.y) * k; p0 = null;
     if (Math.hypot(dx, dy) > f.S * .08) return ev(Math.abs(dx) > Math.abs(dy) ? (dx < 0 ? 'swipeLeft' : 'swipeRight') : (dy < 0 ? 'swipeUp' : 'swipeDown'));
     tapAt((e.clientX - r.left) * k / f.S, (e.clientY - r.top) * k / f.S);
@@ -394,7 +419,10 @@ function tapAt(u, v) {
   if (F.flash) return ev('tap');
   if (s === SCR.SET) { if (v > .72 && Math.abs(u - .5) < .24) return ev('start'); if (v > .36 && v < .72) return ev('focus', u < .51 ? 0 : 1); return; }
   if (s === SCR.READY && F.sp !== 'other' && v > .665 && v < .74) return ev('down'); // the route line
-  const menu = [SCR.MENU, SCR.PAUSE, SCR.SMODE].includes(s), pick = [SCR.PICK, SCR.MORE, SCR.WPICK, SCR.RPICK].includes(s);
+  if (s === SCR.PAUSE) { const P = F.pz || {}; // conf: the Discard pill = yes, elsewhere = no; else Discard row = ask, the top = resume
+    if (P.conf) return ev(Math.abs(v - PAUSE_LAY.discard) < .06 ? 'start' : 'back');
+    if (Math.abs(v - PAUSE_LAY.discard) < .055) return ev('item', 1); if (v < .62) return ev('item', 0); return; }
+  const menu = [SCR.MENU, SCR.SMODE].includes(s), pick = [SCR.PICK, SCR.MORE, SCR.WPICK, SCR.RPICK].includes(s);
   if (s === SCR.HOME) { const n = listItems(F).length, r = Math.round((v - HOME_LAY.y0) / HOME_LAY.dy), i = homeTop(F.sel, n) + r; // the rows as DRAW[SCR.HOME] draws them
     if (r >= 0 && r < HOME_FIT && i < n) ev('item', i); return; }
   if (menu || pick) { const rows = menu ? [[-1, .33], [0, .5], [1, .67]] : [[-2, .24], [-1, .345], [0, .5], [1, .7], [2, .8]];
@@ -407,9 +435,9 @@ const KEYS = { ArrowUp: 'up', ArrowDown: 'down', Enter: 'start', ' ': 'start', E
 function keys() {
   const st = {};
   addEventListener('keydown', e => { if (e.target.closest?.('input, textarea, select')) return; const k = KEYS[e.key]; if (e.key === 'ArrowLeft') { e.preventDefault(); return ev('swipeLeft'); } if (e.key === 'ArrowRight') { e.preventDefault(); return ev('swipeRight'); }
-    if (e.key === 'm') return ev('menu'); if (!k) return; e.preventDefault(); if (e.repeat) return;
+    if (e.key === 'm') return ev('menu'); if (!k) return; e.preventDefault(); if (e.repeat) return; if (k === 'back') ev('holdStart');
     st[k] = { at: Date.now(), held: false, t: setTimeout(function hold() { st[k].held = true; if (k === 'back') return ev('menu'); if (k === 'up' || k === 'down') { ev(k + 'Hold'); st[k].t = setTimeout(hold, 350); } }, k === 'back' ? 700 : 500) }; });
-  addEventListener('keyup', e => { const k = KEYS[e.key]; if (!k || !st[k]) return; clearTimeout(st[k].t); const h = st[k].held; delete st[k]; if (!h) ev(k); });
+  addEventListener('keyup', e => { const k = KEYS[e.key]; if (!k || !st[k]) return; clearTimeout(st[k].t); const h = st[k].held; delete st[k]; if (k === 'back') ev('holdEnd'); if (!h) ev(k); });
 }
 
 /* ---- vibration shown on the page: the watch shakes, a ring pulses ---- */
@@ -423,7 +451,7 @@ function paint() {
   for (const { f, g, dpr } of views) {
     const S = f.S, C = f.C; g.setTransform(dpr, 0, 0, dpr, 0, 0); g.fillStyle = C.bg; g.fillRect(0, 0, S, S);
     g.save(); g.beginPath(); g.arc(S / 2, S / 2, S / 2, 0, Math.PI * 2); g.clip();
-    (DRAW[F.scr] || DRAW[SCR.HOME])(g, S, C); if (F.flash) (F.flash.k === 'lap' ? lapFlash : prFlash)(g, S, C);
+    (DRAW[F.scr] || DRAW[SCR.HOME])(g, S, C, f); if (F.flash) (F.flash.k === 'lap' ? lapFlash : prFlash)(g, S, C);
     g.restore();
     if (f.mip) { if (light) { g.globalCompositeOperation = 'lighter'; g.fillStyle = '#003355'; g.fillRect(0, 0, S, S); g.globalCompositeOperation = 'source-over'; } snap64(g, S); }
   }

@@ -12,9 +12,11 @@ export const SCR = { HOME: 'home', START: 'start', SMODE: 'smode', WPICK: 'wpick
   MORE: 'more', READY: 'ready', REC: 'rec', PAUSE: 'pause', RSUM: 'rsum', RPICK: 'rpick' };
 export const KG_STEP = 2.5, KG_HOLD = 10, KG_MAX = 500, REPS_HOLD = 5, REPS_MAX = 100, SEC_STEP = 5, SEC_HOLD = 15, SEC_MAX = 600, REST_STEP = 15, PR_SECS = 3;
 export const LAP_M = { run: 1000, ride: 5000, other: 1000 }, LAP_SECS = 5, SEG_SECS = 5, PAUSE_MS = .7; // auto lap distance, banner and result seconds, auto pause below 0.7 m/s
-export const MENU = { EX: 'Change exercise', SKIP: 'Skip exercise', UNDO: 'Undo last set', FIN: 'Finish', SYNC: 'Sync now', PAIR: 'Pair with phone' };
+export const MENU = { EX: 'Change exercise', SKIP: 'Skip exercise', UNDO: 'Undo last set', FIN: 'Finish', PAUSE: 'Pause', SYNC: 'Sync now', PAIR: 'Pair with phone' };
 export const HOME = { run: 'Run', ride: 'Ride', kraft: 'Strength', more: 'More' };
-export const SMODES = ['Workout', 'Free'], PAUSED = ['Resume', 'Save', 'Discard'];
+export const SMODES = ['Workout', 'Free'];
+/** the pause screen (every mode): BACK held this long (or a finger on the "Hold to finish" pill) saves; the short-press hint shows this long */
+export const HOLD_S = 3, HINT_S = 2;
 
 export const e1rm = (kg, r) => kg > 0 && r > 0 ? (r === 1 ? kg : kg * (1 + r / 30)) : 0; // Epley, like kraftlib.js
 const rid = () => Math.random().toString(36).slice(2, 8) + Math.random().toString(36).slice(2, 8);
@@ -24,7 +26,7 @@ const clamp = (v, lo, hi) => Math.max(lo, Math.min(hi, v));
 export function newFlow(setup, o = {}) {
   const F = { setup: { ex: [], rest: 90 }, list: [], cfg: o.cfg && o.cfg.run ? o.cfg : compact(defaults()), last: HOME[o.last] ? o.last : 'run', paired: o.paired !== false, queue: o.queue || [], newId: o.id || rid,
     scr: o.scr || SCR.HOME, back: SCR.HOME, sel: 0, menu: [], cur: 0, focus: 0, kg: 0, reps: 0, sets: [], start: 0, restEnd: 0, restLen: 0, plan: null,
-    flash: null, sum: null, hr: 0, hrN: 0, hrSum: 0, hrMax: 0, pair: { d: [0, 0, 0, 0, 0, 0], i: 0, st: 'enter' }, cues: [], out: [],
+    flash: null, sum: null, pz: null, pauseT: 0, hr: 0, hrN: 0, hrSum: 0, hrMax: 0, pair: { d: [0, 0, 0, 0, 0, 0], i: 0, st: 'enter' }, cues: [], out: [],
     sp: 'run', type: '', rec: null, seg: null, route: null, rsum: null, routes: null, routeId: null, nav: null };
   setSetup(F, setup);
   if (!F.paired) F.scr = SCR.PAIR;
@@ -73,7 +75,7 @@ export function stepValue(F, d, big) {
   else F.reps = clamp(F.reps + d * (big ? REPS_HOLD : 1), 0, REPS_MAX);
 }
 function menuFor(F) {
-  if (F.start) return [MENU.EX, ...(F.plan ? [MENU.SKIP] : []), ...(F.sets.length ? [MENU.UNDO] : []), MENU.FIN];
+  if (F.start) return [MENU.EX, ...(F.plan ? [MENU.SKIP] : []), ...(F.sets.length ? [MENU.UNDO] : []), MENU.FIN, MENU.PAUSE];
   return F.paired ? [MENU.SYNC, MENU.PAIR] : [MENU.PAIR];
 }
 function openMenu(F) { F.back = F.scr; F.menu = menuFor(F); F.sel = 0; F.scr = SCR.MENU; }
@@ -93,7 +95,7 @@ export function startPlan(F, w, now) { F.plan = { w, i: 0, n: 0 }; if (!F.start)
 export function completeSet(F, now) {
   if (!(F.reps > 0)) { F.cues.push('error'); return; }
   const e = curEx(F), val = s => e.t === 'w' ? e1rm(s.kg, s.reps) : s.reps, v = val(F), before = F.sets.filter(s => s.ex === e.id).map(val);
-  const set = { ex: e.id, kg: F.kg, reps: F.reps, t: Math.max(0, Math.round(now - F.start)) };
+  const set = { ex: e.id, kg: F.kg, reps: F.reps, t: Math.max(0, Math.round(now - F.start - F.pauseT)) };
   // a record beats the stored best (only when there is one) and every earlier set of this session, so it flashes once per new high
   if (e.b > 0 && v > e.b + .01 && v > Math.max(0, ...before) + .01) { set.pr = true; F.flash = { k: 'pr', until: now + PR_SECS, kg: F.kg, reps: F.reps, t: e.t }; F.cues.push('pr'); }
   else F.cues.push('set');
@@ -112,14 +114,14 @@ export function undo(F) {
 /** finish: the session goes into the queue (sent and retried by the caller), the summary shows */
 export function finish(F, now) {
   if (!F.sets.length) { reset(F); return; }
-  const id = F.newId(), dur = Math.max(1, Math.round(now - F.start)), sess = { id, start: Math.round(F.start), duration: dur, sets: F.sets.map(({ ex, kg, reps, t }) => ({ ex, kg, reps, t })) };
+  const id = F.newId(), dur = Math.max(1, Math.round(now - F.start - F.pauseT)), sess = { id, start: Math.round(F.start), duration: dur, sets: F.sets.map(({ ex, kg, reps, t }) => ({ ex, kg, reps, t })) };
   if (F.hrN) sess.hr = { avg: Math.round(F.hrSum / F.hrN), max: F.hrMax };
   F.queue.push(sess);
   F.sum = { id, dur, sets: F.sets.length, vol: volume(F.sets), exs: exCount(F.sets), prs: F.sets.filter(s => s.pr).length, st: F.paired ? 'sending' : 'queued' };
-  F.sets = []; F.start = 0; F.restEnd = 0; F.plan = null; F.hrN = F.hrSum = F.hrMax = 0;
+  F.sets = []; F.start = 0; F.pauseT = 0; F.restEnd = 0; F.plan = null; F.hrN = F.hrSum = F.hrMax = 0;
   F.scr = SCR.SUM; F.cues.push('done'); F.out.push({ k: 'send' });
 }
-function reset(F) { F.sets = []; F.start = 0; F.restEnd = 0; F.plan = null; F.flash = null; F.sum = null; F.scr = SCR.START; }
+function reset(F) { F.sets = []; F.start = 0; F.pauseT = 0; F.pz = null; F.restEnd = 0; F.plan = null; F.flash = null; F.sum = null; F.scr = SCR.START; }
 /** answer of one send: res = 'ok' (stored, also for a duplicate), 'drop' (the server refused it for good) or 'retry' (no phone / no server) */
 export function sent(F, id, res) {
   if (res !== 'retry') F.queue = F.queue.filter(s => s.id !== id);
@@ -204,13 +206,60 @@ function saveRec(F, now) {
   F.out.push({ k: 'saveAct', sum: F.rsum }); F.rec = null; F.seg = null; F.flash = null; F.scr = SCR.RSUM; F.cues.push('done');
 }
 
+/* ---- pause, the same in every mode (run, ride, more, strength free and guided): START resumes, BACK held 3 s saves (Polar style,
+ *      an orange ring fills with 3-2-1; released early = nothing), DOWN / a tap reaches Discard with a confirm step.
+ *      A short BACK only shows the hint, so the app is never left with a recording running or lost. ---- */
+/** pauses the recording (run / ride / more: START; strength: the menu's Pause). Strength: the clock and a running rest stop. */
+export function pause(F, now) {
+  const from = F.scr === SCR.MENU ? F.back : F.scr;
+  F.pz = { from, sel0: F.sel, at: now, sel: 0, conf: false, hold: 0, hint: 0 }; if (F.rec) F.rec.st = 'pause';
+  F.flash = null; F.sel = 0; F.scr = SCR.PAUSE; cue(F, 'stop');
+}
+function resume(F, now) {
+  const P = F.pz; F.pz = null;
+  if (F.rec) { F.rec.st = 'run'; F.scr = SCR.REC; }
+  else { const d = Math.max(0, now - P.at); F.pauseT += d; if (F.restEnd) F.restEnd += d; F.scr = P.from; F.sel = P.sel0; }
+  cue(F, 'start');
+}
+/** the hold is full: saved (run / ride / more: the activity; strength: the session, its time without the pauses) */
+function endPaused(F, now) {
+  const P = F.pz; F.pz = null;
+  if (F.rec) saveRec(F, now); else { F.pauseT += Math.max(0, now - P.at); finish(F, now); }
+}
+function discardPaused(F) {
+  F.pz = null;
+  if (F.rec) { F.rec = null; F.seg = null; F.flash = null; F.sel = 0; F.scr = SCR.HOME; } else reset(F);
+}
+/** how full the finish ring is (0..1) and the 3-2-1 count; null when no hold runs */
+export function holdPart(F, now) {
+  const P = F.scr === SCR.PAUSE && F.pz; if (!P || !P.hold) return null;
+  const p = Math.max(0, Math.min(1, (now - P.hold) / HOLD_S)); return { p, n: Math.max(1, Math.ceil(HOLD_S - (now - P.hold) - 1e-9)) };
+}
+/** the elapsed time shown on the pause screen: the moving time, strength: the session time without pauses */
+export const pausedTime = F => F.rec ? F.rec.t : F.pz ? Math.max(0, F.pz.at - F.start - F.pauseT) : 0;
+function onPause(F, ev, now, arg) {
+  const P = F.pz;
+  if (P.conf) { if (ev === 'start') discardPaused(F); else if (ev === 'back') P.conf = false; return; } // "Discard? START yes · BACK no"
+  if (ev === 'up' || ev === 'down') P.sel = P.sel ? 0 : 1;
+  else if (ev === 'start' || ev === 'tap') { if (P.sel) P.conf = true; else resume(F, now); }
+  else if (ev === 'item') { if (arg === 1) { P.sel = 1; P.conf = true; } else resume(F, now); }
+  else if (ev === 'back') P.hint = now + HINT_S;
+}
+
 /** every input: ev = up, down, upHold, downHold, start, back, menu, swipeUp, swipeDown, swipeLeft, swipeRight, tap, item (arg = index),
- *  focus (arg = 0 kg / 1 reps / digit), hr (arg = bpm), tick, sample (arg = one second of movement), seg (arg = segment state) */
+ *  focus (arg = 0 kg / 1 reps / digit), hr (arg = bpm), tick, sample (arg = one second of movement), seg (arg = segment state),
+ *  holdStart / holdEnd (BACK pressed / released, or a finger on the pause screen's "Hold to finish" pill) */
 export function handle(F, ev, now, arg) {
   if (ev === 'hr') { F.hr = arg || 0; if (F.start && arg > 0) { F.hrN++; F.hrSum += arg; F.hrMax = Math.max(F.hrMax, arg); } return; }
   if (ev === 'sample') { sample(F, now, arg || {}); return; }
   if (ev === 'seg') { segment(F, now, arg); return; }
+  if (ev === 'holdStart' || ev === 'holdEnd') { // BACK pressed / released (and the touch pill): only the pause screen listens
+    const P = F.scr === SCR.PAUSE && F.pz; if (!P || P.conf) return;
+    if (ev === 'holdStart') P.hold = now; else if (P.hold) { P.hold = 0; P.hint = now + HINT_S; } // released early: nothing, the hint
+    return;
+  }
   if (ev === 'tick') {
+    if (F.scr === SCR.PAUSE && F.pz && F.pz.hold && now - F.pz.hold >= HOLD_S) { endPaused(F, now); return; }
     if (F.flash && now >= F.flash.until) F.flash = null;
     if (F.seg && F.seg.k === 'end' && now >= F.seg.until) F.seg = null;
     if (F.scr === SCR.REST && now >= F.restEnd) endRest(F, true);
@@ -219,10 +268,11 @@ export function handle(F, ev, now, arg) {
   if (F.flash) { F.flash = null; if (ev !== 'menu') return; } // the first touch after a record only clears the flash
   if (ev === 'swipeLeft') ev = 'menu';
   if (ev === 'swipeRight') ev = 'back';
-  const s = F.scr, list = [SCR.PICK, SCR.MENU, SCR.HOME, SCR.MORE, SCR.SMODE, SCR.WPICK, SCR.PAUSE, SCR.RPICK].includes(s);
-  if (ev === 'swipeUp') ev = list || s === SCR.REC ? 'down' : 'up';     // a list (and the data pages) scroll with the finger, a number counts up
-  if (ev === 'swipeDown') ev = list || s === SCR.REC ? 'up' : 'down';
+  const s = F.scr, list = [SCR.PICK, SCR.MENU, SCR.HOME, SCR.MORE, SCR.SMODE, SCR.WPICK, SCR.RPICK].includes(s);
+  if (ev === 'swipeUp') ev = list || s === SCR.REC || s === SCR.PAUSE ? 'down' : 'up';     // a list (and the data pages) scroll with the finger, a number counts up
+  if (ev === 'swipeDown') ev = list || s === SCR.REC || s === SCR.PAUSE ? 'up' : 'down';
   if (ev === 'menu') { if (s === SCR.HOME || s === SCR.START || s === SCR.PICK || s === SCR.SET || s === SCR.REST) openMenu(F); return; }
+  if (s === SCR.PAUSE) { if (F.pz) onPause(F, ev, now, arg); else F.scr = F.rec ? SCR.REC : SCR.HOME; return; }
   if (s === SCR.GLANCE) { if (ev === 'start' || ev === 'tap') { F.sel = 0; F.scr = F.paired ? SCR.HOME : SCR.PAIR; } return; }
   if (s === SCR.START) {
     if (ev === 'start' || ev === 'tap') { if (!F.setup.ex.length) { F.out.push({ k: 'setup' }); return; } F.start = now; F.sets = []; F.sum = null; F.plan = null; F.last = 'kraft';
@@ -239,7 +289,7 @@ export function handle(F, ev, now, arg) {
   if (s === SCR.REC) {
     const n = recPages(F).length, R = F.rec;
     if (ev === 'up' || ev === 'down') R.pg = (R.pg + (ev === 'down' ? 1 : n - 1)) % n;
-    else if (ev === 'start') { R.st = 'pause'; F.sel = 0; F.scr = SCR.PAUSE; cue(F, 'stop'); }
+    else if (ev === 'start') pause(F, now);
     else if (ev === 'back' || ev === 'tap') { if (F.seg && !F.seg.hide) F.seg.hide = true; else if (ev === 'back') lap(F, now); } // BACK = lap (like Garmin); first it closes the segment popup
     return;
   }
@@ -253,7 +303,6 @@ export function handle(F, ev, now, arg) {
       if (s === SCR.MENU) F.scr = F.back;
       else if (s === SCR.HOME) F.out.push({ k: 'exit' });
       else if (s === SCR.MORE) { F.sel = 0; F.scr = SCR.HOME; }
-      else if (s === SCR.PAUSE) { F.rec.st = 'run'; F.scr = SCR.REC; cue(F, 'start'); }
       else if (s === SCR.WPICK) { F.sel = 0; F.scr = SCR.SMODE; }
       else if (s === SCR.RPICK) { F.sel = 0; F.scr = SCR.READY; }
       else if (F.sets.length) { if (planItem(F)) goPlan(F); else { prefill(F); F.scr = SCR.SET; } } else reset(F); // PICK / SMODE
@@ -296,7 +345,6 @@ export function listItems(F) {
   if (s === SCR.MORE) return F.cfg.more.map(m => m[1]);
   if (s === SCR.SMODE) return SMODES;
   if (s === SCR.WPICK) return workouts(F).map(w => w.n);
-  if (s === SCR.PAUSE) return PAUSED;
   if (s === SCR.RPICK) return ['None', ...(F.routes || []).map(r => r.name)];
   return [];
 }
@@ -309,13 +357,13 @@ function pickItem(F, i, now) {
   else if (s === SCR.SMODE) { if (i === 0) { F.sel = 0; F.scr = SCR.WPICK; } else toPick(F); }
   else if (s === SCR.WPICK) startPlan(F, i, now);
   else if (s === SCR.RPICK) chooseRoute(F, i);
-  else if (s === SCR.PAUSE) { if (i === 0) { F.rec.st = 'run'; F.scr = SCR.REC; cue(F, 'start'); } else if (i === 1) saveRec(F, now); else { F.rec = null; F.seg = null; F.flash = null; F.sel = 0; F.scr = SCR.HOME; } }
 }
 function act(F, item, now) {
   if (item === MENU.EX) toPick(F);
   else if (item === MENU.SKIP) { F.plan.i++; F.plan.n = 0; F.restEnd = 0; if (planItem(F)) goPlan(F); else finish(F, now); }
   else if (item === MENU.UNDO) undo(F);
   else if (item === MENU.FIN) finish(F, now);
+  else if (item === MENU.PAUSE) pause(F, now);
   else if (item === MENU.SYNC) { F.out.push({ k: 'setup' }, { k: 'send' }); F.scr = F.back; }
   else if (item === MENU.PAIR) { F.pair = { d: [0, 0, 0, 0, 0, 0], i: 0, st: 'enter' }; F.scr = SCR.PAIR; }
 }

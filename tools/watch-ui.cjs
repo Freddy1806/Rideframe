@@ -118,12 +118,14 @@ let fails = 0; const ok = (c, m) => { console.log(`${c ? '✓' : '✗'} ${m}`); 
     ok(await until(() => __watch.F.seg?.k === 'live' && __watch.F.seg.done > 300), 'segment: live against the PR'); await dsnap('08_segment_live');
     ok(await until(() => __watch.F.seg?.k === 'end'), 'segment: the result'); await dsnap('09_segment_result'); ok(await until(() => !__watch.F.seg, 7000), 'the result goes after 5 s');
     await dbtn('back'); d = await G(); ok(d.laps === 2, 'BACK: manual lap'); await dbtn('down');
-    await dbtn('start'); d = await G(); ok(d.scr === 'pause', 'START: paused'); await dsnap('10_run_paused'); await dbtn('down'); await dbtn('start'); d = await G(); ok(d.scr === 'rsum', 'Save: summary'); await dsnap('11_run_saved');
+    await dbtn('start'); d = await G(); ok(d.scr === 'pause', 'START: paused'); await dsnap('10_run_paused');
+    { const el = D.locator('[data-face="fr265"] .wbtn.back'), bb = await el.boundingBox(); await D.mouse.move(bb.x + bb.width / 2, bb.y + bb.height / 2); await D.mouse.down(); await D.waitForTimeout(3400); await D.mouse.up(); await D.waitForTimeout(100); }
+    d = await G(); ok(d.scr === 'rsum', 'BACK held 3 s on the pause screen: saved, the summary'); await dsnap('11_run_saved');
     await dbtn('start'); d = await G(); ok(d.scr === 'home', 'back to the start menu'); ok((await D.evaluate(() => __watch.F.last)) === 'run', 'Run stays on top');
     await dbtn('down'); await dbtn('start'); await dbtn('start'); d = await G(); ok(d.scr === 'rec' && d.sp === 'ride', 'Ride: recording');
     await D.evaluate(() => { for (let i = 0; i < 40; i++) __watch.ev('sample', { dt: 1, v: 9.6, hr: 144, cad: 90, pw: 245, up: .1 }); __watch.F.flash = null; }); await dsnap('12_ride_page1');
     await D.click('#wSeg'); ok(await until(() => __watch.F.seg?.k === 'live'), 'ride segment: live'); await dsnap('13_ride_segment_live'); await dbtn('back'); ok((await G()).seg === 'live' && await D.evaluate(() => __watch.F.seg.hide), 'BACK hides the popup');
-    await dbtn('start'); await dbtn('down', 2); await dbtn('start'); d = await G(); ok(d.scr === 'home', 'Discard: start menu');
+    await dbtn('start'); await dbtn('down'); await dbtn('start'); await dbtn('start'); d = await G(); ok(d.scr === 'home', 'Discard, START yes: start menu');
     await dbtn('down', 3); await dbtn('start'); d = await G(); ok(d.scr === 'more', 'More: the sports list'); await dsnap('14_more_list'); await dbtn('down', 2); await dbtn('start'); d = await G(); ok(d.scr === 'ready' && d.sp === 'other' && d.type === 'Yoga', 'Yoga: ready');
     await dbtn('start'); await D.evaluate(() => { for (let i = 0; i < 30; i++) __watch.ev('sample', { dt: 60, v: 0, hr: 112 }); }); d = await G(); ok(d.scr === 'rec', 'Yoga: recording, one page'); await dsnap('15_other_sport');
     await dbtn('start'); await dbtn('down'); await dbtn('start'); await dbtn('start');
@@ -138,6 +140,36 @@ let fails = 0; const ok = (c, m) => { console.log(`${c ? '✓' : '✗'} ${m}`); 
     d = await G(); ok(d.scr === 'pick' && d.plan === null, 'Change exercise: the free list, the workout is left'); await dsnap('20_free_list');
     ok((await D.evaluate(async () => (await import('/js/watchflow.js')).listItems(__watch.F).slice(0, 4))).join() === 'Bench press,Squat,Pull-ups,Incline bench press', 'free: recent first, then the top 20');
     ok(!derr.length, 'no page errors in the new flows' + (derr.length ? ': ' + derr.join(' | ') : '')); await demo.close();
+
+    // ---- pause in every mode, Polar style: BACK held 3 s saves, released early nothing; on the page clock (no real waiting) ----
+    const pc = await b.newContext({ viewport: { width: 1280, height: 1150 }, deviceScaleFactor: 2, hasTouch: true });
+    const Q = await pc.newPage(); const qerr = []; Q.on('pageerror', e => qerr.push(e.message)); await Q.clock.install();
+    await Q.goto(BASE + '/watch.html'); await Q.clock.runFor(800); await Q.waitForFunction(() => window.__watch?.F);
+    const qs = () => Q.evaluate(() => ({ scr: __watch.F.scr, rec: !!__watch.F.rec, conf: !!__watch.F.pz?.conf, hint: !!(__watch.F.pz?.hint), q: __watch.F.sum ? 1 : 0, start: __watch.F.start }));
+    const qb = async (k, n = 1) => { for (let i = 0; i < n; i++) { await Q.click(`[data-face="fr265"] .wbtn.${k}`); await Q.clock.runFor(100); } };
+    const qhold = async (ms, face = 'fr265') => { const bb = await Q.locator(`[data-face="${face}"] .wbtn.back`).boundingBox(); await Q.mouse.move(bb.x + bb.width / 2, bb.y + bb.height / 2); await Q.mouse.down(); await Q.clock.runFor(ms); };
+    const qup = async () => { await Q.mouse.up(); await Q.clock.runFor(150); };
+    const qshot = async nm => { if (!SHOTS) return; for (const f of ['fr265', 'fenix7xpro']) await Q.locator(`[data-face="${f}"] .wscale`).screenshot({ path: `${SHOTS}/pause_${f}_${nm}.png` }); };
+    const toHome = () => Q.evaluate(() => { __watch.F.scr = 'home'; __watch.F.sel = 0; });
+    const pick = k => Q.evaluate(async k => { const m = await import('/js/watchflow.js'); __watch.ev('item', m.homeItems(__watch.F).indexOf(k)); }, k);
+    const modes = [['run', async () => { await pick('run'); await qb('start'); }], ['ride', async () => { await pick('ride'); await qb('start'); }],
+      ['more', async () => { await pick('more'); await qb('start'); await qb('start'); }], ['strength', async () => { await pick('kraft'); await qb('start'); await qb('down'); await qb('start'); await qb('start'); await qb('start'); }]];
+    for (const [k, go] of modes) {
+      await toHome(); await go(); await Q.clock.runFor(20000);
+      if (k === 'strength') { await Q.evaluate(() => __watch.ev('menu')); const i = await Q.evaluate(() => __watch.F.menu.indexOf('Pause')); await qb('down', i); await qb('start'); } else await qb('start');
+      let q = await qs(); ok(q.scr === 'pause', `${k}: paused`);
+      await qb('back'); q = await qs(); ok(q.scr === 'pause' && q.hint, `${k}: a short BACK keeps the pause screen and shows the hint`);
+      await qhold(1500); if (k === 'run') await qshot('ring_half'); q = await qs(); ok(q.scr === 'pause', `${k}: 1.5 s held, still paused (ring half full)`);
+      await qup(); await Q.clock.runFor(3000); q = await qs(); ok(q.scr === 'pause', `${k}: released early, nothing saved`);
+      await qb('down'); await qb('start'); q = await qs(); ok(q.conf, `${k}: Discard asks first`); if (k === 'run') await qshot('discard_confirm'); await qb('back'); q = await qs(); ok(q.scr === 'pause' && !q.conf, `${k}: BACK = keep`);
+      await qhold(3300, 'fenix7xpro'); await qup(); q = await qs(); ok(k === 'strength' ? q.scr === 'sum' && q.q >= 1 : q.scr === 'rsum', `${k}: BACK held 3 s: saved, the summary`);
+    }
+    // the touch pill on the fr265: a finger resting on "Hold to finish"
+    await toHome(); await pick('run'); await qb('start'); await Q.clock.runFor(5000); await qb('start');
+    { const cv = Q.locator('[data-face="fr265"] canvas'), bx = await cv.boundingBox(); await Q.mouse.move(bx.x + bx.width / 2, bx.y + bx.height * .82); await Q.mouse.down(); await Q.clock.runFor(3300); await Q.mouse.up(); await Q.clock.runFor(100); }
+    ok((await qs()).scr === 'rsum', 'touch: holding the "Hold to finish" pill saves');
+    await toHome(); await pick('ride'); await qb('start'); await qb('start'); await qb('down'); await qb('start'); await qb('start'); ok((await qs()).scr === 'home' && !(await qs()).rec, 'Discard, START yes: gone, the start menu');
+    ok(!qerr.length, 'no page errors in the pause flows' + (qerr.length ? ': ' + qerr.join(' | ') : '')); await pc.close();
 
     // ---- 19.11.: routes sent from the phone reach the paired preview watch (GET /api/watch/routes, /route) ----
     const pts = []; for (let i = 0; i <= 40; i++) pts.push([47.37 + i * .0004, 8.54 + (i > 20 ? (i - 20) * .0005 : 0)]);
