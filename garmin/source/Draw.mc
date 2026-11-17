@@ -197,6 +197,7 @@ module Draw {
             if (i >= n) { break; }
             var k = items[i], y = S * (HOME_Y0 + r * HOME_DY), lab = F.homeLabel(k);
             if (i == F.sel) {
+                // VERIFY: FONT_MEDIUM fits the 0.13 S pill on the 280 px MIP (36 px high); else FONT_SMALL for the selected row there
                 pill(dc, c, y, S * 0.74, S * 0.13, P.acc);
                 icon(dc, k, S * 0.25, y, S * 0.085, P.ink);
                 txtL(dc, S * 0.33, y, Graphics.FONT_MEDIUM, fit(dc, lab, Graphics.FONT_MEDIUM, (S * 0.45).toNumber()), P.ink);
