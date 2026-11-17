@@ -57,6 +57,7 @@ export class Music {
 export class Coach {
   constructor(vol = 0.9) { this.vol = vol; this.last = 0; audioManifest().then(m => { this.lines = m.coach || {}; }); }
   say(key, minGap = 4) {
+    return; // the German coach voice is switched off everywhere (Freddy 17.11.: "keinen deutschen Sprecher"); the HUD shows it instead
     const f = this.lines?.[key]; if (!f || this.vol <= 0) return;
     const now = performance.now(); if (now - this.last < minGap * 1000) return; this.last = now;
     const a = new Audio('assets/audio/' + f); a.volume = this.vol; a.play().catch(() => {});
