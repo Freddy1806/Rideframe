@@ -39,9 +39,17 @@ class Api {
     function config(done as Method) as Void { add(Communications.HTTP_REQUEST_METHOD_GET, "/api/watch/config", null, done); }
     // POST /api/watch/strength { id, start, duration, sets: [{ ex, kg, reps, t }], hr? } -> { ok, id, prs, dup? }
     function session(s as Dictionary, done as Method) as Void { add(Communications.HTTP_REQUEST_METHOD_POST, "/api/watch/strength", s, done); }
-    // STUB, NOT CALLED (the endpoint does not exist yet, see garmin/README.md):
-    // POST /api/watch/activity { id, type, start, duration, moving, dist, climb, hr, maxHr, kcal, power?, laps? }
+    // POST /api/watch/activity { id, type, start, duration, moving, dist, climb, hr, maxHr, kcal, power?, laps? } -> { ok, id, dup?, merged? }
     function activity(a as Dictionary, done as Method) as Void { add(Communications.HTTP_REQUEST_METHOD_POST, "/api/watch/activity", a, done); }
+    // GET /api/watch/segments?lat&lon&type -> { segs: [{ id, n, len, pr, kom, p: [[lat, lon]] }], strava } (at most 8, nearest first)
+    // VERIFY (Communications.makeWebRequest): a query string in the URL is kept for GET with null params
+    function segments(lat as Double, lon as Double, type as String, done as Method) as Void {
+        add(Communications.HTTP_REQUEST_METHOD_GET, "/api/watch/segments?lat=" + lat.format("%.5f") + "&lon=" + lon.format("%.5f") + "&type=" + type, null, done);
+    }
+    // GET /api/watch/routes -> { routes: [{ id, name, dist, climb }] } (at most 20, sent from the phone)
+    function routes(done as Method) as Void { add(Communications.HTTP_REQUEST_METHOD_GET, "/api/watch/routes", null, done); }
+    // GET /api/watch/route?id -> { id, name, dist, climb, p: [[lat, lon]] (<= 200), turns: [[at, "L" | "R" | "U"]] }; ids are [A-Za-z0-9_-]
+    function route(id as String, done as Method) as Void { add(Communications.HTTP_REQUEST_METHOD_GET, "/api/watch/route?id=" + id, null, done); }
 
     function deviceLabel() as String {
         // VERIFY: System.DeviceSettings has no product name; partNumber is a code. A fixed label is fine, the phone shows it.

@@ -156,7 +156,7 @@ module Draw {
         var s = F.scr;
         P.acc = P.cKraft;
         if (s == S_MORE) { P.acc = P.cOther; }
-        else if (s == S_READY || s == S_REC || s == S_PAUSE) { P.acc = P.sport(F.sp); }
+        else if (s == S_READY || s == S_REC || s == S_PAUSE || s == S_RPICK) { P.acc = P.sport(F.sp); }
         else if (s == S_RSUM) { var r = F.rsum, k = F.sp; if (r != null) { k = strOf(r["sp"]); } P.acc = P.sport(k); }
         var f = F.flash;
         if (f != null) {
@@ -178,6 +178,7 @@ module Draw {
         else if (s == S_REC) { drawRec(dc, F, S, P, now); }
         else if (s == S_PAUSE) { var R = F.rec, t = 0; if (R != null) { t = R.t; } list(dc, F, S, P, F.listItems(), "PAUSED " + clock(t), true, null); }
         else if (s == S_RSUM) { drawRsum(dc, F, S, P); }
+        else if (s == S_RPICK) { drawRpick(dc, F, S, P); }
         else { drawHome(dc, F, S, P, sum); }
     }
     // RIDE in white, FRAME in the accent, centred on y
@@ -427,8 +428,23 @@ module Draw {
             txtL(dc, c - S * 0.1, S * 0.565, Graphics.FONT_SMALL, ok ? "GPS ready" : "GPS search", col);
         }
         var n = F.pages.size(), t = n.toString() + (n == 1 ? " data page" : " data pages") + (F.hasRoutePage() ? " + route" : "");
-        txt(dc, c, S * 0.655, Graphics.FONT_XTINY, fit(dc, t, Graphics.FONT_XTINY, (S * 0.62).toNumber()), P.lbl);
+        if (F.sp.equals("other")) { txt(dc, c, S * 0.655, Graphics.FONT_XTINY, fit(dc, t, Graphics.FONT_XTINY, (S * 0.62).toNumber()), P.lbl); }
+        else { // 19.11.: the route line; UP / DOWN or a tap on it opens the choice (RPICK). VERIFY on the device: the two XTINY lines do not touch
+            txt(dc, c, S * 0.635, Graphics.FONT_XTINY, fit(dc, t, Graphics.FONT_XTINY, (S * 0.62).toNumber()), P.lbl);
+            var i = F.routeIndex(), l = F.routes, rt = "No route";
+            if (i >= 0) { if (l != null) { rt = F.route != null ? "Route: " + strOf(l[i]["name"]) : "Loading route"; } }
+            txt(dc, c, S * 0.705, Graphics.FONT_XTINY, fit(dc, rt, Graphics.FONT_XTINY, (S * 0.6).toNumber()), i >= 0 ? P.acc : P.fg);
+        }
         pill(dc, c, S * 0.81, S * 0.42, S * 0.13, P.acc); txt(dc, c, S * 0.81, Graphics.FONT_SMALL, "START", P.ink);
+    }
+    // js/watchsim.js RPICK: None or a route sent from the phone, with its length and climb
+    function drawRpick(dc as Dc, F as Flow, S as Number, P as Palette) as Void {
+        var l = F.routes, sub = "Data pages only";
+        if (l != null) {
+            if (F.sel > 0 && F.sel - 1 < l.size()) { var r = l[F.sel - 1], cl = rnd(fltOf(r["climb"])); sub = kmTxt(fltOf(r["dist"])) + " km" + (cl > 0 ? ", " + cl.toString() + " m up" : ""); }
+        }
+        list(dc, F, S, P, F.listItems(), "ROUTE", false, sub);
+        if (l != null) { if (l.size() == 0) { txt(dc, S / 2, S * 0.81, Graphics.FONT_XTINY, fit(dc, "Send routes from the phone", Graphics.FONT_XTINY, (S * 0.62).toNumber()), P.lbl); } }
     }
     function drawRec(dc as Dc, F as Flow, S as Number, P as Palette, now as Number) as Void {
         var R = F.rec;
@@ -536,11 +552,20 @@ module Draw {
             if (part > 0.0) { dc.setColor(P.acc, Graphics.COLOR_TRANSPARENT); if (part >= 0.999) { dc.drawCircle(c, c, r); } else { dc.drawArc(c, c, r, Graphics.ARC_CLOCKWISE, 90, 90 - (part * 360).toNumber()); } }
             dc.setPenWidth(1);
             txt(dc, c, S * 0.17, Graphics.FONT_XTINY, fit(dc, name, Graphics.FONT_XTINY, (S * 0.6).toNumber()), P.fg);
-            txt(dc, c, S * 0.37, Graphics.FONT_NUMBER_HOT, (ahead ? "-" : "+") + clock(ahead ? -delta : delta), col);
-            txt(dc, c, S * 0.505, Graphics.FONT_XTINY, ahead ? "AHEAD OF PR" : "BEHIND PR", col);
-            var need = fltOf(g["need"]), nt = F.sp.equals("ride") ? (need * 3.6).format("%.1f") + " km/h" : (need > 0.0 ? Fields.pace(1000.0 / need, 1000.0) : "--:--") + " /km";
-            txt(dc, c, S * 0.63, Graphics.FONT_SMALL, fit(dc, "Need " + nt, Graphics.FONT_SMALL, (S * 0.76).toNumber()), P.fg);
-            txt(dc, c, S * 0.7, Graphics.FONT_XTINY, "FOR PR", P.lbl);
+            var ref = g.hasKey("ref") ? strOf(g["ref"]) : "PR"; // "PR" | "KOM" | "" (nothing to beat: the time runs)
+            if (ref.length() == 0) {
+                txt(dc, c, S * 0.37, Graphics.FONT_NUMBER_HOT, clock(numOf(g["time"])), P.fg);
+                txt(dc, c, S * 0.505, Graphics.FONT_XTINY, "NO TIME TO BEAT", P.lbl);
+            } else {
+                txt(dc, c, S * 0.37, Graphics.FONT_NUMBER_HOT, (ahead ? "-" : "+") + clock(ahead ? -delta : delta), col);
+                txt(dc, c, S * 0.505, Graphics.FONT_XTINY, (ahead ? "AHEAD OF " : "BEHIND ") + ref, col);
+                var need = fltOf(g["need"]);
+                if (need > 0.0) { // js/navroute.js needSpeed; 0 = out of reach
+                    var nt = F.sp.equals("ride") ? (need * 3.6).format("%.1f") + " km/h" : Fields.pace(1000.0 / need, 1000.0) + " /km";
+                    txt(dc, c, S * 0.63, Graphics.FONT_SMALL, fit(dc, "Need " + nt, Graphics.FONT_SMALL, (S * 0.76).toNumber()), P.fg);
+                    txt(dc, c, S * 0.7, Graphics.FONT_XTINY, "FOR " + ref, P.lbl);
+                } else { txt(dc, c, S * 0.655, Graphics.FONT_SMALL, fit(dc, ref + " out of reach", Graphics.FONT_SMALL, (S * 0.7).toNumber()), P.lbl); }
+            }
             var left = len - done;
             txt(dc, c, S * 0.81, Graphics.FONT_XTINY, distTxt(left > 0.0 ? left : 0.0) + " to go", P.lbl);
             return;
@@ -550,15 +575,19 @@ module Draw {
         txt(dc, c, S * 0.22, Graphics.FONT_SMALL, pr2 ? "NEW PR" : "SEGMENT DONE", pr2 ? ink : P.acc);
         txt(dc, c, S * 0.31, Graphics.FONT_XTINY, fit(dc, name, Graphics.FONT_XTINY, (S * 0.66).toNumber()), ink);
         txt(dc, c, S * 0.5, Graphics.FONT_NUMBER_HOT, clock(numOf(g["time"])), ink);
-        txt(dc, c, S * 0.7, Graphics.FONT_MEDIUM, (dl <= 0 ? "-" : "+") + clock(dl < 0 ? -dl : dl) + " vs PR", pr2 ? ink : col2);
+        var ref2 = g.hasKey("ref") ? strOf(g["ref"]) : "PR";
+        if (ref2.length() > 0) { txt(dc, c, S * 0.7, Graphics.FONT_MEDIUM, (dl <= 0 ? "-" : "+") + clock(dl < 0 ? -dl : dl) + " vs " + ref2, pr2 ? ink : col2); }
     }
     // js/watchsim.js routePage: next turn on top, the line with the position dot, the distance left at the bottom
     function routePage(dc as Dc, F as Flow, S as Number, P as Palette) as Void {
         var r = F.route, ri = F.routeInfo();
         if (r == null) { return; }
         if (ri == null) { return; }
-        var turn = ri["turn"];
-        if (turn instanceof Dictionary) {
+        var turn = ri["turn"], off = numOf(ri["off"]);
+        if (off > 0) { // 19.11.: off the route (Feed.mc RouteTrack: more than 40 m for 8 s)
+            txt(dc, S / 2, S * 0.165, Graphics.FONT_SMALL, "OFF ROUTE", P.bad);
+            txt(dc, S / 2, S * 0.235, Graphics.FONT_XTINY, distTxt(off.toFloat()) + " away", P.fg);
+        } else if (turn instanceof Dictionary) {
             var tn = turn as Dictionary, dir = strOf(tn["dir"]), tin = fltOf(tn["in"]), tt = strOf(tn["txt"]);
             turnArrow(dc, S * 0.28, S * 0.2, S * 0.08, dir.equals("L"), P.acc);
             var d = tin < 1000.0 ? (rnd(tin / 10.0) * 10).toString() + " m" : (tin / 1000.0).format("%.1f") + " km";
@@ -568,23 +597,27 @@ module Draw {
         } else {
             txt(dc, S / 2, S * 0.2, Graphics.FONT_XTINY, "FINISH AHEAD", P.acc);
         }
-        // the route: points 0..1 in a box; total length, then the part done in the accent up to the position
-        var pts = arrOf(r["pts"]), bx = S * 0.2, by = S * 0.315, bw = S * 0.6, bh = S * 0.38, n = pts.size();
-        if (n < 2) { return; }
+        // the route: points 0..1 in a box (flat u / v, Feed.mc RouteTrack.face); total length, then the part done in the accent up to the position
+        var pu = arrOf(r["u"]), pv = arrOf(r["v"]), bx = S * 0.2, by = S * 0.315, bw = S * 0.6, bh = S * 0.38, n = pu.size();
+        if (n < 2 || pv.size() != n) { return; }
         var tot = 0.0;
-        for (var k = 1; k < n; k++) { tot += segLen(pts, k, bw, bh); }
+        for (var k = 1; k < n; k++) { tot += segLen(pu, pv, k, bw, bh); }
         dc.setColor(P.path, Graphics.COLOR_TRANSPARENT); dc.setPenWidth(pw(S * 0.014));
-        for (var k = 1; k < n; k++) { dc.drawLine(rp(pts, k - 1, 0, bx, bw), rp(pts, k - 1, 1, by, bh), rp(pts, k, 0, bx, bw), rp(pts, k, 1, by, bh)); }
-        var to = fltOf(ri["pos"]) * tot, acc = 0.0, ax = rp(pts, 0, 0, bx, bw), ay = rp(pts, 0, 1, by, bh);
+        for (var k = 1; k < n; k++) { dc.drawLine(rp(pu, k - 1, bx, bw), rp(pv, k - 1, by, bh), rp(pu, k, bx, bw), rp(pv, k, by, bh)); }
+        var to = fltOf(ri["pos"]) * tot, acc = 0.0, ax = rp(pu, 0, bx, bw), ay = rp(pv, 0, by, bh);
         dc.setColor(P.acc, Graphics.COLOR_TRANSPARENT); dc.setPenWidth(pw(S * 0.022));
         for (var k = 1; k < n; k++) {
-            var l = segLen(pts, k, bw, bh), x0 = rp(pts, k - 1, 0, bx, bw), y0 = rp(pts, k - 1, 1, by, bh), x1 = rp(pts, k, 0, bx, bw), y1 = rp(pts, k, 1, by, bh);
+            var l = segLen(pu, pv, k, bw, bh), x0 = rp(pu, k - 1, bx, bw), y0 = rp(pv, k - 1, by, bh), x1 = rp(pu, k, bx, bw), y1 = rp(pv, k, by, bh);
             if (acc + l >= to) { var f = l > 0.0 ? (to - acc) / l : 0.0; ax = x0 + (x1 - x0) * f; ay = y0 + (y1 - y0) * f; dc.drawLine(x0, y0, ax, ay); break; }
             dc.drawLine(x0, y0, x1, y1); acc += l; ax = x1; ay = y1;
         }
         dc.setPenWidth(1);
-        var fx = rp(pts, n - 1, 0, bx, bw), fy = rp(pts, n - 1, 1, by, bh);
+        var fx = rp(pu, n - 1, bx, bw), fy = rp(pv, n - 1, by, bh);
         dc.setColor(P.fg, Graphics.COLOR_TRANSPARENT); dc.fillRectangle(fx - S * 0.016, fy - S * 0.016, S * 0.032, S * 0.032); // the finish
+        if (F.navOn) { // the watch's real position (off the route it leaves the line; kept inside the screen)
+            var mu = F.navU < -0.2 ? -0.2 : (F.navU > 1.2 ? 1.2 : F.navU), mv = F.navV < -0.4 ? -0.4 : (F.navV > 1.2 ? 1.2 : F.navV);
+            ax = bx + mu * bw; ay = by + mv * bh;
+        }
         dc.setColor(P.acc, Graphics.COLOR_TRANSPARENT); dc.fillCircle(ax, ay, S * 0.034);
         dc.setColor(P.fg, Graphics.COLOR_TRANSPARENT); dc.fillCircle(ax, ay, S * 0.019);
         var km = kmTxt(fltOf(ri["left"])), w = dc.getTextWidthInPixels(km, Graphics.FONT_MEDIUM), uw = S * 0.07, x = S / 2 - (w + uw) / 2;
@@ -592,10 +625,10 @@ module Draw {
         txtL(dc, x + w + S * 0.015, S * 0.805, Graphics.FONT_XTINY, "km", P.lbl);
         txt(dc, S / 2, S * 0.875, Graphics.FONT_XTINY, "TO FINISH", P.lbl);
     }
-    // point k of the route, coordinate j (0 = u, 1 = v), in pixels of the box at o with size w
-    function rp(pts as Array, k as Number, j as Number, o as Float, w as Float) as Float { return o + fltOf(arrOf(pts[k])[j]) * w; }
-    function segLen(pts as Array, k as Number, bw as Float, bh as Float) as Float {
-        var a = arrOf(pts[k - 1]), b = arrOf(pts[k]), dx = (fltOf(b[0]) - fltOf(a[0])) * bw, dy = (fltOf(b[1]) - fltOf(a[1])) * bh;
+    // point k of the route on one axis (the flat u or v array), in pixels of the box at o with size w
+    function rp(a as Array, k as Number, o as Float, w as Float) as Float { return o + fltOf(a[k]) * w; }
+    function segLen(pu as Array, pv as Array, k as Number, bw as Float, bh as Float) as Float {
+        var dx = (fltOf(pu[k]) - fltOf(pu[k - 1])) * bw, dy = (fltOf(pv[k]) - fltOf(pv[k - 1])) * bh;
         return Math.sqrt(dx * dx + dy * dy).toFloat();
     }
     // js/watchsim.js turnArrow: an arrow turning left or right (the curve as two lines)

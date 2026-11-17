@@ -2,7 +2,10 @@
 // queue and the caches in Application.Storage, heart rate (Sensor), vibration cues (Attention), the run / ride / more
 // recordings (Recorder.mc) and the optional native strength activity (ActivityRecording). The JS twin of this file is the
 // controller part of js/watchsim.js.
-// Storage: token, setup (strength setup), summary (week points), cfg (watch config), last (sport used last), queue.
+// Storage: token, setup (strength setup), summary (week points), cfg (watch config), last (sport used last), queue,
+// aqueue (19.11.: saved runs / rides / more for POST /api/watch/activity, sent like the strength queue).
+// 19.11.: the routes for the ready screen's Route choice (GET /api/watch/routes, /route) and the segments near the watch
+// (GET /api/watch/segments at the start of a run / ride and every 3 km; timed on the watch by Feed.mc).
 import Toybox.Activity;
 import Toybox.ActivityRecording;
 import Toybox.Application;
@@ -27,6 +30,9 @@ class RideframeApp extends Application.AppBase {
     var lastTry as Number = 0;
     var summary = null;
     var lastKey as String = "";
+    var acts as Array<Dictionary> = [] as Array<Dictionary>;   // saved activities waiting for the phone (Storage "aqueue")
+    var actSending as Boolean = false;
+    var actTry as Number = 0;
 
     function initialize() { AppBase.initialize(); }
 
@@ -42,11 +48,13 @@ class RideframeApp extends Application.AppBase {
         flow = f; lastKey = f.last;
         api = new Api();
         recorder = new Recorder(f);
+        var aq = Application.Storage.getValue("aqueue");
+        if (aq instanceof Array) { acts = aq as Array<Dictionary>; }
         Sensor.setEnabledSensors([Sensor.SENSOR_HEARTRATE]);
         Sensor.enableSensorEvents(method(:onSensor));
         timer = new Timer.Timer();
         timer.start(method(:onTick), 200, true);
-        if (token != null) { refresh(); push(); }
+        if (token != null) { refresh(); push(); pushAct(); }
         return [new FlowView(f, self), new FlowDelegate(f, self)];
     }
 
@@ -59,6 +67,7 @@ class RideframeApp extends Application.AppBase {
         if (timer != null) { timer.stop(); }
         Sensor.enableSensorEvents(null);
         if (flow != null) { Application.Storage.setValue("queue", flow.queue); }
+        saveActs();
         // a run / ride the system closes keeps what was recorded (Recorder.shutdown); an open strength workout is lost
         // (VERIFY on the device: does the system close the app mid-workout, e.g. on a notification? then keep a draft)
         if (recorder != null) { recorder.shutdown(); }
@@ -82,6 +91,12 @@ class RideframeApp extends Application.AppBase {
         drain();
         // retry the queue every 30 s while the app is open (the phone may be back)
         if (flow.queue.size() > 0 && !sending && t - lastTry >= 30 && flow.paired) { push(); }
+        if (acts.size() > 0 && !actSending && t - actTry >= 30 && flow.paired) { pushAct(); }
+        // segments near the watch: at the start of a run / ride and every 3 km (Recorder.needSegs), through the phone
+        if (flow.paired && recorder.needSegs(t) && System.getDeviceSettings().phoneConnected) {
+            recorder.segsAsked();
+            api.segments(recorder.segLat, recorder.segLon, flow.sp, method(:onSegs));
+        }
         WatchUi.requestUpdate();
     }
     function onSensor(info as Sensor.Info) as Void {
@@ -101,13 +116,15 @@ class RideframeApp extends Application.AppBase {
             else if (k == O_SETUP) { refresh(); }
             else if (k == O_PAIR) { api.pair(strOf(o["code"]), method(:onPair)); }
             else if (k == O_EXIT) { System.exit(); }
-            else if (k == O_SAVEACT) { recorder.close(true); } // the activity is saved on the watch; nothing goes to RIDEFRAME yet (README)
+            else if (k == O_SAVEACT) { recorder.close(true); queueAct(); } // saved on the watch (Garmin Connect) and queued for RIDEFRAME
+            else if (k == O_ROUTES) { loadRoutes(); }
+            else if (k == O_ROUTE) { loadRoute(strOf(o["id"])); }
         }
+        if (flow.routeId == null) { recorder.track = null; }
         recorder.sync();
         if (flow.scr == S_SUM && rec != null) { stopRecording(true); }
         if (flow.scr == S_START && flow.start == 0 && rec != null) { stopRecording(false); }
         if (!lastKey.equals(flow.last)) { lastKey = flow.last; Application.Storage.setValue("last", lastKey); }
-        if (DEMO_FEED && flow.scr == S_READY && !"other".equals(flow.sp) && flow.route == null) { flow.setRoute(recorder.demoRoute(flow.sp)); }
     }
     function saveQueue() as Void {
         // VERIFY (Toybox.Application.Storage): the size limit of one value; a queue of a few sessions (~2 KB each) should fit
@@ -175,6 +192,79 @@ class RideframeApp extends Application.AppBase {
         if (res != R_RETRY && flow.queue.size() > 0) { push(); }
         else if (res == R_OK) { refresh(); }
     }
+    /* ---- 19.11.: activities, routes, segments ---- */
+    function saveActs() as Void {
+        try { Application.Storage.setValue("aqueue", acts); } // VERIFY (Application.Storage.setValue): which exception a too large value throws
+        catch (e) { System.println("storage: aqueue not kept"); }
+    }
+    // the activity just saved (Recorder.activityBody) goes into the queue; at most 10 wait, the oldest goes first
+    function queueAct() as Void {
+        var b = recorder.lastAct;
+        if (b == null) { return; }
+        recorder.lastAct = null;
+        acts.add(b);
+        if (acts.size() > 10) { acts = acts.slice(acts.size() - 10, acts.size()) as Array<Dictionary>; }
+        saveActs(); pushAct();
+    }
+    function pushAct() as Void {
+        if (actSending || acts.size() == 0 || !flow.paired) { return; }
+        actSending = true; actTry = now();
+        api.activity(acts[0], method(:onActSent));
+    }
+    // 200 (also dup / merged with a Strava twin) and 400 / 413 (refused for good) drop it; anything else keeps it for the next try
+    function onActSent(code as Number, data) as Void {
+        actSending = false;
+        if (code == 401) { unpair(); return; }
+        if (acts.size() == 0) { return; }
+        if (code == 200 || code == 400 || code == 413) {
+            acts = acts.slice(1, acts.size()) as Array<Dictionary>;
+            saveActs();
+            if (acts.size() > 0) { pushAct(); } else if (code == 200) { api.summary(method(:onSummary)); }
+        }
+    }
+    // the routes for RPICK; without the phone the list stays unknown, so the next ready screen asks again
+    function loadRoutes() as Void {
+        if (DEMO_FEED) {
+            flow.setRoutes([{ "id" => "demo-run", "name" => "Riverside 8k", "dist" => 8000 }, { "id" => "demo-ride", "name" => "Lake loop", "dist" => 42000 }]);
+            if (flow.routeId == null) { flow.routeId = "demo-" + flow.sp; flow.setRoute(recorder.demoRoute(flow.sp)); }
+            return;
+        }
+        if (flow.paired && System.getDeviceSettings().phoneConnected) { api.routes(method(:onRoutes)); }
+    }
+    function onRoutes(code as Number, data) as Void {
+        if (code == 401) { unpair(); return; }
+        if (code == 200 && data instanceof Dictionary) { flow.setRoutes((data as Dictionary)["routes"]); WatchUi.requestUpdate(); }
+    }
+    function loadRoute(id as String) as Void {
+        if (DEMO_FEED && id.find("demo-") == 0) { flow.setRoute(recorder.demoRoute(id.equals("demo-ride") ? "ride" : "run")); return; }
+        if (!System.getDeviceSettings().phoneConnected) { flow.routeId = null; return; } // shown as "No route"
+        api.route(id, method(:onRoute));
+    }
+    // the route: followed by Recorder.track, drawn from its flat face; a failed or late answer leaves no route
+    function onRoute(code as Number, data) as Void {
+        var want = flow.routeId;
+        if (want == null) { return; }
+        if (code == 401) { unpair(); }
+        if (code == 200 && data instanceof Dictionary) {
+            var d = data as Dictionary;
+            if (!want.equals(strOf(d["id"]))) { return; } // the answer for an earlier choice
+            var p = arrOf(d["p"]);
+            if (fdPtsOk(p)) {
+                var t = new RouteTrack(p);
+                recorder.track = t;
+                flow.setRoute(t.face(d));
+                WatchUi.requestUpdate();
+                return;
+            }
+        }
+        flow.routeId = null; recorder.track = null; // shown as "No route"
+        WatchUi.requestUpdate();
+    }
+    function onSegs(code as Number, data) as Void {
+        if (code == 401) { recorder.segsLoaded(null, now()); unpair(); return; }
+        if (code == 200 && data instanceof Dictionary) { recorder.segsLoaded(arrOf((data as Dictionary)["segs"]), now()); }
+        else { recorder.segsLoaded(null, now()); }
+    }
     function unpair() as Void {
         Application.Storage.deleteValue("token");
         flow.paired = false;
@@ -183,9 +273,8 @@ class RideframeApp extends Application.AppBase {
     }
 
     // ---- optional: the strength workout as a native strength activity, so it also lands in Garmin Connect ----
-    // Dedupe: Garmin Connect may pass it on to Strava, and RIDEFRAME's Strava import would then bring it back as a second
-    // strength session. js/actimport.js must skip a Strava "WeightTraining" whose start is within 2 minutes of a
-    // source: 'watch' session (not done yet, see README).
+    // Dedupe: Garmin Connect may pass it on to Strava; RIDEFRAME links a Strava "WeightTraining" within 2 minutes of a watch
+    // session to it instead of keeping two (tools/watch-feed.mjs linkStrength, js/actimport.js), in either order.
     function startRecording() as Void {
         if (Application.Properties.getValue("recordActivity") != true || !(Toybox has :ActivityRecording)) { return; }
         rec = ActivityRecording.createSession({ :name => "Strength", :sport => Activity.SPORT_TRAINING, :subSport => Activity.SUB_SPORT_STRENGTH_TRAINING });

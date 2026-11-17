@@ -4,6 +4,8 @@
 // GPS (Position) runs from the ready screen to the end for outdoor sports. Once a second the values of the session
 // (Activity.getActivityInfo) go into the flow as one "sample" (js/watchflow.js sample), so fields, laps and auto pause
 // work exactly like the preview. Kept out of RideframeApp so the glance process does not load it.
+// 19.11.: the GPS position also drives the segment tracker and the route following (Feed.mc) once a second; segments near
+// the watch are asked for at the start of a run / ride and every 3 km (by RideframeApp, through needSegs / segsAsked / segsLoaded).
 import Toybox.Activity;
 import Toybox.ActivityRecording;
 import Toybox.Lang;
@@ -12,9 +14,11 @@ import Toybox.Position;
 import Toybox.System;
 import Toybox.Time;
 
-// The route page and the segment popup get their data from the phone in a later step. Until then nothing feeds them;
-// true = a demo route on the ready screen and a demo segment 30 s into a run / ride (for the simulator only).
+// true = a demo route on the ready screen and a demo segment 30 s into a run / ride (for the simulator without a phone;
+// the real segments and routes come from GET /api/watch/segments and /api/watch/route, see RideframeApp).
 const DEMO_FEED = false;
+const SEG_EVERY_M = 3000.0;   // segments near the watch: again after this many metres
+const SEG_RETRY_S = 60;       // and after a failed call
 
 class Recorder {
     var flow as Flow;
@@ -24,9 +28,22 @@ class Recorder {
     var lastMs as Number = 0;
     var lastAsc as Number = -1;
     var lastDist as Float = -1.0;
-    var lastAct as Dictionary or Null = null; // the body POST /api/watch/activity would get (see postActivityStub)
+    var lastAct as Dictionary or Null = null; // the body for POST /api/watch/activity of the activity just saved (RideframeApp queues it)
+    // the last GPS fix (onPosition): degrees, heading in compass degrees (-1 = unknown), speed in m/s
+    var fix as Boolean = false;
+    var lat = 0.0d;
+    var lon = 0.0d;
+    var head as Float = -1.0;
+    var spd as Float = 0.0;
+    var feed as SegFeed;
+    var track as RouteTrack or Null = null;   // the chosen route (RideframeApp.onRoute)
+    var segD as Float = -1.0;                 // metres recorded at the last segments call of this recording (-1 = none yet)
+    var segNext as Number = 0;                // no call before this time (after a failure)
+    var segBusy as Boolean = false;
+    var segLat = 0.0d;
+    var segLon = 0.0d;
 
-    function initialize(f as Flow) { flow = f; }
+    function initialize(f as Flow) { flow = f; feed = new SegFeed(); }
 
     // after every event: GPS on / off, session start / stop / lap / discard
     function sync() as Void {
@@ -56,6 +73,7 @@ class Recorder {
         // "ActivityRecording.Sport or Activity.Sport"); the 4.1.6 constants in Sports.mc compile for the API 5.2 targets
         session = ActivityRecording.createSession({ :name => name(), :sport => Sports.sport(flow.sp, flow.type), :subSport => Sports.sub(flow.sp, flow.type) });
         laps = 0; lastAsc = -1; lastDist = -1.0; lastMs = System.getTimer();
+        segD = -1.0; segNext = 0; feed.clear();
     }
     // Save (true) or Discard (false); the summary for the server is taken before the session closes
     function close(save as Boolean) as Void {
@@ -81,6 +99,40 @@ class Recorder {
     function onPosition(info as Position.Info) as Void {
         var q = info.accuracy; // VERIFY: Position.Info.accuracy is a Position.Quality (QUALITY_* constants)
         flow.gps = (q == Position.QUALITY_GOOD || q == Position.QUALITY_USABLE) ? 2 : (q == Position.QUALITY_POOR ? 1 : 0);
+        var p = info.position;
+        if (p == null) { fix = false; return; }
+        if (flow.gps < 2) { fix = false; return; }
+        var d = p.toDegrees(); // VERIFY (Position.Location.toDegrees): [lat, lon] as Doubles
+        lat = dblOf(d[0]); lon = dblOf(d[1]); fix = true;
+        var v = info.speed; spd = v != null ? fltOf(v) : 0.0;
+        var h = info.heading; // VERIFY: Position.Info.heading is in radians (0 = north, clockwise); unknown while standing
+        head = -1.0;
+        if (h != null) { if (spd > 0.5) { head = fdBrg(Math.sin(h).toFloat(), Math.cos(h).toFloat()); } }
+    }
+    // the app asks for segments near the watch: at the start of a run / ride and every 3 km, never while one is timed
+    function needSegs(now as Number) as Boolean {
+        var R = flow.rec;
+        if (R == null) { return false; }
+        if (DEMO_FEED || segBusy || !fix || now < segNext) { return false; }
+        if ("other".equals(flow.sp) || !flow.flag("seg") || feed.active >= 0) { return false; }
+        return segD < 0.0 || R.d - segD >= SEG_EVERY_M;
+    }
+    function segsAsked() as Void { var R = flow.rec; segBusy = true; segLat = lat; segLon = lon; segD = 0.0; if (R != null) { segD = R.d; } }
+    // the answer of GET /api/watch/segments (null = failed: try again in a minute)
+    function segsLoaded(segs as Array or Null, now as Number) as Void {
+        segBusy = false;
+        if (segs == null) { segD = -1.0; segNext = now + SEG_RETRY_S; return; }
+        if (feed.active < 0 && flow.rec != null) { feed.load(segs, segLat, segLon); }
+    }
+    // once a second while recording: the segment tracker and the route following on the last fix
+    function follow(now as Number) as Void {
+        if (!fix || DEMO_FEED) { return; }
+        if (!"other".equals(flow.sp) && flow.flag("seg")) {
+            var e = feed.step(lat, lon, head, spd, now);
+            if (e != null) { flow.handle(E_SEG, now, e); }
+        }
+        var t = track;
+        if (t != null && flow.route != null) { t.step(lat, lon, now); if (t.started) { flow.routeNav(t.along, t.off, t.u, t.v); } }
     }
 
     // every app tick (200 ms): once a second one sample into the flow while the recording runs
@@ -105,9 +157,10 @@ class Recorder {
         }
         if (DEMO_FEED) { demoSeg(R, now); }
         flow.handle(E_SAMPLE, now, a);
+        follow(now);
     }
 
-    /* ---- after Save: what RIDEFRAME would get. There is no endpoint for it yet, so it is NOT sent; see garmin/README.md ---- */
+    /* ---- after Save: what RIDEFRAME gets (RideframeApp queues it in Storage "aqueue" and sends it like the strength sessions) ---- */
     // POST /api/watch/activity { id, type, start, duration, moving, dist, climb, hr, maxHr, kcal, power?, laps? }
     function activityBody() as Dictionary or Null {
         var s = flow.rsum;
@@ -124,22 +177,18 @@ class Recorder {
         if (sp.equals("ride")) { b["power"] = rnd(fltOf(s["avgPw"])); }
         return b;
     }
-    // STUB, NOT CALLED: send lastAct once the server has POST /api/watch/activity (then: queue it like the strength sessions)
-    function postActivityStub(api as Api, done as Method) as Void {
-        var b = lastAct;
-        if (b == null) { return; }
-        api.activity(b, done);
-    }
 
     /* ---- demo feed (DEMO_FEED only): a loop with four turns and one segment, like js/watchsim.js demoRoute / segDemo ---- */
+    // the flow's flat route form (Feed.mc RouteTrack.face), with street names in "tt"
     function demoRoute(sp as String) as Dictionary {
-        var len = sp.equals("ride") ? 42000.0 : 8000.0, pts = [] as Array;
+        var len = sp.equals("ride") ? 42000.0 : 8000.0, pu = [] as Array<Float>, pv = [] as Array<Float>;
         for (var i = 0; i <= 40; i++) {
             var a = i / 40.0 * Math.PI * 1.7 - 2.2;
-            pts.add([0.5 + 0.42 * Math.cos(a) + 0.06 * Math.sin(3 * a), 0.5 + 0.36 * Math.sin(a) * (1 + 0.25 * Math.cos(a))]);
+            pu.add((0.5 + 0.42 * Math.cos(a) + 0.06 * Math.sin(3 * a)).toFloat());
+            pv.add((0.5 + 0.36 * Math.sin(a) * (1 + 0.25 * Math.cos(a))).toFloat());
         }
-        return { "len" => len, "pts" => pts, "turns" => [{ "at" => 0.12 * len, "dir" => "L", "txt" => "Bridge St" }, { "at" => 0.38 * len, "dir" => "R", "txt" => "Harbour Rd" },
-                 { "at" => 0.61 * len, "dir" => "R", "txt" => "Mill Lane" }, { "at" => 0.84 * len, "dir" => "L", "txt" => "Park Ave" }] } as Dictionary;
+        return { "name" => sp.equals("ride") ? "Lake loop" : "Riverside 8k", "len" => len, "u" => pu, "v" => pv, "ta" => [0.12 * len, 0.38 * len, 0.61 * len, 0.84 * len],
+                 "td" => ["L", "R", "R", "L"], "tt" => ["Bridge St", "Harbour Rd", "Mill Lane", "Park Ave"] } as Dictionary;
     }
     function demoSeg(R as Rec, now as Number) as Void {
         if (flow.sp.equals("other")) { return; }

@@ -3,6 +3,7 @@
 //   BACK = back; on a set: weight <-> reps     BACK held = menu        swipe left = menu, swipe right = back
 //   tap = the thing under the finger (a list row, a value, DONE, a digit)
 //   recording: UP / DOWN = page, START = pause, BACK = lap (first it closes the segment popup); swipe up / down = page
+//   ready (run / ride): UP / DOWN or a tap on the route line = the Route choice (RPICK)
 import Toybox.Lang;
 import Toybox.System;
 import Toybox.Timer;
@@ -79,7 +80,8 @@ class FlowDelegate extends WatchUi.BehaviorDelegate {
             else if (v > 0.36 && v < 0.72) { app.input(E_FOCUS, u < 0.51 ? 0 : 1); }
             return true;
         }
-        var menu = s == S_MENU || s == S_PAUSE || s == S_SMODE, pick = s == S_PICK || s == S_MORE || s == S_WPICK;
+        if (s == S_READY && !flow.sp.equals("other") && v > 0.665 && v < 0.74) { app.input(E_DOWN, null); return true; } // the route line
+        var menu = s == S_MENU || s == S_PAUSE || s == S_SMODE, pick = s == S_PICK || s == S_MORE || s == S_WPICK || s == S_RPICK;
         if (menu || pick || s == S_HOME) {
             // [offset, y] of the rows as Draw.list / Draw.drawHome draw them
             var offs = [-2, -1, 0, 1, 2] as Array<Number>, ys = [0.24, 0.345, 0.5, 0.7, 0.8] as Array<Float>;

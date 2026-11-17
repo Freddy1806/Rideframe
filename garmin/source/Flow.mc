@@ -4,6 +4,9 @@
 // Outputs drained by RideframeApp: cues (vibrations) and out (requests to the server, saveAct).
 // Watch-only additions (not in the JS, the preview has no clock to hold): the hold timer of a timed exercise (holdAt,
 // first START starts it, the second logs the seconds held, C_HOLD at the planned time) and the gps quality (gps).
+// 19.11.: READY (run / ride) -> RPICK (UP / DOWN or a tap on the route line): None or a route sent from the phone; O_ROUTES asks
+// for the list (GET /api/watch/routes), O_ROUTE for one route; the app answers with setRoutes / setRoute. The route is kept in
+// the flat form of Feed.mc RouteTrack.face; routeNav takes the watch's own position on it.
 import Toybox.Lang;
 import Toybox.Math;
 
@@ -24,6 +27,7 @@ const S_READY = 12;
 const S_REC = 13;
 const S_PAUSE = 14;
 const S_RSUM = 15;
+const S_RPICK = 16;
 // events (js: the ev strings of handle())
 const E_UP = 1;
 const E_DOWN = 2;
@@ -60,6 +64,8 @@ const O_PAIR = 2;
 const O_SETUP = 3;
 const O_EXIT = 4;
 const O_SAVEACT = 5;
+const O_ROUTES = 6;
+const O_ROUTE = 7;
 // menu items (js: MENU)
 const M_EX = "Change exercise";
 const M_SKIP = "Skip exercise";
@@ -225,8 +231,15 @@ class Flow {
     var pages as Array<Array<String>> = [] as Array<Array<String>>;  // js: recPages without the route page
     var rec as Rec or Null = null;
     var seg as Dictionary or Null = null;
-    var route as Dictionary or Null = null;
+    var route as Dictionary or Null = null;                     // { "name", "len", "u", "v" (points 0..1 in the box), "ta", "td" (turns), "tt"? }
     var rsum as Dictionary or Null = null;
+    var routes as Array<Dictionary> or Null = null;             // GET /api/watch/routes: [{ id, name, dist, climb }], null = not asked yet
+    var routeId as String or Null = null;
+    var navOn as Boolean = false;                                // js: F.nav (the watch's own tracking of the route)
+    var navAlong as Float = 0.0;
+    var navOff as Number = 0;
+    var navU as Float = 0.0;
+    var navV as Float = 0.0;
     // watch only
     var holdAt as Number = 0;
     var holdCued as Boolean = false;
@@ -509,7 +522,41 @@ class Flow {
     function pageCount() as Number { return pages.size() + (hasRoutePage() ? 1 : 0); }
     function lapM() as Float { return "ride".equals(sp) ? 5000.0 : 1000.0; } // js: LAP_M
     function cue(k as Number) as Void { if (rec == null || flag("vib")) { cues.add(k); } }
-    function ready(s as String, t as String, nm as String) as Void { sp = s; type = t; tname = nm; pages = dataPages(); scr = S_READY; }
+    function ready(s as String, t as String, nm as String) as Void {
+        sp = s; type = t; tname = nm; pages = dataPages(); scr = S_READY;
+        if (!"other".equals(sp) && routes == null) { out.add({ "k" => O_ROUTES } as Dictionary); }
+    }
+    // js: setRoutes(F, list): at most 20, each with an id and a name
+    function setRoutes(l) as Void {
+        var a = arrOf(l), r = [] as Array<Dictionary>;
+        for (var i = 0; i < a.size() && r.size() < 20; i++) {
+            var x = a[i];
+            if (x instanceof Dictionary && strOf((x as Dictionary)["id"]).length() > 0 && strOf((x as Dictionary)["name"]).length() > 0) { r.add(x as Dictionary); }
+        }
+        routes = r;
+    }
+    function routeIndex() as Number {
+        var l = routes, id = routeId;
+        if (l == null) { return -1; }
+        if (id == null) { return -1; }
+        for (var i = 0; i < l.size(); i++) { if (id.equals(strOf(l[i]["id"]))) { return i; } }
+        return -1;
+    }
+    function openRoutes() as Void { sel = routeIndex() + 1; scr = S_RPICK; if (routes == null) { out.add({ "k" => O_ROUTES } as Dictionary); } }
+    // js: chooseRoute(F, i): row 0 = no route, else that route (loaded with O_ROUTE, the app answers with setRoute)
+    function chooseRoute(i as Number) as Void {
+        var l = routes, picked = false;
+        if (i > 0 && l != null) {
+            if (i - 1 < l.size()) {
+                var id = strOf(l[i - 1]["id"]), cur = routeId, same = false;
+                picked = true;
+                if (cur != null) { same = cur.equals(id); }
+                if (!same || route == null) { routeId = id; route = null; out.add({ "k" => O_ROUTE, "id" => id } as Dictionary); }
+            }
+        }
+        if (!picked) { routeId = null; route = null; }
+        sel = 0; scr = S_READY;
+    }
     // js: lap(F, now)
     function lap(now as Number) as Void {
         var R = rec;
@@ -550,10 +597,13 @@ class Flow {
         }
         if (flag("lap") && R.d - R.lapD0 >= lapM()) { lap(now); }
     }
-    // js: segment(F, now, a): { "k" => "warn" | "live" | "end", "name", "len", "eta", "done", "delta", "need", "time", "pr" }
+    // js: segment(F, now, a): { "k" => "warn" | "live" | "end" | "none", "name", "len", "eta", "done", "delta", "need" (0 = out of reach),
+    // "time", "pr" (warn: PR seconds; end: a new PR), "ref" ("PR" | "KOM" | "" = nothing to beat) } (Feed.mc SegFeed.step)
     function segment(now as Number, a) as Void {
-        if (rec == null || !flag("seg") || !(a instanceof Dictionary)) { return; }
+        if (!(a instanceof Dictionary)) { return; }
         var d = a as Dictionary, k = strOf(d["k"]);
+        if (k.equals("none")) { var g = seg; if (g != null) { if (!"end".equals(g["k"])) { seg = null; } } return; } // a result stays its 5 s
+        if (rec == null || !flag("seg")) { return; }
         if (!k.equals("warn") && !k.equals("live") && !k.equals("end")) { return; }
         var was = seg, same = false, hide = false;
         if (was != null) { same = k.equals(was["k"]); hide = same && was["hide"] == true; }
@@ -562,33 +612,40 @@ class Flow {
         seg = d;
         if (!same) { cue(k.equals("end") && d["pr"] == true ? C_PR : C_SEG); }
     }
-    // js: routeInfo(F): { "pos" (0..1), "left" (m), "turn" => { "dir", "in", "txt" } or null } or null
+    // js: routeInfo(F): { "pos" (0..1), "left" (m), "turn" => { "dir", "in", "txt" } or null, "off" (m, 0 = on the route) } or null.
+    // Where on the route: the watch's own tracking (routeNav) once it has a fix, else the distance recorded.
     function routeInfo() as Dictionary or Null {
         var r = route;
         if (r == null) { return null; }
         var len = fltOf(r["len"]);
         if (len <= 0.0) { return null; }
         var R = rec, d = 0.0;
-        if (R != null) { d = R.d; }
-        var pos = d / len, turns = arrOf(r["turns"]), turn = null;
+        if (navOn) { d = navAlong; } else if (R != null) { d = R.d; }
+        var pos = d / len, ta = arrOf(r["ta"]), td = arrOf(r["td"]), tt = arrOf(r["tt"]), turn = null, off = navOn ? navOff : 0;
         if (pos > 1.0) { pos = 1.0; }
-        for (var i = 0; i < turns.size(); i++) {
-            var x = turns[i];
-            if (x instanceof Dictionary && fltOf((x as Dictionary)["at"]) > d) {
-                var y = x as Dictionary;
-                turn = { "dir" => strOf(y["dir"]), "in" => fltOf(y["at"]) - d, "txt" => strOf(y["txt"]) } as Dictionary;
+        for (var i = 0; i < ta.size() && off == 0; i++) {
+            var at = fltOf(ta[i]);
+            if (at > d) {
+                var dir = i < td.size() ? strOf(td[i]) : "L", txt = i < tt.size() ? strOf(tt[i]) : "";
+                if (txt.length() == 0) { txt = dir.equals("U") ? "U-turn" : (dir.equals("R") ? "Turn right" : "Turn left"); }
+                turn = { "dir" => dir.equals("R") ? "R" : "L", "in" => at - d, "txt" => txt } as Dictionary;
                 break;
             }
         }
         var left = len - d;
-        return { "pos" => pos, "left" => left > 0.0 ? left : 0.0, "turn" => turn } as Dictionary;
+        return { "pos" => pos, "left" => left > 0.0 ? left : 0.0, "turn" => turn, "off" => off } as Dictionary;
     }
-    // js: setRoute(F, r): { "len" (m), "pts" => [[u, v] 0..1, ...] (simplified, at most ~60), "turns" => [{ "at", "dir", "txt" }] }
+    // js: routeNav(F, along, off): metres along, metres off (0 = on the route); the watch adds its position in the box (u, v)
+    function routeNav(along as Float, off as Number, u as Float, v as Float) as Void {
+        navOn = true; navAlong = along > 0.0 ? along : 0.0; navOff = off > 0 ? off : 0; navU = u; navV = v;
+    }
+    // js: setRoute(F, r): { "len" (m), "u", "v" => the points 0..1 in the box (flat), "ta", "td" => the turns (flat), "tt"? names }
     function setRoute(r) as Void {
-        route = r instanceof Dictionary && fltOf((r as Dictionary)["len"]) > 0.0 && arrOf((r as Dictionary)["pts"]).size() > 1 ? r as Dictionary : null;
+        route = r instanceof Dictionary && fltOf((r as Dictionary)["len"]) > 0.0 && arrOf((r as Dictionary)["u"]).size() > 1
+                && arrOf((r as Dictionary)["u"]).size() == arrOf((r as Dictionary)["v"]).size() ? r as Dictionary : null;
     }
     function begin(now as Number) as Void {
-        rec = new Rec(now); seg = null; flash = null; scr = S_REC; last = "other".equals(sp) ? "more" : sp; cue(C_START);
+        rec = new Rec(now); seg = null; navOn = false; flash = null; scr = S_REC; last = "other".equals(sp) ? "more" : sp; cue(C_START);
     }
     function saveRec(now as Number) as Void {
         var R = rec;
@@ -622,7 +679,7 @@ class Flow {
         if (ev == E_SWIPE_LEFT) { ev = E_MENU; }
         if (ev == E_SWIPE_RIGHT) { ev = E_BACK; }
         var s = scr;
-        var isList = s == S_PICK || s == S_MENU || s == S_HOME || s == S_MORE || s == S_SMODE || s == S_WPICK || s == S_PAUSE;
+        var isList = s == S_PICK || s == S_MENU || s == S_HOME || s == S_MORE || s == S_SMODE || s == S_WPICK || s == S_PAUSE || s == S_RPICK;
         // a list (and the data pages) scroll with the finger, a number counts up
         if (ev == E_SWIPE_UP) { ev = (isList || s == S_REC) ? E_DOWN : E_UP; }
         else if (ev == E_SWIPE_DOWN) { ev = (isList || s == S_REC) ? E_UP : E_DOWN; }
@@ -638,6 +695,7 @@ class Flow {
         }
         if (s == S_READY) {
             if (ev == E_START || ev == E_TAP) { begin(now); }
+            else if ((ev == E_UP || ev == E_DOWN) && !"other".equals(sp)) { openRoutes(); }
             else if (ev == E_BACK) { sel = 0; scr = "other".equals(sp) ? S_MORE : S_HOME; }
             return;
         }
@@ -661,6 +719,7 @@ class Flow {
                     if (s == S_MENU) { scr = back; }
                     else if (s == S_MORE) { scr = S_HOME; }
                     else if (s == S_WPICK) { scr = S_SMODE; }
+                    else if (s == S_RPICK) { scr = S_READY; }
                     else if (s == S_HOME) { out.add({ "k" => O_EXIT } as Dictionary); }
                     else { scr = S_START; }
                 }
@@ -677,6 +736,7 @@ class Flow {
                 else if (s == S_MORE) { sel = 0; scr = S_HOME; }
                 else if (s == S_PAUSE) { var R = rec; if (R != null) { R.st = RS_RUN; } scr = S_REC; cue(C_START); }
                 else if (s == S_WPICK) { sel = 0; scr = S_SMODE; }
+                else if (s == S_RPICK) { sel = 0; scr = S_READY; }
                 else if (sets.size() > 0) { if (planItem() != null) { goPlan(); } else { prefill(); scr = S_SET; } }
                 else { reset(); } // PICK / SMODE
             }
@@ -732,6 +792,7 @@ class Flow {
         else if (s == S_SMODE) { r = ["Workout", "Free"] as Array<String>; }
         else if (s == S_WPICK) { var w = workouts(); for (var i = 0; i < w.size(); i++) { r.add(strOf(w[i]["n"])); } }
         else if (s == S_PAUSE) { r = ["Resume", "Save", "Discard"] as Array<String>; }
+        else if (s == S_RPICK) { r.add("None"); var l = routes; if (l != null) { for (var i = 0; i < l.size(); i++) { r.add(strOf(l[i]["name"])); } } }
         return r;
     }
     function pickItem(i as Number, now as Number) as Void {
@@ -746,6 +807,7 @@ class Flow {
         else if (s == S_MORE) { var x = arrOf(moreList()[i]); ready("other", x.size() > 0 ? strOf(x[0]) : "", x.size() > 1 ? strOf(x[1]) : ""); }
         else if (s == S_SMODE) { if (i == 0) { sel = 0; scr = S_WPICK; } else { toPick(); } }
         else if (s == S_WPICK) { startPlan(i, now); }
+        else if (s == S_RPICK) { chooseRoute(i); }
         else if (s == S_PAUSE) {
             if (i == 0) { var R = rec; if (R != null) { R.st = RS_RUN; } scr = S_REC; cue(C_START); }
             else if (i == 1) { saveRec(now); }
