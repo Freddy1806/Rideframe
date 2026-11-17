@@ -5,9 +5,11 @@
 // F.out = requests ('send', 'pair', 'setup', 'exit', 'saveAct').
 // Screens: HOME (start menu) -> START (strength ready) -> SMODE (workout or free) -> WPICK / PICK -> SET <-> REST -> SUM;
 // HOME -> MORE (other sports) -> READY; HOME -> READY (run / ride) -> REC (data pages, route page) <-> PAUSE -> RSUM.
+// 19.11.: READY (run / ride) -> RPICK (UP / DOWN or a tap on the route line): None or a route sent from the phone
+// (GET /api/watch/routes; out 'routes' asks for the list, out 'route' for one route, setRoutes / setRoute answer).
 import { compact, defaults, FIELDS } from './watchfields.js';
 export const SCR = { HOME: 'home', START: 'start', SMODE: 'smode', WPICK: 'wpick', PICK: 'pick', SET: 'set', REST: 'rest', MENU: 'menu', SUM: 'sum', PAIR: 'pair', GLANCE: 'glance',
-  MORE: 'more', READY: 'ready', REC: 'rec', PAUSE: 'pause', RSUM: 'rsum' };
+  MORE: 'more', READY: 'ready', REC: 'rec', PAUSE: 'pause', RSUM: 'rsum', RPICK: 'rpick' };
 export const KG_STEP = 2.5, KG_HOLD = 10, KG_MAX = 500, REPS_HOLD = 5, REPS_MAX = 100, SEC_STEP = 5, SEC_HOLD = 15, SEC_MAX = 600, REST_STEP = 15, PR_SECS = 3;
 export const LAP_M = { run: 1000, ride: 5000, other: 1000 }, LAP_SECS = 5, SEG_SECS = 5, PAUSE_MS = .7; // auto lap distance, banner and result seconds, auto pause below 0.7 m/s
 export const MENU = { EX: 'Change exercise', SKIP: 'Skip exercise', UNDO: 'Undo last set', FIN: 'Finish', SYNC: 'Sync now', PAIR: 'Pair with phone' };
@@ -23,7 +25,7 @@ export function newFlow(setup, o = {}) {
   const F = { setup: { ex: [], rest: 90 }, list: [], cfg: o.cfg && o.cfg.run ? o.cfg : compact(defaults()), last: HOME[o.last] ? o.last : 'run', paired: o.paired !== false, queue: o.queue || [], newId: o.id || rid,
     scr: o.scr || SCR.HOME, back: SCR.HOME, sel: 0, menu: [], cur: 0, focus: 0, kg: 0, reps: 0, sets: [], start: 0, restEnd: 0, restLen: 0, plan: null,
     flash: null, sum: null, hr: 0, hrN: 0, hrSum: 0, hrMax: 0, pair: { d: [0, 0, 0, 0, 0, 0], i: 0, st: 'enter' }, cues: [], out: [],
-    sp: 'run', type: '', rec: null, seg: null, route: null, rsum: null };
+    sp: 'run', type: '', rec: null, seg: null, route: null, rsum: null, routes: null, routeId: null, nav: null };
   setSetup(F, setup);
   if (!F.paired) F.scr = SCR.PAIR;
   return F;
@@ -132,7 +134,17 @@ export const sportCfg = (F, sp = F.sp) => sp === 'other' ? { map: 0, seg: 0, lap
 export const recPages = F => { const c = sportCfg(F); return [...c.p.map(p => p.filter(f => FIELDS[F.sp][f])), ...(c.map && F.route ? ['route'] : [])]; };
 export function newRec(now) { return { st: 'run', start: now, t: 0, d: 0, v: 0, hr: 0, hrMax: 190, cad: 0, pw: 0, p3: [], pwSum: 0, p30: [], np4: 0, npN: 0, gain: 0, kcal: 0, auto: false, pg: 0, lapT0: 0, lapD0: 0, laps: [] }; }
 function cue(F, k) { if (!F.rec || sportCfg(F).vib) F.cues.push(k); }
-function ready(F, sp, type) { F.sp = sp; F.type = type || ''; F.scr = SCR.READY; }
+function ready(F, sp, type) { F.sp = sp; F.type = type || ''; F.scr = SCR.READY; if (sp !== 'other' && F.routes == null) F.out.push({ k: 'routes' }); }
+/** the routes from the phone (GET /api/watch/routes: [{ id, name, dist, climb }]), at most 20 */
+export function setRoutes(F, list) { F.routes = (Array.isArray(list) ? list : []).filter(r => r && r.id && r.name).slice(0, 20); }
+function openRoutes(F) { const i = F.routeId && F.routes ? F.routes.findIndex(r => r.id === F.routeId) : -1; F.sel = i + 1; F.scr = SCR.RPICK; if (F.routes == null) F.out.push({ k: 'routes' }); }
+/** RPICK row i: 0 = no route, else that route (loaded with out 'route', the app answers with setRoute) */
+function chooseRoute(F, i) {
+  const r = i > 0 && F.routes ? F.routes[i - 1] : null;
+  if (!r) { F.routeId = null; setRoute(F, null); }
+  else if (F.routeId !== r.id || !F.route) { F.routeId = r.id; F.route = null; F.out.push({ k: 'route', id: r.id }); }
+  F.sel = 0; F.scr = SCR.READY;
+}
 export function lap(F, now) {
   const R = F.rec, l = { t: R.t - R.lapT0, d: R.d - R.lapD0 }; R.laps.push(l); R.lapT0 = R.t; R.lapD0 = R.d;
   F.flash = { k: 'lap', n: R.laps.length, t: l.t, d: l.d, until: now + LAP_SECS }; cue(F, 'lap');
@@ -148,20 +160,38 @@ function sample(F, now, a) {
   if (F.sp === 'ride') { R.p30.push(R.pw); if (R.p30.length > 30) R.p30.shift(); if (R.p30.length === 30) { const m = R.p30.reduce((x, y) => x + y, 0) / 30; R.np4 += m * m * m * m; R.npN++; } }
   if (c.lap && R.d - R.lapD0 >= LAP_M[F.sp]) lap(F, now);
 }
-/** the segment popup (outdoor.js segtrack on the phone, later the watch's own): arg = { k: 'warn' | 'live' | 'end', name, len (m), eta (s), done (m), delta (s, minus = ahead of the PR), need (m/s for the PR), time (s), pr } */
+/** the segment popup (the watch's own tracker, js/watchfeed.js = garmin/source/Feed.mc): arg = { k: 'warn' | 'live' | 'end' | 'none', name, len (m), eta (s),
+ *  done (m), delta (s, minus = ahead), need (m/s to beat the reference, 0 = out of reach), time (s), pr (warn: PR seconds; end: a new PR), ref ('PR' | 'KOM' | '' = none) } */
 function segment(F, now, a) {
+  if (a && a.k === 'none') { if (F.seg && F.seg.k !== 'end') F.seg = null; return; } // the watch's tracker: warning over or segment lost (a result stays its 5 s)
   if (!F.rec || !sportCfg(F).seg || !a || !['warn', 'live', 'end'].includes(a.k)) return;
   const was = F.seg; F.seg = { ...a, hide: !!(was && was.k === a.k && was.hide), until: a.k === 'end' ? now + SEG_SECS : 0 };
   if (!was || was.k !== a.k) cue(F, a.k === 'end' && a.pr ? 'pr' : 'seg');
 }
 /** the route page: where on the route (0..1), metres left, the next turn { dir: 'L' | 'R', in (m), txt } or null */
 export function routeInfo(F) {
-  const r = F.route, d = F.rec ? F.rec.d : 0; if (!r || !(r.len > 0)) return null;
-  const pos = Math.min(1, d / r.len), t = (r.turns || []).find(x => x.at > d);
-  return { pos, left: Math.max(0, r.len - d), turn: t ? { dir: t.dir, in: t.at - d, txt: t.txt || '' } : null };
+  const r = F.route, d = F.nav ? F.nav.along : F.rec ? F.rec.d : 0; if (!r || !(r.len > 0)) return null;
+  const pos = Math.min(1, d / r.len), t = (r.turns || []).find(x => x.at > d), off = F.nav ? F.nav.off : 0;
+  return { pos, left: Math.max(0, r.len - d), turn: t && !off ? { dir: t.dir, in: t.at - d, txt: t.txt || '' } : null, off };
+}
+/** where on the route the watch is (its own tracking of the GPS against the route): metres along, metres off (0 = on the route) */
+export function routeNav(F, along, off) { F.nav = { along: Math.max(0, +along || 0), off: Math.max(0, Math.round(+off || 0)) }; }
+/** a route from GET /api/watch/route ({ id, name, dist, p: [[lat, lon]], turns: [[at, L | R | U]] }) -> the route page's form:
+ *  points as fractions of the drawing box (0.6 x 0.38 of the screen), one scale for both axes (north up), so a part of the
+ *  length is the same part of the drawn line. garmin/source/Feed.mc does the same with flat arrays. */
+export const BOX = [.6, .38];
+export function routeFace(r) {
+  const p = r && Array.isArray(r.p) ? r.p.filter(q => Array.isArray(q) && Number.isFinite(q[0]) && Number.isFinite(q[1])) : []; if (p.length < 2) return null;
+  const R = 6371008.8, rad = Math.PI / 180, k = Math.cos(p[0][0] * rad), xy = p.map(([la, lo]) => [(lo - p[0][1]) * rad * k * R, (la - p[0][0]) * rad * R]);
+  let len = 0; for (let i = 1; i < xy.length; i++) len += Math.hypot(xy[i][0] - xy[i - 1][0], xy[i][1] - xy[i - 1][1]);
+  const xs = xy.map(q => q[0]), ys = xy.map(q => q[1]), x0 = Math.min(...xs), x1 = Math.max(...xs), y0 = Math.min(...ys), y1 = Math.max(...ys);
+  const sc = Math.min(BOX[0] / Math.max(1, x1 - x0), BOX[1] / Math.max(1, y1 - y0)), ox = (BOX[0] - (x1 - x0) * sc) / 2, oy = (BOX[1] - (y1 - y0) * sc) / 2;
+  const pts = xy.map(([x, y]) => [(ox + (x - x0) * sc) / BOX[0], (oy + (y1 - y) * sc) / BOX[1]]);
+  const turns = (Array.isArray(r.turns) ? r.turns : []).filter(t => Array.isArray(t) && t[0] > 0).map(([at, d]) => ({ at, dir: d === 'R' ? 'R' : 'L', txt: d === 'U' ? 'U-turn' : d === 'R' ? 'Turn right' : 'Turn left' }));
+  return { id: r.id, name: r.name || 'Route', len: r.dist > 0 ? r.dist : len, pts, turns };
 }
 export function setRoute(F, r) { F.route = r && r.len > 0 && Array.isArray(r.pts) && r.pts.length > 1 ? r : null; }
-function begin(F, now) { F.rec = newRec(now); F.seg = null; F.flash = null; F.scr = SCR.REC; F.last = F.sp === 'other' ? 'more' : F.sp; cue(F, 'start'); }
+function begin(F, now) { F.rec = newRec(now); F.seg = null; F.nav = null; F.flash = null; F.scr = SCR.REC; F.last = F.sp === 'other' ? 'more' : F.sp; cue(F, 'start'); }
 function saveRec(F, now) {
   const R = F.rec; F.rsum = { sp: F.sp, type: F.type, t: R.t, d: R.d, laps: R.laps.length + (R.d - R.lapD0 > 10 ? 1 : 0), kcal: R.kcal, avgPw: R.t ? R.pwSum / R.t : 0, gain: R.gain, start: R.start };
   F.out.push({ k: 'saveAct', sum: F.rsum }); F.rec = null; F.seg = null; F.flash = null; F.scr = SCR.RSUM; F.cues.push('done');
@@ -182,7 +212,7 @@ export function handle(F, ev, now, arg) {
   if (F.flash) { F.flash = null; if (ev !== 'menu') return; } // the first touch after a record only clears the flash
   if (ev === 'swipeLeft') ev = 'menu';
   if (ev === 'swipeRight') ev = 'back';
-  const s = F.scr, list = [SCR.PICK, SCR.MENU, SCR.HOME, SCR.MORE, SCR.SMODE, SCR.WPICK, SCR.PAUSE].includes(s);
+  const s = F.scr, list = [SCR.PICK, SCR.MENU, SCR.HOME, SCR.MORE, SCR.SMODE, SCR.WPICK, SCR.PAUSE, SCR.RPICK].includes(s);
   if (ev === 'swipeUp') ev = list || s === SCR.REC ? 'down' : 'up';     // a list (and the data pages) scroll with the finger, a number counts up
   if (ev === 'swipeDown') ev = list || s === SCR.REC ? 'up' : 'down';
   if (ev === 'menu') { if (s === SCR.HOME || s === SCR.START || s === SCR.PICK || s === SCR.SET || s === SCR.REST) openMenu(F); return; }
@@ -195,6 +225,7 @@ export function handle(F, ev, now, arg) {
   }
   if (s === SCR.READY) {
     if (ev === 'start' || ev === 'tap') begin(F, now);
+    else if ((ev === 'up' || ev === 'down') && F.sp !== 'other') openRoutes(F);
     else if (ev === 'back') { F.sel = 0; F.scr = F.sp === 'other' ? SCR.MORE : SCR.HOME; }
     return;
   }
@@ -217,6 +248,7 @@ export function handle(F, ev, now, arg) {
       else if (s === SCR.MORE) { F.sel = 0; F.scr = SCR.HOME; }
       else if (s === SCR.PAUSE) { F.rec.st = 'run'; F.scr = SCR.REC; cue(F, 'start'); }
       else if (s === SCR.WPICK) { F.sel = 0; F.scr = SCR.SMODE; }
+      else if (s === SCR.RPICK) { F.sel = 0; F.scr = SCR.READY; }
       else if (F.sets.length) { if (planItem(F)) goPlan(F); else { prefill(F); F.scr = SCR.SET; } } else reset(F); // PICK / SMODE
     }
     return;
@@ -258,6 +290,7 @@ export function listItems(F) {
   if (s === SCR.SMODE) return SMODES;
   if (s === SCR.WPICK) return workouts(F).map(w => w.n);
   if (s === SCR.PAUSE) return PAUSED;
+  if (s === SCR.RPICK) return ['None', ...(F.routes || []).map(r => r.name)];
   return [];
 }
 function pickItem(F, i, now) {
@@ -268,6 +301,7 @@ function pickItem(F, i, now) {
   else if (s === SCR.MORE) ready(F, 'other', F.cfg.more[i][0]);
   else if (s === SCR.SMODE) { if (i === 0) { F.sel = 0; F.scr = SCR.WPICK; } else toPick(F); }
   else if (s === SCR.WPICK) startPlan(F, i, now);
+  else if (s === SCR.RPICK) chooseRoute(F, i);
   else if (s === SCR.PAUSE) { if (i === 0) { F.rec.st = 'run'; F.scr = SCR.REC; cue(F, 'start'); } else if (i === 1) saveRec(F, now); else { F.rec = null; F.seg = null; F.flash = null; F.sel = 0; F.scr = SCR.HOME; } }
 }
 function act(F, item, now) {
