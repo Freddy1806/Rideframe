@@ -1,0 +1,33 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>RIDEFRAME for Garmin · preview</title>
+<meta name="robots" content="noindex">
+<meta name="theme-color" content="#0b0b0b">
+<link rel="icon" href="img/icon.svg" type="image/svg+xml">
+<link rel="preload" href="fonts/archivo-latin.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="stylesheet" href="css/watch.css">
+</head>
+<body>
+<!-- Design preview of the Garmin watch app (garmin/). Linked nowhere in the app on purpose. -->
+<header class="whead"><div class="wbrand">RIDE<span>FRAME</span> <small>for Garmin</small></div>
+  <p>Strength on the wrist: a preview of the watch app on a Forerunner 265 and a fenix 7X Pro, each at its real pixel size. Use the buttons around the watch, tap and swipe the screen, or the keyboard.</p></header>
+<main class="wmain">
+  <section id="faces" class="wfaces" aria-label="Watch previews"></section>
+  <aside id="wPanel" class="wpanel">
+    <div class="wseg" id="wMode" role="group" aria-label="Data"></div>
+    <p id="wState" class="wstate"></p>
+    <p id="wNet" class="wnet" role="status"></p>
+    <label class="wnear"><input type="checkbox" id="wNear" checked> Phone nearby (untick to see the offline queue)</label>
+    <div class="wacts"><button id="wGlance">Glance</button><button id="wRestart">Restart app</button><button id="wUnpair" hidden>Unpair</button></div>
+    <p class="wcue" id="wCue" aria-live="polite"></p>
+    <dl class="wkeys"><dt>START · Enter</dt><dd>start, select, set done, skip rest</dd><dt>UP / DOWN · ↑ ↓</dt><dd>scroll, change the value; hold for 10 kg</dd>
+      <dt>BACK · Esc</dt><dd>back; on a set: weight or reps; hold for the menu</dd><dt>Swipe left · ←</dt><dd>menu</dd><dt>Tap</dt><dd>a value to pick it, DONE to log the set</dd></dl>
+    <p class="wfoot">Screen: <span id="wScr"></span> · Prototype only, the watch app itself is in <code>garmin/</code> and not compiled yet.</p>
+  </aside>
+</main>
+<script type="module" src="js/watchsim.js"></script>
+</body>
+</html>

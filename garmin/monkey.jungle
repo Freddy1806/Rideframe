@@ -1,0 +1,2 @@
+# RIDEFRAME Strength. Sources in source/, resources in resources/ (the defaults). Build: see README.md.
+project.manifest = manifest.xml

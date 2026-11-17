@@ -35,7 +35,8 @@ function render() {
   $('#hSet').onclick = settings;
   const ib = $('#hInstall'); if (ib) ib.onclick = async () => { installEvt.prompt(); await installEvt.userChoice.catch(() => {}); installEvt = null; render(); };
 }
-async function save() { const st = (await db.kvGet('settings').catch(() => null)) || {}; Object.assign(st, { theme: S.theme, modeColors: S.modeColors, accent: S.accent, autoStrava: S.autoStrava, stravaImport: S.stravaImport, kraftRest: S.kraftRest }); await db.kvSet('settings', st).catch(() => {}); }
+async function save() { const st = (await db.kvGet('settings').catch(() => null)) || {}; Object.assign(st, { theme: S.theme, modeColors: S.modeColors, accent: S.accent, autoStrava: S.autoStrava, stravaImport: S.stravaImport, kraftRest: S.kraftRest }); await db.kvSet('settings', st).catch(() => {});
+  import('./account.js').then(a => a.settingsChanged?.(st)).catch(() => {}); } // to the account too: the watch reads the rest time from there
 function settings() {
   const s = document.createElement('div'); s.className = 'psheet'; document.body.append(s);
   const draw = () => {
@@ -54,6 +55,7 @@ function settings() {
       <p class="phint">For indoor rides, the smart trainer, heart rate strap and Zwift Click connect on the Indoor page (Indoor trainer → Sensors). Bluetooth does not carry over from page to page, so connect them there.</p>
       <a class="hrow hlink" href="pure.html#sensors" id="tDev"><div><b>Indoor trainer: Sensors</b><small>Trainer, heart rate, Zwift Click</small></div><i>›</i></a>
       <p class="phint">Click v2: open it in the Zwift app once a day, or it drops after a minute.</p>
+      <div id="tWatch"></div>
       <h3 class="ksec">More</h3>
       <a class="hrow hlink" href="profil.html"><div><b>My data</b><small>Weight, FTP, heart rate, export</small></div><i>›</i></a>
       <a class="hrow hlink" href="datenschutz.html"><div><b>Privacy</b></div><i>›</i></a>
@@ -71,10 +73,12 @@ function settings() {
     s.querySelectorAll('[data-th]').forEach(b => b.onclick = () => { S.theme = b.dataset.th; applyTheme(S, null); save(); draw(); });
     $('#tMc', s).onchange = e => { S.modeColors = e.target.checked; save(); draw(); render(); };
     s.querySelectorAll('[data-ac]').forEach(b => b.onclick = () => { S.accent = b.dataset.ac; applyTheme(S, null); save(); draw(); render(); });
+    import('./watchpair.js').then(m => m.watchRow($('#tWatch', s), async () => { s.remove(); const a = await import('./account.js'); await a.accountModal({ settings: S }, async () => { await load(); render(); }); })).catch(() => {});
     $('#tOk', s).onclick = () => s.remove();
   };
   s.onclick = e => { if (e.target === s) s.remove(); }; draw();
 }
 await load(); render(); nav('home');
+if (acc) import('./account.js').then(async a => { const n = kraft.length; await a.syncKraft(); await load(); if (kraft.length !== n) render(); }).catch(() => {}); // strength from the watch or another device
 import('./actimport.js').then(m => m.autoImport(S)).then(async r => { if (r?.added) { await load(); render(); } }).catch(() => {}); // new Strava activities, at most every 30 min
 if ('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js').catch(() => {});

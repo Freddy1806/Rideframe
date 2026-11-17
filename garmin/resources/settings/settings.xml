@@ -1,0 +1,8 @@
+<settings>
+    <setting propertyKey="@Properties.baseUrl" title="@Strings.BaseUrlTitle">
+        <settingConfig type="alphaNumeric"/>
+    </setting>
+    <setting propertyKey="@Properties.recordActivity" title="@Strings.RecordTitle">
+        <settingConfig type="boolean"/>
+    </setting>
+</settings>

@@ -34,3 +34,9 @@ a.hrow { color: inherit; text-decoration: none; }
 .hlink i { font-style: normal; color: var(--muted); font-size: 20px; }
 #tRest { grid-template-columns: repeat(4, 1fr); }
 #tStrava { grid-template-columns: minmax(0, 1fr) auto; } #tStrava .btn { white-space: nowrap; padding: 0 14px; } /* "Reconnect" / "Connected ✓" keep their own width */
+/* Settings → Devices → Garmin watch (js/watchpair.js) */
+.wrow .btn, .wdev .btn { flex: none; white-space: nowrap; }
+.wpair { margin: 10px 0 4px; padding: 14px 12px; border: 1px solid var(--line-2); border-radius: 14px; background: var(--ink-2); text-align: center; }
+.wcode { font-size: 46px; font-weight: 900; font-stretch: 110%; letter-spacing: .06em; font-variant-numeric: tabular-nums; line-height: 1.05; color: var(--paper); }
+.wleft { font-size: 13px; color: var(--muted); margin-top: 4px; } .wleft b { color: var(--paper); font-variant-numeric: tabular-nums; }
+.wsteps { text-align: left; margin: 12px 0 0 22px; font-size: 13.5px; line-height: 1.45; display: grid; gap: 4px; }

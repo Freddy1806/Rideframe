@@ -1,0 +1,6 @@
+<properties>
+    <!-- the RIDEFRAME host; must be HTTPS with a valid certificate (Garmin Connect Mobile on the iPhone refuses anything else) -->
+    <property id="baseUrl" type="string">https://mac-mini-von-gary.tailcde074.ts.net</property>
+    <!-- also record a native strength activity (lands in Garmin Connect, and from there maybe in Strava) -->
+    <property id="recordActivity" type="boolean">false</property>
+</properties>

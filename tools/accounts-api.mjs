@@ -124,6 +124,15 @@ async function board(a) {
   if (gen === boardGen) boardCache = { at: Date.now(), week: wk, rows }; return rows;
 }
 
+/** the account behind a phone login token (X-RF-Token), for the watch API (tools/watch-api.mjs); null when signed out */
+export async function accountOf(req) {
+  const token = String(req.headers['x-rf-token'] || ''), a = await readJSON(ACC, { users: {}, tokens: {} }), t = token && Object.hasOwn(a.tokens, token) ? a.tokens[token] : null;
+  return t && t.at > Date.now() - TOKEN_DAYS * 864e5 && Object.hasOwn(a.users, t.key) ? { key: t.key, u: a.users[t.key] } : null;
+}
+/** the account by its key (lower-case name), or null when it was deleted */
+export async function userByKey(key) { const a = await readJSON(ACC, { users: {} }); return Object.hasOwn(a.users, key) ? a.users[key] : null; }
+export const shared = { DATA, readJSON, writeJSON, send, body, limited, clientIp, userDir, sha, count, MAX_FILES, summary, sums };
+
 /** returns true when the request was an /api/account call (answered here) */
 export async function accountsApi(req, res, path) {
   if (!path.startsWith('/api/account/')) return false;

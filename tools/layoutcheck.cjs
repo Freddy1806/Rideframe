@@ -11,7 +11,9 @@ const LONG = 'Rumänisches Kreuzheben mit Pause';
 const seed = async p => p.evaluate(async ([long, NAME]) => { const { db } = await import('/js/db.js'); const now = Date.now(), d = 864e5;
   await db.kvSet('kraft', [0, 1, 2].map(i => ({ id: 'w' + i, name: 'Oberkörper schwer und lang benannt', start: now - i * 3 * d, date: now - i * 3 * d + 3600e3, dur: 3725, prs: 2,
     ex: [{ k: 'bench', n: 'Bankdrücken', t: 'w', sets: [{ kg: 102.5, r: 10, done: true }, { kg: 100, r: 8, done: true }] }, { k: 'my_x', n: long, t: 'w', sets: [{ kg: 140, r: 12, done: true }] },
-      { k: 'pull', n: 'Klimmzüge', t: 'bw', sets: [{ kg: 12.5, r: 12, done: true }] }, { k: 'plank', n: 'Plank', t: 'time', sets: [{ s: 185, done: true }] }] })));
+      { k: 'pull', n: 'Klimmzüge', t: 'bw', sets: [{ kg: 12.5, r: 12, done: true }] }, { k: 'plank', n: 'Plank', t: 'time', sets: [{ s: 185, done: true }] }] }))
+    .concat([{ id: 'watch-ww', name: 'Evening workout', source: 'watch', start: now - 4 * d, date: now - 4 * d + 2700e3, dur: 2700, prs: 1, avgHr: 128, maxHr: 171, kcal: 412, // from the Garmin watch (tools/watch-api.mjs)
+      ex: [{ k: 'bench', n: 'Bench press', t: 'w', sets: [{ kg: 102.5, r: 8, s: '', done: true, pr: true }, { kg: 102.5, r: 7, s: '', done: true }] }, { k: 'my_x', n: long, t: 'w', sets: [{ kg: 140, r: 12, s: '', done: true }] }] }]));
   // rides and runs for the feed, the stats and the detail sheet: samples rows like outdoor.js writes them
   // [sec, metres, watts, km/h, cadence, bpm, lat, lon, ele]; 2 = power and 5 = heart rate are what fitness.js reads
   const ride = (id, routeId, ago, dur, dist, w, nm2, x = {}) => ({ id, routeId, sport: routeId === 'run' ? 'run' : 'ride', outdoor: routeId === 'outdoor' || routeId === 'run', date: now - ago * d, complete: true, duration: dur, elapsed: dur + 60, distance: dist, gain: 420,
@@ -54,6 +56,14 @@ const SCREENS = [
   ['draussen', '/outdoor.html?demo&run', null],
   ['draussen-sensoren', '/outdoor.html?demo', p => p.click('#oSens')],
   ['menu-einstellungen', '/handy.html', p => p.click('#hSet')],
+  // Settings -> Devices -> Garmin watch: the code with its steps and two paired watches with long names (answers faked), and signed out
+  ['menu-einstellungen-uhr', '/handy.html', async p => { const day = 864e5, w = [{ id: 'a1b2c3d4e5f6', label: 'Forerunner 265 von Maximilian am Handgelenk', created: Date.now() - 40 * day, used: Date.now() - 3600e3 }, { id: 'f6e5d4c3b2a1', label: 'fenix 7X Pro', created: Date.now() - 2 * day, used: Date.now() - 2 * day }];
+    await p.route('**/api/watch/devices', r => r.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ watches: w }) }));
+    await p.route('**/api/watch/code', r => r.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ code: '048213', exp: Date.now() + 600e3, ttl: 600 }) }));
+    await p.route('**/api/account/kraft**', r => r.fulfill({ status: 200, contentType: 'application/json', body: '{"ids":[]}' })); // the strength sync must not sign the fake login out
+    await p.evaluate(n => localStorage.setItem('rf_account', JSON.stringify({ token: 'x', name: n })), NAME); await p.reload(); await p.waitForTimeout(500); // the login screens before signed out
+    await p.click('#hSet'); await p.waitForSelector('#wPair'); await p.click('#wPair'); await p.waitForSelector('.wcode'); await p.waitForTimeout(300); await p.locator('#tWatch').scrollIntoViewIfNeeded(); }],
+  ['menu-einstellungen-uhr-abgemeldet', '/handy.html', async p => { await p.evaluate(() => localStorage.removeItem('rf_account')); await p.reload(); await p.waitForTimeout(500); await p.click('#hSet'); await p.waitForSelector('#wIn'); await p.locator('#tWatch').scrollIntoViewIfNeeded(); }],
   ['app-strecken-handy', '/?desktop&noprofile', null],
   ['app-training-handy', '/?desktop&noprofile', p => p.click('[data-view="training"]')],
   ['app-fahrten-handy', '/?desktop&noprofile', p => p.click('[data-view="history"]')],
@@ -94,6 +104,8 @@ const SCREENS = [
   ['aktivitaet-fahrt', '/aktivitaeten.html', p => p.click('[data-act="r:lr1"]')],
   ['aktivitaet-lauf', '/aktivitaeten.html', p => p.click('[data-act="r:lr2"]')],
   ['aktivitaet-kraft', '/aktivitaeten.html', p => p.click('[data-act="k:w0"]')],
+  ['aktivitaet-kraft-uhr', '/aktivitaeten.html', p => p.click('[data-act="k:watch-ww"]')],
+  ['kraft-verlauf-uhr', '/kraft.html', async p => { await p.click('[data-tab="hist"]'); await p.click('[data-open="watch-ww"]'); }],
   ['aktivitaet-import', '/aktivitaeten.html', p => p.click('[data-act="r:st9001"]')],
   ['aktivitaet-manuell', '/aktivitaeten.html', p => p.click('[data-act="r:man1"]')],
   ['aktivitaet-neu', '/aktivitaeten.html', p => p.click('#fAdd')],

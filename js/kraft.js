@@ -19,6 +19,7 @@ async function load() {
   applyTheme(S, 'kraft');
   list = (await db.kvGet('kraft').catch(() => null)) || [];
   mine = (await db.kvGet('kraftEx').catch(() => null)) || [];
+  for (const e of S.kraftEx || []) if (e?.k && !mine.some(x => x.k === e.k)) mine.push(e); // own exercises made on another device (they ride along in the settings)
   tpls = (await db.kvGet('kraftTpl').catch(() => null)) || S.kraftTpl || [];
   W = (await db.kvGet('kraftDraft').catch(() => null)) || null;
   try { const a = await import('./account.js'); acc = a.account(); if (acc) { list = await a.syncKraft(); render(); } } catch {}
@@ -26,6 +27,10 @@ async function load() {
 const saveList = () => db.kvSet('kraft', list).catch(() => {});
 let draftT = 0;
 const saveDraft = () => { clearTimeout(draftT); draftT = setTimeout(() => db.kvSet('kraftDraft', W).catch(() => {}), 300); };
+/** own exercises: kv 'kraftEx' and, like the templates, in the settings, so the host (and the Garmin watch, tools/watch-api.mjs) knows them */
+async function saveMine() { await db.kvSet('kraftEx', mine).catch(() => {});
+  const st = (await db.kvGet('settings').catch(() => null)) || {}; st.kraftEx = mine.slice(-200); await db.kvSet('settings', st).catch(() => {});
+  import('./account.js').then(a => a.settingsChanged?.(st)).catch(() => {}); }
 async function saveTpls() { await db.kvSet('kraftTpl', tpls).catch(() => {}); // the templates ride along in the settings, so they reach other devices
   const st = (await db.kvGet('settings').catch(() => null)) || {}; st.kraftTpl = tpls; await db.kvSet('settings', st).catch(() => {});
   import('./account.js').then(a => a.settingsChanged?.(st)).catch(() => {}); }
@@ -194,7 +199,7 @@ async function quickSheet() {
 async function quickSave(R, said) {
   const dur = R.dur || 0, now = Date.now(); let made = false;
   for (const x of R.ex) { if (x.neu) { const e = { k: 'my_' + uid().slice(0, 8), n: x.n, t: x.t, g: 'Custom' }; mine.push(e); x.k = e.k; made = true; } delete x.neu; delete x.total; }
-  if (made) await db.kvSet('kraftEx', mine).catch(() => {});
+  if (made) await saveMine();
   const w = { id: uid(), name: defaultName(), start: now - dur * 1000, date: now, dur, quick: true, note: said.slice(0, 300), ex: R.ex };
   markPrs(w);
   list.unshift(w); await saveList(); import('./account.js').then(a => a.pushKraft?.(w)).catch(() => {});
@@ -298,7 +303,7 @@ function newExercise(name = '') {
     $('#nX', s).onclick = () => { s.remove(); done(null); };
     $('#nOk', s).onclick = async () => { const n = f.value.trim(); if (!n) return f.focus();
       const dup = exercises().find(e => e.n.toLowerCase() === n.toLowerCase()); if (dup) { s.remove(); return done(dup.k); }
-      const e = { k: 'my_' + uid().slice(0, 8), n, t: typ, g: $('#nG', s).value || 'Custom' }; mine.push(e); await db.kvSet('kraftEx', mine).catch(() => {}); s.remove(); done(e.k); };
+      const e = { k: 'my_' + uid().slice(0, 8), n, t: typ, g: $('#nG', s).value || 'Custom' }; mine.push(e); await saveMine(); s.remove(); done(e.k); };
   });
 }
 function pickExercise(done) {
@@ -366,7 +371,8 @@ function sessionSheet(w) {
   if (!w) return;
   const s = sheet(`<div class="label">${dayTxt(w.start || w.date)} · ${new Date(w.start || w.date).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })}</div>
     <h2 class="display" style="font-size:30px;margin:8px 0 12px">${esc(w.name)}</h2>
-    <div class="psum"><div><span>Time</span><b>${fmtTime(w.dur || 0)}</b></div><div><span>Sets</span><b>${doneSets(w)}</b></div><div><span>Volume</span><b>${kgTxt(sessVol(w))}</b></div>${w.prs ? `<div><span>Records</span><b>🏆 ${w.prs}</b></div>` : ''}</div>
+    ${w.source === 'watch' ? '<p class="hint kwsrc">Recorded on watch</p>' : ''}
+    <div class="psum"><div><span>Time</span><b>${fmtTime(w.dur || 0)}</b></div><div><span>Sets</span><b>${doneSets(w)}</b></div><div><span>Volume</span><b>${kgTxt(sessVol(w))}</b></div>${w.prs ? `<div><span>Records</span><b>🏆 ${w.prs}</b></div>` : ''}${w.avgHr ? `<div><span>Avg HR</span><b>${w.avgHr}</b></div>` : ''}</div>
     ${(w.ex || []).map(x => `<div class="kdet"><b data-chart="${x.k}">${esc(nm(x))} ›</b>${x.sets.map((y, j) => `<div><span>${y.warm ? 'W' : j + 1}</span><span>${setTxt(x.t, y)}${y.pr ? ' 🏆' : ''}</span><span>${x.t === 'w' ? fmtNum(e1rm(+y.kg, +y.r), 1) + ' kg 1RM' : ''}</span></div>`).join('')}</div>`).join('')}
     <div class="pfoot col"><button class="btn" id="dAgain">Do it again</button>${w.strava ? `<a class="btn ghost" href="${esc(w.strava)}" target="_blank">View on Strava</a>` : '<button class="btn ghost" id="dStrava">Upload to Strava</button>'}
       <button class="btn danger" id="dDel">Delete</button></div>`);

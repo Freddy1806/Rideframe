@@ -6,6 +6,7 @@ import { extname, join, normalize } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { stravaApi } from './tools/strava-api.mjs';
 import { accountsApi } from './tools/accounts-api.mjs';
+import { watchApi } from './tools/watch-api.mjs';
 const root = fileURLToPath(new URL('.', import.meta.url));
 const port = +process.env.PORT || 8765;
 const GZ = new Map(); // gzip cache: file -> { etag, buf }
@@ -19,7 +20,7 @@ createServer(async (req, res) => {
   try { p = normalize(decodeURIComponent(new URL(req.url, 'http://x').pathname)).replace(/^(\.\.[/\\])+/, ''); }
   catch { res.writeHead(400); res.end('bad request'); return; } // a broken address (e.g. "/%") used to take the whole server down
   try {
-    if (p.startsWith('/api/') && (await accountsApi(req, res, p) || await stravaApi(req, res, p))) return; // direct Strava upload (tools/strava-api.mjs)
+    if (p.startsWith('/api/') && (await accountsApi(req, res, p) || await watchApi(req, res, p) || await stravaApi(req, res, p))) return; // direct Strava upload (tools/strava-api.mjs), Garmin watches (tools/watch-api.mjs)
   } catch (e) { console.log('API-Fehler:', e?.message || e); if (!res.headersSent) res.writeHead(500); res.end(); return; }
   if (req.method !== 'GET' && req.method !== 'HEAD') { res.writeHead(405); res.end(); return; }
   if (p.endsWith('/')) p += 'index.html';

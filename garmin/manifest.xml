@@ -1,0 +1,26 @@
+<?xml version="1.0"?>
+<!-- RIDEFRAME Strength for Garmin watches. DRAFT: written against the Connect IQ docs, NOT compiled yet (no SDK where it was written).
+     minApiLevel 4.0.0: glances for watch-apps (VERIFY: "Glances" in the Connect IQ core topics names the level); fr265 / fenix 7 Pro run API 5.x.
+     VERIFY: product ids in the SDK Manager device list (fr265, fr265s, fenix7xpro, fenix7pro). The id below is a random UUID; keep it once the app is published. -->
+<iq:manifest version="3" xmlns:iq="http://www.garmin.com/xml/connectiq">
+    <iq:application id="d8fac19af0fd404889b4c2b8a1f75cf7" type="watch-app" name="@Strings.AppName" entry="RideframeApp" launcherIcon="@Drawables.LauncherIcon" minApiLevel="4.0.0">
+        <iq:products>
+            <iq:product id="fr265"/>
+            <iq:product id="fr265s"/>
+            <iq:product id="fenix7xpro"/>
+            <iq:product id="fenix7pro"/>
+        </iq:products>
+        <iq:permissions>
+            <!-- makeWebRequest through Garmin Connect Mobile -->
+            <iq:uses-permission id="Communications"/>
+            <!-- heart rate between sets -->
+            <iq:uses-permission id="Sensor"/>
+            <!-- optional native strength activity (ActivityRecording), see README -->
+            <iq:uses-permission id="Fit"/>
+        </iq:permissions>
+        <iq:languages>
+            <iq:language>eng</iq:language>
+        </iq:languages>
+        <iq:barrels/>
+    </iq:application>
+</iq:manifest>

@@ -57,10 +57,10 @@ const kcalOf = (a, kg) => sportOf(a) === 'run' ? Math.round(a.distance / 1000 * 
 /** the one detail sheet for every sport; onChange() after a delete or upload so the caller can redraw */
 export function detail(a, P, onChange = () => {}) {
   if (!a) return;
-  const m = sportOf(a), run = m === 'run', L = loadOf(a, P), hr = (a.samples || []).map(s => s[5]).filter(v => v > 0), ext = a.source;
+  const m = sportOf(a), run = m === 'run', L = loadOf(a, P), hr = (a.samples || []).map(s => s[5]).filter(v => v > 0), ext = a.kraft ? null : a.source; // strength from the watch: source 'watch', otherwise like any workout
   const cell = (l, v) => v ? `<div><span>${l}</span><b>${v}</b></div>` : '';
   const pc = !run && !a.kraft && paceOf(m, a.sportType, a.distance, a.duration); // swim /100 m, walk /km, rowing /500 m
-  const nums = a.kraft ? cell('Time', fmtTime(a.dur || 0)) + cell('Sets', String(doneSets(a))) + cell('Volume', kgTxt(sessVol(a))) + cell('Records', a.prs ? '🏆 ' + a.prs : '')
+  const nums = a.kraft ? cell('Time', fmtTime(a.dur || 0)) + cell('Sets', String(doneSets(a))) + cell('Volume', kgTxt(sessVol(a))) + cell('Records', a.prs ? '🏆 ' + a.prs : '') + cell('Avg HR', a.avgHr > 0 && String(a.avgHr)) + cell('Max HR', a.maxHr > 0 && String(a.maxHr)) + cell('Calories', a.kcal > 0 && `${fmtNum(a.kcal)} kcal`)
     : cell('Distance', a.distance > 0 && (m === 'swim' && a.distance < 10000 ? distOf(m, a.distance) : `${fmtNum(a.distance / 1000, 2)} km`)) + cell('Time', fmtTime(a.duration))
       + (run ? cell('Avg pace', `${paceS(a.distance, a.duration)} /km`) + cell('Fastest km', a.kmSplits?.length && fmtTime(Math.min(...a.kmSplits)))
         : pc ? cell('Avg pace', pc) : cell('Avg speed', a.duration && a.distance && `${fmtNum(a.distance / a.duration * 3.6, 1)} km/h`) + cell('Avg power', a.avgPower > 0 && `${a.avgPower} W`) + cell('NP', a.np > 0 && `${a.np} W`))
@@ -69,7 +69,7 @@ export function detail(a, P, onChange = () => {}) {
   const laps = (a.laps || []).filter(l => l && l.t > 0);
   const at = ext && a.start ? a.start : a.date; // outside activities show their start, like Strava
   const s = sheet(`<div class="label">${new Date(at).toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short', year: 'numeric' })} · ${new Date(at).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })}${a.sportType ? ' · ' + esc(labelOf(a.sportType)) : ''}${ext ? ' · ' + SRCN[ext] : ''}</div>
-    <div class="fdh" style="${mc(m)}">${icon(m, 'rico')}<h2>${esc(nameOf(a))}</h2></div>
+    <div class="fdh" style="${mc(m)}">${icon(m, 'rico')}<h2>${esc(nameOf(a))}</h2></div>${a.kraft && a.source === 'watch' ? '<p class="hint fwsrc">Recorded on watch</p>' : ''}
     <div class="psum">${nums}<div class="fldc"><span>Load</span><b>${fmtNum(L.pts)} pts</b><small>${SRC[L.src] || L.src}</small></div></div>
     ${a.kraft ? '' : chart(a)}${ext ? routeSvg(a) : ''}
     ${a.note ? `<p class="fnotev">${esc(a.note)}</p>` : ''}
@@ -211,6 +211,9 @@ async function page(root) {
     $('#fImp', root).onclick = impTap; $('#fAdd', root).onclick = addTap;
   };
   draw();
+  // strength sessions from another device or the Garmin watch (tools/watch-api.mjs) reach this phone with the strength sync
+  import('./account.js').then(async ac => { if (!ac.account()) return; const before = D.acts.filter(a => a.kraft).map(a => a.id).join();
+    await ac.syncKraft(); D = await loadActs(); if (D.acts.filter(a => a.kraft).map(a => a.id).join() !== before) draw(); }).catch(() => {});
   import('./stravaup.js').then(async m => { su = m; st = await m.stravaStatus(); draw();
     if (st.connected && st.canImport) { const r = await (await import('./actimport.js')).autoImport(D.S); if (r?.added) { msg = r.text; await reload(); } } }).catch(() => {});
 }
