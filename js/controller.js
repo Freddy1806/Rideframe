@@ -15,13 +15,34 @@ export const PAD_MAP = [['L / R', 'Gear easier / harder'], ['D-pad ↓ / ↑', '
  *  (8BitDo in Switch mode "S", Switch Pro): Chrome reports them by position (0 = bottom = their "B"), so A/B and X/Y are swapped
  *  back here: "A" in PAD_MAP is the button printed A (Freddy's 8BitDo Micro). */
 export const NINTENDO = id => /8bitdo|pro controller|nintendo|057e|joy-?con/i.test(id || '');
+/** D-pad of a pad Chrome does not know ("D" mode of the 8BitDo on a Mac): a hat switch on one axis (−1 = up, clockwise in steps of 2/7,
+ *  neutral is outside −1…1) or plain left/right, up/down axes. Returns [up, down, left, right]. */
+export function hatDirs(axes = []) {
+  const out = [false, false, false, false];
+  for (const i of [9, 4, 5, 6, 7, 8]) {
+    const v = axes[i]; if (typeof v !== 'number' || v === 0 || Math.abs(v) > 1.05) continue;
+    const k = Math.round((v + 1) * 3.5), err = Math.abs((v + 1) * 3.5 - k); if (err > 0.08) continue;
+    out[0] = k === 7 || k === 0 || k === 1; out[3] = k >= 1 && k <= 3; out[1] = k >= 3 && k <= 5; out[2] = k >= 5 && k <= 7;
+    return out;
+  }
+  const x = axes[0] || 0, y = axes[1] || 0;
+  return [y < -0.5, y > 0.5, x < -0.5, x > 0.5];
+}
+/** raw button order of 8BitDo pads in "D" mode (DirectInput): A B · X Y · L R L2 R2 Select Start Home */
+const RAW = { 0: 0, 1: 1, 3: 2, 4: 3, 6: 4, 7: 5, 8: 6, 9: 7, 10: 8, 11: 9 };
 export function padButtons(pad) {
-  const b = pad.buttons.map(x => x.pressed);
-  if (NINTENDO(pad.id)) { [b[0], b[1]] = [b[1], b[0]]; [b[2], b[3]] = [b[3], b[2]]; }
-  return b;
+  const p = pad.buttons.map(x => x.pressed);
+  if (pad.mapping !== 'standard') { // unknown to the browser: sort the raw buttons into the standard places, D-pad from the hat
+    const b = new Array(17).fill(false);
+    for (const [raw, std] of Object.entries(RAW)) b[std] = !!p[raw];
+    const [u, d, l, r] = hatDirs([...(pad.axes || [])]); b[12] = u; b[13] = d; b[14] = l; b[15] = r;
+    return b;
+  }
+  if (NINTENDO(pad.id)) { [p[0], p[1]] = [p[1], p[0]]; [p[2], p[3]] = [p[3], p[2]]; }
+  return p;
 }
 const BTN = ['A', 'B', 'X', 'Y', 'L', 'R', 'L2 / ZL', 'R2 / ZR', 'Select (−)', 'Start (+)', 'L3', 'R3', 'D-pad ↑', 'D-pad ↓', 'D-pad ←', 'D-pad →', 'Home'];
-const ACT = ['Accept challenge / menu ok', 'Switch display / back', 'Photo', 'Switch view', 'Gear easier', 'Gear harder', 'Field of view wider', 'Field of view narrower', 'Gear mode', 'Pause menu', '', '', 'Gear harder', 'Gear easier', 'Music on/off', 'Next song', 'Pause menu'];
+const ACT = ['Accept challenge / menu ok', 'Switch display / back', 'Photo', 'Switch view', 'Gear easier', 'Gear harder', 'Field of view wider (workout: −5 W)', 'Field of view narrower (workout: +5 W)', 'Gear mode', 'Pause menu', '', '', 'Gear harder (workout: +1 W)', 'Gear easier (workout: −1 W)', 'Music on/off', 'Next song', 'Pause menu'];
 const hex = dv => [...new Uint8Array(dv.buffer, dv.byteOffset, dv.byteLength)].map(b => b.toString(16).padStart(2, '0')).join(' ');
 
 export function openControllerTest() {
@@ -29,7 +50,7 @@ export function openControllerTest() {
   m.innerHTML = `<div class="box" style="width:min(820px,94vw)">
     <div class="label">Bluetooth</div><h2 class="display" style="margin-top:10px">Test<br>controller</h2>
     <p>Choose a device (e.g. your Di2 derailleur: shift once first so it wakes up), then press the buttons. Every message shows up below. Gamepads and keyboard are shown too.</p>
-    <details style="margin:6px 0 10px"><summary style="cursor:pointer"><b>Gamepad buttons during a ride</b> (e.g. 8BitDo Micro, switch on the back set to S)</summary>
+    <details style="margin:6px 0 10px"><summary style="cursor:pointer"><b>Gamepad buttons during a ride</b> (e.g. 8BitDo Micro, switch on the back set to D on a Mac, S elsewhere)</summary>
       <table style="margin-top:8px;border-collapse:collapse">${PAD_MAP.map(([k, v]) => `<tr><td style="padding:2px 14px 2px 0;white-space:nowrap"><b>${k}</b></td><td>${v}</td></tr>`).join('')}</table>
       <p style="margin-top:8px"><b>Zwift Click + / −</b>: Gear harder / easier (connect it in Settings → Trainer)</p></details>
     <div class="actions" style="justify-content:flex-start"><button class="btn small" id="ctScan">Find device</button><button class="btn ghost small" id="ctCopy">Copy log</button><button class="btn ghost small" id="ctClose">Close</button></div>

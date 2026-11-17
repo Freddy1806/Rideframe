@@ -377,8 +377,9 @@ export class RideSession {
     const tune = this.workout && !this.wDone; // in a workout the D-pad moves the interval target, the bumpers keep shifting
     if (hit(4) || (!tune && hit(13))) sh(-1);
     if (hit(5) || (!tune && hit(12))) sh(1);
-    if (tune && hit(12)) this._wTune(5);
-    if (tune && hit(13)) this._wTune(-5);
+    if (tune && hit(12)) this._wTune(1);
+    if (tune && hit(13)) this._wTune(-1);
+    if (tune && (hit(6) || hit(7))) { this._wTune(hit(7) ? 5 : -5); return; } // L2 / R2: 5 W steps while a workout runs
     if (hit(0)) { this._chKey = true; if (this.ch?.active?.state === 'offer') this._flash('Accepted!'); }
     if (hit(1)) this._cycleHud();
     if (hit(2) && this.player?.snapshot) { this._takePhoto(); this._flash('📸 Foto'); }
@@ -495,18 +496,19 @@ export class RideSession {
   }
 
   /** live in a workout (Freddy 17.11.): the hard intervals a few watts up or down, with the controller's D-pad or W / S */
-  _wTune(d) {
+  _wTune(d) { // the rider's own offset on what the workout asks for right now: one for the hard intervals, one for everything easier
     if (!this.workout || this.wDone) return;
-    this.wAdj = Math.max(-150, Math.min(150, (this.wAdj || 0) + d));
-    const st = this.workout.steps.find(x => x.pct >= 88 && !x.free), base = st && this.ftp ? Math.round(st.pct * this.ftp / 100) : 0;
-    this._flash(`Intervals ${this.wAdj > 0 ? '+' : this.wAdj < 0 ? '−' : '±'}${Math.abs(this.wAdj)} W${base ? ` · target ${Math.max(50, base + this.wAdj)} W` : ''}`);
+    const w = workoutAt(this.workout, this.elapsed, this.ftp); if (w.done || !w.step || w.step.free) return this._flash('Free block: ride as you like');
+    const k = w.step.pct >= 88 ? 'wAdj' : 'wAdjE';
+    this[k] = Math.max(-150, Math.min(150, (this[k] || 0) + d));
+    const a = this[k]; this._flash(`Target ${Math.max(50, Math.round(w.target + a))} W (${a > 0 ? '+' : a < 0 ? '−' : '±'}${Math.abs(a)} W ${k === 'wAdj' ? 'on the intervals' : 'on the easy parts'})`);
     this._wT = 0;
   }
   /** training program: target power for now; in ERG mode the trainer holds it */
   _workout(dt = 0.016) {
     if (!this.workout) return;
     const w = this.wNow = workoutAt(this.workout, this.elapsed, this.ftp);
-    if (this.wAdj && !w.done && w.step && !w.step.free && w.step.pct >= 88) w.target = Math.max(50, w.target + this.wAdj); // the rider's own offset on the hard intervals (_wTune)
+    if (!w.done && w.step && !w.step.free) { const a = w.step.pct >= 88 ? this.wAdj : this.wAdjE; if (a) w.target = Math.max(50, Math.round(w.target + a)); } // the rider's own offset (_wTune)
     if (this.erg) this.state.trainer.setPower(w.done || w.step?.free ? null : w.target); // a test block is ridden freely
         if (w.done && !this.wDone) { this.wDone = true; this._flash?.('Workout done!'); this.coach?.say('done', 0); }
     this._coachTick(w, dt);
@@ -821,6 +823,7 @@ export class RideSession {
   }
   _key(e) {
     if (!this.running && !e.key.startsWith('Arrow')) return; // still loading / counting down: only the power keys
+    if ((e.key === 'ArrowUp' || e.key === 'ArrowDown') && this.workout && !this.wDone && this.source === 'trainer') { this._wTune((e.key === 'ArrowUp' ? 1 : -1) * (e.shiftKey ? 5 : 1)); e.preventDefault(); return; } /* on the trainer in a workout the arrows move the target (also a pad paired as a keyboard), never fake watts */
     if (e.key === 'ArrowUp' || e.key === 'ArrowDown') this.keyPower = true; /* watts from the keyboard: fine for trying things out, never a saved ride (Freddy 12.11.) */
     if (e.key === 'ArrowUp') { this.manualPower = Math.min(1500, this.manualPower + (e.shiftKey ? 50 : 10)); e.preventDefault(); }
     else if (e.key === 'ArrowDown') { this.manualPower = Math.max(0, this.manualPower - (e.shiftKey ? 50 : 10)); e.preventDefault(); }
