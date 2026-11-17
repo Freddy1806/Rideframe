@@ -44,7 +44,9 @@ body.pure { overflow: hidden; height: 100dvh; }
 .pctl .pval { background: transparent; border-color: var(--accent); display: flex; align-items: center; justify-content: center; gap: 4px; }
 .pctl .pval b { font-size: 26px; }
 .pctl .pval small { font-size: 12px; color: var(--muted); }
-.pint { display: flex; align-items: center; justify-content: center; font-weight: 900; font-size: 16px; }
+.pint { display: flex; flex-direction: column; align-items: center; justify-content: center; font-weight: 900; font-size: 16px; line-height: 1.1; }
+.pint small { font-size: 10px; font-weight: 800; text-transform: uppercase; letter-spacing: .08em; color: var(--muted); }
+.pint.adj b { color: var(--accent); }
 .pwork { display: flex; flex-direction: column; gap: 6px; }
 .pwork select { height: 44px; border-radius: 8px; background: var(--ink-3); border: 1px solid var(--line-2); padding: 0 12px; font-size: 15px; width: 100%; }
 .pwsvg .wsvg { width: 100%; height: 40px; display: block; border-radius: 4px; }
