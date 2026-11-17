@@ -4,6 +4,8 @@
 // offline; they are sent the next time this opens. The watch loads the config at its next start.
 import { db } from './db.js';
 import { account } from './account.js';
+// the account's Strava connection for the watch's segments (tools/watch-feed.mjs linkStrava): this phone's Strava key, when it has one
+const stravaHdr = () => { try { const k = localStorage.getItem('rf_strava_key'); return k ? { 'X-Strava-Key': k } : {}; } catch { return {}; } };
 import { CATALOG } from './kraftlib.js';
 import { STRAVA } from './sports.js';
 import { MODES } from './theme.js';
@@ -21,7 +23,7 @@ const clampN = (v, [lo, hi], step = 1) => Math.min(hi, Math.max(lo, Math.round((
 let C = null, st = { at: 0, dirty: false }, tab = 'run', pg = 0, face = 0, msg = '', bad = false, saveT = 0, exList = [];
 
 async function api(method, body) { // own fetch: a 401 here must not sign the phone out (account.js does that)
-  const r = await fetch('/api/watch/config', { method, cache: 'no-store', headers: { 'Content-Type': 'application/json', 'X-RF-Token': account()?.token || '' }, body: body ? JSON.stringify(body) : undefined });
+  const r = await fetch('/api/watch/config', { method, cache: 'no-store', headers: { 'Content-Type': 'application/json', 'X-RF-Token': account()?.token || '', ...stravaHdr() }, body: body ? JSON.stringify(body) : undefined });
   const j = await r.json().catch(() => ({})); if (!r.ok) throw Object.assign(new Error(j.error || 'Server is not answering.'), { status: r.status }); return j;
 }
 const keep = () => db.kvSet('watchCfg', { cfg: C, at: st.at, dirty: st.dirty }).catch(() => {});

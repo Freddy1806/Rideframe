@@ -83,3 +83,7 @@ button.obig { width: 100%; text-align: left; color: inherit; font: inherit; }
 #out .oseg[hidden] { display: none; }
 
 .oseg .oneed { display: block; font-style: normal; font-weight: 800; }
+/* "Send to watch" per route (19.11.): a small toggle under the numbers, only when signed in */
+.owsend { display: inline-block; margin-top: 6px; padding: 4px 10px; border-radius: 999px; border: 1px solid var(--line-2); background: transparent; color: var(--muted); font-size: 12px; font-weight: 800; max-width: 100%; }
+.owsend.on { border-color: var(--accent); color: var(--paper); }
+.owsend[hidden] { display: none; }

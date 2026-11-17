@@ -45,6 +45,7 @@ const routeGpx = (a0, a1, name) => `<?xml version="1.0" encoding="UTF-8"?><gpx v
   await p.setInputFiles('#rFile', gpx); await p.waitForSelector('.oroute');
   const row = await p.textContent('.oroute'); ok(/Reine loop/.test(row) && /km/.test(row) && /climb/.test(row), 'imported route listed: ' + row.replace(/\s+/g, ' ').trim());
   ok(await p.locator('.oroute.on').count() === 1 && await p.locator('.oroute svg path').count() === 1, 'it is selected, with its shape');
+  ok(await p.locator('.owsend:not([hidden])').count() === 0, 'signed out: no Send to watch');
   await shot('01_routes_sheet'); await noSide('routes sheet');
   await p.click('#rDone');
   const blue = () => p.evaluate(() => [...document.querySelectorAll('#oMap path.leaflet-interactive')].filter(x => x.getAttribute('stroke') === '#3d8bff').length);
@@ -103,6 +104,24 @@ const routeGpx = (a0, a1, name) => `<?xml version="1.0" encoding="UTF-8"?><gpx v
   await p.click('#oRoute'); await p.clock.runFor(500); await p.click('#rStrava'); await p.waitForSelector('[data-sr="9001"]'); ok(/saved/.test(await p.textContent('[data-sr="9001"]')), 'marked as saved');
   await p.click('[data-sr="9001"]'); await p.waitForFunction(() => !document.querySelector('[data-sr]'));
   ok(await nStrava() === 1, 'importing it twice keeps one copy');
+  // Send to watch (19.11.): signed in, one small toggle per route puts a simplified copy on the host for the Garmin watch
+  const reg = await (await fetch(BASE + '/api/account/register', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name: 'Route Watcher', email: 'rw@example.org', password: 'secret-pw-1', password2: 'secret-pw-1', invite: process.env.RIDEFRAME_INVITE || '' }) })).json();
+  ok(!!reg.token, 'account for the watch routes');
+  const onHost = async () => (await (await fetch(BASE + '/api/watch/routes', { headers: { 'X-RF-Token': reg.token } })).json()).routes || [];
+  await p.evaluate(t => localStorage.setItem('rf_account', JSON.stringify({ name: 'Route Watcher', token: t })), reg.token);
+  await p.goto(BASE + '/outdoor.html?demo&feed'); await p.clock.runFor(800);
+  await p.click('#oRoute'); await p.waitForSelector('.owsend:not([hidden])');
+  const nRoutes = await p.locator('.oroute').count(), toggles = p.locator('.owsend:not([hidden])');
+  ok(await toggles.count() === nRoutes && (await toggles.first().textContent()).trim() === 'Send to watch', `signed in: Send to watch on every route (${nRoutes})`);
+  await p.setViewportSize({ width: 320, height: 640 }); await p.clock.runFor(200); await shot('09_send_to_watch_320'); await noSide('routes sheet with Send to watch at 320 px');
+  ok(await p.evaluate(() => [...document.querySelectorAll('.owsend')].every(b => b.getBoundingClientRect().right <= innerWidth)), 'the toggles fit at 320 px');
+  const rid = await toggles.first().getAttribute('data-w'); await toggles.first().click(); await p.waitForSelector('.owsend.on');
+  ok(/On watch/.test(await p.textContent('.owsend.on')) && await p.getAttribute('.owsend.on', 'aria-pressed') === 'true', 'sent: On watch ✓');
+  const h1 = await onHost(); ok(h1.length === 1 && h1[0].id === rid && h1[0].dist > 1000, 'the host keeps it for the watch: ' + JSON.stringify(h1.map(r => [r.id, r.name, r.dist])));
+  await p.click('#rDone'); await p.click('#oRoute'); await p.waitForSelector('.owsend.on'); ok(await p.locator('.owsend.on').count() === 1, 'the sheet knows it next time');
+  await p.click('.owsend.on'); await p.waitForFunction(() => !document.querySelector('.owsend.on'));
+  ok((await onHost()).length === 0, 'tapped again: taken off the watch');
+  await p.setViewportSize({ width: 390, height: 844 });
   ok(errs.length === 0, 'no page errors at the end: ' + errs.join(' | '));
   await b.close(); srv.kill(); F.close(); fs.rmSync(DATA, { recursive: true, force: true }); fs.rmSync(tmp, { recursive: true, force: true });
   console.log(fails ? `\n${fails} FAILED` : '\nall OK'); process.exit(fails ? 1 : 0);
