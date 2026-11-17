@@ -732,3 +732,84 @@ img.face.big{width:96px;height:96px}
 .mywk { margin-bottom: 28px; } .mywkhead { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 10px; } .mywkhead h2 { margin: 0; }
 .wedbox { max-height: 92dvh; overflow-y: auto; }
 @media (max-width: 640px) { .wgrid { grid-template-columns: minmax(0, 1fr); } .wedbox .wrow { background: var(--ink-3); border-radius: 8px; padding: 10px; } .wedbox .wrow b { min-width: 100% !important; } .wedbox input[type=number] { width: 58px !important; } .wedbox input[type=text] { flex: 1 1 120px; min-width: 0; } }
+
+/* "Riding now" (17.11.: friends in a ride right now, one tap on Join; js/live.js). Orange only, whatever the accent setting. */
+.live, .livehints, .lvask, .joinask { --accent: #ff5a1f; --accent-ink: #0b0b0b; --live: #ff5a1f; }
+.live { display: grid; grid-template-rows: 0fr; opacity: 0; transition: grid-template-rows .45s cubic-bezier(.2,.7,.2,1), opacity .35s; }
+.live.on { grid-template-rows: 1fr; opacity: 1; }
+.live > .live-in { min-height: 0; overflow: hidden; }
+.live-in { padding-bottom: 32px; }
+.live-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; margin-bottom: 12px; }
+.live-head .label { display: inline-flex; align-items: center; gap: 10px; color: var(--paper); }
+.live-n { color: var(--muted); font-size: 13px; font-weight: 600; }
+.lvgrid { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 360px), 1fr)); gap: 14px; }
+.lvcard { display: flex; align-items: center; gap: 16px; min-width: 0; padding: 16px 18px; background: var(--ink-2); border: 1px solid color-mix(in srgb, var(--live) 32%, var(--line)); border-radius: var(--radius); }
+.lvface { position: relative; width: 52px; height: 52px; flex: none; border-radius: 50%; background: var(--ink-3); display: grid; place-items: center; box-shadow: 0 0 0 2px var(--ink-2), 0 0 0 4px var(--live); }
+.lvini { font-weight: 900; font-stretch: 112%; font-size: 17px; letter-spacing: .02em; color: var(--paper); }
+.lvface img.lvimg { position: absolute; inset: 0; width: 100%; height: 100%; background: var(--ink-3); }
+.lvtxt { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 3px; }
+.lvname { font-size: 20px; font-weight: 900; font-stretch: 112%; text-transform: uppercase; letter-spacing: -0.01em; line-height: 1.08; overflow-wrap: break-word; hyphens: auto; }
+.lvroute { color: var(--muted); font-size: 13px; line-height: 1.3; overflow-wrap: anywhere; }
+.lvkm { display: flex; align-items: center; gap: 8px; margin-top: 3px; font-size: 13px; font-weight: 700; font-variant-numeric: tabular-nums; }
+.lvkm > span { min-width: 0; overflow-wrap: anywhere; }
+.lvdot { display: inline-block; flex: none; width: 8px; height: 8px; border-radius: 50%; background: var(--live, #ff5a1f); animation: lvpulse 1.8s ease-out infinite; }
+@keyframes lvpulse { 0% { box-shadow: 0 0 0 0 rgba(255,90,31,.55); } 70%, 100% { box-shadow: 0 0 0 7px rgba(255,90,31,0); } }
+.lvcard .btn, .livehint .btn { flex: none; height: 44px; padding: 0 22px; font-size: 14px; }
+.lvhint { color: var(--muted); font-size: 12.5px; font-weight: 600; }
+.lvcard > .lvhint { flex: 0 1 130px; text-align: right; }
+.livehints { display: flex; flex-direction: column; gap: 8px; margin: 0 0 18px; animation: lvin .4s cubic-bezier(.2,.7,.2,1); }
+.livehints[hidden] { display: none; }
+.livehint { display: flex; align-items: center; gap: 12px; padding: 8px 8px 8px 16px; background: var(--ink-2); border: 1px solid color-mix(in srgb, var(--live) 32%, var(--line)); border-radius: var(--radius); font-size: 15px; }
+.livehint > span { flex: 1; min-width: 0; overflow-wrap: anywhere; } .livehint b { font-weight: 800; }
+@keyframes lvin { from { opacity: 0; transform: translateY(-6px); } }
+.lvask .label { display: inline-flex; align-items: center; gap: 10px; }
+.lvwait { height: 3px; margin: 20px 0 4px; background: var(--line-2); border-radius: 2px; overflow: hidden; }
+.lvwait i { display: block; width: 35%; height: 100%; background: var(--live); animation: lvslide 1.3s ease-in-out infinite; }
+@keyframes lvslide { 0% { transform: translateX(-100%); } 100% { transform: translateX(290%); } }
+/* in the ride: "Freddy wants to join you" (Accept / Not now, pad A / B) */
+.joinask { position: absolute; left: 50%; top: 24%; transform: translateX(-50%); z-index: 21; width: min(420px, calc(100% - 32px)); padding: 16px 20px 14px; border-radius: 14px; text-align: center; border-color: color-mix(in srgb, var(--live) 45%, transparent); animation: lvin .35s cubic-bezier(.2,.7,.2,1); transition: opacity .25s; }
+.joinask.out { opacity: 0; }
+.joinask .jqt { font-size: 22px; font-weight: 700; margin: 6px 0 14px; overflow-wrap: anywhere; } .joinask .jqt b { font-weight: 900; color: var(--live); }
+.joinask .jqbtns { display: flex; gap: 10px; justify-content: center; } .joinask .btn { height: 44px; padding: 0 22px; font-size: 14px; }
+.joinask .jqpad { margin-top: 10px; font-size: 12px; color: var(--muted); }
+@media (max-width: 640px) { .lvcard { flex-wrap: wrap; } .lvcard .btn { flex: 1 1 100%; } .lvcard > .lvhint { flex-basis: 100%; text-align: left; } .livehint { flex-wrap: wrap; padding: 10px 12px; } .livehint .btn { flex: 1 1 100%; } }
+@media (prefers-reduced-motion: reduce) { .live, .lvdot, .livehints, .lvwait i, .joinask { transition: none; animation: none; } }
+/* friends with a status dot (owner 17.11. (2): "like on the PlayStation, with a green dot"): green = online (the one exception
+   to orange-only, the owner's wish), orange = riding, none = offline (dimmed, "last seen …") */
+.live, .livehints, .frbox, .psheet { --online: #2fd36b; }
+.frdot { display: inline-block; flex: none; width: 9px; height: 9px; border-radius: 50%; background: var(--muted); }
+.frdot.online { background: var(--online); } .frdot.riding { background: var(--live, #ff5a1f); animation: lvpulse 1.8s ease-out infinite; }
+.frface { position: relative; flex: none; display: inline-block; }
+.frface .lvface { width: 34px; height: 34px; box-shadow: none; } .frface .lvini { font-size: 11px; font-stretch: 100%; letter-spacing: 0; }
+.frface .frdot { position: absolute; right: -1px; bottom: -1px; width: 11px; height: 11px; box-shadow: 0 0 0 2.5px var(--ink-2); background: transparent; }
+.frface.online .frdot { background: var(--online); } .frface.riding .frdot { background: var(--live, #ff5a1f); }
+.frface.offline .lvface { filter: grayscale(1); opacity: .55; }
+.frline { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; }
+.frchip { display: inline-flex; align-items: center; gap: 10px; max-width: 100%; min-height: 46px; padding: 5px 16px 5px 6px; border-radius: 999px; background: var(--ink-2); border: 1px solid var(--line); color: var(--paper); font: inherit; text-align: left; cursor: pointer; }
+.frchip:hover { border-color: var(--line-2); }
+.frchip .frtx { display: flex; flex-direction: column; min-width: 0; line-height: 1.15; }
+.frchip b { font-size: 13.5px; font-weight: 800; overflow-wrap: anywhere; } .frchip small { font-size: 11.5px; color: var(--muted); font-weight: 600; overflow-wrap: anywhere; }
+.frchip.online small { color: var(--online); }
+.frchip.offline b { color: var(--muted); }
+.frchip.frmore { padding: 0 16px; font-size: 13px; font-weight: 800; color: var(--muted); }
+.live-head .frall { margin-left: auto; background: none; border: 0; color: var(--muted); font: inherit; font-size: 13px; font-weight: 700; padding: 6px 0 6px 10px; cursor: pointer; }
+.live-head .frall:hover { color: var(--paper); }
+.live-head .live-n { margin-left: 4px; }
+.live-head:has(.frall) { justify-content: flex-start; }
+.lvgrid + .frline { margin-top: 14px; }
+.lvinvite { display: flex; align-items: center; gap: 12px; padding: 10px 10px 10px 16px; margin-bottom: 12px; background: color-mix(in srgb, var(--live) 12%, var(--ink-2)); border: 1px solid color-mix(in srgb, var(--live) 50%, var(--line)); border-radius: var(--radius); }
+.lvitx { flex: 1; min-width: 0; font-size: 15px; overflow-wrap: anywhere; } .lvitx b { font-weight: 900; } .lvitx small { display: block; font-size: 12.5px; color: var(--muted); font-weight: 600; }
+.lvinvite .btn { flex: none; height: 40px; padding: 0 20px; font-size: 13px; }
+.lvix { flex: none; width: 36px; height: 36px; border-radius: 50%; border: 1px solid var(--line-2); background: none; color: var(--muted); font-size: 14px; cursor: pointer; }
+.frlist { display: flex; flex-direction: column; margin: 16px 0 4px; }
+.frrow { display: flex; align-items: center; gap: 12px; padding: 10px 2px; border-bottom: 1px solid var(--line); }
+.frrow .frtx { flex: 1; min-width: 0; display: flex; flex-direction: column; } .frrow b { font-size: 15px; font-weight: 800; overflow-wrap: anywhere; } .frrow small { font-size: 12.5px; color: var(--muted); overflow-wrap: anywhere; }
+.frrow.online small { color: var(--online); } .frrow.offline b { color: var(--muted); }
+.frrow .btn { flex: none; height: 38px; padding: 0 16px; font-size: 12.5px; }
+.frbox { max-width: 560px; max-height: calc(100dvh - 40px); overflow-y: auto; }
+/* in the ride: pause menu → Invite friends */
+.invlist { display: flex; flex-direction: column; gap: 8px; margin: 10px 0 4px; }
+.invlist .btn { justify-content: flex-start; gap: 12px; text-align: left; }
+.invlist { --online: #2fd36b; --live: #ff5a1f; }
+@media (max-width: 640px) { .lvinvite { flex-wrap: wrap; } .lvinvite .lvitx { flex-basis: calc(100% - 50px); } .lvinvite .btn { flex: 1 1 auto; } }
+.lvkm .nw { white-space: nowrap; }

@@ -47,7 +47,27 @@ const routeRide = (a1, off = 0, name = 'Lofoten Küste über Reine und Hamnøy z
   await p.waitForTimeout(400);
   await p.evaluate(async () => { const { db } = await import('/js/db.js'); const st = (await db.kvGet('settings')) || {}; if (st.outdoor) delete st.outdoor.route; await db.kvSet('settings', st); });
 };
+// "Riding now" and the friends with a green dot (js/live.js): riding / online / offline friends with long names, an invite (answers of /api/live/* faked)
+const liveFake = (sel = '.live.on .lvcard', act = null) => async p => {
+  const now = Date.now(), ride = (id, routeId, routeName, d, len, mins, code) => ({ id, routeId, routeName, d, len, since: now - mins * 60e3, group: !!code, code, ask: false });
+  const riders = [{ name: 'Konstantin Langenberg', ...ride('a1b2c3d4e5f6', 'coast', 'Lofoten Küste über Reine und Hamnøy zurück mit langem Namen', 12400, 37000, 83, null) }, { name: 'Maximilian Oberhuber', ...ride('f6e5d4c3b2a1', 'demo', 'Passo Demo', 812, 12400, 4, 'kq7mz') }];
+  const friends = [...riders.map(({ name, ...r }) => ({ key: name.toLowerCase(), name, look: null, state: 'riding', lastSeen: now, ride: r })),
+    ...['Anna-Lena Wiesenthal', 'Bo'].map(name => ({ key: name.toLowerCase(), name, look: null, state: 'online', lastSeen: now, ride: null })),
+    ...['Bartholomäus Kirchberger', 'Dora', 'Christophorus Wendelin', 'Eva', 'Friedrich der Große XIV', 'Gustav', 'Henrietta Adalbertine', 'Ida', 'Jo'].map((name, i) => ({ key: name.toLowerCase(), name, look: null, state: 'offline', lastSeen: i === 1 ? null : now - (i + 1) * 97 * 60e3, ride: null }))];
+  const invites = [{ id: '0a1b2c3d4e5f', from: 'Maximilian Oberhuber', code: 'kq7mz', routeId: 'coast', routeName: 'Lofoten Küste über Reine und Hamnøy zurück mit langem Namen', at: now }];
+  const answer = u => /prefs$/.test(u) ? { show: true, auto: true } : /friends$/.test(u) ? { friends, invites, now, every: 30 } : /online$/.test(u) ? { ok: true, every: 30, invites } : { riders: riders.map(({ name, ...r }) => ({ name, look: null, me: false, canJoin: true, ...r })), now, every: 20 };
+  await p.route('**/api/account/**', r => r.fulfill({ status: 200, contentType: 'application/json', body: '{}' })); // signed in (the fake login stays)
+  await p.route(/\/api\/live(\/[a-z]+)?$/, r => r.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(answer(r.request().url())) }));
+  await p.route(/\/api\/account\/kraft/, r => r.fulfill({ status: 200, contentType: 'application/json', body: '{"ids":[]}' })); // the strength sync must not sign the fake login out
+  await p.evaluate(n => localStorage.setItem('rf_account', JSON.stringify({ token: 'x', name: n })), NAME); // the first load (unfaked) signed the fake login out
+  await p.reload(); await p.waitForSelector(sel, { timeout: 15000 }); await p.waitForTimeout(600);
+  if (act) { await p.evaluate(s => document.querySelector(s).click(), act); await p.waitForTimeout(500); } // the strip redraws with the beat; a plain click is enough here
+};
 const SCREENS = [
+  ['handy-fahren-gerade', '/handy.html', liveFake()],
+  ['app-strecken-live-handy', '/?desktop&noprofile', liveFake()],
+  ['handy-freunde', '/handy.html', liveFake('#hFriends', '#hFriends')],
+  ['app-freunde-handy', '/?desktop&noprofile', liveFake('#frAll', '#frAll')],
   ['handy', '/handy.html', null],
   ['handy-login', '/handy.html', async p => { await p.evaluate(() => localStorage.removeItem('rf_account')); await p.reload(); await p.waitForTimeout(500); await p.click('#hAcc'); }],
   ['handy-registrieren', '/handy.html', async p => { await p.evaluate(() => localStorage.removeItem('rf_account')); await p.reload(); await p.waitForTimeout(500); await p.click('#hAcc'); await p.click('#aSwitch'); }],
@@ -143,6 +163,9 @@ const SCREENS = [
 ];
 const DESK = [ // the main app with its top bar (account pill, tabs) on tablet, laptop and TV widths
   ['app-strecken', '/?desktop&noprofile', null],
+  ['app-strecken-live', '/?desktop&noprofile', liveFake()],
+  ['app-freunde', '/?desktop&noprofile', liveFake('#frAll', '#frAll')],
+  ['app-strecke-live', '/?desktop&noprofile&view=detail&id=coast', liveFake('.livehint')],
   ['app-training', '/?desktop&noprofile&view=training', null],
   ['app-fahrten', '/?desktop&noprofile&view=history', null],
   ['app-einstellungen', '/?desktop&noprofile&view=settings', null],
