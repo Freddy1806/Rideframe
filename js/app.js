@@ -21,6 +21,8 @@ import { routeFns } from './tcx.js';
 import { hudPrefs, hudControlsHTML, wireHudControls } from './hudprefs.js';
 import { allWorkouts, setMyWorkouts, workoutById, workoutDuration, workoutSVG } from './workouts.js';
 import { loadShared, sharedFor, shareRide, importShared, groupModal } from './share.js';
+import { workoutOptions, wireRoutePick } from './myworkouts-ui.js';
+import { loadPersonal } from './myworkouts-store.js';
 
 const $ = s => document.querySelector(s);
 const main = $('#main');
@@ -55,6 +57,7 @@ async function boot() {
   const hasAcc = await accountsAvailable();
   if (hasAcc && account()) await syncAccount(state).catch(e => console.warn('Konto-Abgleich:', e.message));
   setMyWorkouts(state.settings.myWorkouts); // the account may have brought own workouts from another device
+  await loadPersonal(); // personal workouts (js/myworkouts-store.js): the account's, or this browser's when signed out
   const params = new URLSearchParams(location.search);
   if (params.get('accent')) state.settings.accent = params.get('accent');
   applyAccent();
@@ -116,7 +119,7 @@ export async function ridesChanged() { await reload(); if (state.view === 'histo
 
 export async function saveSettings() { await db.kvSet('settings', state.settings); settingsChanged(state.settings); }
 function updateAccPill() { const a = account(), p = $('#accPill'); p.classList.toggle('on', !!a); p.querySelector('.t').textContent = a ? a.name : 'Sign in'; }
-async function accountChanged() { updateAccPill(); applyAccent(); await reload(); go(state.view); }
+async function accountChanged() { updateAccPill(); applyAccent(); await reload(); await loadPersonal(); go(state.view); }
 function applyAccent() {
   document.documentElement.style.setProperty('--accent', ACCENTS[state.settings.accent] || ACCENTS.orange);
 }
@@ -271,10 +274,10 @@ function detail(id) {
         <div class="panel workout-pick" style="margin-top:22px">
           <div class="field" style="border:0;padding:0;gap:10px;flex-wrap:wrap;justify-content:flex-start">
             <span class="label" style="min-width:130px">Training</span>
-            <select id="workSel" style="width:auto"><option value="">Free ride (route gradient)</option>${allWorkouts().map(w => `<option value="${w.id}">${w.mine ? '★ ' : ''}${esc(w.name)} · ${Math.round(workoutDuration(w) / 60)} min</option>`).join('')}</select>
+            <span class="mwpick"><select id="workSel" style="width:auto">${workoutOptions(id)}</select><button type="button" class="btn ghost small" id="wCustom" title="Adjust the chosen workout for this route and save it under your name">Customise</button><button type="button" class="mwlink" id="wMine" title="All your personal workouts and your FTP, in the profile">My workouts</button></span>
             <label style="display:flex;gap:8px;align-items:center;margin-left:auto" title="The trainer holds the target watts itself, however steep the route is"><input type="checkbox" class="toggle" id="ergChk" ${state.settings.erg !== false ? 'checked' : ''}> ERG (trainer holds the watts)</label>
           </div>
-          <div id="workInfo"></div>
+          <div id="workInfo"></div><div class="mwfitinfo" id="mwFitInfo"></div>
           <div class="field" id="chRow" style="border:0;padding:10px 0 0;gap:10px;flex-wrap:wrap;justify-content:flex-start" title="Along the way a knight, a granny, a gull, a sea eagle or a kid challenges you to short races. To accept, just attack (or press K). Never during a workout.">
             <span class="label" style="min-width:130px">Challenges</span>
             <select id="chSel" style="width:auto">${[0, 2, 3, 4, 6, 8].map(n => `<option value="${n}">${n ? n + ' per ride' : 'off'}</option>`).join('')}</select>
@@ -313,6 +316,7 @@ function detail(id) {
   const showWork = () => { const w = workoutById(state.settings.workout); $('#workInfo').innerHTML = w ? `<p style="margin:6px 0">${esc(w.what)} Target watts from your FTP (${state.settings.ftp || 200} W).</p>${workoutSVG(w)}` : ''; $('#rideBtn').textContent = w ? 'Start workout ▸' : 'Ride ▸'; $('#chRow').hidden = !!w; };
   $('#workSel').value = workoutById(state.settings.workout) ? state.settings.workout : ''; showWork();
   $('#workSel').onchange = e => { state.settings.workout = e.target.value; saveSettings(); showWork(); };
+  wireRoutePick(main, { route: r, state, saveSettings, rerender: () => detail(id) });
   $('#ergChk').onchange = e => { state.settings.erg = e.target.checked; saveSettings(); };
   $('#chSel').value = String(state.settings.challenges ?? 4);
   $('#lapSel').value = String(state.settings.laps || 1);

@@ -84,8 +84,9 @@ export function defFrom(w) {
   return { id: 'my_' + Date.now().toString(36), name: w.name + ' (adjusted)', warm: hadWarm, cool: hadCool, rows };
 }
 export function setMyWorkouts(defs = []) { MY.length = 0; for (const d of defs || []) if (d && d.id) MY.push(buildMy(d)); }
-export const allWorkouts = () => [...MY, ...WORKOUTS];
-export const workoutById = id => MY.find(w => w.id === id) || WORKOUTS.find(w => w.id === id) || null;
+export const PERSONAL = []; // personal workouts of the account (js/myworkouts-store.js), in the same shape as the built-ins
+export const allWorkouts = () => [...MY, ...PERSONAL, ...WORKOUTS];
+export const workoutById = id => MY.find(w => w.id === id) || PERSONAL.find(w => w.id === id) || WORKOUTS.find(w => w.id === id) || null;
 export const workoutDuration = w => w.steps.reduce((s, x) => s + x.dur, 0);
 
 /** % FTP of a step after `into` seconds: flat, or on the way from pct to pct2 on a ramp */
