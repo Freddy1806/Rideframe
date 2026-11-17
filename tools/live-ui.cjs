@@ -124,7 +124,7 @@ async function peerOut({ page }, m) {
     const gotCode = await codeIn(LB); // the group window, or already the ride when the host's start came at once
     ok(gotCode === code, `B in the join flow with A's code (${gotCode})`);
     ok(Date.now() - t0 < 45000, `within the 45 s (${Math.round((Date.now() - t0) / 1000)} s)`);
-    await LB.waitForSelector('#hPause', { timeout: 60000 }).catch(() => {});
+    await LB.waitForSelector('#hPause', { timeout: 120000 }).catch(() => {}); // the 3D world loads first (slow on a busy machine)
     ok(await vis(LB, '#hPause') && (await LB.textContent('#hGCode').catch(() => '')).trim() === code, 'B is riding in A\'s group (late join next to the host)');
     await RA.waitForFunction(() => /Freddy/.test(document.querySelector('#hGroup .glist')?.textContent || ''), null, { timeout: 15000 }).catch(() => {});
     ok(/Freddy/.test(await RA.textContent('#hGroup .glist')), 'A sees Freddy in his group chip');

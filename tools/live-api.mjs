@@ -5,14 +5,23 @@
 // the request, his client opens a group (on its own or after Accept) and reports the code with the next heartbeat; the
 // asker polls GET /api/live/join/<id> until it is "ready" (with the code), "declined", "gone" or "expired".
 // Everything lives in memory: a restart only forgets who rides at this minute. Settings (account settings.json):
-// liveShow (default on) = appear at all, liveAuto (default on) = friends join without asking.
+// liveShow (default on, "Show me as online") = appear at all, liveAuto (default on) = friends join without asking.
+// Owner 17.11. (2): "see who is online, like on the PlayStation, with a green dot". Two levels: ONLINE (the app open in a
+// visible tab, signed in: POST /api/live/online every 30 s, gone after 75 s) and RIDING (above). GET /api/live/friends lists
+// every account of this host except yourself: riding / online / offline with "last seen" (users/<id>/seen.json, minutes).
+// Invites: a rider sends his group to an online friend (POST /api/live/invite), who sees "Max invites you to ride · Join".
 import { randomBytes } from 'node:crypto';
 import { join } from 'node:path';
 import { accountOf, shared } from './accounts-api.mjs';
 
 const { readJSON, writeJSON, send, body, limited, userDir } = shared;
 const TTL = Math.max(300, +process.env.RIDEFRAME_LIVE_TTL || 60e3), ASK_TTL = Math.max(300, +process.env.RIDEFRAME_LIVE_ASK_TTL || 45e3), EVERY = 20;
-const MAX_LIVE = 300, MAX_ASKS = 2000;
+const ONLINE_TTL = Math.max(300, +process.env.RIDEFRAME_ONLINE_TTL || 75e3), INVITE_TTL = Math.max(300, +process.env.RIDEFRAME_INVITE_TTL || 10 * 60e3), ONLINE_EVERY = 30;
+const MAX_LIVE = 300, MAX_ASKS = 2000, MAX_INVITES = 2000;
+const online = new Map(); // account key -> last online beat (ms)
+const invites = new Map(); // id -> { id, from, fromName, to, code, routeId, routeName, at }
+const info = new Map(); // account key -> { t, look, show, seen } (settings.json and seen.json, read at most every 20 s)
+const seenMin = new Map(); // account key -> last minute written to seen.json
 const live = new Map(); // account key -> { sid, key, name, look, routeId, routeName, d, len, code, since, at, auto }
 const asks = new Map(); // id -> { id, from, fromName, to, toName, at, state: pending | accepted | ready | declined | gone | cancelled | expired, code }
 const clean = (s, n) => String(s ?? '').replace(/[\u0000-\u001f\u007f<>]/g, '').trim().replace(/\s+/g, ' ').slice(0, n);
@@ -26,6 +35,8 @@ const lookOf = st => { const l = st?.look; return l && typeof l === 'object' && 
 
 function sweep(now = Date.now()) {
   for (const [k, e] of live) if (now - e.at > TTL) live.delete(k);
+  for (const [k, t] of online) if (now - t > ONLINE_TTL) online.delete(k);
+  for (const [id, v] of invites) { const e = live.get(v.from); if (now - v.at > INVITE_TTL || !e || e.code !== v.code) invites.delete(id); }
   for (const [id, a] of asks) {
     if ((a.state === 'pending' || a.state === 'accepted') && !live.has(a.to)) a.state = 'gone';
     if ((a.state === 'pending' || a.state === 'accepted') && now - a.at > ASK_TTL) a.state = 'expired';
@@ -36,6 +47,21 @@ function sweep(now = Date.now()) {
 function gone(key) { live.delete(key); for (const a of asks.values()) if (a.to === key && (a.state === 'pending' || a.state === 'accepted')) a.state = 'gone'; }
 /** requests that can be answered with the code right away (group open and the rider lets friends in, or he accepted) */
 function settle(e) { if (!e?.code) return; for (const a of asks.values()) if (a.to === e.key && (a.state === 'accepted' || (a.state === 'pending' && e.auto))) { a.state = 'ready'; a.code = e.code; } }
+
+/** this account is online now: remembered in memory, "last seen" on disk once per minute */
+async function seen(me, now) {
+  online.set(me.key, now); const m = Math.floor(now / 60e3);
+  if (seenMin.get(me.key) === m) return; seenMin.set(me.key, m);
+  await writeJSON(join(userDir(me.u.id), 'seen.json'), { at: m * 60e3 }).catch(() => {}); const i = info.get(me.key); if (i) i.seen = m * 60e3;
+}
+async function infoOf(key, u, now) {
+  let i = info.get(key); if (i && now - i.t < 20e3) return i;
+  const st = (await readJSON(join(userDir(u.id), 'settings.json'), null))?.settings, sn = await readJSON(join(userDir(u.id), 'seen.json'), null);
+  i = { t: now, look: lookOf(st), show: prefsOf(st).show, seen: +sn?.at || 0 }; info.set(key, i); if (info.size > 5000) info.clear(); return i;
+}
+const invitesFor = key => [...invites.values()].filter(v => v.to === key).sort((a, b) => b.at - a.at).map(v => ({ id: v.id, from: v.fromName, code: v.code, routeId: v.routeId, routeName: v.routeName, at: v.at }));
+const rideOf = (e, key) => ({ id: e.sid, routeId: e.routeId, routeName: e.routeName, d: e.d, len: e.len, since: e.since, group: !!e.code, code: e.key !== key && e.auto && e.code ? e.code : null, ask: !e.auto });
+const NAME = /^[\p{L}\p{N} ._-]{2,24}$/u;
 
 /** returns true when the request was an /api/live call (answered here) */
 export async function liveApi(req, res, path) {
@@ -56,7 +82,8 @@ export async function liveApi(req, res, path) {
       const answers = b.answers == null ? [] : b.answers;
       if (!Array.isArray(answers) || answers.length > 20 || answers.some(a => !a || !HEX.test(String(a.id)) || typeof a.ok !== 'boolean')) return send(res, 400, { error: 'answers: [{ id, ok }]' });
       const { s } = await settingsOf(me.u), st = s?.settings, p = prefsOf(st);
-      if (!p.show) { gone(key); return send(res, 200, { ok: true, hidden: true, requests: [] }); }
+      if (!p.show) { gone(key); online.delete(key); return send(res, 200, { ok: true, hidden: true, requests: [] }); }
+      await seen(me, now);
       let e = live.get(key);
       if (!e) { if (live.size >= MAX_LIVE) return send(res, 503, { error: 'Too many riders right now.' }); e = { sid: hex(), key, since: st0 >= now - 864e5 && st0 <= now + 60e3 ? st0 : now }; live.set(key, e); }
       Object.assign(e, { name: me.u.name, look: lookOf(st), routeId, routeName: clean(b.routeName, 80) || routeId, len: Math.round(len), d: Math.round(Math.min(d, len)), code, at: now, auto: p.auto });
@@ -73,6 +100,37 @@ export async function liveApi(req, res, path) {
         me: e.key === key, canJoin: e.key !== key, group: !!e.code, code: e.key !== key && e.auto && e.code ? e.code : null, ask: !e.auto }));
       return send(res, 200, { riders, now, every: EVERY });
     }
+    if (op === '/online' && m === 'POST') { // the light heartbeat: the app is open (library, phone home, ride)
+      if (limited('live-on:' + key, 12, 60e3)) return send(res, 429, { error: 'Too many heartbeats.' });
+      const { s } = await settingsOf(me.u); if (!prefsOf(s?.settings).show) { online.delete(key); return send(res, 200, { ok: true, hidden: true, invites: [] }); }
+      await seen(me, now); return send(res, 200, { ok: true, every: ONLINE_EVERY, ttl: ONLINE_TTL, invites: invitesFor(key) });
+    }
+    if (op === '/online' && m === 'DELETE') { online.delete(key); return send(res, 200, { ok: true }); }
+    if (op === '/friends' && m === 'GET') { // every account of this host except me: riding, online, offline (last seen)
+      if (limited('live-fr:' + key, 30, 60e3)) return send(res, 429, { error: 'Too many requests.' });
+      const users = (await readJSON(join(shared.DATA, 'accounts.json'), { users: {} })).users || {}, out = [];
+      for (const [k, u] of Object.entries(users)) { if (k === key || !u?.id) continue;
+        const i = await infoOf(k, u, now), e = i.show ? live.get(k) : null, on = i.show && (online.has(k) || !!e);
+        out.push({ key: k, name: u.name, look: i.look, state: e ? 'riding' : on ? 'online' : 'offline', lastSeen: i.show ? (on ? now : i.seen || null) : null, ride: e ? rideOf(e, key) : null }); }
+      const rank = { riding: 0, online: 1, offline: 2 };
+      out.sort((a, b) => rank[a.state] - rank[b.state] || (b.lastSeen || 0) - (a.lastSeen || 0) || a.name.localeCompare(b.name));
+      return send(res, 200, { friends: out.slice(0, 200), invites: invitesFor(key), now, every: ONLINE_EVERY });
+    }
+    if (op === '/invite' && m === 'POST') { // a rider sends his group to a friend
+      const b = await body(req, 1e3), to = String(b?.to ?? '').trim().toLowerCase();
+      if (!NAME.test(to)) return send(res, 400, { error: 'to must be a friend.' });
+      if (to === key) return send(res, 400, { error: 'That is you.' });
+      const users = (await readJSON(join(shared.DATA, 'accounts.json'), { users: {} })).users || {};
+      if (!Object.hasOwn(users, to)) return send(res, 404, { error: 'Unknown rider.' });
+      const e = live.get(key); if (!e?.code) return send(res, 409, { error: 'Open a group first: invites go out while you ride in a group.' });
+      if (limited('live-inv:' + key, 20, 10 * 60e3)) return send(res, 429, { error: 'Too many invites. Please wait a few minutes.' });
+      for (const [id, v] of invites) if (v.from === key && v.to === to) invites.delete(id);
+      if (invites.size >= MAX_INVITES) return send(res, 503, { error: 'Too many invites right now.' });
+      const v = { id: hex(), from: key, fromName: me.u.name, to, code: e.code, routeId: e.routeId, routeName: e.routeName, at: now }; invites.set(v.id, v);
+      return send(res, 200, { ok: true, id: v.id, name: users[to].name });
+    }
+    const im = op.match(/^\/invite\/([0-9a-f]{12})$/);
+    if (im && m === 'DELETE') { const v = invites.get(im[1]); if (v && (v.to === key || v.from === key)) invites.delete(im[1]); return send(res, 200, { ok: true }); }
     if (op === '/join' && m === 'POST') {
       const b = await body(req, 1e3), to = String(b?.to ?? '');
       if (!HEX.test(to)) return send(res, 400, { error: 'to must be a rider id.' });
@@ -104,7 +162,8 @@ export async function liveApi(req, res, path) {
       if (b?.show != null) { if (typeof b.show !== 'boolean') return send(res, 400, { error: 'show: true or false' }); st.liveShow = b.show; }
       if (b?.auto != null) { if (typeof b.auto !== 'boolean') return send(res, 400, { error: 'auto: true or false' }); st.liveAuto = b.auto; }
       await writeJSON(f, { settings: st, at: Date.now() });
-      if (st.liveShow === false) gone(key); else if (live.has(key)) live.get(key).auto = st.liveAuto !== false;
+      if (st.liveShow === false) { gone(key); online.delete(key); } info.delete(key);
+      if (st.liveShow !== false && live.has(key)) live.get(key).auto = st.liveAuto !== false;
       return send(res, 200, prefsOf(st));
     }
     return send(res, 404, { error: 'unknown' });

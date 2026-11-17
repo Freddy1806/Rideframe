@@ -154,3 +154,58 @@ test('expiry: without a heartbeat the rider drops out, open requests expire (sho
   assert.equal((await T.call('GET', '/api/live/join/' + q.j.id, { token: b })).j.state, 'expired', 'nobody answered within the ask time');
   await wait(800); assert.equal((await T.call('GET', '/api/live', { token: b })).j.riders.length, 0, 'gone after the TTL without heartbeat');
 });
+
+// ---- online (green dot), friends list with last seen, invites (owner 17.11. (2)) ----
+test('online: the light heartbeat, the friends list of every account (riding / online / offline), last seen on disk', async () => {
+  const T = await server(), a = await T.register('Olli Online'), b = await T.register('Rita Rider'), c = await T.register('Otto Offline'), d = await T.register('Hidden Hanna');
+  for (const [m, p] of [['POST', '/api/live/online'], ['GET', '/api/live/friends'], ['POST', '/api/live/invite']]) assert.equal((await T.call(m, p)).status, 401, `${m} ${p} without login`);
+  const on = await T.call('POST', '/api/live/online', { token: a }); assert.equal(on.status, 200); assert.equal(on.j.every, 30); assert.equal(on.j.ttl, 75e3); assert.deepEqual(on.j.invites, []);
+  await T.call('POST', '/api/live', { token: b, body: hb() }); // riding counts as online
+  await T.call('PUT', '/api/live/prefs', { token: d, body: { show: false } });
+  assert.equal((await T.call('POST', '/api/live/online', { token: d })).j.hidden, true);
+  const f = await T.call('GET', '/api/live/friends', { token: c }); assert.equal(f.status, 200);
+  const by = Object.fromEntries(f.j.friends.map(x => [x.name, x]));
+  assert.equal(by['Otto Offline'], undefined, 'not yourself');
+  assert.equal(by['Rita Rider'].state, 'riding'); assert.equal(by['Rita Rider'].ride.routeName, 'Rocky Coast'); assert.match(by['Rita Rider'].ride.id, /^[0-9a-f]{12}$/);
+  assert.equal(by['Olli Online'].state, 'online'); assert.equal(by['Olli Online'].ride, null);
+  assert.equal(by['Hidden Hanna'].state, 'offline'); assert.equal(by['Hidden Hanna'].lastSeen, null, '"Show me as online" off: no last seen either');
+  assert.deepEqual(f.j.friends.map(x => x.state), ['riding', 'online', 'offline'], 'riding first, then online, then offline');
+  assert.equal(JSON.stringify(f.j).includes('@example.org'), false, 'no emails');
+  // offline with last seen (minute precision, from users/<id>/seen.json, survives a restart of the list)
+  await T.call('DELETE', '/api/live/online', { token: a });
+  const f2 = (await T.call('GET', '/api/live/friends', { token: c })).j.friends.find(x => x.name === 'Olli Online');
+  assert.equal(f2.state, 'offline'); assert.equal(f2.lastSeen % 60e3, 0); assert.ok(Date.now() - f2.lastSeen < 120e3, 'last seen just now');
+  assert.equal((await T.call('GET', '/api/live/friends', { token: 'nope' })).status, 401);
+});
+
+test('online expires after the TTL without a beat (short TTL server)', async () => {
+  const T = await server({ RIDEFRAME_ONLINE_TTL: '600' }), a = await T.register('Brief Bert'), b = await T.register('Watcher Wim');
+  await T.call('POST', '/api/live/online', { token: a });
+  assert.equal((await T.call('GET', '/api/live/friends', { token: b })).j.friends[0].state, 'online');
+  await wait(800); const x = (await T.call('GET', '/api/live/friends', { token: b })).j.friends[0];
+  assert.equal(x.state, 'offline'); assert.ok(x.lastSeen > 0, 'with last seen');
+});
+
+test('invites: a rider in a group sends it to a friend, who sees "Max invites you" with the code; limits and validation', async () => {
+  const T = await server(), a = await T.register('Max Inviter'), b = await T.register('Bea Buddy'), c = await T.register('Carl Crowd');
+  assert.equal((await T.call('POST', '/api/live/invite', { token: a, body: { to: 'bea buddy' } })).status, 409, 'not riding in a group yet');
+  await T.call('POST', '/api/live', { token: a, body: hb({ code: 'kq7mz' }) });
+  assert.equal((await T.call('POST', '/api/live/invite', { token: a, body: { to: 'max inviter' } })).status, 400, 'not yourself');
+  assert.equal((await T.call('POST', '/api/live/invite', { token: a, body: { to: 'nobody here' } })).status, 404);
+  assert.equal((await T.call('POST', '/api/live/invite', { token: a, body: { to: '<script>' } })).status, 400);
+  const v = await T.call('POST', '/api/live/invite', { token: a, body: { to: 'Bea Buddy' } }); assert.equal(v.status, 200); assert.equal(v.j.name, 'Bea Buddy');
+  const on = await T.call('POST', '/api/live/online', { token: b });
+  assert.deepEqual(on.j.invites.map(x => [x.from, x.code, x.routeName]), [['Max Inviter', 'kq7mz', 'Rocky Coast']], 'the online beat carries the invite');
+  assert.equal((await T.call('GET', '/api/live/friends', { token: b })).j.invites.length, 1);
+  assert.equal((await T.call('GET', '/api/live/friends', { token: c })).j.invites.length, 0, 'only the invited friend sees it');
+  await T.call('POST', '/api/live/invite', { token: a, body: { to: 'bea buddy' } });
+  assert.equal((await T.call('GET', '/api/live/friends', { token: b })).j.invites.length, 1, 'inviting twice keeps one invite');
+  const id = (await T.call('GET', '/api/live/friends', { token: b })).j.invites[0].id;
+  assert.equal((await T.call('DELETE', '/api/live/invite/' + id, { token: c })).status, 200); assert.equal((await T.call('GET', '/api/live/friends', { token: b })).j.invites.length, 1, 'a stranger cannot remove it');
+  await T.call('DELETE', '/api/live/invite/' + id, { token: b }); assert.equal((await T.call('GET', '/api/live/friends', { token: b })).j.invites.length, 0, 'dismissed');
+  await T.call('POST', '/api/live/invite', { token: a, body: { to: 'bea buddy' } }); await T.call('DELETE', '/api/live', { token: a });
+  assert.equal((await T.call('GET', '/api/live/friends', { token: b })).j.invites.length, 0, 'the inviter stopped riding: the invite is gone');
+  await T.call('POST', '/api/live', { token: a, body: hb({ code: 'kq7mz' }) }); const st = [];
+  for (let i = 0; i < 21; i++) st.push((await T.call('POST', '/api/live/invite', { token: a, body: { to: 'carl crowd' } })).status);
+  assert.equal(st.filter(x => x === 200).length + 3, 20, 'at most 20 invites in 10 minutes (3 sent above)'); assert.equal(st[20], 429);
+});
