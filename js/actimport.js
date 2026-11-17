@@ -62,7 +62,7 @@ export function plan(local, incoming, gone = []) {
 export const dupOf = (local, r) => local.find(a => sameAct(a, r)) || null;
 
 /* ---- the Garmin watch (19.11.): its activities and strength sessions meet the same session from the Strava import ---- */
-const FILL = ['avgHr', 'maxHr', 'kcal', 'avgPower', 'np', 'maxPower', 'kj', 'distance', 'gain', 'laps', 'polyline'];
+const FILL = ['avgHr', 'maxHr', 'kcal', 'avgPower', 'np', 'maxPower', 'kj', 'distance', 'gain', 'nLaps', 'polyline'];
 /** one record from two: keep = the one that stays (its id), other = the same session from elsewhere. Every number the kept one
  *  lacks comes from the other; Strava's name and map line win (the watch only knows the sport); the Strava link is kept. */
 export function mergeAct(keep, other) {

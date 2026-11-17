@@ -81,7 +81,7 @@ test('activity: stored once as a normal ride record (like + Add activity), sourc
   const w = (await call('GET', '/api/account/rides/watch-run1abcdef', { token: A })).j;
   assert.equal(w.source, 'watch'); assert.equal(w.sportType, 'Run'); assert.equal(w.sport, 'run'); assert.equal(w.routeId, 'ext'); assert.equal(groupOf(w.sportType), 'run');
   assert.equal(w.start, b.start * 1000); assert.equal(w.date, b.start * 1000); assert.equal(w.duration, 3540); assert.equal(w.elapsed, 3720); assert.equal(w.complete, true);
-  assert.deepEqual([w.distance, w.gain, w.avgHr, w.maxHr, w.kcal, w.laps, w.workout], [10230, 84, 151, 178, 712, 11, 'Run']); assert.ok(!w.samples, 'no track');
+  assert.deepEqual([w.distance, w.gain, w.avgHr, w.maxHr, w.kcal, w.nLaps, w.workout], [10230, 84, 151, 178, 712, 11, 'Run']); assert.ok(!('laps' in w), 'laps is the lap list of a ride, the count goes to nLaps'); assert.ok(!w.samples, 'no track');
   const s1 = (await call('GET', '/api/watch/summary', { bearer: t })).j; assert.ok(s1.pts > s0.pts + 30, `week points count it: ${s0.pts} -> ${s1.pts}`); assert.equal(s1.sessions, s0.sessions + 1);
   const hike = await call('POST', '/api/watch/activity', { bearer: t, body: ACT({ id: 'hike12345', type: 'Hike', start: nowS() - 30000, duration: 5000, moving: 4800, dist: 9000, hr: 0, maxHr: 0, kcal: 400, laps: 0 }) });
   assert.equal(hike.status, 200); const h = (await call('GET', '/api/account/rides/watch-hike12345', { token: A })).j; assert.equal(h.sport, 'walk'); assert.ok(!('avgHr' in h), 'no sensor: no heart rate');
@@ -96,7 +96,7 @@ test('dedupe, Strava first: the watch fills the imported record, one entry, rese
   const r = await call('POST', '/api/watch/activity', { bearer: t, body: ACT({ id: 'twin123456', start }) }); assert.equal(r.status, 200); assert.deepEqual(r.j, { ok: true, id: 'st99001', merged: true });
   assert.deepEqual((await call('GET', '/api/account/rides', { token: A })).j.ids, ['st99001'], 'one entry');
   const m = (await call('GET', '/api/account/rides/st99001', { token: A })).j;
-  assert.deepEqual([m.workout, m.polyline, m.distance, m.avgHr, m.maxHr, m.kcal, m.laps, m.watch, m.stravaId], ['Lunch run', 'abc', 10200, 151, 178, 712, 11, 'twin123456', '99001'], 'Strava keeps its data, the watch adds what it lacks');
+  assert.deepEqual([m.workout, m.polyline, m.distance, m.avgHr, m.maxHr, m.kcal, m.nLaps, m.watch, m.stravaId], ['Lunch run', 'abc', 10200, 151, 178, 712, 11, 'twin123456', '99001'], 'Strava keeps its data, the watch adds what it lacks');
   const again = await call('POST', '/api/watch/activity', { bearer: t, body: ACT({ id: 'twin123456', start }) }); assert.equal(again.j.dup, true); assert.equal(again.j.id, 'st99001');
   const other = await call('POST', '/api/watch/activity', { bearer: t, body: ACT({ id: 'ride777777', type: 'Ride', start }) }); assert.equal(other.j.id, 'watch-ride777777', 'another sport family is no twin');
   const late = await call('POST', '/api/watch/activity', { bearer: t, body: ACT({ id: 'late777777', start: start + 400 }) }); assert.equal(late.j.id, 'watch-late777777', 'more than 2 minutes apart is no twin');

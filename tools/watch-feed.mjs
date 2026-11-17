@@ -49,7 +49,7 @@ export async function validateAct(b) {
 export async function toActivity(v) {
   const { fromEntry } = await AI();
   const r = fromEntry({ sportType: v.type, start: v.start, duration: v.moving || v.duration, elapsed: v.duration, distance: v.dist, gain: v.climb, avgHr: v.hr, maxHr: Math.max(v.maxHr, v.hr), kcal: v.kcal, avgPower: v.power }, 'watch', 'watch-' + v.id);
-  if (v.laps) r.laps = v.laps; if (v.dist > 0 && v.type !== 'VirtualRide' && v.type !== 'VirtualRun') r.outdoor = true;
+  if (v.laps) r.nLaps = v.laps; // a count (rides keep their laps as a list in laps) if (v.dist > 0 && v.type !== 'VirtualRide' && v.type !== 'VirtualRun') r.outdoor = true;
   return r;
 }
 /** the account's rides around a start (± 1 day), full records; the leaderboard's summary cache keeps this cheap */
