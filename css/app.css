@@ -367,6 +367,17 @@ input[type=number]::-webkit-inner-spin-button, input[type=number]::-webkit-outer
 .wpanel .wstop:hover { color: var(--fg, #f4f4ef); border-color: var(--accent); }
 .wpanel .wask { display: grid; gap: 6px; margin: 10px 0; }
 .wpanel .wask[hidden] { display: none; }
+.wpanel .wadj { display: flex; align-items: center; gap: 6px; margin-top: 8px; opacity: 0; transition: opacity .2s; }
+.wpanel:hover .wadj, .wpanel .wadj:focus-within, .wpanel .wadj.adj { opacity: 1; }
+.wpanel .wadj[hidden] { display: none; }
+.wpanel .wab { width: 40px; height: 36px; border-radius: 6px; border: 1px solid var(--line-2); background: rgba(255,255,255,.06); color: inherit; font: inherit; font-size: 22px; font-weight: 900; line-height: 1; cursor: pointer; }
+.wpanel .wab:hover, .wpanel .wab:focus-visible { border-color: var(--accent); outline: none; }
+.wpanel .wab:active { background: var(--accent); color: var(--accent-ink); }
+.wpanel .wapct { flex: 1; display: flex; flex-direction: column; align-items: center; line-height: 1.1; }
+.wpanel .wapct small { font-size: 10px; font-weight: 800; text-transform: uppercase; letter-spacing: .08em; color: var(--muted); }
+.wpanel .wapct b { font-size: 18px; font-weight: 900; }
+.wpanel .wadj.adj .wapct b { color: var(--accent); }
+@media (hover: none) { .wpanel .wadj { opacity: 1; } } /* touch: no hover, the − / + stay visible */
 .vertag { margin-left: 10px; font-size: 10px; font-weight: 700; letter-spacing: .06em; color: var(--muted); background: none; border: 0; padding: 2px 4px; cursor: pointer; align-self: center; }
 .vertag.new { color: #0b0b0b; background: var(--accent); border-radius: 999px; padding: 3px 9px; }
 .sharebox .box { width: min(520px, 94vw); padding: 18px; max-height: 96vh; overflow: auto; }

@@ -15,7 +15,7 @@ import { gearsFrom, gearName, parseGear, estimateGear, virtualGrade } from './ge
 import { UEBridge } from './uebridge.js';
 import { MiniMap } from './minimap.js';
 import { fovOf, FOV_MIN, FOV_MAX, FOV_DEFAULT } from './fov.js';
-import { workoutAt, workoutSVG } from './workouts.js';
+import { workoutAt, workoutSVG, isHard, tunedTarget, tuneAdj, fmtAdj } from './workouts.js';
 import { Challenges } from './challenges.js';
 import { findSegments, segmentBests, segmentLast, SEG_KIND } from './segments.js';
 import { testResult } from './stats.js';
@@ -90,6 +90,7 @@ export class RideSession {
   constructor({ route, ghost, state, onExit, autopilot = false, at = 0, group = null, ghostName = '', workout = null, catchUp = false, elapsed0 = 0 }) {
     Object.assign(this, { route, ghost, state, onExit, autopilot, group, ghostName, workout }); this._wId = workout?.id;
     this.erg = state.settings.erg !== false; this.ftp = state.settings.ftp || 200;
+    this.wAdj = 0; this._adjAcc = 0; this._adjT = 0; this._stepAdj = []; // live watt offset on the hard intervals (_wTune): per rider, never sent to the group
     this.track = route.track;
     this.params = defaultParams(state.settings);
     this.d = Math.min(at, this.track.length - 1); this.v = 0; this.elapsed = 0;
@@ -214,6 +215,7 @@ export class RideSession {
       </div>
       ${this.workout ? `<div class="wpanel glass" id="hWork"><div class="whead"><div class="label" id="hWName">${esc(this.workout.name)}${this.erg ? ' · ERG' : ''}</div><button class="wstop" id="hWStop" title="End workout early">End</button></div><div class="wask" id="hWAsk" hidden><div class="label">End workout?</div><button class="btn small" id="hWFree">Keep riding freely</button><button class="btn ghost small" id="hWSave">Save ride &amp; finish</button><button class="btn ghost small" id="hWNo">Back</button></div>
         <div class="wstep" id="hWStep">–</div><div class="wtarget num"><span id="hWT">–</span><small>W</small><span class="wleft num" id="hWLeft"></span></div>
+        <div class="wadj" id="hWAdj"><button class="wab" data-wa="-5" title="Intervals −5 W (S, Shift+S 1 W · D-pad ↓)" aria-label="Intervals −5 W">−</button><span class="wapct num"><small>Intervals</small><b id="hWAdjV">±0 W</b></span><button class="wab" data-wa="5" title="Intervals +5 W (W, Shift+W 1 W · D-pad ↑)" aria-label="Intervals +5 W">+</button></div>
         <div class="wnext" id="hWNext"></div><div id="hWChart">${workoutSVG(this.workout, 0)}</div></div>` : ''}
       <div class="minimap glass" data-hud="map"><canvas id="hMap"></canvas></div>
       <div class="grade-tag" data-hud="gradeTag" id="hGradeTag"><div class="g num"><span class="arrow"></span><span id="hGrade">0.0</span><small>%</small></div><div class="next glass" id="hNext"></div></div>
@@ -362,7 +364,7 @@ export class RideSession {
     const pad = navigator.getGamepads?.().find(Boolean); if (!pad) return;
     const b = padButtons(pad), was = this.padPrev || [];
     this.padPrev = b;
-    if (!this.padSeen) { this.padSeen = true; this._flash('🎮 Controller ready · Start = pause · L/R = shift'); }
+    if (!this.padSeen) { this.padSeen = true; this._flash(`🎮 Controller ready · Start = pause · L/R = shift${this.workout ? ' · D-pad up / down: interval watts' : ''}`); }
     const hit = i => b[i] && !was[i];
     if (hit(9) || hit(16)) { this.paused ? this._resume() : this._pause(); return; } // Start or Home: pause menu
     if (this.paused) { // menu navigation like on a console
@@ -497,16 +499,18 @@ export class RideSession {
   /** live in a workout (Freddy 17.11.): the hard intervals a few watts up or down, with the controller's D-pad or W / S */
   _wTune(d) {
     if (!this.workout || this.wDone) return;
-    this.wAdj = Math.max(-150, Math.min(150, (this.wAdj || 0) + d));
-    const st = this.workout.steps.find(x => x.pct >= 88 && !x.free), base = st && this.ftp ? Math.round(st.pct * this.ftp / 100) : 0;
-    this._flash(`Intervals ${this.wAdj > 0 ? '+' : this.wAdj < 0 ? '−' : '±'}${Math.abs(this.wAdj)} W${base ? ` · target ${Math.max(50, base + this.wAdj)} W` : ''}`);
-    this._wT = 0;
+    this.wAdj = tuneAdj(this.wAdj, d);
+    const i = this.wNow?.i ?? 0, steps = this.workout.steps, st = isHard(steps[i]) ? steps[i] : steps.slice(i).find(isHard) || steps.find(isHard); // now, else the next hard one
+    const base = st && this.ftp ? Math.round(st.pct * this.ftp / 100) : 0;
+    this._flash(`Intervals ${fmtAdj(this.wAdj)}${base ? ` · target ${tunedTarget(st, base, this.wAdj)} W` : ''}`);
+    this._wT = 0; this._workout(0); this._workoutHUD(this.power); // HUD, chart and ERG follow right away
   }
   /** training program: target power for now; in ERG mode the trainer holds it */
   _workout(dt = 0.016) {
     if (!this.workout) return;
     const w = this.wNow = workoutAt(this.workout, this.elapsed, this.ftp);
-    if (this.wAdj && !w.done && w.step && !w.step.free && w.step.pct >= 88) w.target = Math.max(50, w.target + this.wAdj); // the rider's own offset on the hard intervals (_wTune)
+    if (!w.done) { w.target = tunedTarget(w.step, w.target, this.wAdj); w.nextTarget = tunedTarget(w.next, w.nextTarget, this.wAdj); } // the rider's own offset on the hard intervals (_wTune)
+    if (!w.done && isHard(w.step) && dt > 0) { this._adjAcc += this.wAdj * dt; this._adjT += dt; const sa = this._stepAdj[w.i] ||= [0, 0]; sa[0] += this.wAdj * dt; sa[1] += dt; } // time-weighted, for the saved ride
     if (this.erg) this.state.trainer.setPower(w.done || w.step?.free ? null : w.target); // a test block is ridden freely
         if (w.done && !this.wDone) { this.wDone = true; this._flash?.('Workout done!'); this.coach?.say('done', 0); }
     this._coachTick(w, dt);
@@ -682,6 +686,7 @@ export class RideSession {
   /** "Beenden" in the workout panel: stop the workout and ride on freely, or end and save the ride */
   _wireWorkoutStop() {
     const q = this.q, ask = q('#hWAsk'); if (!ask) return;
+    q('#hWAdj')?.querySelectorAll('[data-wa]').forEach(b => b.onclick = e => { e.currentTarget.blur(); this._wTune(+b.dataset.wa); });
     q('#hWStop').onclick = () => { ask.hidden = false; };
     q('#hWNo').onclick = () => { ask.hidden = true; };
     q('#hWSave').onclick = () => this._end(true);
@@ -695,6 +700,7 @@ export class RideSession {
 
   _workoutHUD(pShow) {
     const w = this.wNow, q = this.q; if (!this.workout || !w || !q('#hWork')) return;
+    const av = q('#hWAdjV'); if (av) { av.textContent = fmtAdj(this.wAdj); q('#hWAdj').classList.toggle('adj', !!this.wAdj); q('#hWAdj').hidden = !!w.done; }
     if (w.done) { q('#hWStep').textContent = 'Done – ride on freely'; q('#hWT').textContent = '✓'; q('#hWLeft').textContent = ''; q('#hWNext').textContent = ''; }
     else {
       q('#hWStep').textContent = w.step.label || 'Block';
@@ -704,7 +710,7 @@ export class RideSession {
       const pw = q('.metric.power'); pw.classList.remove('z-lo', 'z-ok', 'z-hi');
       pw.classList.add(pShow < w.target * 0.95 ? 'z-lo' : pShow > w.target * 1.05 ? 'z-hi' : 'z-ok');
     }
-    if (!this._wT || this.elapsed - this._wT > 2) { this._wT = this.elapsed; q('#hWChart').innerHTML = workoutSVG(this.workout, this.elapsed); }
+    if (!this._wT || this.elapsed - this._wT > 2) { this._wT = this.elapsed; q('#hWChart').innerHTML = workoutSVG(this.workout, this.elapsed, 46, this.wAdj, this.ftp); }
   }
 
   /** share photos of you on the bike: after 800 m, then every 4 km; the highest spot (best view) is used later */
@@ -917,10 +923,11 @@ export class RideSession {
       ['oMusic', `Music: ${this.music?.on ? 'on' : 'off'}`, () => this._toggleMusic()],
       ['oNext', 'Next song', () => this.music?.skip()],
       ['oWide', 'Wider view', () => this._lens(-1)], ['oNarrow', 'Narrower view', () => this._lens(1)],
+      ...(this.workout && !this.wDone ? [['oAdjUp', `Intervals +5 W (now ${fmtAdj(this.wAdj)})`, () => this._wTune(5)], ['oAdjDn', 'Intervals −5 W', () => this._wTune(-5)]] : []),
     ];
     o.querySelector('.box').innerHTML = `<div class="label">Pause</div><h2 class="display">Options</h2>
       <div class="row-actions padmenu" style="flex-wrap:wrap">${items.map(([id, t]) => `<button class="btn ghost" id="${id}">${t}</button>`).join('')}<button class="btn" id="oBack">Back</button></div>
-      <div class="hint pad-hint" style="margin-top:12px;opacity:.7">🎮 D-pad to choose · A change · B back</div>`;
+      <div class="hint pad-hint" style="margin-top:12px;opacity:.7">🎮 D-pad to choose · A change · B back${this.workout && !this.wDone ? '<br>While riding the workout: 🎮 D-pad up / down: interval watts ±5 · keys W / S (with Shift 1 W) · − / + in the workout panel' : ''}</div>`;
     items.forEach(([id, , fn], i) => o.querySelector('#' + id).onclick = () => { fn(); setTimeout(() => { this._options(); this._padFocus(i); }, 60); });
     o.querySelector('#oBack').onclick = () => this._pause();
     this._padFocus(0);
@@ -990,11 +997,16 @@ export class RideSession {
     const pw = this.samples.map(s => s[2]);
     return {
       id: uid(), routeId: this.route.id, date: Date.now(), complete,
-      duration: Math.round(this.elapsed), distance: Math.round(this._ridden()), laps: this.laps > 1 ? this._lapRows() : undefined, segs: this.segDone.length ? this.segDone.map(({ id, t, w }) => ({ id, t, w })) : undefined, lapMarks: this._marks(), ivs: this._intervals(), gain: Math.round(this.gainAcc), startD: Math.round(this.startD), workout: this.workout?.name || this._wName || undefined, workoutId: this._wId || undefined,
+      duration: Math.round(this.elapsed), distance: Math.round(this._ridden()), laps: this.laps > 1 ? this._lapRows() : undefined, segs: this.segDone.length ? this.segDone.map(({ id, t, w }) => ({ id, t, w })) : undefined, lapMarks: this._marks(), ivs: this._intervals(), gain: Math.round(this.gainAcc), startD: Math.round(this.startD), workout: this.workout?.name || this._wName || undefined, workoutId: this._wId || undefined, ...this._adjRec(),
       avgPower: pw.length ? Math.round(pw.reduce((a, b) => a + b, 0) / pw.length) : 0,
       maxPower: Math.max(0, ...pw), best5: bestAvg(pw, 300), best20: bestAvg(pw, 1200),
       samples: this.samples, jumps: this._jumps?.length ? this._jumps : undefined, challenges: this.ch?.stats.offered ? { ...this.ch.stats } : undefined, wizard: this.wiz?.was || (this.wiz?.state === 'hell' ? 'hell' : this.wiz?.state === 'fly' ? 'fly' : undefined),
     };
+  }
+
+  _adjRec() { // the interval watt offset: final and time-weighted over the hard intervals, kept only when not 0
+    const avg = this._adjT > 0 ? Math.round(this._adjAcc / this._adjT) : this.wAdj;
+    return this._wDef && (this.wAdj || avg) ? { wAdj: this.wAdj, wAdjAvg: avg } : {};
   }
 
   async _finish() {
@@ -1071,10 +1083,10 @@ export class RideSession {
   /** the hard parts with time and average watts (Freddy 12.11.: into the Strava description): workout intervals, else the climbs */
   _intervals() {
     const out = [], w = this._wDef, smp = this.samples;
-    if (w) { let s = 0, n = 0;
-      for (const st of w.steps) { const a = s, b = Math.min(s + st.dur, this.elapsed); s += st.dur;
+    if (w) { let s = 0, n = 0, k = -1;
+      for (const st of w.steps) { const a = s, b = Math.min(s + st.dur, this.elapsed), sa = this._stepAdj[++k]; s += st.dur;
         if (st.pct < 88 || b - a < 5) continue; const ps = smp.filter(x => x[0] > a && x[0] <= b).map(x => x[2]); if (!ps.length) continue;
-        out.push({ name: (l => /\d/.test(l) ? (++n, l) : `${l} ${++n}`)(st.label || st.name || 'Intervall'), t: Math.round(b - a), w: Math.round(ps.reduce((x, y) => x + y, 0) / ps.length), target: Math.round(st.pct / 100 * (this.ftp || 0)) || undefined }); }
+        out.push({ name: (l => /\d/.test(l) ? (++n, l) : `${l} ${++n}`)(st.label || st.name || 'Intervall'), t: Math.round(b - a), w: Math.round(ps.reduce((x, y) => x + y, 0) / ps.length), target: tunedTarget(st, Math.round(st.pct / 100 * (this.ftp || 0)), sa?.[1] ? Math.round(sa[0] / sa[1]) : 0) || undefined }); } // the target as ridden: with that interval's watt offset
     } else for (const s of this.segDone) if (s.kind === 'climb') out.push({ name: s.name, t: Math.round(s.t), w: s.w });
     return out.length ? out : undefined;
   }
@@ -1132,6 +1144,7 @@ export class RideSession {
         <div><div class="label">Work</div><div class="v">${fmtNum(rec.avgPower * rec.duration / 1000)}<small>kJ</small></div></div>
       </div>
       ${this._segSummary()}
+      ${rec.wAdj || rec.wAdjAvg ? `<div class="chsum">Intervals ${fmtAdj(rec.wAdj)}${rec.wAdjAvg !== rec.wAdj ? ` · average ${fmtAdj(rec.wAdjAvg)}` : ''} · targets tuned live</div>` : ''}
       ${this._testHTML(rec)}
       ${rec.challenges ? `<div class="chsum">⚔ ${rec.challenges.offered} challenges · ${rec.challenges.accepted} accepted · ${rec.challenges.won} won</div>` : ''}
       ${storyHTML(this._storyEnd())}
