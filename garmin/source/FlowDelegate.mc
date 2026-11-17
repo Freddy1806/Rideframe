@@ -2,7 +2,7 @@
 //   START = select / set done / skip rest     UP, DOWN = scroll / change value (held: 10 kg or 5 reps, repeating)
 //   BACK = back; on a set: weight <-> reps     BACK held = menu        swipe left = menu, swipe right = back
 //   tap = the thing under the finger (a list row, a value, DONE, a digit)
-// DRAFT, NOT COMPILED YET.
+//   recording: UP / DOWN = page, START = pause, BACK = lap (first it closes the segment popup); swipe up / down = page
 import Toybox.Lang;
 import Toybox.System;
 import Toybox.Timer;
@@ -79,11 +79,15 @@ class FlowDelegate extends WatchUi.BehaviorDelegate {
             else if (v > 0.36 && v < 0.72) { app.input(E_FOCUS, u < 0.51 ? 0 : 1); }
             return true;
         }
-        if (s == S_PICK || s == S_MENU) {
-            var rows = s == S_MENU ? [[-1, 0.33], [0, 0.5], [1, 0.67]] : [[-2, 0.24], [-1, 0.345], [0, 0.5], [1, 0.7], [2, 0.8]];
-            var best = rows[0];
-            for (var i = 1; i < rows.size(); i++) { if ((rows[i][1] - v).abs() < (best[1] - v).abs()) { best = rows[i]; } }
-            var n = s == S_MENU ? flow.menu.size() : flow.exCount(), idx = flow.sel + best[0];
+        var menu = s == S_MENU || s == S_PAUSE || s == S_SMODE, pick = s == S_PICK || s == S_MORE || s == S_WPICK;
+        if (menu || pick || s == S_HOME) {
+            // [offset, y] of the rows as Draw.list / Draw.drawHome draw them
+            var offs = [-2, -1, 0, 1, 2] as Array<Number>, ys = [0.24, 0.345, 0.5, 0.7, 0.8] as Array<Float>;
+            if (s == S_HOME) { offs = [-1, 0, 1] as Array<Number>; ys = [0.31, 0.5, 0.69] as Array<Float>; }
+            else if (menu) { offs = [-1, 0, 1] as Array<Number>; ys = [0.33, 0.5, 0.67] as Array<Float>; }
+            var best = 0;
+            for (var i = 1; i < ys.size(); i++) { if ((ys[i] - v).abs() < (ys[best] - v).abs()) { best = i; } }
+            var n = flow.listItems().size(), idx = flow.sel + offs[best];
             if (idx >= 0 && idx < n) { app.input(E_ITEM, idx); }
             return true;
         }
@@ -94,7 +98,7 @@ class FlowDelegate extends WatchUi.BehaviorDelegate {
             } else { app.input(E_TAP, null); }
             return true;
         }
-        app.input(E_TAP, null);
+        app.input(E_TAP, null); // REC: closes the segment popup; READY / START / REST / SUM / RSUM: like START
         return true;
     }
 }

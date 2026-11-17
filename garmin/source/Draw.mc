@@ -1,26 +1,44 @@
-// RIDEFRAME Strength: drawing of every screen with the plain dc calls, scaled by the screen size (S = dc.getWidth()).
-// Same layout numbers as js/watchsim.js DRAW (the browser preview), so the preview is the design reference.
-// DRAFT, NOT COMPILED YET. Fonts are the device's system fonts, so sizes differ a little from the preview.
+// RIDEFRAME on a Garmin watch: drawing of every screen with the plain dc calls, scaled by the screen size (S = dc.getWidth()).
+// Same layout numbers as js/watchsim.js DRAW and js/watchdraw.js (drawPage, pageDots, recRing), so the browser preview is
+// the design reference. Fonts are the device's system fonts, so sizes differ a little from the preview.
 import Toybox.Graphics;
 import Toybox.Lang;
+import Toybox.Math;
 import Toybox.System;
 import Toybox.Time;
 import Toybox.Time.Gregorian;
 
-// colours: AMOLED (fr265) gets the RIDEFRAME tones, MIP (fenix 7X Pro, 64 colours) only palette colours, no blending
+// colours (js/watchdraw.js FACES): AMOLED (fr265) gets the RIDEFRAME tones on black, MIP (fenix 7 Pro, 64 colours) only
+// palette colours (channels 00 / 55 / AA / FF), field labels white and no dark grey text
 class Palette {
     var fg as Number; var dim as Number; var faint as Number; var acc as Number; var ink as Number; var hr as Number;
+    var lbl as Number; var line as Number; var good as Number; var bad as Number; var far as Number; var path as Number;
+    var cRun as Number; var cRide as Number; var cKraft as Number; var cOther as Number;
+    var mip as Boolean;
     function initialize() {
         var ds = System.getDeviceSettings();
         // VERIFY: DeviceSettings.requiresBurnInProtection (API 3.0) is true on AMOLED watches (doc page Toybox.System.DeviceSettings)
         var amoled = (ds has :requiresBurnInProtection) && ds.requiresBurnInProtection;
-        if (amoled) { fg = 0xF4F4EF; dim = 0x8B8B85; faint = 0x2C2C2A; acc = 0xFF4F9A; ink = 0x0B0B0B; hr = 0xFF5A5A; }
-        else { fg = 0xFFFFFF; dim = 0xAAAAAA; faint = 0x555555; acc = 0xFF55AA; ink = 0x000000; hr = 0xFF5555; }
+        mip = !amoled;
+        if (amoled) {
+            fg = 0xF4F4EF; dim = 0x8B8B85; faint = 0x2C2C2A; ink = 0x0B0B0B; hr = 0xFF5A5A; lbl = 0xA3A39C; line = 0x3A3A37; good = 0x3DDC84; bad = 0xFF5A5A;
+            far = faint; path = 0x6A6A66; cRun = 0x2FD3E0; cRide = 0xFF5A1F; cKraft = 0xFF4F9A; cOther = 0xE2A33B;
+        } else {
+            fg = 0xFFFFFF; dim = 0xAAAAAA; faint = 0x555555; ink = 0x000000; hr = 0xFF5555; lbl = 0xFFFFFF; line = 0x555555; good = 0x55FF55; bad = 0xFF5555;
+            far = dim; path = dim; cRun = 0x00FFFF; cRide = 0xFF5500; cKraft = 0xFF55AA; cOther = 0xFFAA00;
+        }
+        acc = cKraft;
+    }
+    // js: C.sp[k]: run, ride, kraft, more / other
+    function sport(k as String) as Number {
+        if (k.equals("run")) { return cRun; }
+        if (k.equals("ride")) { return cRide; }
+        if (k.equals("kraft")) { return cKraft; }
+        return cOther;
     }
 }
 
-// VERIFY (Monkey C "Scope" in the Programmer's Guide): the screen constants (S_START …) are globals from Flow.mc; if the
-// compiler does not find them inside this module, write $.S_START.
+// The screen constants (S_START ...) are globals from Flow.mc.
 module Draw {
     const VC = Graphics.TEXT_JUSTIFY_CENTER | Graphics.TEXT_JUSTIFY_VCENTER;
     const VL = Graphics.TEXT_JUSTIFY_LEFT | Graphics.TEXT_JUSTIFY_VCENTER;
@@ -28,21 +46,28 @@ module Draw {
     function clock(s as Number) as String {
         if (s < 0) { s = 0; }
         var h = s / 3600, m = (s % 3600) / 60, x = s % 60;
-        return h > 0 ? h + ":" + m.format("%02d") + ":" + x.format("%02d") : m + ":" + x.format("%02d");
+        return h > 0 ? h.toString() + ":" + m.format("%02d") + ":" + x.format("%02d") : m.toString() + ":" + x.format("%02d");
     }
     function kgTxt(kg as Float) as String {
         var r = (kg * 10.0 + 0.5).toNumber();
-        return r % 10 == 0 ? (r / 10).toString() : (r / 10) + "." + (r % 10);
+        return r % 10 == 0 ? (r / 10).toString() : (r / 10).toString() + "." + (r % 10).toString();
     }
     function volTxt(v as Float) as String {
         if (v >= 10000.0) { return kgTxt(v / 1000.0) + " t"; }
         return v.toNumber().toString();
     }
+    // js/watchsim.js kmTxt
+    function kmTxt(m as Float) as String { return (m / 1000.0).format(m >= 10000.0 ? "%.1f" : "%.2f"); }
+    // js/watchsim.js setTxt: the last set of an exercise in the picker
+    function setTxt(t as String, kg as Float, r as Number) as String {
+        if (t.equals("time")) { return clock(r); }
+        return (t.equals("bw") && kg == 0.0 ? "BW" : kgTxt(kg) + " kg") + " x " + r.toString();
+    }
     // text cut to fit max px (with a dot, the system fonts may have no ellipsis)
     function fit(dc as Dc, t as String, font, max as Number) as String {
         if (dc.getTextWidthInPixels(t, font) <= max) { return t; }
         var s = t;
-        while (s.length() > 1 && dc.getTextWidthInPixels(s + ".", font) > max) { s = s.substring(0, s.length() - 1); }
+        while (s.length() > 1 && dc.getTextWidthInPixels(s + ".", font) > max) { s = s.substring(0, s.length() - 1) as String; }
         return s + ".";
     }
     // the first font of the list that fits (big numbers shrink instead of being cut)
@@ -51,10 +76,12 @@ module Draw {
         return fonts[fonts.size() - 1];
     }
     function txt(dc as Dc, x, y, font, t, col as Number) as Void { dc.setColor(col, Graphics.COLOR_TRANSPARENT); dc.drawText(x, y, font, t.toString(), VC); }
+    function txtL(dc as Dc, x, y, font, t, col as Number) as Void { dc.setColor(col, Graphics.COLOR_TRANSPARENT); dc.drawText(x, y, font, t.toString(), VL); }
     function pill(dc as Dc, cx, cy, w, h, col as Number) as Void { dc.setColor(col, Graphics.COLOR_TRANSPARENT); dc.fillRoundedRectangle(cx - w / 2, cy - h / 2, w, h, h / 2); }
+    function pw(n) as Number { var p = n.toNumber(); return p < 1 ? 1 : p; }
     // the arc that points at the START button (2 o'clock = 30 degrees, counter-clockwise from 3 o'clock)
     function startHint(dc as Dc, S as Number, P as Palette) as Void {
-        dc.setColor(P.acc, Graphics.COLOR_TRANSPARENT); dc.setPenWidth((S * 0.03).toNumber());
+        dc.setColor(P.acc, Graphics.COLOR_TRANSPARENT); dc.setPenWidth(pw(S * 0.03));
         dc.drawArc(S / 2, S / 2, S / 2 - (S * 0.02).toNumber(), Graphics.ARC_CLOCKWISE, 42, 18);
         dc.setPenWidth(1);
     }
@@ -64,8 +91,8 @@ module Draw {
         dc.fillPolygon([[x - s, a], [x + s, a], [x, b]]);
     }
     function dumbbell(dc as Dc, x, y, s, col as Number) as Void {
-        dc.setColor(col, Graphics.COLOR_TRANSPARENT); dc.setPenWidth((s * 0.13).toNumber() + 1);
-        var k = s / 24.0, L = [[3, 9, 3, 15], [6, 7, 6, 17], [18, 7, 18, 17], [21, 9, 21, 15], [6, 12, 18, 12]];
+        dc.setColor(col, Graphics.COLOR_TRANSPARENT); dc.setPenWidth(pw(s * 0.13 + 1));
+        var k = s / 24.0, L = [[3, 9, 3, 15], [6, 7, 6, 17], [18, 7, 18, 17], [21, 9, 21, 15], [6, 12, 18, 12]] as Array<Array<Number>>;
         for (var i = 0; i < L.size(); i++) { var l = L[i]; dc.drawLine(x + (l[0] - 12) * k, y + (l[1] - 12) * k, x + (l[2] - 12) * k, y + (l[3] - 12) * k); }
         dc.setPenWidth(1);
     }
@@ -74,6 +101,29 @@ module Draw {
         var r = s * 0.32; dc.fillCircle(x - r, y - r * 0.4, r); dc.fillCircle(x + r, y - r * 0.4, r);
         dc.fillPolygon([[x - 2 * r, y - r * 0.2], [x + 2 * r, y - r * 0.2], [x, y + s * 0.55]]);
     }
+    // the sport icons of the start menu, drawn with lines (the preview strokes js/theme.js ICONS; bitmaps per size later)
+    function icon(dc as Dc, k as String, x, y, s, col as Number) as Void {
+        if (k.equals("kraft")) { dumbbell(dc, x, y, s, col); return; }
+        dc.setColor(col, Graphics.COLOR_TRANSPARENT); dc.setPenWidth(pw(s * 0.11 + 1));
+        if (k.equals("run")) {
+            dc.fillCircle(x + s * 0.12, y - s * 0.36, s * 0.1);
+            dc.drawLine(x + s * 0.04, y - s * 0.2, x - s * 0.08, y + s * 0.1);   // body
+            dc.drawLine(x - s * 0.08, y + s * 0.1, x + s * 0.14, y + s * 0.42);  // front leg
+            dc.drawLine(x - s * 0.08, y + s * 0.1, x - s * 0.3, y + s * 0.38);   // back leg
+            dc.drawLine(x - s * 0.26, y - s * 0.08, x + s * 0.02, y - s * 0.16); // arm back
+            dc.drawLine(x + s * 0.02, y - s * 0.16, x + s * 0.3, y - s * 0.02);  // arm front
+        } else if (k.equals("ride")) {
+            var r = s * 0.2;
+            dc.drawCircle(x - s * 0.27, y + s * 0.16, r); dc.drawCircle(x + s * 0.27, y + s * 0.16, r);
+            dc.drawLine(x - s * 0.27, y + s * 0.16, x - s * 0.05, y - s * 0.16);
+            dc.drawLine(x - s * 0.05, y - s * 0.16, x + s * 0.27, y + s * 0.16);
+            dc.drawLine(x - s * 0.05, y - s * 0.16, x - s * 0.14, y - s * 0.3);
+        } else {
+            var r = s * 0.09;
+            dc.fillCircle(x - s * 0.3, y, r); dc.fillCircle(x, y, r); dc.fillCircle(x + s * 0.3, y, r);
+        }
+        dc.setPenWidth(1);
+    }
     function ago(at as Number) as String {
         var d = (Time.now().value() - at) / 86400;
         if (d < 1) { return "Today"; }
@@ -81,101 +131,215 @@ module Draw {
         var info = Gregorian.info(new Time.Moment(at), Time.FORMAT_MEDIUM); // VERIFY: day_of_week is a String with FORMAT_MEDIUM (Toybox.Time.Gregorian.info)
         return info.day_of_week.toString();
     }
+    // a number text in a number font when it only has digits and : . - (VERIFY: the glyphs FONT_NUMBER_* carry), else text fonts
+    function isNum(t as String) as Boolean {
+        var a = t.toCharArray();
+        for (var i = 0; i < a.size(); i++) { if ("0123456789:.-".find(a[i].toString()) == null) { return false; } }
+        return a.size() > 0;
+    }
+    // the fonts for a value of height px (fraction of S) from big to small
+    function valFonts(px as Float, num as Boolean) as Array {
+        if (num) {
+            if (px >= 0.28) { return [Graphics.FONT_NUMBER_THAI_HOT, Graphics.FONT_NUMBER_HOT, Graphics.FONT_NUMBER_MEDIUM, Graphics.FONT_NUMBER_MILD]; }
+            if (px >= 0.18) { return [Graphics.FONT_NUMBER_HOT, Graphics.FONT_NUMBER_MEDIUM, Graphics.FONT_NUMBER_MILD]; }
+            if (px >= 0.15) { return [Graphics.FONT_NUMBER_MEDIUM, Graphics.FONT_NUMBER_MILD, Graphics.FONT_MEDIUM]; }
+            return [Graphics.FONT_NUMBER_MILD, Graphics.FONT_MEDIUM, Graphics.FONT_SMALL];
+        }
+        if (px >= 0.18) { return [Graphics.FONT_LARGE, Graphics.FONT_MEDIUM, Graphics.FONT_SMALL]; }
+        return [Graphics.FONT_MEDIUM, Graphics.FONT_SMALL, Graphics.FONT_TINY];
+    }
 
     // ---- one function per screen (js/watchsim.js DRAW) ----
     function screen(dc as Dc, F as Flow, P as Palette, now as Number, sum) as Void {
         var S = dc.getWidth();
         dc.setColor(Graphics.COLOR_BLACK, Graphics.COLOR_BLACK); dc.clear();
-        if (F.flash != null) { prFlash(dc, F, S, P); return; }
         var s = F.scr;
-        if (s == S_START) { drawStart(dc, F, S, P, sum); }
+        P.acc = P.cKraft;
+        if (s == S_MORE) { P.acc = P.cOther; }
+        else if (s == S_READY || s == S_REC || s == S_PAUSE) { P.acc = P.sport(F.sp); }
+        else if (s == S_RSUM) { var r = F.rsum, k = F.sp; if (r != null) { k = strOf(r["sp"]); } P.acc = P.sport(k); }
+        var f = F.flash;
+        if (f != null) {
+            if ("lap".equals(f["k"])) { P.acc = P.sport(F.sp); lapFlash(dc, F, S, P, f); } else { prFlash(dc, S, P, f); }
+            return;
+        }
+        if (s == S_HOME) { drawHome(dc, F, S, P, sum); }
+        else if (s == S_START) { drawStart(dc, F, S, P, sum); }
         else if (s == S_PICK) { drawPick(dc, F, S, P); }
-        else if (s == S_MENU) { drawMenu(dc, F, S, P); }
+        else if (s == S_SMODE) { drawSmode(dc, F, S, P); }
+        else if (s == S_WPICK) { drawWpick(dc, F, S, P); }
+        else if (s == S_MORE) { drawMore(dc, F, S, P); }
+        else if (s == S_MENU) { list(dc, F, S, P, F.menu, "MENU", true, null); }
         else if (s == S_SET) { drawSet(dc, F, S, P, now); }
         else if (s == S_REST) { drawRest(dc, F, S, P, now); }
         else if (s == S_SUM) { drawSum(dc, F, S, P); }
         else if (s == S_PAIR) { drawPair(dc, F, S, P); }
+        else if (s == S_READY) { drawReady(dc, F, S, P); }
+        else if (s == S_REC) { drawRec(dc, F, S, P, now); }
+        else if (s == S_PAUSE) { var R = F.rec, t = 0; if (R != null) { t = R.t; } list(dc, F, S, P, F.listItems(), "PAUSED " + clock(t), true, null); }
+        else if (s == S_RSUM) { drawRsum(dc, F, S, P); }
+        else { drawHome(dc, F, S, P, sum); }
+    }
+    // RIDE in white, FRAME in the accent, centred on y
+    function logo(dc as Dc, S as Number, y, col as Number, P as Palette) as Void {
+        var c = S / 2, wR = dc.getTextWidthInPixels("RIDE", Graphics.FONT_XTINY), wF = dc.getTextWidthInPixels("FRAME", Graphics.FONT_XTINY), x0 = c - (wR + wF) / 2;
+        txtL(dc, x0, y, Graphics.FONT_XTINY, "RIDE", P.fg);
+        txtL(dc, x0 + wR, y, Graphics.FONT_XTINY, "FRAME", col);
+    }
+    // the start menu: Run, Ride, Strength, More (the last used on top), the week points at the bottom
+    function drawHome(dc as Dc, F as Flow, S as Number, P as Palette, sum) as Void {
+        var items = F.homeItems(), n = items.size(), c = S / 2;
+        logo(dc, S, S * 0.135, P.cKraft, P);
+        var offs = [-1, 0, 1] as Array<Number>, ys = [0.31, 0.5, 0.69] as Array<Float>; // the tap table in FlowDelegate.onTap
+        for (var r = 0; r < offs.size(); r++) {
+            var o = offs[r], y = S * ys[r], i = F.sel + o;
+            if (i < 0 || i >= n) { continue; }
+            var k = items[i], col = P.sport(k), lab = F.homeLabel(k);
+            if (o == 0) {
+                pill(dc, c, y, S * 0.8, S * 0.17, col);
+                icon(dc, k, S * 0.24, y, S * 0.1, P.ink);
+                txtL(dc, S * 0.32, y, Graphics.FONT_MEDIUM, fit(dc, lab, Graphics.FONT_MEDIUM, (S * 0.48).toNumber()), P.ink);
+            } else {
+                icon(dc, k, S * 0.27, y, S * 0.075, col);
+                txtL(dc, S * 0.34, y, Graphics.FONT_SMALL, fit(dc, lab, Graphics.FONT_SMALL, (S * 0.44).toNumber()), P.fg);
+            }
+        }
+        if (sum instanceof Dictionary) { points(dc, S, P, sum as Dictionary, S * 0.855); }
+        scrollArc(dc, S, P, F.sel, n);
+        startHint(dc, S, P);
+    }
+    // "245 pts" and the change against last week (GET /api/watch/summary)
+    function points(g as Dc, S as Number, P as Palette, sum as Dictionary, y) as Void {
+        if (sum["pts"] == null) { return; }
+        var t = rnd(fltOf(sum["pts"])).toString() + " pts", d = rnd(fltOf(sum["delta"]));
+        var tw = g.getTextWidthInPixels(t, Graphics.FONT_SMALL), ad = d < 0 ? -d : d;
+        var dw = d != 0 ? S * 0.07 + ad.toString().length() * S * 0.03 : 0, x = S / 2 - (tw + dw) / 2;
+        txtL(g, x, y, Graphics.FONT_SMALL, t, P.fg);
+        if (d != 0) { tri(g, x + tw + S * 0.035, y, S * 0.018, d > 0, P.good); txtL(g, x + tw + S * 0.06, y, Graphics.FONT_XTINY, ad.toString(), P.good); }
+    }
+    // the scroll position on the left edge (150..210 degrees)
+    function scrollArc(dc as Dc, S as Number, P as Palette, sel as Number, n as Number) as Void {
+        if (n < 2) { return; }
+        var c = S / 2;
+        dc.setPenWidth(pw(S * 0.012 + 1)); dc.setColor(P.faint, Graphics.COLOR_TRANSPARENT);
+        dc.drawArc(c, c, c - S * 0.03, Graphics.ARC_COUNTER_CLOCKWISE, 150, 210);
+        var p = sel.toFloat() / (n - 1), a = 150 + (p * 51).toNumber();
+        dc.setColor(P.acc, Graphics.COLOR_TRANSPARENT); dc.drawArc(c, c, c - S * 0.03, Graphics.ARC_COUNTER_CLOCKWISE, a, a + 9); dc.setPenWidth(1);
     }
     function drawStart(dc as Dc, F as Flow, S as Number, P as Palette, sum) as Void {
         startHint(dc, S, P);
-        var c = S / 2, wR = dc.getTextWidthInPixels("RIDE", Graphics.FONT_XTINY), wF = dc.getTextWidthInPixels("FRAME", Graphics.FONT_XTINY), x0 = c - (wR + wF) / 2;
-        dc.setColor(P.fg, Graphics.COLOR_TRANSPARENT); dc.drawText(x0, S * 0.2, Graphics.FONT_XTINY, "RIDE", VL);
-        dc.setColor(P.acc, Graphics.COLOR_TRANSPARENT); dc.drawText(x0 + wR, S * 0.2, Graphics.FONT_XTINY, "FRAME", VL);
+        var c = S / 2;
+        logo(dc, S, S * 0.2, P.acc, P);
         dumbbell(dc, c, S * 0.31, S * 0.1, P.acc);
         txt(dc, c, S * 0.44, Graphics.FONT_LARGE, "Strength", P.fg);
         var L = F.setup["last"], line = F.exCount() == 0 ? "Loading" : "First session";
-        if (L instanceof Dictionary) { line = ago(L["at"]) + ", " + L["sets"] + " sets"; }
+        if (L instanceof Dictionary) { var l = L as Dictionary; line = ago(numOf(l["at"])) + ", " + numOf(l["sets"]).toString() + " sets"; }
         txt(dc, c, S * 0.56, Graphics.FONT_SMALL, fit(dc, line, Graphics.FONT_SMALL, (S * 0.7).toNumber()), P.dim);
-        if (sum instanceof Dictionary && sum["pts"] != null) {
-            var t = sum["pts"].toNumber() + " pts", d = sum["delta"] == null ? 0 : sum["delta"].toNumber(), tw = dc.getTextWidthInPixels(t, Graphics.FONT_SMALL);
-            txt(dc, c - S * 0.04, S * 0.66, Graphics.FONT_SMALL, t, P.fg);
-            if (d != 0) {
-                tri(dc, c + tw / 2 + S * 0.0, S * 0.66, S * 0.018, d > 0, P.acc);
-                dc.setColor(P.acc, Graphics.COLOR_TRANSPARENT); dc.drawText(c + tw / 2 + S * 0.025, S * 0.66, Graphics.FONT_XTINY, (d > 0 ? d : -d).toString(), VL);
+        if (sum instanceof Dictionary) {
+            var sd = sum as Dictionary;
+            if (sd["pts"] != null) {
+                var t = rnd(fltOf(sd["pts"])).toString() + " pts", d = rnd(fltOf(sd["delta"])), tw = dc.getTextWidthInPixels(t, Graphics.FONT_SMALL);
+                txt(dc, c - S * 0.04, S * 0.66, Graphics.FONT_SMALL, t, P.fg);
+                if (d != 0) {
+                    tri(dc, c + tw / 2 + S * 0.01, S * 0.66, S * 0.018, d > 0, P.acc);
+                    txtL(dc, c + tw / 2 + S * 0.035, S * 0.66, Graphics.FONT_XTINY, (d > 0 ? d : -d).toString(), P.acc);
+                }
             }
         }
         pill(dc, c, S * 0.81, S * 0.42, S * 0.13, P.acc); txt(dc, c, S * 0.81, Graphics.FONT_SMALL, "START", P.ink);
     }
-    // the picker and the menu share one list: selected row big in the middle, neighbours smaller and dimmer
+    // the picker (recent, then top 20, then the rest) with the last set of the selected exercise
     function drawPick(dc as Dc, F as Flow, S as Number, P as Palette) as Void {
-        var l = F.exList(), names = [];
-        for (var i = 0; i < l.size(); i++) { names.add(l[i]["n"]); }
-        list(dc, F, S, P, names, "EXERCISE", false);
-        if (l.size() > 0) {
-            var e = l[F.sel], sub = "New";
-            if (e["s"] instanceof Array && e["s"].size() > 0) {
-                var p = e["s"][0], k = p[0].toFloat();
-                sub = ("bw".equals(e["t"]) && k == 0 ? "BW" : kgTxt(k) + " kg") + " x " + p[1];
+        var sub = null, l = F.exList();
+        if (F.sel < F.list.size()) {
+            var e = l[F.list[F.sel]];
+            if (e instanceof Dictionary) {
+                var ed = e as Dictionary, s = arrOf(ed["s"]);
+                sub = "New";
+                if (s.size() > 0) { var p = arrOf(s[0]); if (p.size() >= 2) { sub = setTxt(F.exT(ed), fltOf(p[0]), numOf(p[1])); } }
             }
-            txt(dc, S / 2, S * 0.585, Graphics.FONT_XTINY, sub, P.acc);
-            txt(dc, S / 2, S * 0.185, Graphics.FONT_XTINY, (F.sel + 1) + "/" + l.size(), P.dim);
+        }
+        list(dc, F, S, P, F.listItems(), "EXERCISE", false, sub);
+    }
+    function drawSmode(dc as Dc, F as Flow, S as Number, P as Palette) as Void {
+        list(dc, F, S, P, F.listItems(), "STRENGTH", true, null);
+        var t = F.sel != 0 ? "Pick as you go" : F.workouts().size().toString() + " from the phone";
+        txt(dc, S / 2, S * 0.81, Graphics.FONT_XTINY, fit(dc, t, Graphics.FONT_XTINY, (S * 0.6).toNumber()), P.fg);
+    }
+    function drawWpick(dc as Dc, F as Flow, S as Number, P as Palette) as Void {
+        var ws = F.workouts(), sub = null;
+        if (F.sel < ws.size()) {
+            var it = arrOf(ws[F.sel]["it"]), n = 0;
+            for (var i = 0; i < it.size(); i++) { var x = arrOf(it[i]); if (x.size() > 1) { n += numOf(x[1]); } }
+            sub = it.size().toString() + " exercises, " + n.toString() + " sets";
+        }
+        list(dc, F, S, P, F.listItems(), "WORKOUT", false, sub);
+    }
+    function drawMore(dc as Dc, F as Flow, S as Number, P as Palette) as Void {
+        var m = F.moreList(), sub = null;
+        if (F.sel < m.size()) { var x = arrOf(m[F.sel]); if (x.size() > 0) { sub = Sports.group(strOf(x[0])); } }
+        list(dc, F, S, P, F.listItems(), "MORE SPORTS", false, sub);
+        if (m.size() == 0) {
+            txt(dc, S / 2, S * 0.62, Graphics.FONT_XTINY, fit(dc, "Choose sports in the app:", Graphics.FONT_XTINY, (S * 0.7).toNumber()), P.fg);
+            txt(dc, S / 2, S * 0.69, Graphics.FONT_XTINY, fit(dc, "Settings > Watch > More", Graphics.FONT_XTINY, (S * 0.7).toNumber()), P.fg);
         }
     }
-    function drawMenu(dc as Dc, F as Flow, S as Number, P as Palette) as Void { list(dc, F, S, P, F.menu, "MENU", true); }
-    function list(dc as Dc, F as Flow, S as Number, P as Palette, items as Array, title as String, isMenu as Boolean) as Void {
-        var n = items.size(), c = S / 2;
+    // every list: selected row big in the middle, neighbours smaller and dimmer; a menu has a pill on the selected row
+    function list(dc as Dc, F as Flow, S as Number, P as Palette, items as Array<String>, title as String, isMenu as Boolean, sub) as Void {
+        var n = items.size(), c = S / 2, sel = F.sel;
         txt(dc, c, S * 0.13, Graphics.FONT_XTINY, title, P.dim);
-        // rows: [offset, y, font]; the same y values are the tap table in Delegates.mc
-        var rows = isMenu ? [[-1, 0.33, Graphics.FONT_SMALL], [0, 0.5, Graphics.FONT_MEDIUM], [1, 0.67, Graphics.FONT_SMALL]]
-                          : [[-2, 0.24, Graphics.FONT_XTINY], [-1, 0.345, Graphics.FONT_SMALL], [0, 0.5, Graphics.FONT_MEDIUM], [1, 0.7, Graphics.FONT_SMALL], [2, 0.8, Graphics.FONT_XTINY]];
-        for (var r = 0; r < rows.size(); r++) {
-            var o = rows[r][0], y = S * rows[r][1], f = rows[r][2], i = F.sel + o;
+        if (n == 0) { txt(dc, c, c, Graphics.FONT_SMALL, "Nothing yet", P.dim); return; }
+        if (!isMenu) { txt(dc, c, S * 0.185, Graphics.FONT_XTINY, (sel + 1).toString() + "/" + n.toString(), P.dim); }
+        // rows: [offset, y]; the same y values are the tap table in FlowDelegate.onTap
+        var offs = isMenu ? [-1, 0, 1] as Array<Number> : [-2, -1, 0, 1, 2] as Array<Number>;
+        var ys = isMenu ? [0.33, 0.5, 0.67] as Array<Float> : [0.24, 0.345, 0.5, 0.7, 0.8] as Array<Float>;
+        var fs = isMenu ? [Graphics.FONT_SMALL, Graphics.FONT_MEDIUM, Graphics.FONT_SMALL] : [Graphics.FONT_XTINY, Graphics.FONT_SMALL, Graphics.FONT_MEDIUM, Graphics.FONT_SMALL, Graphics.FONT_XTINY];
+        for (var r = 0; r < offs.size(); r++) {
+            var o = offs[r], y = S * ys[r], f = fs[r], i = sel + o;
             if (i < 0 || i >= n) { continue; }
             var far = o > 1 || o < -1, w = (S * (far ? 0.55 : 0.74)).toNumber(), t = fit(dc, items[i], f, w);
-            if (o == 0 && isMenu) { pill(dc, c, y, S * 0.78, S * 0.14, P.acc); txt(dc, c, y, f, t, P.ink); continue; }
+            if (o == 0 && isMenu) { pill(dc, c, y, S * 0.78, S * 0.14, P.acc); txt(dc, c, y, f, fit(dc, items[i], f, (S * 0.7).toNumber()), P.ink); continue; }
             if (o == 0) { dc.setColor(P.acc, Graphics.COLOR_TRANSPARENT); dc.fillRectangle(S * 0.1, y - S * 0.055, S * 0.012 + 1, S * 0.11); }
-            txt(dc, c, y, f, t, o == 0 ? P.fg : (far ? P.faint : P.dim));
+            txt(dc, c, y, f, t, o == 0 ? P.fg : (far ? P.far : P.dim)); // far rows: dark grey on AMOLED, light grey on MIP
+            if (o == 0 && sub instanceof String) { txt(dc, c, y + S * 0.085, Graphics.FONT_XTINY, fit(dc, sub as String, Graphics.FONT_XTINY, (S * 0.7).toNumber()), P.acc); }
         }
-        if (n > 1) { // scroll position on the left edge (150..210 degrees)
-            dc.setPenWidth((S * 0.012).toNumber() + 1); dc.setColor(P.faint, Graphics.COLOR_TRANSPARENT);
-            dc.drawArc(c, c, c - S * 0.03, Graphics.ARC_COUNTER_CLOCKWISE, 150, 210);
-            var p = F.sel.toFloat() / (n - 1), a = 150 + (p * 51).toNumber();
-            dc.setColor(P.acc, Graphics.COLOR_TRANSPARENT); dc.drawArc(c, c, c - S * 0.03, Graphics.ARC_COUNTER_CLOCKWISE, a, a + 9); dc.setPenWidth(1);
-        }
+        scrollArc(dc, S, P, sel, n);
         startHint(dc, S, P);
     }
     function drawSet(dc as Dc, F as Flow, S as Number, P as Palette, now as Number) as Void {
-        var e = F.curEx(), c = S / 2, bw = F.isBw(e);
+        var e = F.curEx(), c = S / 2, t = F.exT(e), it = F.planItem();
         startHint(dc, S, P);
         txt(dc, c, S * 0.12, Graphics.FONT_XTINY, clock(now - F.start), P.dim);
-        txt(dc, c, S * 0.22, Graphics.FONT_SMALL, fit(dc, e["n"], Graphics.FONT_SMALL, (S * 0.74).toNumber()), P.fg);
-        txt(dc, c, S * 0.315, Graphics.FONT_XTINY, "SET " + F.setNo(), P.acc);
-        var val = [bw && F.kg == 0 ? "BW" : kgTxt(F.kg), F.reps.toString()], unit = [bw ? "+kg" : "kg", "reps"], xs = [S * 0.285, S * 0.735], mx = [S * 0.32, S * 0.27];
-        txt(dc, S * 0.515, S * 0.5, Graphics.FONT_SMALL, "x", P.dim);
-        for (var i = 0; i < 2; i++) {
-            var on = F.focus == i;
-            // number fonts have digits only (VERIFY: which glyphs FONT_NUMBER_* carry), so "BW" takes a text font
-            var f = "BW".equals(val[i]) ? Graphics.FONT_LARGE : fontFor(dc, val[i], [Graphics.FONT_NUMBER_HOT, Graphics.FONT_NUMBER_MEDIUM, Graphics.FONT_NUMBER_MILD], mx[i].toNumber());
-            txt(dc, xs[i], S * 0.5, f, val[i], on ? P.acc : P.fg);
-            if (on) { dc.setColor(P.acc, Graphics.COLOR_TRANSPARENT); dc.fillRectangle(xs[i] - S * 0.12, S * 0.615, S * 0.24, S * 0.016 + 1); }
-            txt(dc, xs[i], S * 0.665, Graphics.FONT_XTINY, unit[i], on ? P.fg : P.dim);
+        txt(dc, c, S * 0.22, Graphics.FONT_SMALL, fit(dc, strOf(e["n"]), Graphics.FONT_SMALL, (S * 0.74).toNumber()), P.fg);
+        var no = "SET " + F.setNo().toString();
+        if (it != null) { no = no + " OF " + numOf(it[1]).toString(); }
+        txt(dc, c, S * 0.315, Graphics.FONT_XTINY, no, P.acc);
+        if (t.equals("time")) {
+            // watch only: while the hold clock runs it counts up, the planned time below; else the planned time
+            var held = F.holdAt > 0, v = held ? clock(now - F.holdAt) : clock(F.reps);
+            txt(dc, c, S * 0.5, fontFor(dc, v, [Graphics.FONT_NUMBER_HOT, Graphics.FONT_NUMBER_MEDIUM, Graphics.FONT_NUMBER_MILD], (S * 0.6).toNumber()), v, P.acc);
+            dc.setColor(P.acc, Graphics.COLOR_TRANSPARENT); dc.fillRectangle(S * 0.36, S * 0.615, S * 0.28, S * 0.016 + 1);
+            txt(dc, c, S * 0.665, Graphics.FONT_XTINY, held ? "of " + clock(F.reps) : "hold", P.fg);
+        } else {
+            var bw = t.equals("bw");
+            var val = [bw && F.kg == 0.0 ? "BW" : kgTxt(F.kg), F.reps.toString()] as Array<String>, unit = [bw ? "+kg" : "kg", "reps"] as Array<String>;
+            var xs = [S * 0.285, S * 0.735] as Array<Float>, mx = [S * 0.32, S * 0.27] as Array<Float>;
+            txt(dc, S * 0.515, S * 0.5, Graphics.FONT_SMALL, "x", P.dim);
+            for (var i = 0; i < 2; i++) {
+                var on = F.focus == i;
+                // number fonts have digits only (VERIFY: which glyphs FONT_NUMBER_* carry), so "BW" takes a text font
+                var f = "BW".equals(val[i]) ? Graphics.FONT_LARGE : fontFor(dc, val[i], [Graphics.FONT_NUMBER_HOT, Graphics.FONT_NUMBER_MEDIUM, Graphics.FONT_NUMBER_MILD], mx[i].toNumber());
+                txt(dc, xs[i], S * 0.5, f, val[i], on ? P.acc : P.fg);
+                if (on) { dc.setColor(P.acc, Graphics.COLOR_TRANSPARENT); dc.fillRectangle(xs[i] - S * 0.12, S * 0.615, S * 0.24, S * 0.016 + 1); }
+                txt(dc, xs[i], S * 0.665, Graphics.FONT_XTINY, unit[i], on ? P.fg : P.lbl);
+            }
         }
-        pill(dc, c, S * 0.815, S * 0.4, S * 0.12, P.acc); txt(dc, c, S * 0.815, Graphics.FONT_SMALL, "DONE", P.ink);
+        pill(dc, c, S * 0.815, S * 0.4, S * 0.12, P.acc); txt(dc, c, S * 0.815, Graphics.FONT_SMALL, t.equals("time") && F.holdAt == 0 ? "GO" : "DONE", P.ink);
     }
     function drawRest(dc as Dc, F as Flow, S as Number, P as Palette, now as Number) as Void {
         var left = F.restLeft(now), c = S / 2, r = c - (S * 0.04).toNumber(), e = F.curEx();
         var part = F.restLen > 0 ? left.toFloat() / F.restLen : 0.0;
-        dc.setPenWidth((S * 0.05).toNumber()); dc.setColor(P.faint, Graphics.COLOR_TRANSPARENT); dc.drawCircle(c, c, r);
+        dc.setPenWidth(pw(S * 0.05)); dc.setColor(P.faint, Graphics.COLOR_TRANSPARENT); dc.drawCircle(c, c, r);
         if (part > 0.0) {
             dc.setColor(P.acc, Graphics.COLOR_TRANSPARENT);
             if (part >= 0.999) { dc.drawCircle(c, c, r); }
@@ -183,33 +347,51 @@ module Draw {
         }
         dc.setPenWidth(1);
         heart(dc, c - S * 0.08, S * 0.27, S * 0.05, P.hr);
-        dc.setColor(P.fg, Graphics.COLOR_TRANSPARENT); dc.drawText(c - S * 0.03, S * 0.27, Graphics.FONT_SMALL, F.hr > 0 ? F.hr.toString() : "--", VL);
+        txtL(dc, c - S * 0.03, S * 0.27, Graphics.FONT_SMALL, F.hr > 0 ? F.hr.toString() : "--", P.fg);
         txt(dc, c, S * 0.46, Graphics.FONT_NUMBER_HOT, clock(left), left <= 5 ? P.acc : P.fg);
-        txt(dc, c, S * 0.625, Graphics.FONT_XTINY, "NEXT", P.dim);
-        txt(dc, c, S * 0.7, Graphics.FONT_XTINY, fit(dc, "Set " + F.setNo() + ": " + e["n"], Graphics.FONT_XTINY, (S * 0.66).toNumber()), P.fg);
+        txt(dc, c, S * 0.625, Graphics.FONT_XTINY, "NEXT", P.lbl);
+        var it = F.planItem(), nx = "Set " + F.setNo().toString() + ": " + strOf(e["n"]);
+        if (it != null) {
+            var id = strOf(it[0]), l = F.exList(), k = exIndex(l, id), nm = id;
+            if (k >= 0) { nm = strOf((l[k] as Dictionary)["n"]); }
+            nx = nm + " " + F.setNo().toString() + "/" + numOf(it[1]).toString();
+        }
+        txt(dc, c, S * 0.7, Graphics.FONT_XTINY, fit(dc, nx, Graphics.FONT_XTINY, (S * 0.66).toNumber()), P.fg);
         txt(dc, c, S * 0.82, Graphics.FONT_XTINY, "SKIP", P.acc);
     }
-    function prFlash(dc as Dc, F as Flow, S as Number, P as Palette) as Void {
-        var f = F.flash, c = S / 2;
+    function prFlash(dc as Dc, S as Number, P as Palette, f as Dictionary) as Void {
+        var c = S / 2, t = strOf(f["t"]), kg = fltOf(f["kg"]), r = numOf(f["reps"]);
         dc.setColor(P.acc, Graphics.COLOR_TRANSPARENT); dc.fillCircle(c, c, c);
         txt(dc, c, S * 0.27, Graphics.FONT_SMALL, "NEW RECORD", P.ink);
         txt(dc, c, S * 0.5, Graphics.FONT_LARGE, "PR", P.ink); // VERIFY on the device: FONT_LARGE may look small here; a bitmap "PR" would be bigger
-        txt(dc, c, S * 0.72, Graphics.FONT_MEDIUM, f["bw"] ? f["reps"] + " reps" : kgTxt(f["kg"]) + " x " + f["reps"], P.ink);
+        txt(dc, c, S * 0.72, Graphics.FONT_MEDIUM, t.equals("bw") ? r.toString() + " reps" : (t.equals("time") ? clock(r) : kgTxt(kg) + " x " + r.toString()), P.ink);
+    }
+    // js/watchsim.js lapFlash: the lap banner for 5 s
+    function lapFlash(dc as Dc, F as Flow, S as Number, P as Palette, f as Dictionary) as Void {
+        var c = S / 2, t = numOf(f["t"]), d = fltOf(f["d"]), l = "";
+        dc.setColor(P.acc, Graphics.COLOR_TRANSPARENT); dc.fillCircle(c, c, c);
+        txt(dc, c, S * 0.26, Graphics.FONT_MEDIUM, "LAP " + numOf(f["n"]).toString(), P.ink);
+        txt(dc, c, S * 0.47, Graphics.FONT_NUMBER_HOT, clock(t), P.ink);
+        if (F.sp.equals("ride")) { l = (t > 0 ? d / t * 3.6 : 0.0).format("%.1f") + " km/h"; }
+        else if (F.sp.equals("run")) { l = Fields.pace(t.toFloat(), d) + " /km"; }
+        else { l = kmTxt(d) + " km"; }
+        txt(dc, c, S * 0.69, Graphics.FONT_MEDIUM, l, P.ink);
     }
     function drawSum(dc as Dc, F as Flow, S as Number, P as Palette) as Void {
         var s = F.sum, c = S / 2;
         if (s == null) { return; }
-        var st = s["st"];
+        var st = numOf(s["st"]);
         if (st == ST_SAVED) { txt(dc, c, S * 0.17, Graphics.FONT_SMALL, "SAVED", P.acc); }
         else if (st == ST_SENDING) { txt(dc, c, S * 0.17, Graphics.FONT_SMALL, "SENDING", P.dim); }
         else if (st == ST_FAILED) { txt(dc, c, S * 0.17, Graphics.FONT_SMALL, "NOT SAVED", P.acc); }
         else { txt(dc, c, S * 0.14, Graphics.FONT_XTINY, "Will send when", P.fg); txt(dc, c, S * 0.2, Graphics.FONT_XTINY, "the phone is near", P.fg); }
-        txt(dc, c, S * 0.36, Graphics.FONT_NUMBER_MEDIUM, clock(s["dur"]), P.fg);
-        txt(dc, c, S * 0.46, Graphics.FONT_XTINY, "TIME", P.dim);
-        var v = [s["sets"].toString(), volTxt(s["vol"]), s["exs"].toString()], l = ["SETS", "KG", "LIFTS"];
-        for (var i = 0; i < 3; i++) { var x = S * (0.27 + i * 0.23); txt(dc, x, S * 0.6, Graphics.FONT_MEDIUM, v[i], P.fg); txt(dc, x, S * 0.68, Graphics.FONT_XTINY, l[i], P.dim); }
-        if (s["prs"] > 0) { txt(dc, c, S * 0.78, Graphics.FONT_SMALL, s["prs"] + " PR", P.acc); }
-        txt(dc, c, S * 0.87, Graphics.FONT_XTINY, "DONE", P.dim);
+        txt(dc, c, S * 0.36, Graphics.FONT_NUMBER_MEDIUM, clock(numOf(s["dur"])), P.fg);
+        txt(dc, c, S * 0.46, Graphics.FONT_XTINY, "TIME", P.lbl);
+        var v = [numOf(s["sets"]).toString(), volTxt(fltOf(s["vol"])), numOf(s["exs"]).toString()] as Array<String>, l = ["SETS", "KG", "LIFTS"] as Array<String>;
+        for (var i = 0; i < 3; i++) { var x = S * (0.27 + i * 0.23); txt(dc, x, S * 0.6, Graphics.FONT_MEDIUM, v[i], P.fg); txt(dc, x, S * 0.68, Graphics.FONT_XTINY, l[i], P.lbl); }
+        var prs = numOf(s["prs"]);
+        if (prs > 0) { txt(dc, c, S * 0.78, Graphics.FONT_SMALL, prs.toString() + " PR", P.acc); }
+        txt(dc, c, S * 0.87, Graphics.FONT_XTINY, "DONE", P.lbl);
     }
     function drawPair(dc as Dc, F as Flow, S as Number, P as Palette) as Void {
         var c = S / 2, bw = S * 0.1, gap = S * 0.018, x0 = c - (6 * bw + 5 * gap) / 2 + bw / 2;
@@ -225,5 +407,205 @@ module Draw {
         var st = F.pairSt == P_SENDING ? "Pairing" : (F.pairSt == P_FAIL ? "Wrong code" : (F.pairI == 5 ? "START: pair" : "START: next"));
         txt(dc, c, S * 0.72, Graphics.FONT_XTINY, st, F.pairSt == P_FAIL ? P.acc : P.dim);
         txt(dc, c, S * 0.82, Graphics.FONT_XTINY, fit(dc, "Phone: Settings > Devices", Graphics.FONT_XTINY, (S * 0.66).toNumber()), P.dim);
+    }
+
+    /* ---- run, ride, other ---- */
+    function sportName(F as Flow) as String { return F.sp.equals("other") ? F.tname : F.homeLabel(F.sp); }
+    function drawReady(dc as Dc, F as Flow, S as Number, P as Palette) as Void {
+        var c = S / 2;
+        startHint(dc, S, P);
+        dc.setColor(P.acc, Graphics.COLOR_TRANSPARENT); dc.fillCircle(c, S * 0.25, S * 0.1);
+        icon(dc, F.sp.equals("other") ? "more" : F.sp, c, S * 0.25, S * 0.12, P.ink);
+        txt(dc, c, S * 0.445, Graphics.FONT_LARGE, fit(dc, sportName(F), Graphics.FONT_LARGE, (S * 0.8).toNumber()), P.fg);
+        if (!Sports.gps(F.sp, F.type)) {
+            heart(dc, c - S * 0.1, S * 0.565, S * 0.045, P.hr);
+            txtL(dc, c - S * 0.06, S * 0.565, Graphics.FONT_SMALL, F.hr > 0 ? F.hr.toString() + " bpm" : "Heart rate", P.fg);
+        } else {
+            // watch only: the real fix quality (the preview always shows "GPS ready")
+            var ok = F.gps >= 2, col = ok ? P.good : P.lbl;
+            dc.setColor(col, Graphics.COLOR_TRANSPARENT); dc.fillCircle(c - S * 0.135, S * 0.565, S * 0.02);
+            txtL(dc, c - S * 0.1, S * 0.565, Graphics.FONT_SMALL, ok ? "GPS ready" : "GPS search", col);
+        }
+        var n = F.pages.size(), t = n.toString() + (n == 1 ? " data page" : " data pages") + (F.hasRoutePage() ? " + route" : "");
+        txt(dc, c, S * 0.655, Graphics.FONT_XTINY, fit(dc, t, Graphics.FONT_XTINY, (S * 0.62).toNumber()), P.lbl);
+        pill(dc, c, S * 0.81, S * 0.42, S * 0.13, P.acc); txt(dc, c, S * 0.81, Graphics.FONT_SMALL, "START", P.ink);
+    }
+    function drawRec(dc as Dc, F as Flow, S as Number, P as Palette, now as Number) as Void {
+        var R = F.rec;
+        if (R == null) { return; }
+        var g = F.seg;
+        if (g != null) { if (g["hide"] != true) { segScreen(dc, F, S, P, g); return; } }
+        var n = F.pageCount(), i = R.pg % n;
+        if (i >= F.pages.size()) { routePage(dc, F, S, P); } else { drawPage(dc, S, P, F.sp, F.pages[i], R); }
+        recRing(dc, S, P, !R.auto);
+        pageDots(dc, S, P, n, i);
+        if (R.auto) { pill(dc, S / 2, S * 0.06, S * 0.36, S * 0.062, P.acc); txt(dc, S / 2, S * 0.061, Graphics.FONT_XTINY, "AUTO PAUSE", P.ink); }
+    }
+    // js/watchdraw.js LAY: [x, value y, label y, value size, max width] per field for 1 to 4 fields; h = separator rows, v = the middle line
+    function drawPage(dc as Dc, S as Number, P as Palette, sp as String, ids as Array<String>, R as Rec) as Void {
+        var k = ids.size(), c = S / 2;
+        if (k == 0) { return; }
+        if (k > 4) { k = 4; }
+        var L = [[0.5, 0.53, 0.32, 0.3, 0.84]] as Array<Array<Float>>, h = [] as Array<Float>, v = [] as Array<Float>;
+        if (k == 2) { L = [[0.5, 0.34, 0.2, 0.2, 0.74], [0.5, 0.72, 0.58, 0.2, 0.7]] as Array<Array<Float>>; h = [0.5] as Array<Float>; }
+        else if (k == 3) { L = [[0.5, 0.33, 0.18, 0.2, 0.7], [0.29, 0.7, 0.575, 0.14, 0.37], [0.71, 0.7, 0.575, 0.14, 0.37]] as Array<Array<Float>>; h = [0.48] as Array<Float>; v = [0.48, 0.9] as Array<Float>; }
+        else if (k == 4) { L = [[0.5, 0.255, 0.13, 0.16, 0.6], [0.29, 0.5, 0.405, 0.13, 0.37], [0.71, 0.5, 0.405, 0.13, 0.37], [0.5, 0.765, 0.67, 0.13, 0.5]] as Array<Array<Float>>; h = [0.355, 0.615] as Array<Float>; v = [0.355, 0.615] as Array<Float>; }
+        dc.setColor(P.line, Graphics.COLOR_TRANSPARENT); dc.setPenWidth(pw(S * 0.006 > 2 ? S * 0.006 : 2));
+        for (var j = 0; j < h.size(); j++) {
+            var y = h[j], q = 0.25 - (y - 0.5) * (y - 0.5), hw = Math.sqrt(q > 0 ? q : 0.0) * S - S * 0.05;
+            dc.drawLine(c - hw, y * S, c + hw, y * S);
+        }
+        if (v.size() == 2) { dc.drawLine(c, v[0] * S, c, v[1] * S); }
+        dc.setPenWidth(1);
+        for (var i = 0; i < k; i++) {
+            var row = L[i], id = ids[i], x = row[0] * S, y = row[1] * S, ly = row[2] * S, px = row[3], mw = (row[4] * S).toNumber();
+            var small = px < 0.15, hrt = id.equals("hr") && !small;
+            var lab = fit(dc, Fields.label(id).toUpper(), Graphics.FONT_XTINY, mw - (hrt ? (S * 0.05).toNumber() : 0));
+            var lx = x + (hrt ? S * 0.022 : 0);
+            txt(dc, lx, ly, Graphics.FONT_XTINY, lab, P.lbl);
+            if (hrt) { heart(dc, lx - dc.getTextWidthInPixels(lab, Graphics.FONT_XTINY) / 2 - S * 0.035, ly, S * 0.034, P.hr); } // the heart before "HEART RATE"
+            valUnit(dc, x, y, Fields.text(id, R), small && k > 1 ? "" : Fields.unit(sp, id), px, mw, P);
+        }
+    }
+    // js/watchdraw.js valUnit: a value with its unit after it, centred on x and kept inside max (the value shrinks, the unit goes first)
+    function valUnit(dc as Dc, x, y, v as String, u as String, px as Float, max as Number, P as Palette) as Void {
+        var fonts = valFonts(px, isNum(v)), uf = Graphics.FONT_XTINY;
+        var uw = u.length() > 0 ? dc.getTextWidthInPixels(u, uf) + 4 : 0, f = fonts[fonts.size() - 1], vw = 0, found = false;
+        for (var i = 0; i < fonts.size() && !found; i++) {
+            vw = dc.getTextWidthInPixels(v, fonts[i]);
+            if (vw + uw <= max) { f = fonts[i]; found = true; }
+        }
+        if (!found) { uw = 0; f = fontFor(dc, v, fonts, max); vw = dc.getTextWidthInPixels(v, f); }
+        var x0 = x - (vw + uw) / 2;
+        txtL(dc, x0, y, f, v, P.fg);
+        if (uw > 0) { txtL(dc, x0 + vw + 4, y + dc.getFontHeight(f) * 0.22, uf, u, P.lbl); } // VERIFY on the device: the unit sits near the number's baseline
+    }
+    // js/watchdraw.js pageDots: page dots on the left edge, where the UP / DOWN buttons are, the first page on top
+    function pageDots(dc as Dc, S as Number, P as Palette, n as Number, i as Number) as Void {
+        if (n < 2) { return; }
+        var r = S / 2 - S * 0.035, a0 = 180 + (n - 1) * 5;
+        for (var k = 0; k < n; k++) {
+            var a = (a0 - k * 10) * Math.PI / 180.0, x = S / 2 + Math.cos(a) * r, y = S / 2 + Math.sin(a) * r;
+            dc.setColor(k == i ? P.acc : P.dim, Graphics.COLOR_TRANSPARENT); dc.fillCircle(x, y, S * (k == i ? 0.016 : 0.011));
+        }
+    }
+    // js/watchdraw.js recRing: the recording ring at the top in the sport's colour (dim while paused)
+    function recRing(dc as Dc, S as Number, P as Palette, on as Boolean) as Void {
+        dc.setColor(on ? P.acc : P.dim, Graphics.COLOR_TRANSPARENT); dc.setPenWidth(pw(S * 0.024));
+        dc.drawArc(S / 2, S / 2, S / 2 - (S * 0.012).toNumber(), Graphics.ARC_CLOCKWISE, 120, 60);
+        dc.setPenWidth(1);
+    }
+    // js/watchsim.js RSUM: the summary after Save
+    function drawRsum(dc as Dc, F as Flow, S as Number, P as Palette) as Void {
+        var s = F.rsum, c = S / 2;
+        if (s == null) { return; }
+        var sp = strOf(s["sp"]), t = numOf(s["t"]), d = fltOf(s["d"]), kc = rnd(fltOf(s["kcal"]));
+        txt(dc, c, S * 0.16, Graphics.FONT_SMALL, "SAVED", P.acc);
+        txt(dc, c, S * 0.33, Graphics.FONT_NUMBER_MEDIUM, clock(t), P.fg);
+        txt(dc, c, S * 0.435, Graphics.FONT_XTINY, "TIME", P.lbl);
+        var v = [kmTxt(d), "", ""] as Array<String>, l = ["KM", "", ""] as Array<String>;
+        if (sp.equals("ride")) { v[1] = (t > 0 ? d / t * 3.6 : 0.0).format("%.1f"); l[1] = "KM/H"; v[2] = rnd(fltOf(s["avgPw"])).toString(); l[2] = "AVG W"; }
+        else if (sp.equals("run")) { v[1] = Fields.pace(t.toFloat(), d); l[1] = "/KM"; v[2] = kc.toString(); l[2] = "KCAL"; }
+        else { v[1] = kc.toString(); l[1] = "KCAL"; v[2] = numOf(s["laps"]).toString(); l[2] = "LAPS"; }
+        for (var i = 0; i < 3; i++) {
+            var x = S * (0.27 + i * 0.23);
+            txt(dc, x, S * 0.59, fontFor(dc, v[i], [Graphics.FONT_MEDIUM, Graphics.FONT_SMALL, Graphics.FONT_XTINY], (S * 0.22).toNumber()), v[i], P.fg);
+            txt(dc, x, S * 0.665, Graphics.FONT_XTINY, l[i], P.lbl);
+        }
+        var nm = sp.equals("other") ? strOf(s["name"]) : F.homeLabel(sp);
+        txt(dc, c, S * 0.76, Graphics.FONT_SMALL, fit(dc, nm, Graphics.FONT_SMALL, (S * 0.6).toNumber()), P.acc);
+        txt(dc, c, S * 0.86, Graphics.FONT_XTINY, "DONE", P.lbl);
+    }
+    function distTxt(m as Float) as String { return m >= 1000.0 ? (m / 1000.0).format("%.1f") + " km" : rnd(m).toString() + " m"; }
+    // js/watchsim.js segScreen: the segment popup: warning before, live delta against the PR, the result for 5 s
+    function segScreen(dc as Dc, F as Flow, S as Number, P as Palette, g as Dictionary) as Void {
+        var c = S / 2, k = strOf(g["k"]), len = fltOf(g["len"]), name = strOf(g["name"]), r = c - (S * 0.03).toNumber();
+        if (k.equals("warn")) {
+            dc.setColor(P.acc, Graphics.COLOR_TRANSPARENT); dc.setPenWidth(pw(S * 0.03)); dc.drawCircle(c, c, r); dc.setPenWidth(1);
+            txt(dc, c, S * 0.22, Graphics.FONT_SMALL, "SEGMENT IN", P.acc);
+            txt(dc, c, S * 0.42, Graphics.FONT_NUMBER_HOT, clock(imax(0, numOf(g["eta"]))), P.fg);
+            txt(dc, c, S * 0.62, Graphics.FONT_SMALL, fit(dc, name, Graphics.FONT_SMALL, (S * 0.74).toNumber()), P.fg);
+            var pr = numOf(g["pr"]), t = distTxt(len) + (pr > 0 ? ", PR " + clock(pr) : "");
+            txt(dc, c, S * 0.72, Graphics.FONT_XTINY, fit(dc, t, Graphics.FONT_XTINY, (S * 0.6).toNumber()), P.lbl);
+            return;
+        }
+        if (k.equals("live")) {
+            var done = fltOf(g["done"]), part = len > 0.0 ? done / len : 0.0, delta = numOf(g["delta"]), ahead = delta <= 0, col = ahead ? P.good : P.bad;
+            if (part > 1.0) { part = 1.0; }
+            dc.setPenWidth(pw(S * 0.03)); dc.setColor(P.faint, Graphics.COLOR_TRANSPARENT); dc.drawCircle(c, c, r);
+            if (part > 0.0) { dc.setColor(P.acc, Graphics.COLOR_TRANSPARENT); if (part >= 0.999) { dc.drawCircle(c, c, r); } else { dc.drawArc(c, c, r, Graphics.ARC_CLOCKWISE, 90, 90 - (part * 360).toNumber()); } }
+            dc.setPenWidth(1);
+            txt(dc, c, S * 0.17, Graphics.FONT_XTINY, fit(dc, name, Graphics.FONT_XTINY, (S * 0.6).toNumber()), P.fg);
+            txt(dc, c, S * 0.37, Graphics.FONT_NUMBER_HOT, (ahead ? "-" : "+") + clock(ahead ? -delta : delta), col);
+            txt(dc, c, S * 0.505, Graphics.FONT_XTINY, ahead ? "AHEAD OF PR" : "BEHIND PR", col);
+            var need = fltOf(g["need"]), nt = F.sp.equals("ride") ? (need * 3.6).format("%.1f") + " km/h" : (need > 0.0 ? Fields.pace(1000.0 / need, 1000.0) : "--:--") + " /km";
+            txt(dc, c, S * 0.63, Graphics.FONT_SMALL, fit(dc, "Need " + nt, Graphics.FONT_SMALL, (S * 0.76).toNumber()), P.fg);
+            txt(dc, c, S * 0.7, Graphics.FONT_XTINY, "FOR PR", P.lbl);
+            var left = len - done;
+            txt(dc, c, S * 0.81, Graphics.FONT_XTINY, distTxt(left > 0.0 ? left : 0.0) + " to go", P.lbl);
+            return;
+        }
+        var pr2 = g["pr"] == true, dl = numOf(g["delta"]), col2 = pr2 || dl <= 0 ? P.good : P.bad, ink = pr2 ? P.ink : P.fg;
+        if (pr2) { dc.setColor(col2, Graphics.COLOR_TRANSPARENT); dc.fillCircle(c, c, c); }
+        txt(dc, c, S * 0.22, Graphics.FONT_SMALL, pr2 ? "NEW PR" : "SEGMENT DONE", pr2 ? ink : P.acc);
+        txt(dc, c, S * 0.31, Graphics.FONT_XTINY, fit(dc, name, Graphics.FONT_XTINY, (S * 0.66).toNumber()), ink);
+        txt(dc, c, S * 0.5, Graphics.FONT_NUMBER_HOT, clock(numOf(g["time"])), ink);
+        txt(dc, c, S * 0.7, Graphics.FONT_MEDIUM, (dl <= 0 ? "-" : "+") + clock(dl < 0 ? -dl : dl) + " vs PR", pr2 ? ink : col2);
+    }
+    // js/watchsim.js routePage: next turn on top, the line with the position dot, the distance left at the bottom
+    function routePage(dc as Dc, F as Flow, S as Number, P as Palette) as Void {
+        var r = F.route, ri = F.routeInfo();
+        if (r == null) { return; }
+        if (ri == null) { return; }
+        var turn = ri["turn"];
+        if (turn instanceof Dictionary) {
+            var tn = turn as Dictionary, dir = strOf(tn["dir"]), tin = fltOf(tn["in"]), tt = strOf(tn["txt"]);
+            turnArrow(dc, S * 0.28, S * 0.2, S * 0.08, dir.equals("L"), P.acc);
+            var d = tin < 1000.0 ? (rnd(tin / 10.0) * 10).toString() + " m" : (tin / 1000.0).format("%.1f") + " km";
+            txtL(dc, S * 0.37, S * 0.175, Graphics.FONT_MEDIUM, fit(dc, d, Graphics.FONT_MEDIUM, (S * 0.42).toNumber()), P.fg);
+            if (tt.length() == 0) { tt = dir.equals("L") ? "Turn left" : "Turn right"; }
+            txtL(dc, S * 0.37, S * 0.245, Graphics.FONT_XTINY, fit(dc, tt, Graphics.FONT_XTINY, (S * 0.4).toNumber()), P.lbl);
+        } else {
+            txt(dc, S / 2, S * 0.2, Graphics.FONT_XTINY, "FINISH AHEAD", P.acc);
+        }
+        // the route: points 0..1 in a box; total length, then the part done in the accent up to the position
+        var pts = arrOf(r["pts"]), bx = S * 0.2, by = S * 0.315, bw = S * 0.6, bh = S * 0.38, n = pts.size();
+        if (n < 2) { return; }
+        var tot = 0.0;
+        for (var k = 1; k < n; k++) { tot += segLen(pts, k, bw, bh); }
+        dc.setColor(P.path, Graphics.COLOR_TRANSPARENT); dc.setPenWidth(pw(S * 0.014));
+        for (var k = 1; k < n; k++) { dc.drawLine(rp(pts, k - 1, 0, bx, bw), rp(pts, k - 1, 1, by, bh), rp(pts, k, 0, bx, bw), rp(pts, k, 1, by, bh)); }
+        var to = fltOf(ri["pos"]) * tot, acc = 0.0, ax = rp(pts, 0, 0, bx, bw), ay = rp(pts, 0, 1, by, bh);
+        dc.setColor(P.acc, Graphics.COLOR_TRANSPARENT); dc.setPenWidth(pw(S * 0.022));
+        for (var k = 1; k < n; k++) {
+            var l = segLen(pts, k, bw, bh), x0 = rp(pts, k - 1, 0, bx, bw), y0 = rp(pts, k - 1, 1, by, bh), x1 = rp(pts, k, 0, bx, bw), y1 = rp(pts, k, 1, by, bh);
+            if (acc + l >= to) { var f = l > 0.0 ? (to - acc) / l : 0.0; ax = x0 + (x1 - x0) * f; ay = y0 + (y1 - y0) * f; dc.drawLine(x0, y0, ax, ay); break; }
+            dc.drawLine(x0, y0, x1, y1); acc += l; ax = x1; ay = y1;
+        }
+        dc.setPenWidth(1);
+        var fx = rp(pts, n - 1, 0, bx, bw), fy = rp(pts, n - 1, 1, by, bh);
+        dc.setColor(P.fg, Graphics.COLOR_TRANSPARENT); dc.fillRectangle(fx - S * 0.016, fy - S * 0.016, S * 0.032, S * 0.032); // the finish
+        dc.setColor(P.acc, Graphics.COLOR_TRANSPARENT); dc.fillCircle(ax, ay, S * 0.034);
+        dc.setColor(P.fg, Graphics.COLOR_TRANSPARENT); dc.fillCircle(ax, ay, S * 0.019);
+        var km = kmTxt(fltOf(ri["left"])), w = dc.getTextWidthInPixels(km, Graphics.FONT_MEDIUM), uw = S * 0.07, x = S / 2 - (w + uw) / 2;
+        txtL(dc, x, S * 0.79, Graphics.FONT_MEDIUM, km, P.fg);
+        txtL(dc, x + w + S * 0.015, S * 0.805, Graphics.FONT_XTINY, "km", P.lbl);
+        txt(dc, S / 2, S * 0.875, Graphics.FONT_XTINY, "TO FINISH", P.lbl);
+    }
+    // point k of the route, coordinate j (0 = u, 1 = v), in pixels of the box at o with size w
+    function rp(pts as Array, k as Number, j as Number, o as Float, w as Float) as Float { return o + fltOf(arrOf(pts[k])[j]) * w; }
+    function segLen(pts as Array, k as Number, bw as Float, bh as Float) as Float {
+        var a = arrOf(pts[k - 1]), b = arrOf(pts[k]), dx = (fltOf(b[0]) - fltOf(a[0])) * bw, dy = (fltOf(b[1]) - fltOf(a[1])) * bh;
+        return Math.sqrt(dx * dx + dy * dy).toFloat();
+    }
+    // js/watchsim.js turnArrow: an arrow turning left or right (the curve as two lines)
+    function turnArrow(dc as Dc, x, y, s, left as Boolean, col as Number) as Void {
+        var k = left ? -1 : 1;
+        dc.setColor(col, Graphics.COLOR_TRANSPARENT); dc.setPenWidth(pw(s * 0.3));
+        dc.drawLine(x - k * s * 0.3, y + s * 0.9, x - k * s * 0.3, y - s * 0.1);
+        dc.drawLine(x - k * s * 0.3, y - s * 0.1, x - k * s * 0.05, y - s * 0.4);
+        dc.drawLine(x - k * s * 0.05, y - s * 0.4, x + k * s * 0.2, y - s * 0.4);
+        dc.setPenWidth(1);
+        dc.fillPolygon([[x + k * s * 0.8, y - s * 0.4], [x + k * s * 0.2, y - s * 0.95], [x + k * s * 0.2, y + s * 0.15]]);
     }
 }
