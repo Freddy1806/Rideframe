@@ -41,7 +41,7 @@ const routeGpx = (a0, a1, name) => `<?xml version="1.0" encoding="UTF-8"?><gpx v
   ok(await p.isVisible('#oRoute') && (await p.textContent('#oRoute')).includes('Routes'), 'route chip on the map before the start');
   await p.click('#oRoute'); await p.waitForSelector('#rFile', { state: 'attached' });
   ok(await p.textContent('.psheet').then(t => /No routes yet/.test(t)), 'empty list explains where routes come from');
-  await p.clock.runFor(500); ok(await p.isVisible('#rStrava'), 'Import from Strava routes is offered (connected)');
+  await p.clock.runFor(500); await p.waitForSelector('#rStrava', { state: 'visible', timeout: 8000 }).catch(() => {}); ok(await p.isVisible('#rStrava'), 'Import from Strava routes is offered (connected)');
   await p.setInputFiles('#rFile', gpx); await p.waitForSelector('.oroute');
   const row = await p.textContent('.oroute'); ok(/Reine loop/.test(row) && /km/.test(row) && /climb/.test(row), 'imported route listed: ' + row.replace(/\s+/g, ' ').trim());
   ok(await p.locator('.oroute.on').count() === 1 && await p.locator('.oroute svg path').count() === 1, 'it is selected, with its shape');
