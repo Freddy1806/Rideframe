@@ -3,7 +3,7 @@
 // routes & 3D world, strength); the week at a glance; settings for light/dark and colours.
 import { db } from './db.js';
 import { esc, twoWeeks, weekStat } from './util.js';
-import { sportOf } from './fitness.js';
+import { sportOf, isBike } from './fitness.js';
 import { MODES, ACCENTS, icon, applyTheme } from './theme.js';
 import { loadActs, rowHtml, wireRows } from './feed.js';
 import { nav } from './nav.js';
@@ -20,7 +20,7 @@ async function load() {
 }
 
 function render() {
-  const R2 = twoWeeks(rides), K2 = twoWeeks(kraft), nb = l => l.filter(r => sportOf(r) !== 'run').length, nr = l => l.filter(r => sportOf(r) === 'run').length, km = l => Math.round(l.reduce((a, r) => a + r.distance, 0) / 1000);
+  const R2 = twoWeeks(rides), K2 = twoWeeks(kraft), nb = l => l.filter(isBike).length, nr = l => l.filter(r => sportOf(r) === 'run').length, km = l => Math.round(l.reduce((a, r) => a + r.distance, 0) / 1000);
   const card = m => `<a class="hmode" href="${MODES[m].href}" style="--mc:${MODES[m].color};--mcl:${MODES[m].light}">${icon(m, 'hico')}<b>${MODES[m].name}</b><i>›</i></a>`;
   el.innerHTML = `<header class="ptop"><div class="pbrand" style="font-size:22px">RIDE<span>FRAME</span></div>
       <button class="ppill ${acc ? 'on' : ''}" id="hAcc"><i></i><span class="pname">${acc ? esc(acc.name) : 'Sign in'}</span></button>
@@ -35,7 +35,7 @@ function render() {
   $('#hSet').onclick = settings;
   const ib = $('#hInstall'); if (ib) ib.onclick = async () => { installEvt.prompt(); await installEvt.userChoice.catch(() => {}); installEvt = null; render(); };
 }
-async function save() { const st = (await db.kvGet('settings').catch(() => null)) || {}; Object.assign(st, { theme: S.theme, modeColors: S.modeColors, accent: S.accent, autoStrava: S.autoStrava, kraftRest: S.kraftRest }); await db.kvSet('settings', st).catch(() => {}); }
+async function save() { const st = (await db.kvGet('settings').catch(() => null)) || {}; Object.assign(st, { theme: S.theme, modeColors: S.modeColors, accent: S.accent, autoStrava: S.autoStrava, stravaImport: S.stravaImport, kraftRest: S.kraftRest }); await db.kvSet('settings', st).catch(() => {}); }
 function settings() {
   const s = document.createElement('div'); s.className = 'psheet'; document.body.append(s);
   const draw = () => {
@@ -47,6 +47,8 @@ function settings() {
       <h3 class="ksec">Strava</h3>
       <label class="prow">Upload automatically after saving<input id="tSt" type="checkbox" class="toggle" ${S.autoStrava ? 'checked' : ''}></label>
       <div class="prow" id="tStrava"><span>Strava account</span><button class="btn ghost ksmall" id="tConn">Connect</button></div>
+      <label class="prow" id="tImpRow" hidden>Import my Strava activities automatically<input id="tImp" type="checkbox" class="toggle" ${S.stravaImport !== false ? 'checked' : ''}></label>
+      <p class="hint" id="tImpHint" hidden>Reconnect Strava to import your activities.</p>
       <h3 class="ksec">Strength: rest between sets</h3><div class="pseg" id="tRest">${[60, 90, 120, 180].map(n => `<button data-rest="${n}" class="${(+S.kraftRest || 90) === n ? 'on' : ''}">${n < 120 ? n + ' s' : n / 60 + ' min'}</button>`).join('')}</div>
       <h3 class="ksec">Devices</h3>
       <p class="phint">For indoor rides, the smart trainer, heart rate strap and Zwift Click connect on the Indoor page (Indoor trainer → Sensors). Bluetooth does not carry over from page to page, so connect them there.</p>
@@ -58,8 +60,12 @@ function settings() {
       <div class="pfoot"><button class="btn" id="tOk">Done</button></div></div>`;
     $('#tSt', s).onchange = e => { S.autoStrava = e.target.checked; save(); };
     // the tap opens Strava's login directly (no await before it, otherwise the iPhone blocks the window)
-    import('./stravaup.js').then(async m => { const b = $('#tConn', s); if (!b) return; const show = st => { if (!st.configured) $('#tStrava', s).hidden = true; else if (st.connected) { b.textContent = 'Connected ✓'; b.disabled = true; } };
-      b.onclick = async () => { b.textContent = 'Waiting …'; const ok = await m.stravaConnect(); b.textContent = 'Connect'; if (ok) show(await m.stravaStatus()); };
+    $('#tImp', s).onchange = e => { S.stravaImport = e.target.checked; save(); };
+    // connected before 17.11. = no permission to read activities: "Reconnect" asks Strava again
+    import('./stravaup.js').then(async m => { const b = $('#tConn', s); if (!b) return; let st = {};
+      const show = x => { st = x; if (!x.configured) { $('#tStrava', s).hidden = true; return; } $('#tImpRow', s).hidden = !x.connected; $('#tImpHint', s).hidden = !x.connected || x.canImport;
+        if (x.connected && x.canImport) { b.textContent = 'Connected ✓'; b.disabled = true; } else if (x.connected) b.textContent = 'Reconnect'; };
+      b.onclick = async () => { const re = !!st.connected; b.textContent = 'Waiting …'; const ok = await m.stravaConnect(re); b.textContent = re ? 'Reconnect' : 'Connect'; if (ok) show(await m.stravaStatus()); };
       show(await m.stravaStatus()); });
     s.querySelectorAll('[data-rest]').forEach(b => b.onclick = () => { S.kraftRest = +b.dataset.rest; save(); draw(); });
     s.querySelectorAll('[data-th]').forEach(b => b.onclick = () => { S.theme = b.dataset.th; applyTheme(S, null); save(); draw(); });
@@ -70,4 +76,5 @@ function settings() {
   s.onclick = e => { if (e.target === s) s.remove(); }; draw();
 }
 await load(); render(); nav('home');
+import('./actimport.js').then(m => m.autoImport(S)).then(async r => { if (r?.added) { await load(); render(); } }).catch(() => {}); // new Strava activities, at most every 30 min
 if ('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js').catch(() => {});

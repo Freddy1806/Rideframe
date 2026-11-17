@@ -20,9 +20,16 @@ const seed = async p => p.evaluate(async ([long, NAME]) => { const { db } = awai
   for (const r of await db.all('rides')) await db.del('rides', r.id);
   for (const r of [ride('lr1', 'outdoor', 0, 8125, 98765, 238, long + ' über den Pass und zurück'), ride('lr2', 'run', 1, 3725, 12345, 0, 'Lauf ' + long, { kmSplits: [301, 296, 305, 299, 310, 288, 301, 297, 300, 304, 299, 302] }),
     ride('lr3', 'pure', 2, 3600, 33100, 215, 'Sweet spot', { laps: [{ t: 720, d: 6900, w: 238 }, { t: 720, d: 6800, w: 241 }] }), ride('lr4', 'kurz', 9, 2700, 21300, 180, '', { routeName: 'Lofoten Küste virtuell mit langem Namen' })]) await db.put('rides', r);
+  // other sports from outside (17.11.): imported from Strava (no samples, a polyline), entered by hand (note), an unknown Strava type
+  const ext = (id, type, ago, dur, dist, x) => ({ id, routeId: 'ext', sportType: type, sport: type, start: now - ago * d, date: now - ago * d + dur * 1000, duration: dur, elapsed: dur, distance: dist, gain: 12, complete: true, avgPower: 0, ...x });
+  for (const r of [ext('st9001', 'IceSkate', 0.5, 4520, 23456, { source: 'strava', stravaId: '9001', strava: 'https://www.strava.com/activities/9001', workout: 'Eislaufen am Weissensee mit der ganzen Familie und Freunden', avgHr: 142, maxHr: 177, kcal: 812, polyline: 'u{~vFvyys@fS]a@lXeSxB' }),
+    ext('man1', 'HighIntensityIntervalTraining', 3, 2700, 0, { source: 'manual', workout: 'HIIT', note: 'Zirkeltraining im Park, ' + long + ', sehr anstrengend und lang beschrieben' }),
+    ext('st9002', 'UnderwaterHockeyTournamentFinal', 5, 3600, 0, { source: 'strava', stravaId: '9002', strava: 'https://www.strava.com/activities/9002', workout: 'Finale' })]) await db.put('rides', r);
   await db.kvDel('outdoorDraft').catch(() => {}); await db.kvDel('runDraft').catch(() => {}); await db.kvDel('kraftDraft').catch(() => {}); await db.kvDel('pureDraft').catch(() => {});
   localStorage.setItem('rf_account', JSON.stringify({ token: 'x', name: NAME }));
 }, [LONG, NAME]);
+// a Strava connection from before the read permission (the import asks to reconnect): only the status answer is faked
+const stravaOld = p => p.route('**/api/strava/status', r => r.fulfill({ status: 200, contentType: 'application/json', body: '{"configured":true,"connected":true,"canImport":false}' }));
 const SCREENS = [
   ['handy', '/handy.html', null],
   ['handy-login', '/handy.html', async p => { await p.evaluate(() => localStorage.removeItem('rf_account')); await p.reload(); await p.waitForTimeout(500); await p.click('#hAcc'); }],
@@ -66,6 +73,13 @@ const SCREENS = [
   ['aktivitaet-fahrt', '/aktivitaeten.html', p => p.click('[data-act="r:lr1"]')],
   ['aktivitaet-lauf', '/aktivitaeten.html', p => p.click('[data-act="r:lr2"]')],
   ['aktivitaet-kraft', '/aktivitaeten.html', p => p.click('[data-act="k:w0"]')],
+  ['aktivitaet-import', '/aktivitaeten.html', p => p.click('[data-act="r:st9001"]')],
+  ['aktivitaet-manuell', '/aktivitaeten.html', p => p.click('[data-act="r:man1"]')],
+  ['aktivitaet-neu', '/aktivitaeten.html', p => p.click('#fAdd')],
+  ['aktivitaet-bearbeiten', '/aktivitaeten.html', async p => { await p.click('[data-act="r:man1"]'); await p.click('#dEdit'); }],
+  ['aktivitaet-datei', '/aktivitaeten.html', async p => { await p.click('#fAdd'); await p.setInputFiles('#aFileIn', require('node:path').join(__dirname, 'fixtures/hike.gpx')); await p.waitForTimeout(300); }],
+  ['aktivitaeten-strava', '/aktivitaeten.html', async p => { await stravaOld(p); await p.reload(); await p.waitForTimeout(700); }],
+  ['menu-einstellungen-strava', '/handy.html', async p => { await stravaOld(p); await p.reload(); await p.waitForTimeout(500); await p.click('#hSet'); await p.waitForTimeout(300); }],
   ['statistik', '/statistik.html', null],
   ['statistik-last', '/statistik.html', p => p.click('[data-by="load"]')],
   ['handy-aktivitaet', '/handy.html', p => p.click('[data-act]')],

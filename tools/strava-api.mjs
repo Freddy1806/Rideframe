@@ -9,7 +9,9 @@ import { join } from 'node:path';
 
 const DATA = process.env.RIDEFRAME_DATA || join(homedir(), 'RIDEFRAME_data');
 const CFG = join(DATA, 'strava.json'), TOK = join(DATA, 'strava_tokens.json');
-const API = 'https://www.strava.com/api/v3';
+const BASE = (process.env.STRAVA_BASE || 'https://www.strava.com').replace(/\/$/, ''), API = BASE + '/api/v3', OAUTH = BASE + '/oauth'; // STRAVA_BASE: a fake Strava for the tests (tools/import-test.mjs)
+const READ = /\bactivity:read(_all)?\b/; // the permission the import needs; connections from before 17.11. only have activity:write,read
+const rate = { u15: 0, uDay: 0, l15: 100, lDay: 1000, at: 0 }; // Strava's app-wide limits, from the X-RateLimit headers of the last answer
 const imgDay = new Map(); // strava key -> { d: day, n: share images today }
 const pending = new Map(); // oauth state -> time
 const claims = new Map(), stateClaim = new Map(); // installed phone app (iOS): the login runs in a separate browser with its own storage, so the app fetches its key by a one-time claim code
@@ -34,7 +36,7 @@ async function access(key, cfg) {
   const all = await readJSON(TOK, {}), t = all[key];
   if (!t) return null;
   if (t.expires_at - 120 > Date.now() / 1000) return t.access_token;
-  const r = await fetch('https://www.strava.com/oauth/token', { method: 'POST', headers: { 'Content-Type': 'application/json' },
+  const r = await fetch(OAUTH + '/token', { method: 'POST', headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ client_id: cfg.client_id, client_secret: cfg.client_secret, grant_type: 'refresh_token', refresh_token: t.refresh_token }) });
   if (!r.ok) return null;
   const j = await r.json(); Object.assign(t, { access_token: j.access_token, refresh_token: j.refresh_token, expires_at: j.expires_at });
@@ -55,7 +57,7 @@ export async function stravaApi(req, res, path) {
     }
     if (op === 'status') {
       const t = key && (await readJSON(TOK, {}))[key];
-      return send(res, 200, { configured, connected: !!t, athlete: t?.athlete || null }), true;
+      return send(res, 200, { configured, connected: !!t, athlete: t?.athlete || null, canImport: !!t && READ.test(t.scope || '') }), true;
     }
     const cm = op.match(/^claim\/([a-f0-9]{32,64})$/); // one-time, 5 minutes: only the app that started this login knows the code
     if (cm) { const v = claims.get(cm[1]); if (v) claims.delete(cm[1]); return send(res, 200, { key: v && Date.now() - v.t < 5 * 60e3 ? v.key : null }), true; }
@@ -66,8 +68,8 @@ export async function stravaApi(req, res, path) {
       if (pending.size > 2000) { pending.clear(); stateClaim.clear(); } // someone hammering the link never fills the memory
       for (const [c, v] of claims) if (Date.now() - v.t > 15 * 60e3) claims.delete(c);
       for (const [s, t] of pending) if (Date.now() - t > 15 * 60e3) { pending.delete(s); stateClaim.delete(s); }
-      const u = new URL('https://www.strava.com/oauth/authorize');
-      u.search = new URLSearchParams({ client_id: cfg.client_id, response_type: 'code', redirect_uri: baseUrl(req, cfg) + '/api/strava/callback', approval_prompt: 'auto', scope: 'activity:write,read', state });
+      const u = new URL(OAUTH + '/authorize'), force = new URL(req.url, 'http://x').searchParams.get('force') === '1'; // force: ask again, so an old connection gets the read permission
+      u.search = new URLSearchParams({ client_id: cfg.client_id, response_type: 'code', redirect_uri: baseUrl(req, cfg) + '/api/strava/callback', approval_prompt: force ? 'force' : 'auto', scope: 'activity:write,activity:read_all,read', state });
       res.writeHead(302, { Location: u.toString() }); res.end(); return true;
     }
     if (op.startsWith('callback')) {
@@ -76,19 +78,20 @@ export async function stravaApi(req, res, path) {
       if (!pending.delete(q.get('state') || '')) return html(res, 'The sign-in has expired. Please click “Connect Strava” in the game again.'), true;
       if (q.get('error') || !q.get('code')) return html(res, 'Strava connection cancelled. You can close this window.'), true;
       if (!(q.get('scope') || '').includes('activity:write')) return html(res, 'Please allow uploading activities when connecting (leave the box ticked) and try again.'), true;
-      const r = await fetch('https://www.strava.com/oauth/token', { method: 'POST', headers: { 'Content-Type': 'application/json' },
+      const r = await fetch(OAUTH + '/token', { method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ client_id: cfg.client_id, client_secret: cfg.client_secret, code: q.get('code'), grant_type: 'authorization_code' }) });
       const j = await r.json();
       if (!r.ok) return html(res, 'Strava refused the connection: ' + String(j.message || r.status).replace(/[<>&"']/g, '')
         + (r.status === 403 ? '<br><small>New Strava apps only allow the app owner at first.</small>' : '')), true;
       const k = randomBytes(24).toString('hex'), all = await readJSON(TOK, {});
-      all[k] = { access_token: j.access_token, refresh_token: j.refresh_token, expires_at: j.expires_at, athlete: { id: j.athlete?.id, name: [j.athlete?.firstname, j.athlete?.lastname].filter(Boolean).join(' ') }, at: Date.now() };
+      all[k] = { access_token: j.access_token, refresh_token: j.refresh_token, expires_at: j.expires_at, athlete: { id: j.athlete?.id, name: [j.athlete?.firstname, j.athlete?.lastname].filter(Boolean).join(' ') }, at: Date.now(), scope: String(q.get('scope') || '').slice(0, 200) }; // the granted permissions: the import needs activity:read
       await saveTokens(all); if (claim) claims.set(claim, { t: Date.now(), key: k });
       return html(res, `<div>Connected to Strava ✓<br><small>This window closes in a moment; otherwise just close it.</small></div><script>try{localStorage.setItem('rf_strava_key',${JSON.stringify(k)})}catch(e){}setTimeout(()=>window.close(),900);if(!window.opener)setTimeout(()=>location.href='/',1500)</script>`), true;
     }
     if (op === 'disconnect' && req.method === 'POST') { const all = await readJSON(TOK, {}); delete all[key]; await saveTokens(all); return send(res, 200, { ok: true }), true; }
     const tok = key && await access(key, cfg);
     if (!tok) return send(res, 401, { error: 'Not connected to Strava.' }), true;
+    if (op === 'activities' && req.method === 'GET') return send(res, ...await activities(key, tok, new URL(req.url, 'http://x').searchParams)), true;
     if (op === 'image' && req.method === 'POST') { // the share image, so the Strava description can link to it
       const b = await body(req, 8e6), m = String(b.jpg || '').match(/^data:image\/jpeg;base64,(.+)$/);
       if (!m) return send(res, 400, { error: 'no image' }), true;
@@ -127,9 +130,10 @@ export async function stravaApi(req, res, path) {
       return send(res, 200, { segments: [...out.values()] }), true;
     }
     if (op === 'activity' && req.method === 'POST') { // strength workouts (kraft.html): no file, a manual activity "Krafttraining"
-      const b = await body(req, 1e5), f = new URLSearchParams({ name: String(b.name || 'Strength training').slice(0, 200), sport_type: String(b.sport_type || 'WeightTraining').replace(/[^A-Za-z]/g, ''),
+      const b = await body(req, 1e5), f = new URLSearchParams({ name: String(b.name || 'Strength training').slice(0, 200), sport_type: String(b.sport_type || 'WeightTraining').replace(/[^A-Za-z]/g, '') || 'Workout',
         start_date_local: String(b.start_date_local || ''), elapsed_time: String(Math.max(60, Math.round(+b.elapsed_time || 0))), description: String(b.description || '').slice(0, 4000) });
       if (b.external_id) f.set('external_id', String(b.external_id).slice(0, 100));
+      if (+b.distance > 0) f.set('distance', String(Math.round(+b.distance))); // manual entries (Activities, + Add activity)
       const r = await fetch(API + '/activities', { method: 'POST', headers: { Authorization: 'Bearer ' + tok, 'Content-Type': 'application/x-www-form-urlencoded' }, body: f });
       const j = await r.json().catch(() => ({})); return send(res, r.ok ? 200 : r.status, r.ok ? { id: j.id } : { error: j.message || 'Strava refused' }), true;
     }
@@ -143,4 +147,33 @@ export async function stravaApi(req, res, path) {
     }
     return send(res, 404, { error: 'unbekannt' }), true;
   } catch (e) { return send(res, 500, { error: String(e.message || e) }), true; }
+}
+
+/** the rider's own activities for the import (Activities, "Import from Strava"): GET /athlete/activities, 100 per page, at most
+ *  10 pages per call. after = Unix seconds (default: the last 12 months). Stops at a 429 or close to Strava's limits (100 per
+ *  15 minutes and 1000 a day for the whole app) and says so. Only the summary fields the record needs leave the server. */
+const KEEP = ['id', 'name', 'sport_type', 'type', 'start_date', 'elapsed_time', 'moving_time', 'distance', 'total_elevation_gain', 'average_heartrate', 'max_heartrate', 'average_watts',
+  'weighted_average_watts', 'device_watts', 'max_watts', 'kilojoules', 'calories', 'trainer', 'external_id'];
+async function activities(key, tok, q) {
+  const t = (await readJSON(TOK, {}))[key];
+  if (!READ.test(t?.scope || '')) return [403, { error: 'Reconnect Strava to import your activities.', reconnect: true }];
+  const after = Math.max(0, Math.floor(+q.get('after') || 0)) || Math.floor(Date.now() / 1000) - 365 * 86400, out = [];
+  let done = false, rateLimited = false, asc = true, pages = 0, error = null;
+  for (let page = 1; page <= 10; page++) {
+    if (Date.now() - rate.at < 15 * 60e3 && (rate.u15 >= rate.l15 - 3 || rate.uDay >= rate.lDay - 10)) { rateLimited = true; break; } // keep a few calls for uploads
+    const r = await fetch(`${API}/athlete/activities?per_page=100&page=${page}&after=${after}`, { headers: { Authorization: 'Bearer ' + tok } });
+    const u = String(r.headers.get('x-ratelimit-usage') || '').split(',').map(Number), l = String(r.headers.get('x-ratelimit-limit') || '').split(',').map(Number);
+    if (u.length === 2 && u.every(Number.isFinite)) Object.assign(rate, { u15: u[0], uDay: u[1], at: Date.now() }, l.length === 2 && l.every(v => v > 0) ? { l15: l[0], lDay: l[1] } : {});
+    if (r.status === 429) { rateLimited = true; break; }
+    const j = await r.json().catch(() => null);
+    if (r.status === 401 || r.status === 403) return [403, { error: 'Reconnect Strava to import your activities.', reconnect: true }];
+    if (!r.ok || !Array.isArray(j)) { error = j?.message || 'Strava answered ' + r.status; break; }
+    pages++;
+    for (const a of j) { const o = {}; for (const k of KEEP) if (a[k] != null) o[k] = a[k]; if (a.map?.summary_polyline) o.map = { summary_polyline: a.map.summary_polyline };
+      if (out.length && Date.parse(o.start_date) < Date.parse(out[out.length - 1].start_date)) asc = false; out.push(o); }
+    if (j.length < 100) { done = true; break; }
+  }
+  // next: where a following call goes on (with "after" Strava answers oldest first; only then is the newest start a safe cursor)
+  const next = !done && asc && out.length ? Math.floor(Date.parse(out[out.length - 1].start_date) / 1000) - 1 : null;
+  return [error && !out.length ? 502 : 200, { activities: out, done, rateLimited, next, pages, error }];
 }

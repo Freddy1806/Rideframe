@@ -108,7 +108,7 @@ async function showVersion() {
 
 async function reload() {
   state.routes = (await db.all('routes')).sort((a, b) => b.createdAt - a.createdAt);
-  state.rides = (await db.all('rides')).sort((a, b) => b.date - a.date);
+  state.rides = (await db.all('rides')).filter(r => !r.source).sort((a, b) => b.date - a.date); // activities from Strava, files or by hand live in the phone feed (aktivitaeten.html), not in the ride history
 }
 
 /** rides were deleted or changed elsewhere (profile, end screen): reload and redraw the history tab */
