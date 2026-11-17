@@ -859,8 +859,10 @@ img.face.big{width:96px;height:96px}
 .wbar.v-focus .wcd { bottom: calc(100% + 10px); }
 .wbar.v-focus .wask { width: min(680px, calc(100% - 32px)); margin: 0 auto 10px; }
 @media (max-width: 820px) {
-  .wbar.v-compact .wb-row { grid-template-columns: minmax(0, 1fr) auto; } .wbar.v-compact .wb-next { grid-column: 1 / -1; grid-row: 3; justify-self: stretch; text-align: left; }
-  .wbar.v-compact .wb-time { font-size: 32px; } .wbar.v-compact .wb-t { font-size: 48px; } .wbar.v-compact .wb-p { font-size: 28px; }
+  .wbar.v-compact { padding: 8px 14px 0; } .wbar.v-compact .wb-row { gap: 12px; } .wbar.v-compact .wb-chart { margin: 6px -14px 0; }
+  .wbar.v-compact .wb-name { font-size: 15px; } .wbar.v-compact .wb-time { font-size: 28px; } .wbar.v-compact .wb-t { font-size: 40px; } .wbar.v-compact .wb-p { font-size: 22px; }
+  .wbar.v-compact .wb-p small { font-size: 11px; } .wbar.v-compact .wb-nums { gap: 0 10px; } .wbar.v-compact .wab { width: 32px; height: 32px; font-size: 17px; }
+  .wbar.v-compact .wb-next .n { font-size: 15px; } .wbar.v-compact .wb-next .d { font-size: 11px; } .wbar.v-compact .wb-end { margin-top: 4px; gap: 6px; } .wbar.v-compact .wb-chart .wtl { height: 30px; }
   .wbar.v-focus .wb-t { font-size: 60px; } .wbar.v-focus .wb-time { font-size: 26px; }
 }
 @media (max-height: 600px) {
@@ -876,3 +878,5 @@ img.face.big{width:96px;height:96px}
 .sens-rc { font: inherit; font-size: 10px; font-weight: 800; letter-spacing: .08em; text-transform: uppercase; padding: 3px 9px; border-radius: 999px; border: 1px solid var(--accent); background: none; color: var(--paper); cursor: pointer; }
 .sens-rc[hidden] { display: none; } .wb-p .sens-rc { margin-left: 10px; vertical-align: middle; }
 .ride.wk .metric .sens { font-size: 10px; margin-top: 1px; }
+/* the countdown card says what comes; the step flash would sit on top of it */
+.ride:has(.wcd:not([hidden])) .flash { opacity: 0 !important; }
