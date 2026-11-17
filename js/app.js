@@ -15,6 +15,7 @@ import { gameVersion } from './uebridge.js';
 import { fovOf, FOV_MIN, FOV_MAX } from './fov.js';
 import { fmtTime, fmtKm, fmtNum, esc, bestAvg } from './util.js';
 import { openControllerTest } from './controller.js';
+import { initRemote, openRemote } from './remotepad.js';
 import { click } from './zwiftclick.js';
 import { stravaButton } from './stravaup.js';
 import { routeFns } from './tcx.js';
@@ -88,6 +89,7 @@ async function boot() {
   })();
   db.persist();
   showVersion();
+  initRemote(state); // phone remote (js/remotepad.js): keeps its session over a reload, findable by the account
 }
 
 /** version next to the logo; checks every 10 min whether the host has a newer one (then: click to reload) */
@@ -484,6 +486,7 @@ function settings() {
         <label class="field"><div>Gradient realism <b id="diffV">${s.difficulty}%</b><div class="hint">100 % = real gradient. 50 % = climbs feel half as steep.</div></div><input type="range" id="difficulty" min="0" max="100" step="5" value="${s.difficulty}"></label>
         <label class="field"><div>Descents <b id="downV">${s.downhill}%</b><div class="hint">How much the trainer eases off downhill.</div></div><input type="range" id="downhill" min="0" max="100" step="5" value="${s.downhill}"></label>
         <div class="field"><div>Test controller<div class="hint">E.g. Di2 extra buttons (D-FLY), Zwift Click, gamepad. Shows what the buttons send. A gamepad also drives all menus: D-pad move · A select · B back · L / R tabs (keyboard: arrows, Enter, Escape).</div></div><button class="btn ghost small" id="ctBtn">Test</button></div>
+        <div class="field"><div>Phone remote<div class="hint">Your phone as a remote for this app: open remote.html on the phone and enter the code. Works like a gamepad, in the menus and in the ride (watts, pause, music, view).</div></div><button class="btn ghost small" id="rmBtn">Connect phone</button></div>
         <div class="field"><div>Zwift Click<div class="hint">Its + / − buttons shift the virtual gears in the ride. Click v2: open it in the Zwift app once a day, or it drops after a minute.</div><div class="hint" id="zcState">${clickState()}</div></div><button class="btn ghost small" id="zcBtn">${click.device ? 'Disconnect' : 'Connect'}</button></div>
         <div class="field"><div>Heart rate strap<div class="hint">Optional, via Bluetooth.</div></div><div style="display:flex;gap:8px"><button class="btn ghost small" id="hrAll" title="If the strap is missing in the normal search">All devices</button><button class="btn ghost small" id="hrBtn">${state.hr?.connected ? 'Connected' : 'Connect'}</button></div></div>
       </div>
@@ -577,6 +580,7 @@ function settings() {
   main.querySelectorAll('.swatch').forEach(b => b.onclick = () => { s.accent = b.dataset.acc; applyAccent(); saveSettings(); settings(); });
   $('#hrBtn').onclick = () => connectHR(false); $('#hrAll').onclick = () => connectHR(true);
   $('#ctBtn').onclick = openControllerTest;
+  $('#rmBtn').onclick = openRemote;
   $('#zcBtn').onclick = connectClick;
   db.usage().then(u => { if (u) $('#usage').textContent = `${fmtNum(u.usage / 1e9, 1)} GB used of ${fmtNum(u.quota / 1e9, 0)} GB available`; });
 }

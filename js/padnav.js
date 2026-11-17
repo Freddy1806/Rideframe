@@ -4,7 +4,7 @@
 // It stands down while a ride runs: there js/ride.js _pollPad owns the pad (pause menu included) and the arrow keys
 // mean watts. Only the ride's end screen (.ride .finish) is navigated here again, where the ride no longer reads the pad.
 // Button numbers are the standard mapping, read through padButtons() like the ride (Nintendo-style pads swapped back).
-import { padButtons } from './controller.js';
+import { padButtons, activePad } from './controller.js';
 
 export const DIRS = ['up', 'down', 'left', 'right'];
 const ORANGE = '#ff5a1f'; // the product's one accent; the focus ring stays orange whatever accent colour is chosen
@@ -196,7 +196,7 @@ function poll(now) {
   requestAnimationFrame(poll);
   const riding = rideRunning(); if (riding !== inRide) { inRide = riding; document.documentElement.classList.toggle('pn-ride', riding); } // no menu hint over the ride
   if (active && now - lastEnsure > 120 && !riding) { lastEnsure = now; ensure(); } // a new screen or window: the focus follows at once
-  const pad = navigator.getGamepads?.().find(Boolean); if (!pad) { prev = []; return; }
+  const pad = activePad(); if (!pad) { prev = []; return; } // a real pad or the phone remote (js/remotepad.js)
   const b = padButtons(pad), was = prev; prev = b;
   stick = stickDir(pad.axes?.[0] || 0, pad.axes?.[1] || 0, stick);
   const held = Object.fromEntries(DIRS.map(d => [d, false]));

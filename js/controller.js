@@ -1,5 +1,6 @@
 // "Controller testen": find any Bluetooth device (e.g. Shimano Di2 D-FLY, Zwift Click, remotes)
 // and show every notification it sends, so buttons can be mapped to game actions.
+import { virtualPad } from './remotepad.js';
 const SHIMANO_BASE = n => `0000${n.toString(16).padStart(4, '0')}-5348-494d-414e-4f5f424c4500`; // "SHIMANO_BLE"
 const CANDIDATES = [
   ...Array.from({ length: 256 }, (_, i) => 0x1800 + i),          // all standard 16-bit services
@@ -54,6 +55,14 @@ export function padButtons(pad) {
   }
   if (padSwapped(pad)) { [p[0], p[1]] = [p[1], p[0]]; [p[2], p[3]] = [p[3], p[2]]; }
   return p;
+}
+/** the pad the ride (js/ride.js) and the menus (js/padnav.js) read: the first real pad, the phone remote as a virtual standard
+ *  pad (js/remotepad.js), or both at once with their buttons OR-ed (the real pad's own A/B swap already applied) */
+export function activePad() {
+  const real = navigator.getGamepads?.().find(Boolean) || null, v = virtualPad();
+  if (!v) return real; if (!real) return v;
+  const a = padButtons(real), n = Math.max(a.length, v.buttons.length);
+  return { ...v, axes: real.axes, buttons: Array.from({ length: n }, (_, i) => { const on = !!a[i] || !!v.buttons[i]?.pressed; return { pressed: on, touched: on, value: on ? 1 : 0 }; }) };
 }
 const BTN = ['A', 'B', 'X', 'Y', 'L', 'R', 'L2 / ZL', 'R2 / ZR', 'Select (−)', 'Start (+)', 'L3', 'R3', 'D-pad ↑', 'D-pad ↓', 'D-pad ←', 'D-pad →', 'Home'];
 const ACT = ['Accept challenge / menu ok', 'Switch display / back', 'Photo', 'Switch view', 'Gear easier (workout: −1 W)', 'Gear harder (workout: +1 W)', 'Field of view wider (workout: −5 W)', 'Field of view narrower (workout: +5 W)', 'Gear mode', 'Pause menu', '', '', 'Gear harder (workout: +1 W)', 'Gear easier (workout: −1 W)', 'Music on/off', 'Next song', 'Pause menu'];
