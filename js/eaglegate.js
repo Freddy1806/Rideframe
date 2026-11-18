@@ -90,5 +90,5 @@ export function follow(env, rms, dt, peak) {
  *  sky instead of lying across the road. */
 export function eagleFrame(aspect) {
   const k = Math.max(0, Math.min(1, (aspect - 1.8) / 0.6));
-  return { cx: 0.81 + 0.03 * k, cy: 0.41, width: 0.095 * (16 / 9) / aspect, maxH: 0.3, bank: 0.22 };
+  return { cx: 0.82 + 0.03 * k, cy: 0.47, width: 0.25 * (16 / 9) / aspect, maxH: 0.5, bank: 0.35 }; // head a quarter of the screen width at the right edge (owner 17.11.), clear of the wing and the bottom panel
 }
