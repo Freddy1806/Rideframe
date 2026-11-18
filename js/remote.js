@@ -49,8 +49,8 @@ function shell() {
     </div>
     <div class="rride" id="rRide" hidden>
       <div class="rwatts" id="rWatts">
-        <button class="rk" data-hold="${B.L2}" aria-label="Target minus 5 watts">−5</button><button class="rk" data-hold="${B.L}" aria-label="Target minus 1 watt">−1</button>
-        <button class="rk" data-hold="${B.R}" aria-label="Target plus 1 watt">+1</button><button class="rk" data-hold="${B.R2}" aria-label="Target plus 5 watts">+5</button></div>
+        <button class="rk" data-hold="${B.L}" aria-label="Target minus 5 watts">−5</button><button class="rk" data-hold="${B.L2}" aria-label="Target minus 1 watt">−1</button>
+        <button class="rk" data-hold="${B.R2}" aria-label="Target plus 1 watt">+1</button><button class="rk" data-hold="${B.R}" aria-label="Target plus 5 watts">+5</button></div>
       <div class="rgears" id="rGears"><button class="rk" data-hold="${B.L}">Gear easier</button><button class="rk" data-hold="${B.R}">Gear harder</button></div>
       <div class="rcmds">
         <button class="rc" data-cmd="pause">${ICON.pause}<span>Pause</span></button>

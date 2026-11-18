@@ -93,15 +93,15 @@ const median = a => { const s = [...a].sort((x, y) => x - y); return s[Math.floo
     ok(pv.step === 'VO2max 1/5' && pv.tgt === String(tgt0), `phone shows the step and the target (${pv.step} · ${pv.tgt} W)`, JSON.stringify(pv));
     ok(pv.wv && pv.keys === 4, 'phone: −5 −1 +1 +5 keys in a workout');
     await pshot('phone_ride_390');
-    await press('.rk[data-hold="7"]'); await D.waitForTimeout(200);
+    await press('.rk[data-hold="5"]'); await D.waitForTimeout(200);
     const a1 = await D.evaluate(() => ({ a: window.__ride.wAdj, t: +document.querySelector('#hWT').textContent }));
     ok(a1.a === 5 && a1.t === tgt0 + 5, `phone +5: the desktop target ${tgt0} → ${a1.t} W`, JSON.stringify(a1));
-    await press('.rk[data-hold="4"]'); await D.waitForTimeout(200);
+    await press('.rk[data-hold="6"]'); await D.waitForTimeout(200);
     ok(await D.evaluate(() => window.__ride.wAdj) === 4, 'phone −1: offset +4 W');
     await P.waitForFunction(t => document.querySelector('#rTgt')?.textContent === String(t), tgt0 + 4, { timeout: 4000 }).catch(() => {});
     ok(await P.textContent('#rTgt') === String(tgt0 + 4), `phone follows the new target (${tgt0 + 4} W)`);
     // hold +1: repeats as real down / up
-    await press('.rk[data-hold="5"]', 1000); await D.waitForTimeout(300);
+    await press('.rk[data-hold="7"]', 1000); await D.waitForTimeout(300);
     const held = await D.evaluate(() => window.__ride.wAdj);
     ok(held >= 4 + 4, `holding +1 for 1 s repeats (offset 4 → ${held})`);
     // latency: phone tap → desktop target changed (same machine, same server)
@@ -110,7 +110,7 @@ const median = a => { const s = [...a].sort((x, y) => x - y); return s[Math.floo
       const before = await D.evaluate(() => window.__ride.wAdj);
       await D.evaluate(b0 => { window.__latT = 0; const f = () => { if (window.__ride.wAdj !== b0) window.__latT = performance.timeOrigin + performance.now(); else requestAnimationFrame(f); }; requestAnimationFrame(f); }, before);
       const t0 = await P.evaluate(() => performance.timeOrigin + performance.now());
-      await P.locator(i % 2 ? '#rWatts .rk[data-hold="4"]' : '#rWatts .rk[data-hold="5"]').dispatchEvent('pointerdown', { pointerId: 2 }); await P.locator(i % 2 ? '#rWatts .rk[data-hold="4"]' : '#rWatts .rk[data-hold="5"]').dispatchEvent('pointerup', { pointerId: 2 });
+      await P.locator(i % 2 ? '#rWatts .rk[data-hold="6"]' : '#rWatts .rk[data-hold="7"]').dispatchEvent('pointerdown', { pointerId: 2 }); await P.locator(i % 2 ? '#rWatts .rk[data-hold="6"]' : '#rWatts .rk[data-hold="7"]').dispatchEvent('pointerup', { pointerId: 2 });
       await D.waitForFunction(() => window.__latT > 0, null, { timeout: 3000 }).catch(() => {});
       const t1 = await D.evaluate(() => window.__latT); if (t1) lat.push(t1 - t0); await D.waitForTimeout(150);
     }
@@ -149,7 +149,7 @@ const median = a => { const s = [...a].sort((x, y) => x - y); return s[Math.floo
     await pctx.setOffline(true); await P.waitForTimeout(2500); await pctx.setOffline(false);
     await P.waitForFunction(() => document.querySelector('#rConn')?.classList.contains('on'), null, { timeout: 15000 }).catch(() => {});
     ok(/Live/.test(await P.textContent('#rConn')), 'phone offline 2.5 s, then back: "Live" again by itself');
-    const w0 = await D.evaluate(() => window.__ride.wAdj); await press('.rk[data-hold="5"]'); await D.waitForTimeout(250);
+    const w0 = await D.evaluate(() => window.__ride.wAdj); await press('.rk[data-hold="7"]'); await D.waitForTimeout(250);
     ok(await D.evaluate(() => window.__ride.wAdj) === w0 + 1, 'after the reconnect +1 W still works');
     await P.reload(); await P.waitForSelector('#rPad:not([hidden])', { timeout: 5000 }).catch(() => {});
     ok(await P.isVisible('#rPad'), 'phone reload: reconnected without a code');
