@@ -229,11 +229,22 @@ export function makeRealTrack(j) {
   const seaSide = (a, b) => { let s = 0; for (let k = Math.floor(a / STEP); k < Math.min(n, b / STEP); k++) s += side[k]; return s < 0 ? -1 : 1; };
   const open = (a, b) => { if (b - a > 50) segs.push({ name: 'Coast road', from: a, to: b, land: seaOn(a, b) ? 'coast' : 'valley', seaSide: seaSide(a, b) }); };
   let at = 0;
+  if (j.roads?.length) { // the island (tools/island.mjs): each road of the tour keeps its own landscape (coast, cliff, valley, switchbacks)
+    const cut = []; for (const rd of j.roads) cut.push({ name: rd.name, from: rd.from_m, to: rd.to_m, land: rd.land, top: rd.edge === 'P1-G' && rd.dir === 1 ? 'castle' : undefined });
+    for (const p of places) { // a village splits the road it lies on
+      const a = Math.max(0, p.from_m), b = Math.min(L, p.to_m), k = cut.findIndex(c => c.from <= a + 1 && c.to > a); if (k < 0 || b <= a) continue;
+      const c = cut[k], land = c.land === 'serp' || c.land === 'river' ? 'valley' : c.land === 'cliff' ? 'coast' : c.land;
+      const parts = [c.from < a - 50 && { ...c, to: a, top: undefined }, { name: p.name, from: a, to: Math.min(b, c.to), land, village: [0.1, 0.9] }, c.to > b + 50 && { ...c, from: b }].filter(Boolean);
+      cut.splice(k, 1, ...parts);
+    }
+    for (const c of cut) { const sd = seaSide(c.from, c.to); segs.push({ ...c, seaSide: c.land === 'coast' || c.land === 'cliff' ? sd : seaOn(c.from, c.to) ? sd : 1 }); if (segs[segs.length - 1].top === undefined) delete segs[segs.length - 1].top; }
+    at = L; places.length = 0;
+  }
   for (const p of places) {
     const a = Math.max(at, p.from_m - 150), b = Math.min(L, p.to_m + 150); if (b <= a) continue;
     open(at, a); segs.push({ name: p.name, from: a, to: b, land: seaOn(a, b) ? 'coast' : 'valley', seaSide: seaSide(a, b), village: [0.1, 0.9] }); at = b;
   }
-  open(at, L); if (segs.length) segs[segs.length - 1].to = (n - 1) * STEP;
+  if (at < L) open(at, L); if (segs.length) segs[segs.length - 1].to = (n - 1) * STEP;
   const tmp = finishTrack({ length: (n - 1) * STEP, time: alt.map((_, i) => i), lat, lon, altRaw: alt, eleSource: 'dem' });
   const d0 = COAST_DESIGN, p = defaultParams(d0), time = []; let t = 0;
   for (let i = 0; i < n; i++) { time.push(t); t += STEP / speedFor(d0.ftp * 0.7, tmp.grade[i], p); } // "footage" pace: steady endurance ride
