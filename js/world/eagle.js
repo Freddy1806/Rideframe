@@ -92,10 +92,10 @@ export class Eagle {
     const root = new THREE.Group(); root.name = 'eagleOfDestiny'; root.add(obj);
     obj.traverse(o => { o.layers.set(1); if (o.isMesh) { o.castShadow = false; o.receiveShadow = false; o.frustumCulled = false; } });
     const R = this.rig = { root, obj, mixer, standin: k === 'standin',
-      neck: byName(obj, 'neck'), head: byName(obj, 'head'), jaw: k === 'seeadler' ? null : byName(obj, 'jaw'), tail: byName(obj, 'tail'),
+      neck: byName(obj, 'neck'), necks: ['neck', 'neck2', 'neck3', 'neck4'].map(n => byName(obj, n)).filter(Boolean), head: byName(obj, 'head'), jaw: k === 'seeadler' ? null : byName(obj, 'jaw'), tail: byName(obj, 'tail'),
       lids: ['eyelid.L', 'eyelid.R'].map(n => byName(obj, n)).filter(Boolean),
       w1: ['wing1.L', 'wing1.R'].map(n => byName(obj, n)), w2: ['wing2.L', 'wing2.R'].map(n => byName(obj, n)) };
-    R.bones = [R.neck, R.head, R.jaw, R.tail, ...R.lids, ...R.w1, ...R.w2].filter(Boolean);
+    R.bones = [...R.necks, R.head, R.jaw, R.tail, ...R.lids, ...R.w1, ...R.w2].filter(Boolean);
     R.q0 = new Map(R.bones.map(b => [b, b.quaternion.clone()])); R.s0 = new Map(R.bones.map(b => [b, b.scale.clone()])); R.p0 = new Map(R.bones.map(b => [b, b.position.clone()]));
     if (mixer) { mixer.stopAllAction(); const act = n => { const c = clips.find(x => x.name === n); return c ? mixer.clipAction(c) : null; };
       R.fly = act('Fliegen'); R.glide = act('Gleiten');
@@ -188,12 +188,15 @@ export class Eagle {
       const ax = R.fwdObj.clone().applyQuaternion(R.obj.getWorldQuaternion(new THREE.Quaternion())).normalize();
       R.w1.forEach((w, i) => { const sg = R.flapSign[i]; if (!w || !sg) return; turn(w, new THREE.Quaternion().setFromAxisAngle(ax, sg * flap)); if (R.w2[i]) turn(R.w2[i], new THREE.Quaternion().setFromAxisAngle(ax, sg * flap * 0.45)); });
     }
-    if (R.head && R.fwdHead && (look > 0 || nod || tilt || (!R.jaw && mouth))) { // the beak turns from where it points (measured, any rest pose) to the camera: 60 % neck, then the head
+    if (R.head && R.fwdHead && (look > 0 || nod || tilt || (!R.jaw && mouth))) { // the beak turns from where it points (measured, any rest pose) to the camera: the neck first, then the head
       const hq = R.head.getWorldQuaternion(new THREE.Quaternion()), cur = R.fwdHead.clone().applyQuaternion(hq);
       const up = _Y.clone().applyQuaternion(this.cam.getWorldQuaternion(new THREE.Quaternion()));
       const toCam = this.cam.getWorldPosition(new THREE.Vector3()).sub(this._headC()).normalize(); // from the head's measured centre, not the bone pivot
       const qLook = new THREE.Quaternion().slerp(new THREE.Quaternion().setFromUnitVectors(cur, toCam), look);
-      if (R.neck && R.neck !== R.head) turn(R.neck, new THREE.Quaternion().slerp(qLook, 0.6));
+      // a neck of several bones (adler_nah v4: neck, neck2, neck3, neck4) shares the turn evenly, so no joint twists hard: with
+      // four bones each takes a fifth and the head the rest; one neck bone takes 60 % as before
+      const nk = R.necks.filter(b => b !== R.head), share = nk.length > 1 ? 1 / (nk.length + 1) : 0.6;
+      for (const b of nk) turn(b, new THREE.Quaternion().slerp(qLook, share));
       let want = cur;
       for (let i = 0; i < 3; i++) { // the head's centre moves as neck and head turn: aim again from where it is now (eye contact while it speaks)
         const to = this.cam.getWorldPosition(new THREE.Vector3()).sub(this._headC()).normalize();
