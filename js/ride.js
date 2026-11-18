@@ -23,6 +23,7 @@ import { testResult } from './stats.js';
 import { Wizard, WIZ } from './wizard.js';
 import { intervalRecords } from './ivhistory.js';
 import { hardWindow, wizardGate, challengeGate, summonGap, wzOf, friendCalls, friendsLine } from './ivgate.js';
+import { planEagle, eagleGate, moveEagle, othersBusy } from './eaglegate.js';
 import { Music, Coach } from './music.js';
 import { MIC_SVG, SPK_SVG, voiceStatus } from './voice.js';
 import { hudPrefs, applyHud, hudControlsHTML, wireHudControls, HUD_ORDER, HUD_PRESETS } from './hudprefs.js';
@@ -192,6 +193,7 @@ export class RideSession {
     if (this.group) { this._wireVoice(); this._wireGroupChip(); }
     this._initChallenges();
     this._initWizard();
+    this._initEagle();
     this._initStory();
     if (!this.group) this.player?.events?.surprises?.startArch?.(this.d + 14); // ride off under the START arch
     this.running = true; this.last = performance.now();
@@ -344,6 +346,7 @@ export class RideSession {
       this._segTick(d0, dt);
       this._cgTick();
       this._wizTick(dt);
+      this._eagleTick(dt);
       if ((this._moodT = (this._moodT || 0) + dt) > 1) { this._moodT = 0; this._mood(); }
       if (this.berg && !(this.workout && this.erg)) this.state.trainer.setPower(this._bergTarget());
       else this.state.trainer.setGrade(this._trainerGrade());
@@ -573,7 +576,7 @@ export class RideSession {
   }
   _chTick(dt) {
     const ch = this.ch; if (!ch) return;
-    if (this.wiz?.busy && !ch.active) return; // the wizard's trial or flight or hell: no dares meanwhile
+    if ((this.wiz?.busy || this.eagle?.busy) && !ch.active) return; // the wizard's trial or flight or hell, the eagle: no dares meanwhile
     const gate = this.workout ? challengeGate(this.wDone ? null : this._hardWin()) : null; // workout: only inside a hard interval, at its target
     const sp = this.player?.events?.surprises, evs = ch.tick(dt, this.d, this.power, this._chKey, this.v, gate); this._chKey = false;
     for (const { type, ch: x } of evs) {
@@ -643,10 +646,10 @@ export class RideSession {
     if (this.ch?.active && (z.state === 'wait' || z.state === 'ann')) return; // a race is on: the wizard waits his turn
     const sp = this.player?.events?.surprises, P = this.player, fx = this.q('#hWizFx');
     const win = z.wk ? (this.wDone ? null : this._hardWin()) : null, g = z.wk ? wizardGate(z, win, { elapsed: this.elapsed, v: this.v, hold: WIZ.hold }) : null;
-    if (g === 'summon') z.summon(this.d, summonGap(this.v)); // workout: inside a hard interval with time for his trial
+    if (g === 'summon' && !this.eagle?.busy) { z.summon(this.d, summonGap(this.v)); this._wizIv = win.i; } // workout: inside a hard interval with time for his trial (never while the eagle speaks)
     else if (g === 'dismiss') { sp?.poof?.(z.dismiss()); if (sp) sp.hold = false; } // the interval ends first: he waits for the next one
     const os = this.group ? this.group.others() : null;
-    if (os && friendCalls(z, os, this.lap)) z.summon(this.d, summonGap(this.v)); // group: a friend met him, he comes for you now too
+    if (os && !this.eagle?.busy && friendCalls(z, os, this.lap)) z.summon(this.d, summonGap(this.v)); // group: a friend met him, he comes for you now too
     const flashFx = k => { if (!fx) return; fx.className = 'wizfx'; void fx.offsetWidth; fx.classList.add(k); };
     for (const e of z.tick(dt, this.d, this.power, win?.target || 0)) {
       if (e === 'ann') this.coach?.say('wizard', 0); // the card says it: no extra text in the middle
@@ -665,6 +668,26 @@ export class RideSession {
     if (this.group) { const wz = wzOf(z, this.lap), k = JSON.stringify(wz); if (k !== this._wzK) { this._wzK = k; this.group.update({ wz }); } } // only when it changes
     const card = z.card(this.d), foot = os && card ? friendsLine(os, this.lap) : '';
     const el = this.q('#hWiz'); if (el) { el.classList.toggle('hellcard', z.state === 'hell'); this._card(el, card && foot ? { ...card, foot } : card, '_wizHtml'); }
+  }
+  // ---------- the Eagle of Destiny (owner 18.11.): once per interval workout, inside one hard interval, never with the wizard or a
+  // dare (eaglegate.js); the scene in camera space with lip sync: world/eagle.js. ?eagle = 3 s into the first hard interval, ?eagle=now ----------
+  _initEagle() {
+    const q = new URLSearchParams(location.search).get('eagle'), now = q === 'now';
+    if (this.autopilot || this.state.settings.eagle === false || !this.player?.camera || this.player.instant || (!this.workout && !now)) return;
+    this.eg = now ? { state: 'wait', now: true, iv: -1 } : planEagle(this.workout, { force: q != null, ftp: this.ftp }); if (!this.eg) return;
+    import('./world/eagle.js').then(m => { if (!this._closed && this.player?.camera) this.eagle = new m.Eagle(this.player); }).catch(e => console.warn('eagle', e));
+  }
+  _eagleTick(dt) {
+    const e = this.eg; if (!e || !this.eagle || this.state.settings.eagle === false) return;
+    if (e.state === 'play') { if (this.eagle.tick(dt) === 'end') e.state = 'done'; return; }
+    const stepI = this.wDone ? Infinity : this.wNow?.i ?? -1, win = this.workout && !this.wDone ? this._hardWin() : null;
+    const g = eagleGate(e, { win, stepI, busy: othersBusy(this.wiz, this.ch), wizIv: this._wizIv ?? -1 });
+    if (g === 'go') { e.state = 'play'; this.eagle.start(); } else if (g === 'move') this.eg = moveEagle(this.workout, e, { stepI, ftp: this.ftp });
+  }
+  _toggleEagle() {
+    const s = this.state.settings; s.eagle = s.eagle === false;
+    if (!s.eagle && this.eagle?.busy) { this.eagle.stop(); this.eg.state = 'done'; } else if (s.eagle && !this.eg) this._initEagle();
+    import('./app.js').then(m => m.saveSettings());
   }
   /** music follows the ride: minor in a shower, motivation only in the hard parts of a workout, the wizard's flight and hell */
   _mood() {
@@ -1018,6 +1041,7 @@ export class RideSession {
       ...(this.workout ? [['oWView', `Interval display: ${WB_NAMES[this._wbView()]}`, () => this._cycleWbView()]] : []),
       ['oBar', `Bars: ${s.cockpit === false ? 'off' : 'on'}`, () => this._toggleBar()],
       ['oMusic', `Music: ${this.music?.on ? 'on' : 'off'}`, () => this._toggleMusic()],
+      ['oEagle', `Eagle of Destiny: ${s.eagle === false ? 'off' : 'on'}`, () => this._toggleEagle()],
       ['oNext', 'Next song', () => this.music?.skip()],
       ['oWide', 'Wider view', () => this._lens(-1)], ['oNarrow', 'Narrower view', () => this._lens(1)],
       ['oRemote', remoteLabel(), () => remoteCode()], // phone remote: the code to enter on the phone (js/remotepad.js)

@@ -138,7 +138,7 @@ const GLOW = new Set();
 // decided by category, not by words in the description: substrings hit "rOMAnisch", "wiKINGer", "dREHen", "ZIEGEl", "moosgrün", "TreBUCHEt" (Mac mini check of all 608 models)
 const WITH_PEOPLE = /^(reiter_ritter|personenkutsche|ruderboot|heissluftballon|zuschauer_tribuene)$/; // models outside figure_* with people on board
 // the story and the challenges need these on every level above "leer": wizard, hell, arches, challengers
-const ALWAYS = /^(zauberer|magier|hexer|teufel|drache|fledermaeuse|vogelschwarm|lava_|feuer|hoellen|totenschaedel|obsidian|gluehende|start_torbogen|ziel_torbogen|reiter_ritter|ritter$|oma|kind|moewe|seeadler|adler)/;
+const ALWAYS = /^(zauberer|magier|hexer|teufel|drache|fledermaeuse|vogelschwarm|lava_|feuer|hoellen|totenschaedel|obsidian|gluehende|start_torbogen|ziel_torbogen|reiter_ritter|ritter$|oma|kind|moewe|seeadler|adler_nah|adler)/; // adler_nah: the Eagle of Destiny (js/world/eagle.js)
 export const WORLD_MODES = [['voll', '4 · Full life'], ['ruhig', '3 · Fewer people and animals'], ['natur', '2 · Hardly any people or animals'], ['leer', '1 · Landscape only']];
 const LEVEL = { voll: 4, ruhig: 3, natur: 2, leer: 1 }, SHARE = { ruhig: [0.7, 0.75], natur: [0.35, 0.45] }, COPIES = { ruhig: 0.6, natur: 0.5 }; // model families [people, animals] loaded; share of their copies placed (Mac mini 13.11.: families alone took only 7 % of the Stadtfest crowd)
 const cat = e => e.category || '', bname = e => (e.file || '').split('/').pop().replace(/\.[a-z0-9]+$/i, '').toLowerCase();
