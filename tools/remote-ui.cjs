@@ -29,7 +29,7 @@ const median = a => { const s = [...a].sort((x, y) => x - y); return s[Math.floo
     const pshot = async n => { if (SHOTS) await P.screenshot({ path: `${SHOTS}/${n}.png` }); };
 
     // ---- desktop: Settings → Phone remote shows a code and a QR code ----
-    ok(!(await D.evaluate(() => window.__remote.session)), 'not signed in: no session before the user asks for one');
+    await D.waitForSelector('#rmMini svg', { timeout: 15000 }); ok(/^\d{6}$/.test(await D.evaluate(() => window.__remote.session?.code || '')) && /Connect phone/.test(await D.textContent('#rmMini')), 'the library corner shows a QR code right away (a session with a code), no trip to the settings');
     await D.click('.tab[data-view="settings"]'); await D.click('#rmBtn');
     await D.waitForFunction(() => /^\d{3} \d{3}$/.test(document.querySelector('#rmCode')?.textContent || ''), null, { timeout: 5000 });
     const code = (await D.textContent('#rmCode')).replace(/\D/g, '');

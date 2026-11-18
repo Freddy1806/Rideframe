@@ -15,7 +15,7 @@ import { gameVersion } from './uebridge.js';
 import { fovOf, FOV_MIN, FOV_MAX } from './fov.js';
 import { fmtTime, fmtKm, fmtNum, esc, bestAvg } from './util.js';
 import { openControllerTest } from './controller.js';
-import { initRemote, openRemote } from './remotepad.js';
+import { initRemote, openRemote, miniRemote } from './remotepad.js';
 import { click } from './zwiftclick.js';
 import { stravaButton } from './stravaup.js';
 import { routeFns } from './tcx.js';
@@ -169,7 +169,8 @@ function library() {
         <h1 class="display" style="margin-top:14px">Your<br>routes</h1>
         <div class="meta">${routes.length} ${routes.length === 1 ? 'route' : 'routes'} · ${fmtKm(routes.reduce((s, r) => s + r.track.length, 0))} km · ${fmtNum(routes.reduce((s, r) => s + r.track.gain, 0))} m climbing</div>
       </div>
-      <div class="libacts"><button class="btn ghost" id="wishBtnLib" hidden>Wish list</button><button class="btn ghost" id="lookBtnLib">My rider</button><button class="btn ghost" id="groupBtnLib">Ride together</button><button class="btn" id="uploadBtn">＋ Upload route</button></div>
+      <div class="libside"><div id="rmMiniBox"></div>
+      <div class="libacts"><button class="btn ghost" id="wishBtnLib" hidden>Wish list</button><button class="btn ghost" id="lookBtnLib">My rider</button><button class="btn ghost" id="groupBtnLib">Ride together</button><button class="btn" id="uploadBtn">＋ Upload route</button></div></div>
     </div>
     <div id="board" hidden></div>
     ${myWorkoutsRow()}
@@ -183,6 +184,7 @@ function library() {
     </div>
   </section>`;
   $('#uploadBtn').onclick = $('#addCard').onclick = () => $('#fileInput').click();
+  miniRemote($('#rmMiniBox')); // phone remote: the QR code is simply there (js/remotepad.js)
   $('#groupBtnLib').onclick = () => groupModal({ startRide });
   $('#lookBtnLib').onclick = () => import('./avatar-ui.js').then(x => x.avatarModal());
   accountsAvailable().then(ok => { const b = $('#wishBtnLib'); if (!ok || !b) return; b.hidden = false; b.onclick = () => import('./wishes.js').then(x => x.wishModal(state, accountChanged)); }); /* wish list: only where RIDEFRAME is hosted with accounts */

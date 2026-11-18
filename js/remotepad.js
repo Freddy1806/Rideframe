@@ -128,6 +128,13 @@ function style() {
   st.textContent = `.rm-grid { display: grid; grid-template-columns: 220px 1fr; gap: 28px; align-items: center; margin: 22px 0 10px; }
     .rm-qr { width: 220px; height: 220px; border-radius: 10px; overflow: hidden; background: var(--ink-3); box-shadow: 0 0 0 1px var(--line-2), 0 0 40px rgba(255,90,31,.18); display: grid; place-items: center; color: var(--muted); font-size: 12px; text-align: center; padding: 0; }
     .rm-qr svg { width: 100%; height: 100%; display: block; }
+    .rm-mini { display: flex; align-items: center; gap: 14px; margin: 0 0 14px auto; padding: 10px 16px 10px 10px; border-radius: 16px; border: 1px solid var(--line-2); background: var(--ink-2, rgba(255,255,255,.03)); color: var(--paper); font: inherit; text-align: left; cursor: pointer; transition: border-color .2s, box-shadow .2s; }
+    .rm-mini:hover { border-color: #ff5a1f; box-shadow: 0 0 28px rgba(255,90,31,.22); outline: none; }
+    .rm-mqr { width: 84px; height: 84px; flex: none; border-radius: 9px; overflow: hidden; background: #f4f4ef; display: grid; place-items: center; color: #0b0b0b; }
+    .rm-mqr svg { width: 100%; height: 100%; display: block; }
+    .rm-mini.on .rm-mqr { background: #ff5a1f; } .rm-mini.on .rm-mqr svg { width: 30px; height: 44px; }
+    .rm-mtx b { display: block; font-size: 15px; font-weight: 800; letter-spacing: .01em; } .rm-mtx small { display: block; margin-top: 3px; font-size: 12.5px; color: var(--muted); }
+    @media (max-width: 900px) { .rm-mini { display: none; } }
     .rm-code { font-weight: 900; font-stretch: 125%; font-size: 72px; line-height: .95; letter-spacing: .02em; color: #ff5a1f; text-shadow: 0 0 28px rgba(255,90,31,.45); margin: 6px 0 14px; white-space: nowrap; font-variant-numeric: tabular-nums; }
     .rm-url { font-weight: 800; color: var(--paper); word-break: break-all; }
     .rm-state { display: inline-flex; align-items: center; gap: 10px; margin-top: 14px; height: 40px; padding: 0 16px; border: 1px solid var(--line-2); border-radius: 99px; font-size: 12px; font-weight: 800; font-stretch: 112%; text-transform: uppercase; letter-spacing: .08em; }
@@ -175,9 +182,28 @@ export async function openRemote() {
   try { await ensure(); if (!S.code || S.exp - Date.now() < 5000) await newCode(); } catch {}
   ui();
 }
+// ---------------- the library's corner (owner 18.11.: "a clean QR code that is simply always there, no trip to the settings") ----------------
+let miniT = 0, miniFor = '';
+/** fills el with a small QR card; the code renews itself while the card is on screen. A click opens the big window. */
+export function miniRemote(el) {
+  if (!el) return; style();
+  el.innerHTML = `<div class="rm-mini" id="rmMini" title="Phone remote: scan with your phone's camera · click for the code"><span class="rm-mqr" id="rmMiniQr"></span><span class="rm-mtx"><b>Connect phone</b><small id="rmMiniSt">Scan to use it as remote</small></span></div>`; // a div on purpose: the gamepad focus (js/padnav.js) skips it, a pad needs no phone
+  el.querySelector('#rmMini').onclick = () => openRemote();
+  miniFor = ''; clearInterval(miniT);
+  const tick = () => { if (!document.querySelector('#rmMini')) return clearInterval(miniT); if (!phonesN && !opening && (!S || !S.code || S.exp - Date.now() < 30000)) newCode().catch(() => mini()); };
+  miniT = setInterval(tick, 5000); tick(); mini();
+}
+function mini() {
+  const m = document.querySelector('#rmMini'); if (!m) return;
+  const url = !phonesN && S?.code && S.exp - Date.now() > 0 ? `${phoneUrl()}#c=${S.code}` : '', q = m.querySelector('#rmMiniQr');
+  m.classList.toggle('on', phonesN > 0);
+  if (url !== miniFor) { miniFor = url; try { q.innerHTML = url ? qrSvg(url) : phonesN ? PHONE_SVG : ''; } catch { q.textContent = ''; } }
+  m.querySelector('b').textContent = phonesN ? 'Phone connected' : 'Connect phone';
+  m.querySelector('#rmMiniSt').textContent = phonesN ? (phonesN > 1 ? `${phonesN} phones as remote` : 'Your phone is the remote') : err && !S ? 'Needs the RIDEFRAME server' : 'Scan to use it as remote';
+}
 let qrFor = '';
 function ui() {
-  pill(); refreshLabel();
+  pill(); refreshLabel(); mini();
   const m = document.querySelector('#rmBox'); if (!m) return;
   const code = S?.code || '', st = m.querySelector('#rmState');
   m.querySelector('#rmCode').textContent = err && !S ? '–' : fmtCode(code);
