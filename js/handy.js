@@ -31,6 +31,7 @@ function render() {
     <section class="hweek"><div class="hwhead"><span class="label">This week</span><span class="wdl">▲▼ vs last week</span></div><div class="kstats">
       ${weekStat(nb(R2.cur), nb(R2.prev), 'Rides')}${weekStat(nr(R2.cur), nr(R2.prev), 'Runs')}${weekStat(km(R2.cur), km(R2.prev), 'km')}${weekStat(K2.cur.length, K2.prev.length, 'Strength')}</div></section>
     <nav class="hmodes">${['ride', 'run', 'trainer', 'world', 'kraft'].map(card).join('')}</nav>
+    <a class="hrow hlink hremote" href="remote.html?auto" id="hRemote"><div><b>Remote</b><small>Control RIDEFRAME on your laptop with this phone</small></div><i>›</i></a>
     ${D.acts.length ? `<section class="hrecent"><h3 class="ksec">Recent</h3>${D.acts.slice(0, 3).map(a => rowHtml(a, D.P)).join('')}<a class="hall" href="aktivitaeten.html">All activities ›</a></section>` : ''}`;
   wireRows(el, D, async () => { await load(); render(); });
   $('#hAcc').onclick = async () => { const a = await import('./account.js'); await a.accountModal({ settings: S }, async () => { await load(); render(); }); };

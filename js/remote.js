@@ -190,6 +190,8 @@ async function mine() {
   try {
     const r = await fetch('/api/remote/mine', { cache: 'no-store', headers: { 'X-RF-Token': acc.token } }); if (!r.ok) return;
     const { desks = [] } = await r.json(); if (!desks.length || tok) return;
+    // from the phone app's "Remote" row (remote.html?auto, owner 18.11.: "as simple as possible"): one open computer connects by itself, once
+    if (desks.length === 1 && /[?&]auto\b/.test(location.search) && !mine.tried) { mine.tried = true; joinId(desks[0].id); return; }
     box.innerHTML = `<div class="label rminel">Your computers</div>${desks.map(d => `<button class="rdesk glass" data-id="${esc(d.id)}"><svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="12" rx="1.5" fill="none" stroke="currentColor" stroke-width="2"/><path d="M1 19h22" stroke="currentColor" stroke-width="2"/></svg><span><b>${esc(d.label)}</b><small>RIDEFRAME is open · tap to connect</small></span></button>`).join('')}`;
     box.querySelectorAll('.rdesk').forEach(b => b.onclick = () => { buzz(14); joinId(b.dataset.id); });
   } catch {}
