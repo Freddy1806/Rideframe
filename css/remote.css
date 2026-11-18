@@ -54,11 +54,11 @@ body.remote { --or: #ff5a1f; --glow: 0 0 22px rgba(255, 90, 31, .45); min-height
 .rstep { display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; }
 .rstep b { font-weight: 900; font-stretch: 118%; font-size: 20px; text-transform: uppercase; letter-spacing: -.01em; overflow-wrap: anywhere; }
 .rstep span { font-size: 11px; font-weight: 800; font-stretch: 112%; letter-spacing: .1em; text-transform: uppercase; color: var(--or); }
-.rtgt { display: flex; align-items: baseline; gap: 8px; margin: 4px 0 6px; line-height: .9; }
-.rtgt b { font-size: clamp(76px, 26vw, 112px); font-weight: 900; font-stretch: 112%; letter-spacing: -.04em; color: var(--or); text-shadow: var(--glow); }
+.rtgt { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 8px; margin: 4px 0 6px; line-height: .9; }
+.rtgt b { font-size: clamp(64px, 22vw, 112px); font-weight: 900; font-stretch: 112%; letter-spacing: -.04em; color: var(--or); text-shadow: var(--glow); }
 .rtgt small { font-size: 15px; font-weight: 800; color: var(--muted); text-transform: uppercase; letter-spacing: .06em; }
 .rtgt em { font-style: normal; font-weight: 900; font-size: 15px; color: var(--ink); background: var(--or); padding: 4px 8px; border-radius: 4px; align-self: center; }
-.rrow { display: grid; grid-template-columns: repeat(auto-fit, minmax(80px, 1fr)); gap: 10px; }
+.rrow { display: grid; grid-template-columns: auto auto minmax(0, 1fr); gap: 10px 16px; }
 .rrow span { display: flex; flex-direction: column; font-size: 12px; color: var(--muted); min-width: 0; }
 .rrow small { font-size: 10px; font-weight: 800; letter-spacing: .12em; text-transform: uppercase; }
 .rrow b i { font-style: normal; font-size: 13px; color: var(--muted); font-weight: 800; }
@@ -110,3 +110,7 @@ body.remote { --or: #ff5a1f; --glow: 0 0 22px rgba(255, 90, 31, .45); min-height
 .rresume svg { width: 22px; height: 22px; fill: currentColor; }
 /* short phones: the status card gives way, the controls stay full size */
 @media (max-height: 700px) { .rstat { min-height: 0; padding: 10px 14px 12px; } .rtitle { font-size: 30px; } .rtgt b { font-size: 64px; } .rk { height: 68px; } .rc { min-height: 60px; } .rmenu { max-height: 26vh; } }
+/* 320 px phones: the brand keeps its full word, the connection pill shows its dot only once connected */
+@media (max-width: 359px) { .rbrand small { display: none; } #rm.connected .rpill { padding: 0 11px; gap: 0; } #rm.connected .rpill b { display: none; } }
+.rrow b:not(.num) { white-space: normal; font-size: 15px; line-height: 1.15; overflow-wrap: break-word; padding-top: 4px; } /* "Next: Recovery spin" wraps instead of being cut */
+@media (max-width: 359px) { .rrow span:nth-child(3) { grid-column: 1 / -1; flex-direction: row; align-items: baseline; gap: 8px; } } /* "Next" on its own line */
