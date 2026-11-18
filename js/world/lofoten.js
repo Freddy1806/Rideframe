@@ -261,6 +261,7 @@ export class WorldScene {
     this.clouds = cloudLayer(sun); scene.add(this.clouds);
     this.rain = rainLayer(); scene.add(this.rain); this.rainPlan = planRain(track.length || 40000, QS.has('rain'));
     this.cumulus = cumulusLayer(sun); scene.add(this.cumulus); // thick cumulus heaps (impostors) under the thin fbm deck
+    this.mist = mistLayer(this.cumulus.material.uniforms.tC.value); scene.add(this.mist); // mist rags drifting between the hairpins above ~850 m (island region 1)
     this.sunGlow = sunGlow(); scene.add(this.sunGlow); // fake bloom: soft halo around the low sun, cut by the terrain in front
 
     const light = this.light = new THREE.DirectionalLight(0xffd8bc, 3.0);
@@ -1673,7 +1674,7 @@ export class WorldScene {
     this.water.material.uniforms.time.value = time * 0.6; this.grassTime.value = time; TIME.value = time;
     { const sd = this.sky.material.uniforms.sunPosition.value, g = this.sunGlow, veil = this.weather?.veil || 0;
       g.position.copy(this.camera.position).addScaledVector(sd, 8200); g.material.opacity = 0.5 * (1 - 0.65 * veil) * (1 - (this.tunnelK || 0)) * (1 - 0.85 * (this.dusk || 0)); }
-    this.cumulus.material.uniforms.uTime.value = time;
+    this.cumulus.material.uniforms.uTime.value = time; this.mist.material.uniforms.uTime.value = time;
     if (this.rain.visible) { const ru = this.rain.material.uniforms; ru.uTime.value = time; ru.uCam.value.copy(this.camera.position); }
     this.clouds.position.copy(this.camera.position); this.clouds.material.uniforms.uTime.value = time; this.sky.material.uniforms.uTime.value = time;
     for (const o of this.animated) {
@@ -1951,6 +1952,37 @@ void main() {
   #include <colorspace_fragment>
 }` });
   const o = new THREE.Mesh(g, m); o.frustumCulled = false; o.renderOrder = -1; o.layers.set(1); return o;
+}
+
+// mist rags in the mountains (Freddy 18.11., island region 1: "Nebel ab 900 m"): soft grey-white cards hanging at 850-1250 m
+// around the rider, drifting slowly. They only appear once the road itself is high up, thin out near the camera (no grey wall
+// in the face) and leave the low coast untouched.
+function mistLayer(tex) {
+  const N = 70, rr = rng(1234), g = new THREE.InstancedBufferGeometry();
+  g.index = new THREE.BufferAttribute(new Uint16Array([0, 1, 2, 0, 2, 3]), 1);
+  g.setAttribute('position', new THREE.Float32BufferAttribute([-0.5, 0, 0, 0.5, 0, 0, 0.5, 1, 0, -0.5, 1, 0], 3));
+  const a = new Float32Array(N * 4), b = new Float32Array(N * 4);
+  for (let i = 0; i < N; i++) { a.set([(rr() - 0.5) * 2400, 850 + rr() * 400, (rr() - 0.5) * 2400, 140 + rr() * 260], i * 4); b.set([Math.floor(rr() * 4), rr(), rr() < 0.5 ? 1 : -1, 0.3 + rr() * 0.25], i * 4); }
+  g.setAttribute('iA', new THREE.InstancedBufferAttribute(a, 4)); g.setAttribute('iB', new THREE.InstancedBufferAttribute(b, 4)); g.instanceCount = N;
+  const m = new THREE.ShaderMaterial({ transparent: true, depthWrite: false, fog: false, uniforms: { tC: { value: tex }, uTime: { value: 0 } },
+    vertexShader: `attribute vec4 iA, iB; uniform float uTime; varying vec2 vUv; varying float vFade;
+void main() {
+  vec2 c = iA.xz + vec2(uTime * 1.6, uTime * .7); c = mod(c - cameraPosition.xz + 1200., 2400.) - 1200.;
+  vec3 C = vec3(cameraPosition.x + c.x, iA.y, cameraPosition.z + c.y);
+  vec3 V = normalize(cameraPosition - C); vec3 R = normalize(cross(vec3(0., 1., 0.), V)); vec3 U = vec3(0., 1., 0.);
+  float w = iA.w, h = w * iB.w; vec3 P = C + R * position.x * w * iB.z + U * (position.y * h - h * .45);
+  float d = length(cameraPosition - C);
+  vFade = smoothstep(720., 900., cameraPosition.y) * smoothstep(40., 160., d) * (1. - smoothstep(900., 1200., d)) * (.6 + .4 * sin(uTime * .05 + iB.y * 6.28));
+  vUv = vec2(position.x + .5, (iB.x + 1. - position.y) / 4.);
+  gl_Position = projectionMatrix * viewMatrix * vec4(P, 1.);
+}`,
+    fragmentShader: `uniform sampler2D tC; varying vec2 vUv; varying float vFade;
+void main() { vec4 t = texture2D(tC, vUv); float a = smoothstep(.05, .9, t.a) * vFade * .42; if (a < .01) discard;
+  gl_FragColor = vec4(vec3(.86, .88, .9), a);
+  #include <tonemapping_fragment>
+  #include <colorspace_fragment>
+}` });
+  const o = new THREE.Mesh(g, m); o.frustumCulled = false; o.layers.set(1); return o;
 }
 
 // cumulus deck 1.5 km up: fbm noise drifting with the wind; coverage follows the weather (uCover). Undersides
