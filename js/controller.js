@@ -9,8 +9,8 @@ const CANDIDATES = [
   'a026ee01-0a7d-4ab3-97fa-f1500f9feb8b', 'a026e005-0a7d-4ab3-97fa-f1500f9feb8b',
 ];
 // what each gamepad button does during a ride (standard mapping; same numbers as js/ride.js _pollPad)
-export const PAD_MAP = [['L / R', 'Gear easier / harder · in a workout: target −1 / +1 W'], ['D-pad ↓ / ↑', 'Gear easier / harder · in a workout: target −1 / +1 W'], ['A', 'Accept challenge'], ['B', 'Switch display'],
-  ['X', 'Photo'], ['Y', 'Switch view'], ['L2 / R2', 'Field of view wider / narrower · in a workout: target −5 / +5 W'], ['Select (−)', 'Gear mode: real / virtual / auto / climb watts'],
+export const PAD_MAP = [['L / R', 'Gear easier / harder · in a workout: target −1 / +1 W · hold watts: −5 / +5 W'], ['D-pad ↓ / ↑', 'Gear easier / harder · in a workout: target −1 / +1 W · hold watts: −5 / +5 W'], ['A', 'Accept challenge'], ['B', 'Switch display'],
+  ['X', 'Photo'], ['Y', 'Switch view'], ['L2 / R2', 'Field of view wider / narrower · in a workout: target −5 / +5 W · hold watts: −25 / +25 W'], ['Select (−)', 'Gear mode: real / virtual / auto / climb watts'],
   ['Start (+) / Home', 'Pause menu (D-pad to choose, A ok, B back; options in there too)'], ['D-pad ←', 'Music on / off'], ['D-pad →', 'Next song']];
 // the same pad outside the ride, in every menu and window (js/padnav.js)
 export const MENU_MAP = [['D-pad / left stick', 'Move between buttons, lists and fields'], ['A', 'Select (on a list field: A, then ↑ ↓ to change, A to confirm)'],

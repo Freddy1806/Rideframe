@@ -42,7 +42,14 @@ let fails = 0; const ok = (c, m) => { console.log(`${c ? '✓' : '✗'} ${m}`); 
     // ---- by pad only ----
     await press('start'); await R.waitForSelector('#pSetup'); ok(await padTo('pSetup'), 'pad: Start, then down to “Workout & mode”'); await press('A');
     await R.waitForSelector('.rsbox'); ok(await R.locator('.rsbox [data-mode]').count() === 3 && await R.locator('.rsbox [data-shift]').count() === 2 && await R.locator('.rsbox [data-w]').count() > 10, 'setup: 3 modes, 2 shiftings, the workouts');
-    ok(await R.locator('.rsbox [data-mode="erg"]').isDisabled(), 'ERG waits for a workout');
+    ok(!(await R.locator('.rsbox [data-mode="erg"]').isDisabled()) && /Hold watts/.test(await R.textContent('.rsbox [data-mode="erg"]')), 'ERG without a workout offers hold watts');
+    { await R.evaluate(() => { const r = window.__ride, t = r.state.trainer, p = t.setPower.bind(t); window.__hw = []; t.setPower = x => { window.__hw.push(x); return p(x); }; });
+      await R.click('.rsbox [data-mode="erg"]'); await R.waitForTimeout(250);
+      const h = await R.evaluate(() => { const r = window.__ride; const a = r._holdW; r._holdTune(5); r._holdTune(25); r._holdTune(-5); return { a, b: r._holdW, berg: r.berg, last: window.__hw.at(-1), lbl: document.querySelector('#hGearL').textContent, pressed: document.querySelector('.rsbox [data-mode="erg"]')?.getAttribute('aria-pressed') }; });
+      ok(h.berg && h.a >= 30 && h.b === h.a + 25 && h.last === h.b && /Hold watts/.test(h.lbl), `hold watts: ERG without a workout holds ${h.a} W, the pad steps (+5, +25, −5) make it ${h.b} W and that goes to the trainer`);
+      await R.click('.rsbox [data-mode="sim"]'); await R.waitForTimeout(250);
+      const g = await R.evaluate(() => { const r = window.__ride; return { berg: r.berg, hold: r._holdW, last: window.__hw.at(-1) }; }); ok(!g.berg && !g.hold && g.last === null, 'With gradient ends hold watts (the trainer is back on the road)');
+      await R.evaluate(() => { const r = window.__ride; r.erg = true; r.state.settings.erg = true; }); } // as before this detour: ERG is the setting for the workout picked next
     if (SHOTS) await R.screenshot({ path: `${SHOTS}/ridesetup_1280.png` });
     const el0 = (await st()).el;
     ok(await padTo('w:ss2x12'), 'pad: down to “Sweet Spot 2 × 12”'); await press('A'); await R.waitForTimeout(300);
@@ -65,7 +72,7 @@ let fails = 0; const ok = (c, m) => { console.log(`${c ? '✓' : '✗'} ${m}`); 
     s = await st(); ok(s.erg && !s.flat && s.trainerErg === s.target && s.target > 0, `Enter: ERG again, ${s.target} W at the trainer`);
     ok(await tabTo('w:'), 'keyboard: Tab to “No workout”'); await R.keyboard.press('Enter'); await R.waitForTimeout(200);
     s = await st(); ok(!s.w && !s.bar && !s.wk && s.trainerErg === null, 'no workout: the bar is gone, the trainer free');
-    ok(await R.locator('.rsbox [data-mode="erg"]').isDisabled(), 'ERG greyed out again');
+    ok(/Hold watts/.test(await R.textContent('.rsbox [data-mode="erg"]')), 'without the workout ERG offers hold watts again');
     const n0 = s.n; await R.keyboard.press('Enter').catch(() => {}); await tabTo('oBack'); await R.keyboard.press('Enter'); await R.waitForTimeout(2500);
     s = await st(); ok(!s.paused && s.n > n0, `recording went on all along (${s.n} samples)`);
 

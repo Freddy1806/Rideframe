@@ -177,7 +177,7 @@ export class RideSession {
     this.q = s => el.querySelector(s);
     this._wireWorkoutStop();
     el.querySelector('#hGearChip')?.addEventListener('click', () => this.toggleShift());
-    if (!this._closed) this._clickOff = click.on('shift', d => { if (this.paused || this.finished) return; if (this.workout && !this.wDone && this.source === 'trainer') this._wTune(d); else this._padShift(d); }); // Zwift Click (connected in Settings): + / − like the pad's L/R: target ±1 W in a workout, gears otherwise
+    if (!this._closed) this._clickOff = click.on('shift', d => { if (this.paused || this.finished) return; if (this.workout && !this.wDone && this.source === 'trainer') this._wTune(d); else if (this.berg) this._holdTune(d * 5); else this._padShift(d); }); // Zwift Click (connected in Settings): + / − like the pad's L/R: target ±1 W in a workout, gears otherwise
     el.querySelector('#hPause')?.addEventListener('click', () => this.paused ? this._resume() : this._pause());
     el.querySelector('#hSetup')?.addEventListener('click', e => { e.currentTarget.blur(); this._setup(); });
     el.querySelector('#hCam')?.addEventListener('click', () => this._cycleView());
@@ -267,7 +267,7 @@ export class RideSession {
   /** one shifting mode: 'real' | 'virtual' | 'auto' | 'berg' (the G cycle above, the ride setup in js/ridesetup.js) */
   _setShift(next) {
     const st = this.state.settings, t = this.state.trainer;
-    if (this.berg && next !== 'berg') t.setPower(null); // back to the grade
+    if (this.berg && next !== 'berg') { t.setPower(null); this._holdW = 0; } // back to the grade; a held wattage ends with the mode
     this.virtual = next === 'virtual' || next === 'auto'; this.auto = next === 'auto'; this.berg = next === 'berg';
     st.shiftMode = this.virtual ? 'virtual' : 'real'; st.autoShift = this.auto; st.bergWatt = this.berg;
     this.gear = this.virtual ? this.gears[this.gi] : null;
@@ -280,12 +280,29 @@ export class RideSession {
   }
   /** Berg-Watt: target power from the grade (relative to FTP); the trainer holds it in ERG, cadence is up to you */
   _bergTarget() {
+    if (this._holdW) return this._bergW = this._holdW; // the rider set a wattage (_holdTune): hold exactly that, whatever the road does
     const now = performance.now(); if (this._bergW && now - (this._bergAt || 0) < 1000) return this._bergW; // once per second is plenty for BLE
     this._bergAt = now; const g = this._roadGrade() + (this.wiz?.state === 'hell' ? 2 : 0), ftp = this.ftp || 200;
     const k = g >= 0 ? 0.62 + 0.055 * g : 0.62 + 0.09 * g; // flat ~62 % FTP, 6 % ~95 %, downhill easing off
     const w = Math.round(ftp * Math.max(0.3, Math.min(1.25, k)) / 5) * 5;
     this._bergW = this._bergW ? this._bergW + Math.sign(w - this._bergW) * Math.min(Math.abs(w - this._bergW), 10) : w; // max 10 W per second, no jumps
     return this._bergW;
+  }
+  /** hold watts in a free ride (owner 18.11.: "wo er die Watt hält … über Controller erhöhen und niedrigen"): in climb watts the
+   *  pad, Zwift Click and keys set the wattage; from the first press the trainer holds that number until the mode changes */
+  _holdTune(d) {
+    if (!this.berg || (this.workout && this.erg)) return false;
+    this._holdW = Math.max(30, Math.min(900, Math.round((this._holdW || this._bergW || this._bergTarget()) + d)));
+    this._bergW = this._holdW; this.state.trainer.setPower(this._holdW);
+    const q = this.q; if (q && q('#hGear')) { q('#hGear').textContent = this._holdW + ' W'; q('#hGearL').textContent = 'Hold watts · target'; }
+    this._flash(`Hold ${this._holdW} W`, 1200); return true;
+  }
+  /** hold watts from the ride setup's ERG button without a workout: start at what you ride now (or 60 % FTP) */
+  holdWatts() {
+    if (this.state.trainer.pmOnly) return false;
+    if (!this.berg) this._setShift('berg');
+    const now = this.power > 40 ? this.power : (this.ftp || 200) * 0.6;
+    this._holdW = Math.max(30, Math.round(now / 5) * 5); return this._holdTune(0);
   }
   /** automatic virtual shifting: keeps you near your favourite cadence; Q/E override it for 15 s */
   _autoShift(dt) {
@@ -389,6 +406,10 @@ export class RideSession {
     const tune = this.workout && !this.wDone; // in a workout (owner 17.11.): D-pad ↑ ↓ and L / R the target ±1 W, L2 / R2 ±5 W (gears mean nothing in ERG)
     if (tune && (hit(4) || hit(5))) { this._wTune(hit(5) ? 1 : -1); return; }
     if (tune && (hit(6) || hit(7))) { this._wTune(hit(7) ? 5 : -5); return; }
+    if (!tune && this.berg) { // hold watts: L / R and D-pad ↑ ↓ ±5 W, L2 / R2 ±25 W
+      const d = hit(5) || hit(12) ? 5 : hit(4) || hit(13) ? -5 : hit(7) ? 25 : hit(6) ? -25 : 0;
+      if (d) { this._holdTune(d); return; }
+    }
     if (hit(4) || (!tune && hit(13))) sh(-1);
     if (hit(5) || (!tune && hit(12))) sh(1);
     if (tune && hit(12)) this._wTune(1);
@@ -484,7 +505,7 @@ export class RideSession {
       q('#hGearBar').querySelectorAll('i').forEach((el, i) => el.className = i <= this.gi ? 'on' : '');
       q('.gearchip').classList.toggle('flash', performance.now() - (this.shiftFlash || 0) < 350);
     } else {
-      if (this.berg) { q('#hGear').textContent = (this._bergW || this._bergTarget()) + ' W'; q('#hGearL').textContent = 'Climb watts · target'; }
+      if (this.berg) { q('#hGear').textContent = (this._bergW || this._bergTarget()) + ' W'; q('#hGearL').textContent = this._holdW ? 'Hold watts · target' : 'Climb watts · target'; }
       else { const g = estimateGear(this.gears, t.data?.speed, this.cadence, this.wheel * 1000); q('#hGear').textContent = g ? gearName(g) : '–'; }
     }
     q('#hDist').textContent = fmtNum((this.lapOff + this.d) / 1000, 2);
@@ -929,6 +950,7 @@ export class RideSession {
     if (e.key === 'ArrowUp' || e.key === 'ArrowDown') this.keyPower = true; /* watts from the keyboard: fine for trying things out, never a saved ride (Freddy 12.11.) */
     if (e.key === 'ArrowUp') { this.manualPower = Math.min(1500, this.manualPower + (e.shiftKey ? 50 : 10)); e.preventDefault(); }
     else if (e.key === 'ArrowDown') { this.manualPower = Math.max(0, this.manualPower - (e.shiftKey ? 50 : 10)); e.preventDefault(); }
+    else if ((e.key === 'w' || e.key === 'W' || e.key === 's' || e.key === 'S') && this.berg && !(this.workout && !this.wDone)) this._holdTune((e.key.toLowerCase() === 'w' ? 1 : -1) * (e.shiftKey ? 1 : 5)); /* hold watts: W / S like in a workout */
     else if (e.key === 'w' || e.key === 'W') this._wTune(e.shiftKey ? 1 : 5); /* workout target up / down: 5 W, with Shift 1 W */
     else if (e.key === 's' || e.key === 'S') this._wTune(e.shiftKey ? -1 : -5);
     else if (e.key === 'g' || e.key === 'G') this.toggleShift();
