@@ -1973,7 +1973,7 @@ void main() {
 function mistLayer() {
   // soft procedural wisps (Mac mini QA 18.11.: the cumulus sprite looked like cut-out bluish clouds with hard edges):
   // wide, flat cards whose alpha is a drifting fbm under a gaussian falloff, so no edge is ever visible
-  const N = 110, rr = rng(1234), g = new THREE.InstancedBufferGeometry();
+  const N = 150, rr = rng(1234), g = new THREE.InstancedBufferGeometry();
   g.index = new THREE.BufferAttribute(new Uint16Array([0, 1, 2, 0, 2, 3]), 1);
   g.setAttribute('position', new THREE.Float32BufferAttribute([-0.5, 0, 0, 0.5, 0, 0, 0.5, 1, 0, -0.5, 1, 0], 3));
   const a = new Float32Array(N * 4), b = new Float32Array(N * 4);
@@ -1999,7 +1999,7 @@ void main() {
   vec2 q = vec2(vUv.x * 2., vUv.y * 2. - 1.);            // -1..1 across the card
   float fall = exp(-dot(q * vec2(1., 1.6), q * vec2(1., 1.6)) * 2.2); // gaussian: zero at every edge
   float f = fbm(vec2(vUv.x * 4.5, vUv.y * 1.8) + vSeed + vec2(uTime * .012, 0.)) + .25 * fbm(vec2(vUv.x * 11., vUv.y * 6.) - vSeed);
-  float a = smoothstep(0., .3, f + fall * .6 - .85) * fall * vFade * .55; if (a < .004) discard; // noise eats the edge: ragged wisps, never a disc
+  float a = smoothstep(0., .25, f + fall * .7 - .8) * fall * vFade * .95; if (a < .004) discard; // noise eats the edge: ragged wisps, never a disc
   gl_FragColor = vec4(vec3(.93, .93, .92), a);
   #include <tonemapping_fragment>
   #include <colorspace_fragment>
