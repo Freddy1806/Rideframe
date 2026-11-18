@@ -38,6 +38,8 @@ export class Eagle {
   }
   get busy() { return this.state === 'play'; }
   get kind() { return this.pick.kind; }
+  /** settled at the edge (landing until take-off): the ride fades the right-side HUD meanwhile */
+  get perched() { return this.state === 'play' && !!this.rig && this.t >= T.in1 - 0.3 && this.t < this.tOff; }
 
   // ---------------- audio ----------------
   async _loadAudio() {
