@@ -21,7 +21,7 @@ import * as THREE from 'three';
 import { mergeGeometries } from '../../vendor/jsm/utils/BufferGeometryUtils.js';
 import { EAGLE, pickEagleModel, synthMouth, follow, eagleFrame } from '../eaglegate.js';
 
-const JAW_OPEN = 0.45, D = 0.55, LOOK = 0.72, PERCH_YAW = -2.4; // perched: the beak towards the screen's middle (camera space)
+const JAW_OPEN = 0.45, D = 0.55, LOOK = 0.97, PERCH_YAW = -2.4; // perched: the beak towards the screen's middle (camera space)
 const T = { in0: 1.2, in1: 3.2, line: EAGLE.pre, off: 0.6, away: 5.0 }; // the line runs from T.line for its own length
 const sm = (a, b, x) => { const u = Math.max(0, Math.min(1, (x - a) / (b - a))); return u * u * (3 - 2 * u); };
 const _v = new THREE.Vector3(), _w = new THREE.Vector3(), _q = new THREE.Quaternion(), _q2 = new THREE.Quaternion(), _e = new THREE.Euler(), _m = new THREE.Matrix4();
@@ -141,14 +141,19 @@ export class Eagle {
     const keep = { p: R.root.position.clone(), q: R.root.quaternion.clone(), s: R.root.scale.x, vis: R.root.visible };
     R.root.quaternion.copy(this.perchQ); R.root.scale.setScalar(this.s || 1); R.root.position.copy(this.perch || _w.set(0.3, 0.1, -D));
     const lx = 2 * f.left - 1, ty = 1 - 2 * f.cy, tw = 2 * f.width; // left edge fixed (the visible part), size by width, at most maxH high
-    const measure = () => { this._pose(1, 0, 0, 1); // looking at you with the beak wide open: the largest the head gets
-      const P = this._headCam().filter(p => p.z < -0.05); let x0 = Infinity, x1 = -Infinity, y0 = Infinity, y1 = -Infinity; const c = new THREE.Vector3();
-      for (const p of P) { const x = p.x / (-p.z * th), y = p.y / (-p.z * tv); x0 = Math.min(x0, x); x1 = Math.max(x1, x); y0 = Math.min(y0, y); y1 = Math.max(y1, y); c.add(p); }
-      return P.length >= 3 ? { x0, x1, y0, y1, c: c.divideScalar(P.length) } : null; };
+    // the box the head takes while it speaks, looking at you: beak wide open, the cocked head, the proud chin and the smug nod
+    const POSES = [[0, 0, 1], [-0.07, 0, 1], [0, 0.22, 1], [0.15, 0, 0]];
+    const measure = () => { let x0 = Infinity, x1 = -Infinity, y0 = Infinity, y1 = -Infinity, c = null;
+      for (const [nod, tilt, mouth] of POSES) { this._pose(1, nod, tilt, mouth);
+        const P = this._headCam().filter(p => p.z < -0.05); if (P.length < 3) return null; const cc = new THREE.Vector3();
+        const first = !c; // width and left edge from the plain look, the height from all of them (it must never reach the bar)
+        for (const p of P) { const x = p.x / (-p.z * th), y = p.y / (-p.z * tv); if (first) { x0 = Math.min(x0, x); x1 = Math.max(x1, x); } y0 = Math.min(y0, y); y1 = Math.max(y1, y); cc.add(p); }
+        c ||= cc.divideScalar(P.length); }
+      return { x0, x1, y0, y1, c }; };
     for (let i = 0; i < 40; i++) { // move, then scale about the head's centre (the model's origin may be far from its head)
       let m = measure(); if (!m) { R.root.position.z -= 0.4; continue; } // head behind the camera: start further out
       R.root.position.z += (-D - m.c.z) * 0.8; m = measure(); if (!m) continue; // damped: the head turns with every move
-      const z = -m.c.z, gx = Math.max(lx, 1.025 - (m.x1 - m.x0)); // a head held small by maxH still gets cut by the edge
+      const z = -m.c.z, gx = Math.max(lx, 1.04 - (m.x1 - m.x0)); // a head held small by maxH still gets cut by the edge
       R.root.position.x += (gx - m.x0) * th * z * 0.8; R.root.position.y += (ty - (m.y0 + m.y1) / 2) * tv * z * 0.8;
       m = measure(); if (!m) continue;
       const k = Math.max(0.75, Math.min(1.33, Math.pow(Math.min(tw / Math.max(1e-4, m.x1 - m.x0), 2 * f.maxH / Math.max(1e-4, m.y1 - m.y0)), 0.7)));
@@ -168,14 +173,19 @@ export class Eagle {
       const hq = R.head.getWorldQuaternion(new THREE.Quaternion()), cur = R.fwdHead.clone().applyQuaternion(hq);
       const cq = this.cam.getWorldQuaternion(new THREE.Quaternion()), up = _Y.clone().applyQuaternion(cq);
       const level = new THREE.Vector3(Math.sin(PERCH_YAW), 0, Math.cos(PERCH_YAW)).applyQuaternion(cq); // beak level, facing the screen's middle
-      R.head.getWorldPosition(_v); const toCam = this.cam.getWorldPosition(new THREE.Vector3()).sub(_v).normalize();
-      const goal = level.lerp(toCam, LOOK).normalize(), qLook = new THREE.Quaternion().slerp(new THREE.Quaternion().setFromUnitVectors(cur, goal), look);
-      const want = cur.clone().applyQuaternion(qLook), right = new THREE.Vector3().crossVectors(want, up).normalize();
-      const extra = new THREE.Quaternion().setFromAxisAngle(right, -(nod + (R.jaw ? 0 : -mouth * 0.12))).multiply(new THREE.Quaternion().setFromAxisAngle(want, tilt));
+      const toCam = this.cam.getWorldPosition(new THREE.Vector3()).sub(this._headC()).normalize(); // from the head's measured centre, not the bone pivot
+      const goal = level.clone().lerp(toCam, LOOK).normalize(), qLook = new THREE.Quaternion().slerp(new THREE.Quaternion().setFromUnitVectors(cur, goal), look);
       const turn = (b, rw) => { b.parent.getWorldQuaternion(_q2); b.quaternion.copy(_q2.clone().invert().multiply(rw).multiply(_q2).multiply(b.quaternion)); b.updateMatrixWorld(true); };
       if (R.neck && R.neck !== R.head) turn(R.neck, new THREE.Quaternion().slerp(qLook, 0.6));
-      const now = R.fwdHead.clone().applyQuaternion(R.head.getWorldQuaternion(new THREE.Quaternion()));
-      turn(R.head, new THREE.Quaternion().setFromUnitVectors(now, want));
+      let want = cur;
+      for (let i = 0; i < 3; i++) { // the head's centre moves as neck and head turn: aim again from where it is now (eye contact while it speaks)
+        const to = this.cam.getWorldPosition(new THREE.Vector3()).sub(this._headC()).normalize(), g = level.clone().lerp(to, LOOK).normalize();
+        want = cur.clone().applyQuaternion(new THREE.Quaternion().slerp(new THREE.Quaternion().setFromUnitVectors(cur, g), look));
+        const now = R.fwdHead.clone().applyQuaternion(R.head.getWorldQuaternion(new THREE.Quaternion()));
+        turn(R.head, new THREE.Quaternion().setFromUnitVectors(now, want));
+      }
+      const right = new THREE.Vector3().crossVectors(want, up).normalize();
+      const extra = new THREE.Quaternion().setFromAxisAngle(right, -(nod + (R.jaw ? 0 : -mouth * 0.12))).multiply(new THREE.Quaternion().setFromAxisAngle(want, tilt));
       if (R.hcLocal) { // nod and tilt about the head's own centre, not the bone's pivot (which may sit anywhere in the skull)
         const c = R.head.localToWorld(R.hcLocal.clone()), p = R.head.getWorldPosition(new THREE.Vector3());
         turn(R.head, extra); p.sub(c).applyQuaternion(extra).add(c); R.head.position.copy(R.head.parent.worldToLocal(p)); R.head.updateMatrixWorld(true);
@@ -192,12 +202,17 @@ export class Eagle {
     else if (!R.sit) for (const w of R.w1) if (w) w.scale.multiplyScalar(0.12 + 0.88 * fold); // no "Sitzen" clip: folded by shrinking the wings to the shoulder
     R.root.updateMatrixWorld(true);
   }
+  _headC() { const R = this.rig; return R.hcLocal ? R.head.localToWorld(R.hcLocal.clone()) : R.head.getWorldPosition(new THREE.Vector3()); }
+  /** degrees between the measured beak direction and the direction to the camera (eye contact: near 0 while it speaks) */
+  lookOff() { const R = this.rig; if (!R?.head || !R.fwdHead) return null;
+    const b = R.fwdHead.clone().applyQuaternion(R.head.getWorldQuaternion(new THREE.Quaternion())).normalize();
+    return THREE.MathUtils.radToDeg(b.angleTo(this.cam.getWorldPosition(new THREE.Vector3()).sub(this._headC()).normalize())); }
   _clipWeights(fly, glide, sit) { const R = this.rig; if (!R.mixer) return; R.fly?.setEffectiveWeight(fly); R.glide?.setEffectiveWeight(R.sit ? glide : glide + sit); R.sit?.setEffectiveWeight(sit); }
 
   // ---------------- the scene ----------------
   start() {
     if (this.state === 'play') return;
-    const R = this._build(); this.state = 'play'; this.t = 0; this.L = EAGLE.line; this.lineOn = false; this.synth = true; this._prev = null; this._far = false; this._logged = false; this._solved = null; this.perch = null; this.s = 1;
+    const R = this._build(); this.state = 'play'; this.t = 0; this.L = EAGLE.line; this.lineOn = false; this.synth = true; this._prev = null; this._far = false; this._logged = false; this._off = null; this._offLogged = false; this._solved = null; this.perch = null; this.s = 1;
     this.perchQ = yawQ(PERCH_YAW, 0.06, R.standin ? 0.08 : -0.85).multiply(yawQ(-(R.fwdYaw || 0))); // models come in their flight pose: sat upright (nose up ~50°) the body hangs below the head // body turned to the screen's middle (beak left), a little leaning in
     this._solve(); R.root.visible = false;
     this._cry(0.9, 0.75); // first only the cry, from behind on the right
@@ -236,7 +251,7 @@ export class Eagle {
       const proud = bump(lt, L * 0.32, L * 0.25) * 0.07, lean = sm(L * 0.55, L * 0.75, lt) * (1 - sm(L, L + 0.5, lt));
       nod = -proud + (lt > L ? Math.sin(Math.min(1, (lt - L) / 0.55) * Math.PI) * 0.15 : 0); // chin up for "Destiny", a smug nod after
       tilt = lean * 0.22; // cocks its head for "you little bitch"
-      R.root.position.copy(P); R.root.position.x -= lean * 0.03 * s; R.root.position.z += lean * 0.05 * s;
+      R.root.position.copy(P); R.root.position.x -= lean * 0.012; R.root.position.z += lean * 0.03; // leans in a little (not scaled: the head is ~D from the camera, so 3 cm already shows)
       R.root.position.y += Math.sin(t * 1.7) * 0.004 * s; R.root.quaternion.copy(this.perchQ);
       this._clipWeights(0, 0, 1);
     } else { // off: ahead of you, swerves left and right, and away
@@ -256,6 +271,9 @@ export class Eagle {
     }
     this._pose(look, nod, tilt, mouth, blink, fold, flap, dt);
     this.jaw = R.jaw ? mouth * JAW_OPEN : 0; this.mouth = mouth;
+    if (this.lineOn && t < tOff) { const lt = t - this.lineT, L = this.L || EAGLE.line; // eye contact while it speaks, worst frame of the line
+      if (lt >= 0 && lt <= L) { const o = this.lookOff(); this.look = o; if (o != null) this._off = Math.max(this._off || 0, o); }
+      else if (lt > L && !this._offLogged && this._off != null) { this._offLogged = true; console.info(`[eagle] look off ${Math.round(this._off)}°`); } }
     return null;
   }
 }

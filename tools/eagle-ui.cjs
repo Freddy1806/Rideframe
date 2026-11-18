@@ -22,7 +22,7 @@ let fails = 0, n = 0; const ok = (c, m, info = '') => { n++; console.log(`${c ? 
   const errs = [];
   try {
     const ctx = await b.newContext({ viewport: { width: 1280, height: 720 } });
-    const p = await ctx.newPage(); p.on('pageerror', e => errs.push(e.message)); const boxLog = []; p.on('console', m => { if (/^\[eagle\] head box/.test(m.text())) boxLog.push(m.text()); }); p.on('dialog', d => d.accept());
+    const p = await ctx.newPage(); p.on('pageerror', e => errs.push(e.message)); const boxLog = [], offLog = []; p.on('console', m => { if (/^\[eagle\] head box/.test(m.text())) boxLog.push(m.text()); if (/^\[eagle\] look off/.test(m.text())) offLog.push(m.text()); }); p.on('dialog', d => d.accept());
 
     // ---- Settings: the toggle, on by default ----
     await p.goto(BASE + '/?desktop&noprofile&laptest&eagle'); await p.waitForTimeout(700);
@@ -115,13 +115,16 @@ let fails = 0, n = 0; const ok = (c, m, info = '') => { n++; console.log(`${c ? 
 
     const run = async (w, h, tag, shots) => {
       await p.setViewportSize({ width: w, height: h }); await p.waitForTimeout(500);
-      const n0 = boxLog.length;
+      const n0 = boxLog.length, o0 = offLog.length;
       await p.evaluate(() => { window.__ride.eg = { state: 'wait', now: true, iv: -1 }; }); // ?eagle=now hook for another run
       checks(`${tag}${w}×${h}`, await scene(`${w}`, shots));
       ok(boxLog.length === n0 + 1 && /^\[eagle\] head box x\d+\.\.\d+ y-?\d+\.\.\d+ %/.test(boxLog.at(-1)), `${tag}${w}×${h}: one console line "${boxLog.at(-1)}"`);
+      const off = +(/^\[eagle\] look off (\d+)°$/.exec(offLog.at(-1) || '') || [])[1];
+      ok(offLog.length === o0 + 1 && off < 12, `${tag}${w}×${h}: eye contact while it speaks ("${offLog.at(-1)}", beak to camera < 12°)`);
     };
     await run(1920, 1080, '', false); await run(2560, 1080, '', false);
     ok(/^\[eagle\] head box x/.test(boxLog[0] || ''), `the first scene logged its head box too ("${boxLog[0]}")`);
+    ok(+(/look off (\d+)°$/.exec(offLog[0] || '') || [])[1] < 12, `the first scene (1280×720) has eye contact too ("${offLog[0]}")`);
     // a stand-in rigged like the real adler_nah (one SkinnedMesh, armature −90° X / 180° Y, rotated head rest, jaw offset, 2.3 m wings)
     await p.evaluate(() => { history.replaceState(null, '', location.pathname + location.search + '&eaglerig=real'); const r = window.__ride, E = r.eagle.constructor; r.eagle = new E(window.__world); });
     ok(await p.evaluate(() => window.__ride.eagle.kind === 'rig' && !!window.__ride.eagle), '?eaglerig=real: the rigged stand-in');
