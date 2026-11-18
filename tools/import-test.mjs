@@ -33,6 +33,15 @@ test('sportOf keeps the old rides and sorts the new ones', () => {
   assert.ok(isBike({ routeId: 'kurz' })); assert.ok(isBike(fromStrava(sum({ sport_type: 'VirtualRide' })))); assert.ok(!isBike(fromStrava(sum()))); assert.ok(!isBike({ kraft: true }));
 });
 
+test('64-bit Strava ids: id_str wins over the rounded number, old numeric stravaIds still dedupe as strings', () => {
+  const BIG = '9223372036854775807', r = fromStrava(sum({ id: Number(BIG), id_str: BIG }));
+  assert.equal(r.id, 'st' + BIG); assert.equal(r.stravaId, BIG); assert.equal(r.strava, 'https://www.strava.com/activities/' + BIG); assert.equal(sidOf(r), BIG);
+  assert.equal(fromStrava(sum({ id: '5001' })).stravaId, '5001', 'the server already sends strings');
+  const p = plan([{ id: 'a', stravaId: 111, date: 1 }, { id: 'b', strava: 'https://www.strava.com/activities/' + BIG, date: 2 }], [fromStrava(sum({ id: 111 })), fromStrava(sum({ id: BIG, id_str: BIG })), fromStrava(sum({ id: '112', start_date: '2026-01-01T00:00:00Z' }))], [113]);
+  assert.deepEqual(p.add.map(x => x.stravaId), ['112']); assert.equal(p.skip.length, 2, 'stored numeric 111 and the linked 64-bit id are both already here');
+  assert.deepEqual(plan([], [fromStrava(sum({ id: 113 }))], [113]).add, [], 'a deleted numeric id stays deleted');
+});
+
 test('Strava summary -> record: raw sport type, times, totals, polyline, no samples', () => {
   const r = fromStrava(sum({ average_watts: 0, kilojoules: 0, calories: 812, external_id: 'garmin_push_123' }));
   assert.equal(r.id, 'st111'); assert.equal(r.source, 'strava'); assert.equal(r.stravaId, '111'); assert.equal(r.strava, 'https://www.strava.com/activities/111');

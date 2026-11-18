@@ -1,0 +1,272 @@
+// Personal workouts on screen (js/myworkouts.js): one editor, opened from the route page ("Customise" next to the workout
+// choice) and from the profile ("My workouts"), the grouped workout choice of the route page and the profile section
+// with the FTP. Every control is a real <button> / <input>, so the gamepad focus navigation reaches it.
+import { esc, fmtTime, fmtKm } from './util.js';
+import { WORKOUTS, MY, workoutById } from './workouts.js';
+import { TEMPLATES, bump, addSet, nextBlock, insertAt, toRide, LIM, newId, totalSec, avgPct, stepAvg, isWork, watts, scaleWork, repeatBlock, graphSVG, zoneOf, fromBuiltin, freeTemplate, orderFor, kindOf, defaultName, nameSuggestions } from './myworkouts.js';
+import { fitRoute, fittingRoutes, AFTER_PCT, FREE_PCT } from './routefit.js';
+import { loadPersonal, personalList, personalById, savePersonal, deletePersonal, localOnly, uploadLocal, storeMode } from './myworkouts-store.js';
+
+if (!document.querySelector('link[data-mw]')) { const l = document.createElement('link'); l.rel = 'stylesheet'; l.href = 'css/myworkouts.css'; l.dataset.mw = '1'; document.head.append(l); }
+const $ = (s, r = document) => r.querySelector(s);
+const mins = sec => `${Math.round(sec / 60)} min`;
+const km = fmtKm; // like everywhere in the app
+const FIT_HOW = `Estimated with your FTP and weight at the workout's target watts (free blocks at ${FREE_PCT} %, after the workout ${AFTER_PCT} % FTP)`;
+const lapsTxt = n => n > 1 ? `${n} laps` : 'the route';
+const cut = (s, n = LIM.name) => s.length > n ? s.slice(0, n).trim() : s;
+
+/* ---------------- in-page question (no native confirm / prompt: the gamepad reaches these buttons) ---------------- */
+/** asks one question in a small window; buttons = [{ label, value, cls }]; resolves the value, or null on B / Escape / backdrop */
+export function ask({ title, text = '', buttons }) {
+  return new Promise(done => {
+    const m = document.createElement('div'); m.className = 'modal mwask';
+    m.innerHTML = `<div class="box" role="alertdialog" aria-modal="true" aria-labelledby="mwAskT"><h3 id="mwAskT">${esc(title)}</h3>${text ? `<p>${esc(text)}</p>` : ''}
+      <div class="actions">${buttons.map((b, i) => `<button type="button" class="btn small ${b.cls || 'ghost'}" data-k="${i}">${esc(b.label)}</button>`).join('')}</div></div>`;
+    const fin = v => { m.remove(); document.removeEventListener('keydown', key, true); done(v); };
+    const key = e => { if (e.key === 'Escape') { e.preventDefault(); e.stopImmediatePropagation(); fin(null); } };
+    document.addEventListener('keydown', key, true);
+    m.addEventListener('click', e => { const b = e.target.closest('button[data-k]'); if (b) fin(buttons[+b.dataset.k].value); else if (e.target === m) fin(null); });
+    document.body.append(m); m.querySelector('button[data-k]')?.focus();
+  });
+}
+
+/* ---------------- the editor ---------------- */
+const wattsText = (s, ftp) => !ftp ? '–' : s.pct2 != null ? `${watts(s.pct, ftp)} → ${watts(s.pct2, ftp)} W` : `${watts(s.pct, ftp)} W`;
+const FIELD = { min: [LIM.minMin, LIM.maxMin, 'Minutes'], pct: [LIM.minPct, LIM.maxPct, '% FTP'], pct2: [LIM.minPct, LIM.maxPct, 'Ramp to % FTP'] };
+/** opens the editor; draft = a personal workout (saved = it exists already), ftp in W, route = { id, name, track?, settings?, laps? } it is made for,
+ *  kind = what sort of session ("VO2") for the name suggestions. Resolves { saved: workout } | { deleted: id } | null (cancelled). */
+export function openEditor({ draft, saved = false, ftp = 0, route = null, kind = '' }) {
+  return new Promise(done => {
+    const w = JSON.parse(JSON.stringify(draft)); if (route?.id && !w.routeId) { w.routeId = route.id; w.routeName = cut(route.name || ''); }
+    kind ||= kindOf(workoutById(w.base)?.name || ''); // 'Intervals' when there is no built-in behind it
+    const others = personalList().filter(x => x.id !== w.id).map(x => x.name);
+    let autoName = !saved && !String(w.name || '').trim(); if (autoName) w.name = defaultName(w.routeName || '', kind, others); // a default name follows the template until the rider names it
+    const sugg = nameSuggestions(w.routeName || '', kind, others, { minutes: Math.round(totalSec(w.steps) / 60) });
+    if (!sugg.includes(w.name)) sugg.unshift(w.name); sugg.length = Math.min(sugg.length, 4);
+    const start = JSON.stringify([w.name, w.steps]), dirty = () => JSON.stringify([String(w.name).trim(), w.steps]) !== start;
+    let snap = null, sel = -1; // snap: the steps when the intensity slider started moving
+    const m = document.createElement('div'); m.className = 'modal mwmodal';
+    m.innerHTML = `<div class="box mwbox" role="dialog" aria-modal="true" aria-labelledby="mwTitle">
+      <div class="mwhead"><div class="label" id="mwTitle">${saved ? 'Edit workout' : 'Customise workout'}${w.routeName ? ` · for ${esc(w.routeName)}` : ''}</div>
+        <button type="button" class="mwx" id="mwClose" aria-label="Close">✕</button></div>
+      <label class="mwname"><span class="label">Name</span><input type="text" id="mwName" maxlength="${LIM.name}" value="${esc(w.name)}" autocomplete="off"></label>
+      <div class="mwchips" id="mwChips" aria-label="Name suggestions">${sugg.map(n => `<button type="button" class="mwchip${n === w.name ? ' on' : ''}" data-name="${esc(n)}">${esc(n)}</button>`).join('')}</div>
+      <div class="mwtpls" id="mwTpl" role="group" aria-label="Start from a template"><span class="mwtl">Start from</span>${TEMPLATES.map(t => `<button type="button" class="mwtpl" data-tpl="${t.id}" title="${esc(t.hint)}"><b>${esc(t.name)}</b><small>${esc(t.hint)}</small></button>`).join('')}</div>
+      <div class="mwsum" id="mwSum"></div>
+      <div class="mwgwrap" id="mwGraph"></div>
+      <div class="mwint"><label for="mwInt">Intensity of the work steps</label><input type="range" id="mwInt" min="-20" max="20" step="1" value="0"><b id="mwIntV">±0 %</b></div>
+      <div class="mwsteps" id="mwSteps"></div>
+      <div class="mwtools"><span class="mwadds"><button type="button" class="btn ghost small" id="mwAdd" title="A sensible next block: after a hard one its rest">+ Block</button><button type="button" class="btn ghost small" id="mwAddSet" title="4 × (4 min 105 %, 3 min 55 %) before the cool-down">+ Set of 4</button></span>
+        <div class="mwrep"><span>Repeat blocks</span><input type="number" id="mwRf" min="1" inputmode="numeric" aria-label="Repeat from step"><span>to</span><input type="number" id="mwRt" min="1" inputmode="numeric" aria-label="Repeat to step"><span>×</span><input type="number" id="mwRn" min="2" max="${LIM.rep}" value="3" inputmode="numeric" aria-label="Times in a row"><button type="button" class="btn ghost small" id="mwRep">Repeat</button></div></div>
+      <p class="mwerr" id="mwErr" role="alert"></p>
+      <div class="actions mwacts">${saved ? '<button type="button" class="btn danger small" id="mwDel">Delete</button>' : ''}<span class="mwsp"></span>
+        <button type="button" class="btn ghost small" id="mwCancel">Cancel</button>${saved ? '<button type="button" class="btn ghost small" id="mwSaveNew">Save as new</button>' : ''}<button type="button" class="btn small mwsave" id="mwSave">Save</button></div></div>`;
+    document.body.append(m);
+    const err = t => { $('#mwErr', m).textContent = t || ''; };
+    const close = v => { m.remove(); document.removeEventListener('keydown', onKey, true); done(v); };
+    let asking = false;
+    /** Cancel, ✕, B, Escape, backdrop: with unsaved changes ask first (keep editing / save / discard) */
+    const leave = async () => {
+      if (asking) return; if (!dirty()) return close(null);
+      asking = true; const v = await ask({ title: 'Discard your changes?', text: `“${String(w.name).trim() || 'This workout'}” has changes that are not saved yet.`,
+        buttons: [{ label: 'Keep editing', value: 'keep' }, { label: 'Discard', value: 'discard', cls: 'danger' }, { label: 'Save', value: 'save', cls: 'mwsave' }] }); asking = false;
+      if (v === 'discard') close(null); else if (v === 'save') save(false); else $('#mwCancel', m)?.focus();
+    };
+    const onKey = e => { if (e.key === 'Escape' && !document.querySelector('.mwask')) { e.stopPropagation(); leave(); } };
+    document.addEventListener('keydown', onKey, true);
+
+    const summary = () => {
+      const sec = totalSec(w.steps), avg = avgPct(w.steps), aw = watts(avg, ftp);
+      let fit = ''; const f = route?.track ? fitRoute(route.track, toRide(w), { ...route.settings, ftp: ftp || route.settings?.ftp }, { laps: route.laps }) : null;
+      if (f) { const on = `${esc(route.name)}${f.laps > 1 ? ` (${f.laps} laps)` : ''}`;
+        fit = f.verdict === 'short' ? `<p class="mwwarn" id="mwWarn" title="${FIT_HOW}">⚠ ${on} ends after about ${mins(f.routeSec)}, the workout needs ${mins(sec)}. Shorten it or ride more laps.</p>`
+          : f.verdict === 'long' ? `<p class="mwfit" id="mwFit" title="${FIT_HOW}">${on} takes about ${mins(f.routeSec)}: the workout ends at km ${km(f.endD)} of ${km(route.track.length)}${f.laps > 1 ? ` in lap ${f.endLap}` : ''}, the rest is free riding.</p>`
+          : `<p class="mwfit" id="mwFit" title="${FIT_HOW}">Fits ${on}: about ${mins(f.routeSec)} at these watts${f.spare >= 60 ? `, ${mins(f.spare)} to spare` : ''}.</p>`; }
+      $('#mwSum', m).innerHTML = `<span><b id="mwTotal">${fmtTime(sec)}</b><small>total</small></span><span><b>${avg} %</b><small>avg FTP</small></span>
+        <span><b>${aw ? aw + ' W' : '–'}</b><small>${ftp ? `avg · FTP ${ftp} W` : 'set your FTP in the profile'}</small></span><span><b>${w.steps.length}</b><small>steps</small></span>${fit}`;
+      $('#mwGraph', m).innerHTML = graphSVG(w.steps, { h: 110, mark: sel });
+    };
+    const rowHTML = (s, i) => `<div class="mwstep${i === sel ? ' sel' : ''}" data-i="${i}" style="--z:${zoneOf(stepAvg(s))[2]}">
+      <span class="mwno" style="--z:${zoneOf(stepAvg(s))[2]}">${i + 1}</span>
+      <input type="text" class="mwlab" data-f="label" maxlength="${LIM.label}" value="${esc(s.label || '')}" placeholder="Label" aria-label="Step ${i + 1} label">
+      <span class="mwst mwsmin"><button type="button" class="mwpm" data-a="min-" aria-label="Step ${i + 1}: shorter" tabindex="-1">−</button><label class="mwnum"><input type="number" data-f="min" min="${LIM.minMin}" max="${LIM.maxMin}" step="0.5" inputmode="decimal" value="${s.min}" aria-label="Step ${i + 1} minutes"><small>min</small></label><button type="button" class="mwpm" data-a="min+" aria-label="Step ${i + 1}: longer" tabindex="-1">+</button></span>
+      <span class="mwst mwspct"><button type="button" class="mwpm" data-a="pct-" aria-label="Step ${i + 1}: easier" tabindex="-1">−</button><label class="mwnum"><input type="number" data-f="pct" min="${LIM.minPct}" max="${LIM.maxPct}" step="5" inputmode="numeric" value="${s.pct}" aria-label="Step ${i + 1} percent of FTP"><small>%</small></label><button type="button" class="mwpm" data-a="pct+" aria-label="Step ${i + 1}: harder" tabindex="-1">+</button></span>
+      <label class="mwnum mwramp${s.pct2 == null ? ' flat' : ''}" title="Ramp: the target moves evenly to this % over the block. Empty = flat."><small>↗</small><input type="number" data-f="pct2" min="${LIM.minPct}" max="${LIM.maxPct}" step="5" inputmode="numeric" value="${s.pct2 ?? ''}" placeholder="flat" data-start="${s.pct}" aria-label="Step ${i + 1} ramp to percent of FTP, empty for flat"><small>%</small></label>
+      <b class="mww" data-w="${i}">${wattsText(s, ftp)}</b>
+      <span class="mwbtns"><button type="button" data-a="up" aria-label="Move step ${i + 1} up" ${i ? '' : 'disabled'}>↑</button><button type="button" data-a="down" aria-label="Move step ${i + 1} down" ${i < w.steps.length - 1 ? '' : 'disabled'}>↓</button><button type="button" data-a="dup" aria-label="Duplicate step ${i + 1}" title="Duplicate">⧉</button><button type="button" data-a="rep" aria-label="Repeat from step ${i + 1}" title="Repeat this block (with its rest) ×N">↻</button><button type="button" data-a="del" aria-label="Remove step ${i + 1}" title="Remove" ${w.steps.length > 1 ? '' : 'disabled'}>✕</button></span></div>`;
+    const draw = () => {
+      $('#mwSteps', m).innerHTML = w.steps.map(rowHTML).join('');
+      $('#mwAddSet', m).disabled = w.steps.length + 8 > LIM.steps;
+      const rf = $('#mwRf', m), rt = $('#mwRt', m); rf.max = rt.max = w.steps.length;
+      if (!(+rf.value >= 1 && +rf.value <= w.steps.length)) rf.value = Math.min(w.steps.length, 1);
+      if (!(+rt.value >= +rf.value && +rt.value <= w.steps.length)) rt.value = Math.min(w.steps.length, +rf.value + 1);
+      $('#mwAdd', m).disabled = w.steps.length >= LIM.steps; summary();
+    };
+    const edited = () => { snap = null; $('#mwInt', m).value = 0; $('#mwIntV', m).textContent = '±0 %'; };
+    const structural = fn => { fn(); edited(); err(); draw(); };
+    const rowInfo = (row, s) => { row.querySelector('.mww').textContent = wattsText(s, ftp); row.style.setProperty('--z', zoneOf(stepAvg(s))[2]); row.querySelector('.mwno').style.setProperty('--z', zoneOf(stepAvg(s))[2]); row.querySelector('[data-f="pct2"]').dataset.start = s.pct; row.querySelector('.mwramp').classList.toggle('flat', s.pct2 == null); };
+    const pick = i => { sel = i; m.querySelectorAll('.mwstep').forEach(r => r.classList.toggle('sel', +r.dataset.i === i)); $('#mwGraph', m).innerHTML = graphSVG(w.steps, { h: 110, mark: sel }); };
+
+    $('#mwSteps', m).addEventListener('input', e => {
+      const f = e.target.dataset.f, row = e.target.closest('.mwstep'); if (!f || !row) return;
+      const i = +row.dataset.i, s = w.steps[i]; sel = i;
+      if (f === 'label') { s.label = e.target.value.slice(0, LIM.label); return; }
+      const raw = String(e.target.value).trim().replace(',', '.'), [lo, hi, nm] = FIELD[f];
+      if (f === 'pct2' && raw === '') { delete s.pct2; e.target.classList.remove('bad'); err(); edited(); rowInfo(row, s); return summary(); }
+      const v = parseFloat(raw), okv = Number.isFinite(v) && v >= lo && v <= hi; e.target.classList.toggle('bad', !okv);
+      if (!okv) return err(`${nm}: ${lo}–${hi}.`);
+      err(); edited();
+      if (f === 'min') s.min = Math.round(v * 100) / 100;
+      else { s[f] = Math.round(v); if (s.pct2 != null && s.pct2 === s.pct) delete s.pct2; } // a ramp to the same % is flat
+      rowInfo(row, s); summary();
+    });
+    $('#mwSteps', m).addEventListener('change', e => { const f = e.target.dataset.f; if (!FIELD[f]) return; // leaving a field: back to the last good value
+      const s = w.steps[+e.target.closest('.mwstep').dataset.i]; e.target.value = s[f] ?? ''; e.target.classList.remove('bad'); err(); });
+    $('#mwSteps', m).addEventListener('focusin', e => { const row = e.target.closest('.mwstep'); if (row && sel !== +row.dataset.i) { sel = +row.dataset.i; pick(+row.dataset.i); } });
+    $('#mwSteps', m).addEventListener('click', e => {
+      const b = e.target.closest('button[data-a]'); if (!b) { const r = e.target.closest('.mwstep'); if (r && +r.dataset.i !== sel) pick(+r.dataset.i); return; } const row = b.closest('.mwstep'), i = +row.dataset.i, a = b.dataset.a, S = w.steps;
+      if (/^(min|pct)[-+]$/.test(a)) { // − / +: in place, no redraw, the hand stays on the button
+        const f = a.slice(0, -1); S[i] = bump(S[i], f, a.endsWith('+') ? 1 : -1); const inp = row.querySelector(`[data-f="${f}"]`); inp.value = S[i][f]; inp.classList.remove('bad');
+        if (S[i].pct2 == null) row.querySelector('[data-f="pct2"]').value = ''; err(); edited(); rowInfo(row, S[i]); pick(i); return summary(); }
+      if (a === 'rep') { const nx = S[i + 1], to = nx && !isWork(nx) && isWork(S[i]) ? i + 1 : i; $('#mwRf', m).value = i + 1; $('#mwRt', m).value = to + 1; pick(i); $('#mwRn', m).focus(); return; }
+      structural(() => {
+        if (a === 'up' && i > 0) { [S[i - 1], S[i]] = [S[i], S[i - 1]]; sel = i - 1; }
+        if (a === 'down' && i < S.length - 1) { [S[i + 1], S[i]] = [S[i], S[i + 1]]; sel = i + 1; }
+        if (a === 'dup' && S.length < LIM.steps) { S.splice(i + 1, 0, { ...S[i] }); sel = i + 1; }
+        if (a === 'del' && S.length > 1) { S.splice(i, 1); sel = Math.min(i, S.length - 1); }
+      });
+      const nb = $(`.mwstep[data-i="${sel}"] button[data-a="${a}"]:not(:disabled)`, m) || $(`.mwstep[data-i="${sel}"] button:not(:disabled)`, m); nb?.focus(); // keep the focus where the hand is (gamepad, keyboard)
+    });
+    $('#mwAdd', m).onclick = () => structural(() => { const at = insertAt(w.steps); w.steps.splice(at, 0, nextBlock(w.steps)); sel = at; });
+    $('#mwAddSet', m).onclick = () => { if (w.steps.length + 8 > LIM.steps) return err(`At most ${LIM.steps} steps.`); structural(() => { const at = insertAt(w.steps); w.steps = addSet(w.steps); sel = at; }); };
+    $('#mwTpl', m).addEventListener('click', async e => { const b = e.target.closest('[data-tpl]'); if (!b) return; const t = TEMPLATES.find(x => x.id === b.dataset.tpl);
+      if (JSON.stringify(w.steps) !== JSON.stringify(t.steps())) {
+        if (dirty()) { asking = true; const v = await ask({ title: `Start from “${t.name}”?`, text: 'Your blocks are replaced by the template. The name stays.', buttons: [{ label: 'Keep mine', value: null }, { label: 'Use template', value: 'use', cls: 'mwsave' }] }); asking = false; if (v !== 'use') return b.focus(); }
+        structural(() => { w.steps = t.steps(); sel = -1; });
+        if (autoName) { const n = defaultName(w.routeName || '', kindOf(t.name), others); $('#mwName', m).value = n; setName(n); } }
+      m.querySelectorAll('.mwtpl').forEach(x => x.classList.toggle('on', x === b)); b.focus(); });
+    $('#mwGraph', m).addEventListener('click', e => { const i = e.target.closest('[data-i]')?.dataset.i; if (i == null) return; pick(+i); const r = $(`.mwstep[data-i="${i}"]`, m); r?.scrollIntoView({ block: 'nearest', behavior: 'smooth' }); r?.querySelector('[data-f="min"]')?.focus({ preventScroll: true }); });
+    $('#mwRep', m).onclick = () => {
+      const f = +$('#mwRf', m).value - 1, t = +$('#mwRt', m).value - 1, n = +$('#mwRn', m).value;
+      if (!(f >= 0 && t >= f && t < w.steps.length)) return err('Repeat: choose the steps by their numbers, from ≤ to.');
+      if (!(n >= 2 && n <= LIM.rep)) return err(`Repeat: 2 to ${LIM.rep} times.`);
+      if (w.steps.length + (t - f + 1) * (n - 1) > LIM.steps) return err(`At most ${LIM.steps} steps.`);
+      structural(() => { w.steps = repeatBlock(w.steps, f, t, n); sel = -1; });
+    };
+    $('#mwInt', m).oninput = e => { const d = +e.target.value; if (!snap) snap = w.steps.map(s => ({ ...s }));
+      w.steps = scaleWork(snap, d); $('#mwIntV', m).textContent = (d > 0 ? '+' : d < 0 ? '−' : '±') + Math.abs(d) + ' %';
+      const keep = document.activeElement; $('#mwSteps', m).innerHTML = w.steps.map(rowHTML).join(''); summary(); keep?.focus?.(); };
+    const setName = n => { w.name = n; m.querySelectorAll('.mwchip').forEach(c => c.classList.toggle('on', c.dataset.name === n)); err(); };
+    $('#mwName', m).oninput = e => { autoName = false; setName(e.target.value); };
+    $('#mwChips', m).addEventListener('click', e => { const c = e.target.closest('.mwchip'); if (!c) return; autoName = false; $('#mwName', m).value = c.dataset.name; setName(c.dataset.name); });
+    const save = async asNew => {
+      const name = String(w.name || '').trim().replace(/\s+/g, ' ');
+      if (!name || name.length > LIM.name) { $('#mwName', m).focus(); return err(`Name: 1–${LIM.name} characters.`); }
+      const btn = $(asNew ? '#mwSaveNew' : '#mwSave', m); btn.disabled = true;
+      try { const out = await savePersonal({ ...w, name, id: asNew ? newId() : w.id }); close({ saved: out }); }
+      catch (e) { err('Not saved: ' + e.message); btn.disabled = false; }
+    };
+    $('#mwSave', m).onclick = () => save(false);
+    $('#mwSaveNew', m)?.addEventListener('click', () => save(true));
+    $('#mwDel', m)?.addEventListener('click', async () => {
+      asking = true; const v = await ask({ title: `Delete “${w.name}”?`, text: 'It is removed from your workouts for good.', buttons: [{ label: 'Keep it', value: null }, { label: 'Delete', value: 'del', cls: 'danger' }] }); asking = false;
+      if (v !== 'del') return $('#mwDel', m)?.focus();
+      try { await deletePersonal(w.id); close({ deleted: w.id }); } catch (e) { err('Not deleted: ' + e.message); } });
+    $('#mwCancel', m).onclick = $('#mwClose', m).onclick = () => leave();
+    m.addEventListener('click', e => { if (e.target === m) leave(); });
+    draw(); $('#mwSave', m).focus(); // the name is filled in already; the pad starts on Save, a keyboard can Tab back
+  });
+}
+
+/* ---------------- route page ---------------- */
+const optText = (w, routeId) => `${esc(w.name)} · ${Math.round(w.steps.reduce((a, s) => a + s.dur, 0) / 60)} min${w.routeId && w.routeId === routeId ? ' · made for this route' : ''}`;
+/** the options of the route page's workout choice: free ride, "My workouts" (made for this route first), the standard ones */
+export function workoutOptions(routeId) {
+  const mine = orderFor(personalList(), routeId).map(p => workoutById(p.id)).filter(Boolean);
+  const own = [...mine, ...MY];
+  return `<option value="">Free ride (route gradient)</option>
+    ${own.length ? `<optgroup label="My workouts">${own.map(w => `<option value="${esc(w.id)}">${w.mine ? '★ ' : ''}${optText(w, routeId)}</option>`).join('')}</optgroup>` : ''}
+    <optgroup label="Standard workouts">${WORKOUTS.map(w => `<option value="${w.id}">${optText(w, routeId)}</option>`).join('')}</optgroup>`;
+}
+/** the line under the workout choice: does the workout fit this route (js/routefit.js)? fits / too short (more laps or
+ *  another route, as buttons) / much longer (where the workout ends). routes = all routes for the suggestions. */
+export function fitLineHTML(route, w, settings, routes = []) {
+  const f = w ? fitRoute(route.track, w, settings, { laps: settings.laps || 1 }) : null; if (!f) return '';
+  const W = mins(f.workoutSec), R = mins(f.routeSec), L = route.track.length;
+  if (f.verdict === 'fits') return `<p class="mwfitline ok" id="mwFitLine" data-fit="fits" title="${FIT_HOW}">✓ Workout ${W} · ${lapsTxt(f.laps) === 'the route' ? 'route takes' : `${f.laps} laps take`} about ${R} at these watts: fits${f.spare >= 60 ? `, ${mins(f.spare)} to spare` : ''}</p>`;
+  if (f.verdict === 'long') return `<p class="mwfitline ok" id="mwFitLine" data-fit="long" title="${FIT_HOW}">✓ Workout ${W} · ${f.laps > 1 ? `${f.laps} laps take` : 'route takes'} about ${R}: the workout ends at km ${km(f.endD)} of ${km(L)}${f.laps > 1 ? ` in lap ${f.endLap}` : ''}, the rest is free riding</p>`;
+  const sugg = fittingRoutes(routes, w, { ...settings, laps: 1 }, { not: route.id });
+  const lapBtn = f.lapsNeeded && f.lapsNeeded > f.laps ? `<button type="button" class="btn ghost small" id="mwFitLaps" data-laps="${f.lapsNeeded}">Ride ${f.lapsNeeded} laps</button>` : '';
+  return `<div class="mwfitline bad" id="mwFitLine" data-fit="short" title="${FIT_HOW}"><p>⚠ ${f.laps > 1 ? `${f.laps} laps end` : 'Route ends'} after about ${R}, the workout needs ${W}: this workout does not fit on this route.</p>
+    <div class="mwfitacts">${lapBtn}${sugg.length ? `<span>${lapBtn ? 'or pick' : 'Pick'} a longer route:</span>${sugg.map(x => `<button type="button" class="btn ghost small mwfitr" data-route="${esc(x.id)}" title="Fits with ${mins(x.fit.spare)} to spare">${esc(x.name)}</button>`).join('')}` : lapBtn ? '' : '<span>Shorten it with “Customise”.</span>'}</div></div>`;
+}
+/** the "Customise" button and the route fit line on the route page; ctx = { route, state, saveSettings, rerender, routes, openRoute } */
+export function wireRoutePick(root, { route, state, saveSettings, rerender, routes = () => [], openRoute = () => {} }) {
+  const sel = $('#workSel', root), info = $('#mwFitInfo', root), btn = $('#wCustom', root); if (!sel || !btn) return;
+  const show = async () => {
+    const w = workoutById(sel.value), up = localOnly();
+    info.innerHTML = fitLineHTML(route, w, state.settings, w ? routes() : [])
+      + (up.length ? `<p class="mwup">${up.length} ${up.length === 1 ? 'workout' : 'workouts'} from this browser not in your account yet. <button type="button" class="btn ghost small" id="mwUp">Upload</button></p>` : '');
+    const ub = $('#mwUp', info); if (ub) ub.onclick = async () => { ub.disabled = true; await uploadLocal(); rerender(); };
+    const lb = $('#mwFitLaps', info); if (lb) lb.onclick = async () => { const n = +lb.dataset.laps, ls = $('#lapSel', root);
+      if (ls && ![...ls.options].some(o => +o.value === n)) ls.add(new Option(`${n} laps · ${(route.track.length * n / 1000).toFixed(1)} km`, String(n)));
+      state.settings.laps = n; if (ls) ls.value = String(n); await saveSettings(); await show(); (ls || $('#workSel', root))?.focus(); }; // focus on the laps, so the pad stays on the page
+    info.querySelectorAll('[data-route]').forEach(b => b.onclick = () => openRoute(b.dataset.route));
+  };
+  const mine = $('#wMine', root); if (mine) mine.onclick = () => { location.href = 'profil.html#myworkouts'; };
+  sel.addEventListener('change', show); $('#lapSel', root)?.addEventListener('change', () => setTimeout(show)); show(); // after app.js stored the laps
+  btn.onclick = async () => {
+    const cur = workoutById(sel.value), own = cur?.personal ? personalById(cur.id) : null;
+    const draft = own || (cur ? { ...fromBuiltin(cur), name: '' } : { ...freeTemplate(), name: '' }); // the editor names it: "River Valley VO2 1"
+    const res = await openEditor({ draft, saved: !!own, ftp: +state.settings.ftp || 0, route: { id: route.id, name: route.name, track: route.track, settings: state.settings, laps: state.settings.laps || 1 }, kind: own ? '' : kindOf(cur?.name || '') });
+    if (!res) return;
+    state.settings.workout = res.saved ? res.saved.id : ''; await saveSettings(); rerender();
+  };
+}
+
+/** library card: a small mark when the preselected workout does not fit this route (laps from the settings) */
+export function fitBadge(route, w, settings) {
+  const f = w ? fitRoute(route.track, w, settings, { laps: settings.laps || 1 }) : null;
+  return f?.verdict === 'short' ? `<span class="badge fitshort" title="${esc(w.name)} needs ${mins(f.workoutSec)}, this route ends after about ${mins(f.routeSec)}${f.laps > 1 ? ` (${f.laps} laps)` : ''}">Too short for ${esc(cut(w.name, 22))}</span>` : '';
+}
+
+/* ---------------- profile ---------------- */
+/** "My workouts" with the FTP, in the profile; ctx = { ftp: () => W, setFtp: async W => {} } */
+export async function profileSection(el, ctx) {
+  if (!el) return;
+  await loadPersonal();
+  const draw = () => {
+    const list = personalList(), ftp = +ctx.ftp() || 0, up = localOnly();
+    el.innerHTML = `<h3 class="ksec" id="myworkouts">My workouts</h3>
+    <section class="kcard mwprof">
+      <div class="mwftp"><label class="mwftpin" for="mwFtp"><span>FTP</span></label><input type="number" id="mwFtp" min="60" max="600" step="1" inputmode="numeric" value="${ftp || ''}" placeholder="e.g. 250"><small>W</small></div>
+      <p class="hint mwhint">FTP is the power you can hold for about an hour; every workout target is a % of it.</p>
+      <div class="mwest"><label for="mwB20">Best 20 min</label><input type="number" id="mwB20" min="60" max="700" step="1" inputmode="numeric" placeholder="W"><span>× 0.95 =</span><b id="mwEst">–</b><button type="button" class="btn ghost ksmall" id="mwUse" disabled>Use as FTP</button></div>
+      ${storeMode() === 'local' ? '<p class="hint mwhint">Saved in this browser only. Sign in to keep them private in your account on every device.</p>' : ''}
+      ${up.length ? `<div class="mwupbox"><span>${up.length} ${up.length === 1 ? 'workout' : 'workouts'} from this browser not in your account yet.</span><button type="button" class="btn ghost ksmall" id="mwUpP">Upload</button></div>` : ''}
+      <div class="mwlist">${list.length ? list.map(w => { const sec = totalSec(w.steps); return `<div class="mwitem" data-id="${esc(w.id)}">
+        <div class="mwitop"><b>${esc(w.name)}</b><small>${fmtTime(sec)} · avg ${avgPct(w.steps)} %${w.routeName ? ` · for ${esc(w.routeName)}` : ''}</small></div>
+        ${graphSVG(w.steps, { h: 34, cls: 'mwthumb' })}
+        <div class="mwiacts"><button type="button" class="btn ghost ksmall" data-ed="${esc(w.id)}">Edit</button><button type="button" class="btn ghost ksmall" data-dup="${esc(w.id)}">Duplicate</button><button type="button" class="btn ghost ksmall mwdanger" data-del="${esc(w.id)}">Delete</button></div></div>`; }).join('')
+        : '<p class="hint mwhint">No personal workouts yet. Open a route on the big screen, pick a workout and tap “Customise”, or build one here.</p>'}</div>
+      <button type="button" class="btn ghost ksmall mwnew" id="mwNew">+ New workout</button>
+      <p class="mwerr" id="mwPErr" role="alert"></p>
+    </section>`;
+    const perr = t => { $('#mwPErr', el).textContent = t || ''; };
+    const fi = $('#mwFtp', el); fi.onchange = async () => { const v = Math.round(+fi.value); if (!(v >= 60 && v <= 600)) { fi.value = ftp || ''; return perr('FTP: 60–600 W.'); } perr(); await ctx.setFtp(v); };
+    const b20 = $('#mwB20', el), est = () => { const v = +b20.value; return v >= 60 && v <= 700 ? Math.round(v * 0.95) : 0; };
+    b20.oninput = () => { const e = est(); $('#mwEst', el).textContent = e ? e + ' W' : '–'; $('#mwUse', el).disabled = !e; };
+    $('#mwUse', el).onclick = async () => { const e = est(); if (e >= 60 && e <= 600) await ctx.setFtp(e); };
+    const edit = async (w, saved) => { const res = await openEditor({ draft: w, saved, ftp: +ctx.ftp() || 0, route: w.routeId ? { id: w.routeId, name: w.routeName || '' } : null }); if (res) draw(); };
+    el.querySelectorAll('[data-ed]').forEach(b => b.onclick = () => { const w = personalById(b.dataset.ed); if (w) edit(w, true); });
+    el.querySelectorAll('[data-dup]').forEach(b => b.onclick = async () => { const w = personalById(b.dataset.dup); if (!w) return;
+      try { await savePersonal({ ...w, id: newId(), name: cut(w.name, LIM.name - 5) + ' copy' }); draw(); } catch (e) { perr('Not saved: ' + e.message); } });
+    el.querySelectorAll('[data-del]').forEach(b => b.onclick = async () => { const w = personalById(b.dataset.del); if (!w) return;
+      if (await ask({ title: `Delete “${w.name}”?`, text: 'It is removed from your workouts for good.', buttons: [{ label: 'Keep it', value: null }, { label: 'Delete', value: 'del', cls: 'danger' }] }) !== 'del') return b.focus();
+      try { await deletePersonal(w.id); draw(); } catch (e) { perr('Not deleted: ' + e.message); } });
+    $('#mwNew', el).onclick = () => edit({ ...freeTemplate(), name: '' }, false);
+    const ub = $('#mwUpP', el); if (ub) ub.onclick = async () => { ub.disabled = true; await uploadLocal(); draw(); };
+  };
+  draw();
+  if (location.hash === '#myworkouts') $('#myworkouts', el)?.scrollIntoView();
+}

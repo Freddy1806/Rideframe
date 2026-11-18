@@ -2,7 +2,7 @@
 // Usage: node --test tools/padnav-test.mjs   (no browser)
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { pickInDir, isCandidate, repeater, stickDir } from '../js/padnav.js';
+import { pickInDir, isCandidate, repeater, stickDir, stepValue } from '../js/padnav.js';
 import { NINTENDO, padButtons } from '../js/controller.js';
 
 const R = (x, y, w = 100, h = 40) => ({ left: x, top: y, right: x + w, bottom: y + h });
@@ -78,4 +78,13 @@ test('A / B swap only for pads that report as a Switch controller (8BitDo in "D"
   assert.equal(padButtons(pad('8BitDo Micro gamepad (Vendor: 2dc8)', 0, ''))[0], true, '8BitDo in D: raw 0 is A');
   assert.equal(padButtons(pad('8BitDo Micro gamepad (Vendor: 2dc8)', 11, ''))[9], true, '8BitDo in D: raw 11 is Start');
   assert.equal(padButtons({ id: '8BitDo', mapping: '', axes: [0, 0, 0, 0, 0, 0, 0, 0, 0, -1], buttons: [] })[12], true, 'hat up is D-pad up');
+});
+
+test('number fields by pad: one step up / down within min / max, empty starts from data-start, no snapping', () => {
+  assert.equal(stepValue('118', 1, { step: 5, min: 30, max: 200 }), 123);
+  assert.equal(stepValue('198', 1, { step: 5, min: 30, max: 200 }), 200);
+  assert.equal(stepValue('32', -1, { step: 5, min: 30, max: 200 }), 30);
+  assert.equal(stepValue('3', 1, { step: 0.5 }), 3.5); assert.equal(stepValue('0.1', 1, { step: 0.1 }), 0.2, 'no float noise');
+  assert.equal(stepValue('', 1, { step: 5, min: 30, max: 200, start: 90 }), 95); assert.equal(stepValue('', 1, { step: 1, min: 60 }), 61); assert.equal(stepValue('', -1, {}), -1);
+  assert.equal(stepValue('7', 1, { step: NaN }), 8, 'step "any" or missing: 1');
 });

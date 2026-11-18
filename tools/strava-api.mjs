@@ -16,6 +16,8 @@ const rate = { u15: 0, uDay: 0, l15: 100, lDay: 1000, at: 0 }; // Strava's app-w
 const noteRate = r => { const u = String(r.headers.get('x-ratelimit-usage') || '').split(',').map(Number), l = String(r.headers.get('x-ratelimit-limit') || '').split(',').map(Number);
   if (u.length === 2 && u.every(Number.isFinite)) Object.assign(rate, { u15: u[0], uDay: u[1], at: Date.now() }, l.length === 2 && l.every(v => v > 0) ? { l15: l[0], lDay: l[1] } : {}); };
 const nearLimit = () => Date.now() - rate.at < 15 * 60e3 && (rate.u15 >= rate.l15 - 3 || rate.uDay >= rate.lDay - 10); // keep a few calls for uploads
+/** Strava ids as strings (64-bit ids from 1 June 2027 lose digits as JSON numbers): x.id_str when sent, else String(x.id); null when missing */
+export const sid = (x, k = 'id') => x?.[k + '_str'] != null ? String(x[k + '_str']) : x?.[k] != null ? String(x[k]) : null;
 const segDet = new Map(); // "key|segment id" -> { at, v }: one detail call per segment and rider a day
 const imgDay = new Map(); // strava key -> { d: day, n: share images today }
 const pending = new Map(); // oauth state -> time
@@ -89,7 +91,7 @@ export async function stravaApi(req, res, path) {
       if (!r.ok) return html(res, 'Strava refused the connection: ' + String(j.message || r.status).replace(/[<>&"']/g, '')
         + (r.status === 403 ? '<br><small>New Strava apps only allow the app owner at first.</small>' : '')), true;
       const k = randomBytes(24).toString('hex'), all = await readJSON(TOK, {});
-      all[k] = { access_token: j.access_token, refresh_token: j.refresh_token, expires_at: j.expires_at, athlete: { id: j.athlete?.id, name: [j.athlete?.firstname, j.athlete?.lastname].filter(Boolean).join(' ') }, at: Date.now(), scope: String(q.get('scope') || '').slice(0, 200) }; // the granted permissions: the import needs activity:read
+      all[k] = { access_token: j.access_token, refresh_token: j.refresh_token, expires_at: j.expires_at, athlete: { id: sid(j.athlete), name: [j.athlete?.firstname, j.athlete?.lastname].filter(Boolean).join(' ') }, at: Date.now(), scope: String(q.get('scope') || '').slice(0, 200) }; // the granted permissions: the import needs activity:read
       await saveTokens(all); if (claim) claims.set(claim, { t: Date.now(), key: k });
       return html(res, `<div>Connected to Strava ✓<br><small>This window closes in a moment; otherwise just close it.</small></div><script>try{localStorage.setItem('rf_strava_key',${JSON.stringify(k)})}catch(e){}setTimeout(()=>window.close(),900);if(!window.opener)setTimeout(()=>location.href='/',1500)</script>`), true;
     }
@@ -114,22 +116,22 @@ export async function stravaApi(req, res, path) {
       fd.append('description', String(b.description || '').slice(0, 2000)); fd.append('trainer', b.outdoor ? '0' : '1');
       if (b.external_id) fd.append('external_id', String(b.external_id).slice(0, 100));
       const r = await fetch(API + '/uploads', { method: 'POST', headers: { Authorization: 'Bearer ' + tok }, body: fd });
-      const j = await r.json(); return send(res, r.ok ? 200 : r.status, r.ok ? { id: j.id_str || j.id, status: j.status, error: j.error } : { error: j.message || 'Upload failed' }), true;
+      const j = await r.json(); return send(res, r.ok ? 200 : r.status, r.ok ? { id: sid(j), status: j.status, error: j.error } : { error: j.message || 'Upload failed' }), true;
     }
     if (op === 'segments' && req.method === 'GET') { // Strava segments for the outdoor map: the rider's starred ones (all) plus popular ones around a point
       const q = new URL(req.url, 'http://x').searchParams, out = new Map(), H = { Authorization: 'Bearer ' + tok };
       const cacheF = join(DATA, 'strava_segs.json'), cache = await readJSON(cacheF, {});
       const st = await fetch(API + '/segments/starred?per_page=60', { headers: H }).then(r => r.ok ? r.json() : []).catch(() => []);
       for (const sg of Array.isArray(st) ? st.slice(0, 60) : []) {
-        let c = cache[sg.id];
-        if (!c || Date.now() - (c.at || 0) > 3 * 864e5) { const d = await fetch(`${API}/segments/${sg.id}`, { headers: H }).then(r => r.ok ? r.json() : null).catch(() => null); if (!d?.map?.polyline) continue;
-          c = cache[sg.id] = { id: sg.id, name: d.name, dist: d.distance, grade: d.average_grade, line: d.map.polyline, pr: d.athlete_segment_stats?.pr_elapsed_time || null, kom: d.xoms?.kom || null, at: Date.now() }; }
-        out.set(sg.id, { ...c, starred: true });
+        const id = sid(sg); if (!/^\d{1,20}$/.test(id || '')) continue; let c = cache[id]; // old caches keyed by the number: the same string key
+        if (!c || Date.now() - (c.at || 0) > 3 * 864e5) { const d = await fetch(`${API}/segments/${id}`, { headers: H }).then(r => r.ok ? r.json() : null).catch(() => null); if (!d?.map?.polyline) continue;
+          c = cache[id] = { id, name: d.name, dist: d.distance, grade: d.average_grade, line: d.map.polyline, pr: d.athlete_segment_stats?.pr_elapsed_time || null, kom: d.xoms?.kom || null, at: Date.now() }; }
+        out.set(id, { ...c, id: String(c.id ?? id), starred: true });
       }
       const b = (q.get('bounds') || '').split(',').map(Number);
       if (b.length === 4 && b.every(Number.isFinite)) {
         const ex = await fetch(`${API}/segments/explore?activity_type=${q.get('type') === 'running' ? 'running' : 'riding'}&bounds=${b.join(',')}`, { headers: H }).then(r => r.ok ? r.json() : {}).catch(() => ({}));
-        for (const e of ex.segments || []) if (!out.has(e.id)) out.set(e.id, { id: e.id, name: e.name, dist: e.distance, grade: e.avg_grade, line: e.points, starred: false });
+        for (const e of ex.segments || []) { const id = sid(e); if (id && !out.has(id)) out.set(id, { id, name: e.name, dist: e.distance, grade: e.avg_grade, line: e.points, starred: false }); }
       }
       await mkdir(DATA, { recursive: true }); await writeFile(cacheF, JSON.stringify(cache));
       return send(res, 200, { segments: [...out.values()] }), true;
@@ -152,15 +154,16 @@ export async function stravaApi(req, res, path) {
       if (b.external_id) f.set('external_id', String(b.external_id).slice(0, 100));
       if (+b.distance > 0) f.set('distance', String(Math.round(+b.distance))); // manual entries (Activities, + Add activity)
       const r = await fetch(API + '/activities', { method: 'POST', headers: { Authorization: 'Bearer ' + tok, 'Content-Type': 'application/x-www-form-urlencoded' }, body: f });
-      const j = await r.json().catch(() => ({})); return send(res, r.ok ? 200 : r.status, r.ok ? { id: j.id } : { error: j.message || 'Strava refused' }), true;
+      const j = await r.json().catch(() => ({})); return send(res, r.ok ? 200 : r.status, r.ok ? { id: sid(j) } : { error: j.message || 'Strava refused' }), true;
     }
     const m = op.match(/^upload\/(\d+)$/);
     if (m) {
       const r = await fetch(`${API}/uploads/${m[1]}`, { headers: { Authorization: 'Bearer ' + tok } }), j = await r.json();
-      if (j.activity_id && new URL(req.url, 'http://x').searchParams.get('indoor') === '1') { // indoor ride only (outdoor rides and runs stay as they are): mark it as a virtual ride on the trainer (best effort)
-        fetch(`${API}/activities/${j.activity_id}`, { method: 'PUT', headers: { Authorization: 'Bearer ' + tok, 'Content-Type': 'application/json' }, body: JSON.stringify({ sport_type: 'VirtualRide', trainer: true }) }).catch(() => {});
+      const act = sid(j, 'activity_id'); // activity_id_str ?? activity_id
+      if (act && new URL(req.url, 'http://x').searchParams.get('indoor') === '1') { // indoor ride only (outdoor rides and runs stay as they are): mark it as a virtual ride on the trainer (best effort)
+        fetch(`${API}/activities/${act}`, { method: 'PUT', headers: { Authorization: 'Bearer ' + tok, 'Content-Type': 'application/json' }, body: JSON.stringify({ sport_type: 'VirtualRide', trainer: true }) }).catch(() => {});
       }
-      return send(res, 200, { status: j.status, error: j.error, activity_id: j.activity_id || null }), true;
+      return send(res, 200, { status: j.status, error: j.error, activity_id: act, activity_id_str: act }), true;
     }
     return send(res, 404, { error: 'unbekannt' }), true;
   } catch (e) { return send(res, 500, { error: String(e.message || e) }), true; }
@@ -184,7 +187,7 @@ async function activities(key, tok, q) {
     if (r.status === 401 || r.status === 403) return [403, { error: 'Reconnect Strava to import your activities.', reconnect: true }];
     if (!r.ok || !Array.isArray(j)) { error = j?.message || 'Strava answered ' + r.status; break; }
     pages++;
-    for (const a of j) { const o = {}; for (const k of KEEP) if (a[k] != null) o[k] = a[k]; if (a.map?.summary_polyline) o.map = { summary_polyline: a.map.summary_polyline };
+    for (const a of j) { const o = {}; for (const k of KEEP) if (a[k] != null) o[k] = a[k]; o.id = sid(a); if (a.map?.summary_polyline) o.map = { summary_polyline: a.map.summary_polyline };
       if (out.length && Date.parse(o.start_date) < Date.parse(out[out.length - 1].start_date)) asc = false; out.push(o); }
     if (j.length < 100) { done = true; break; }
   }
@@ -202,7 +205,7 @@ async function segDetail(key, tok, id) {
   const r = await fetch(`${API}/segments/${id}`, { headers: { Authorization: 'Bearer ' + tok } }); noteRate(r);
   if (r.status === 429) return [429, { error: 'Strava limit reached.', rateLimited: true }];
   const d = await r.json().catch(() => null); if (!r.ok || !d) return [r.status === 404 ? 404 : 502, { error: 'Strava answered ' + r.status }];
-  const v = { id: String(d.id ?? id), name: d.name || '', dist: d.distance || 0, grade: d.average_grade ?? null, pr: d.athlete_segment_stats?.pr_elapsed_time || null,
+  const v = { id: String(id), name: d.name || '', dist: d.distance || 0, grade: d.average_grade ?? null, pr: d.athlete_segment_stats?.pr_elapsed_time || null,
     kom: d.xoms?.kom || null, qom: d.xoms?.qom || null, komS: xom(d.xoms?.kom), qomS: xom(d.xoms?.qom), efforts: d.athlete_segment_stats?.effort_count ?? null };
   if (segDet.size > 5000) segDet.clear(); segDet.set(ck, { at: Date.now(), v }); return [200, v];
 }
@@ -235,5 +238,5 @@ async function routes(key, tok, q) {
   if (r.status === 429) return [429, { error: 'Strava limit reached. Try again in 15 minutes.', rateLimited: true }];
   if (r.status === 401 || r.status === 403) return [403, { error: 'Reconnect Strava to import your routes.', reconnect: true }];
   const j = await r.json().catch(() => null); if (!r.ok || !Array.isArray(j)) return [502, { error: j?.message || 'Strava answered ' + r.status }];
-  return [200, { routes: j.map(x => ({ id: String(x.id_str || x.id), name: String(x.name || 'Route').slice(0, 120), distance: Math.round(x.distance || 0), elevation_gain: Math.round(x.elevation_gain || 0), type: x.type === 2 ? 'run' : 'ride' })), more: j.length === 50, page }];
+  return [200, { routes: j.map(x => ({ id: sid(x), name: String(x.name || 'Route').slice(0, 120), distance: Math.round(x.distance || 0), elevation_gain: Math.round(x.elevation_gain || 0), type: x.type === 2 ? 'run' : 'ride' })), more: j.length === 50, page }];
 }

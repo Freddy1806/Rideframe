@@ -22,6 +22,8 @@ import { routeFns } from './tcx.js';
 import { hudPrefs, hudControlsHTML, wireHudControls } from './hudprefs.js';
 import { allWorkouts, setMyWorkouts, workoutById, workoutDuration, workoutSVG } from './workouts.js';
 import { loadShared, sharedFor, shareRide, importShared, groupModal } from './share.js';
+import { workoutOptions, wireRoutePick, fitBadge } from './myworkouts-ui.js';
+import { loadPersonal } from './myworkouts-store.js';
 
 const $ = s => document.querySelector(s);
 const main = $('#main');
@@ -52,10 +54,12 @@ function getDemoRoute() { return getBuiltin('demo'); }
 async function boot() {
   const saved = await db.kvGet('settings').catch(() => null);
   if (saved) Object.assign(state.settings, saved);
+  state.trainer.pmOnly = state.settings.powerSource === 'pm'; // power meter only (js/ridesetup.js): RIDEFRAME never controls the trainer
   setMyWorkouts(state.settings.myWorkouts);
   const hasAcc = await accountsAvailable();
   if (hasAcc && account()) await syncAccount(state).catch(e => console.warn('Konto-Abgleich:', e.message));
   setMyWorkouts(state.settings.myWorkouts); // the account may have brought own workouts from another device
+  await loadPersonal(); // personal workouts (js/myworkouts-store.js): the account's, or this browser's when signed out
   const params = new URLSearchParams(location.search);
   if (params.get('accent')) state.settings.accent = params.get('accent');
   applyAccent();
@@ -79,6 +83,7 @@ async function boot() {
   if (v === 'detail') go('detail', params.get('id') || 'demo');
   else if (v === 'ride') startRide(params.get('id') || 'demo', { autopilot: params.has('auto'), at: +params.get('at') || 0 });
   else go(v || 'library');
+  if (hasAcc) startOnline();
   if (hasAcc) { $('#accPill').hidden = false; $('#accPill').addEventListener('click', () => accountModal(state, accountChanged)); updateAccPill(); }
   (async () => {
     if (hasAcc && !account() && !state.settings.accountAsked && !params.has('noprofile') && v !== 'ride') {
@@ -86,6 +91,7 @@ async function boot() {
     }
     if (!state.settings.profileDone && !params.has('noprofile') && v !== 'ride') profileModal();
     else if (params.get('join')) groupModal({ code: params.get('join'), startRide });
+    else if (/^[0-9a-f]{12}$/.test(params.get('live') || '')) liveJoinById(params.get('live')); /* "Copy link" on the phone's "Riding now" */
   })();
   db.persist();
   showVersion();
@@ -118,7 +124,9 @@ export async function ridesChanged() { await reload(); if (state.view === 'histo
 
 export async function saveSettings() { await db.kvSet('settings', state.settings); settingsChanged(state.settings); }
 function updateAccPill() { const a = account(), p = $('#accPill'); p.classList.toggle('on', !!a); p.querySelector('.t').textContent = a ? a.name : 'Sign in'; }
-async function accountChanged() { updateAccPill(); applyAccent(); await reload(); go(state.view); }
+async function accountChanged() { updateAccPill(); applyAccent(); await reload(); await loadPersonal(); go(state.view); startOnline(); }
+/** green dot for my friends while RIDEFRAME is open here (js/live.js); an invite in the answer redraws the friends strip at once */
+function startOnline() { if (!account()) return; import('./live.js').then(l => l.startOnline({ show: () => state.settings.liveShow !== false, onBeat: j => { if (j.invites?.length && $('#live')?.isConnected) liveDraw?.(); } })).catch(() => {}); }
 function applyAccent() {
   document.documentElement.style.setProperty('--accent', ACCENTS[state.settings.accent] || ACCENTS.orange);
 }
@@ -154,6 +162,7 @@ function library() {
   const routes = allRoutes();
   main.innerHTML = `
   <section class="view">
+    <div id="live" class="live" aria-live="polite"></div>
     <div class="view-head">
       <div>
         <div class="label">Library</div>
@@ -181,6 +190,75 @@ function library() {
   main.querySelectorAll('[data-wgo]').forEach(b => b.onclick = () => { state.settings.workout = b.dataset.wgo; saveSettings(); startRide(routeById('kueste60') ? 'kueste60' : 'demo'); });
   main.querySelectorAll('[data-wtab]').forEach(b => b.onclick = () => go('training'));
   showBoard();
+  showLive();
+}
+
+/* "Riding now" (owner 17.11.: "he is online, I can just join") and the friends with a green dot ("like on the PlayStation"):
+   every account of this host, riding ones as cards with Join, the others as slim chips, invites on top (js/live.js, tools/live-api.mjs) */
+let liveRiders = [], liveFriends = [], liveDraw = null;
+const FR_CHIPS = 8;
+async function showLive() {
+  if (!account()) return;
+  const el = $('#live'), hint = $('#liveHint'), host = el || hint; if (!host) return;
+  const [live, prof] = await Promise.all([import('./live.js'), el ? import('./profiles.js').catch(() => null) : null]);
+  const face = prof?.faceImg;
+  const draw = liveDraw = async () => {
+    const F = await live.friendsNow(); if (!F) return;
+    liveFriends = F.friends; const rs = liveRiders = F.friends.filter(f => f.state === 'riding' && f.ride).map(live.asRider);
+    if (el?.isConnected) {
+      const rest = F.friends.filter(f => f.state !== 'riding'), chips = rest.slice(0, FR_CHIPS), more = rest.length - chips.length;
+      live.reveal(el, F.friends.length || F.invites.length ? `${F.invites.map(v => live.inviteCard(v, false)).join('')}${live.headHTML(F.friends, '<button type="button" class="frall" id="frAll">All friends</button>')}
+        ${live.ridersGrid(rs, { face, have: r => !!routeById(r.routeId) })}
+        ${chips.length ? `<div class="frline">${chips.map(f => live.friendChip(f, face)).join('')}${more > 0 ? `<button type="button" class="frchip frmore" id="frMore">+${more} more</button>` : ''}</div>` : ''}` : '');
+      if (prof) prof.fillFaces(el); wireLive(el, F, live, face, prof);
+    }
+    if (hint?.isConnected) { const here = rs.filter(r => r.routeId === hint.dataset.route);
+      hint.innerHTML = here.slice(0, 3).map(r => `<div class="livehint" data-sid="${esc(r.id)}"><i class="lvdot" aria-hidden="true"></i><span><b>${esc(r.name)}</b> is riding this now · ${live.progress(r)}</span><button class="btn small lvjoin" type="button">Join</button></div>`).join('');
+      hint.hidden = !here.length; wireLive(hint, F, live); }
+  };
+  live.every15(host, draw);
+}
+function wireLive(root, F, live, face, prof) {
+  root.querySelectorAll('.lvjoin').forEach(b => b.onclick = e => { e.stopPropagation(); const r = liveRiders.find(x => x.id === b.closest('[data-sid]')?.dataset.sid); if (r) liveJoin(r); });
+  root.querySelectorAll('[data-inv]').forEach(c => { const v = F?.invites.find(x => x.id === c.dataset.inv); if (!v) return;
+    c.querySelector('.lvijoin').onclick = () => { live.dismissInvite(v.id); c.remove(); groupModal({ code: v.code, startRide }); };
+    c.querySelector('.lvix').onclick = () => { live.dismissInvite(v.id); c.remove(); }; });
+  const all = () => friendsModal(live, face, prof);
+  root.querySelector('#frAll')?.addEventListener('click', all); root.querySelector('#frMore')?.addEventListener('click', all);
+  root.querySelectorAll('.frchip[data-key]').forEach(b => b.onclick = all);
+}
+/** every friend on this host: riding (Join), online, offline with "last seen" */
+function friendsModal(live, face, prof) {
+  const m = document.createElement('div'); m.className = 'modal'; m.id = 'frModal';
+  const draw = () => { m.innerHTML = `<div class="box frbox"><div class="label">${live.onlineCount(liveFriends)} online</div><h2 class="display">Friends</h2>
+    <div class="frlist">${liveFriends.map(f => live.friendRow(f, face, f.state === 'riding' && f.ride ? `<span data-sid="${esc(f.ride.id)}"><button class="btn small lvjoin" type="button">Join</button></span>` : '')).join('') || '<p class="hint">No other accounts on this RIDEFRAME yet.</p>'}</div>
+    <div class="actions"><button class="btn" id="frOk">Close</button></div></div>`;
+    prof?.fillFaces(m); m.querySelector('#frOk').onclick = () => m.remove();
+    m.querySelectorAll('.lvjoin').forEach(b => b.onclick = () => { const r = liveRiders.find(x => x.id === b.closest('[data-sid]')?.dataset.sid); m.remove(); if (r) liveJoin(r); }); };
+  m.addEventListener('click', e => { if (e.target === m) m.remove(); });
+  document.body.append(m); draw();
+}
+/** Join: a group is open (and he lets friends in) = straight into the group with its code, else ask him and wait (max. 45 s) */
+async function liveJoin(r) {
+  if (r.code) return groupModal({ code: r.code, startRide });
+  const live = await import('./live.js'), ac = new AbortController();
+  const m = document.createElement('div'); m.className = 'modal'; m.id = 'liveAsk';
+  m.innerHTML = `<div class="box lvask"><div class="label"><i class="lvdot" aria-hidden="true"></i>Riding now · ${esc(r.routeName)}</div><h2 class="display">Asking ${esc(r.name)}<br>to let you in …</h2>
+    <p>${r.ask ? `${esc(r.name)} gets a short question in the ride and taps Accept.` : `${esc(r.name)}'s ride opens a group for you. You start right next to ${esc(r.name)}.`} This takes a few seconds.</p>
+    <div class="lvwait"><i></i></div><div class="actions"><button class="btn ghost" id="laCancel">Cancel</button></div></div>`;
+  document.body.append(m);
+  m.querySelector('#laCancel').onclick = () => { ac.abort(); m.remove(); };
+  const res = await live.askToJoin(r, { signal: ac.signal });
+  if (!m.isConnected || res.state === 'cancelled') return;
+  if (res.state === 'ready' && res.code) { m.remove(); return groupModal({ code: res.code, startRide }); }
+  const [h, p] = live.askResult(res);
+  m.querySelector('.box').innerHTML = `<div class="label">Riding now</div><h2 class="display" id="laMsg">${h}</h2><p>${p}</p><div class="actions"><button class="btn" id="laOk">OK</button></div>`;
+  m.querySelector('#laOk').onclick = () => m.remove();
+}
+async function liveJoinById(id) {
+  if (!account()) return toast('Sign in to join your friend.', 4000);
+  const live = await import('./live.js'), F = await live.friendsNow(), r = F?.friends.filter(f => f.ride?.id === id).map(live.asRider)[0];
+  if (r) liveJoin(r); else toast('Your friend is not riding any more.', 4000);
 }
 
 /* friends leaderboard: every account on this host, this week (Monday to Sunday) */
@@ -213,6 +291,7 @@ function card(r) {
   return `<div class="card" data-id="${r.id}" tabindex="0" role="button">
     <div class="thumb" style="background-image:url('${r.thumb || ''}')">
       ${best ? `<span class="badge">PB ${fmtTime(best.duration)}</span>` : ''}
+      ${fitBadge(r, workoutById(state.settings.workout), state.settings)}
       <span class="go"><svg width="18" height="18" viewBox="0 0 24 24"><path d="M7 4l12 8-12 8z" fill="currentColor"/></svg></span>
       ${profileSVG(t)}
     </div>
@@ -258,6 +337,7 @@ function detail(id) {
           <div><div class="label">${r.source === 'demo' ? 'Approx. time' : 'Video'}</div><div class="v">${fmtTime(t.duration)}</div></div>
           <div><div class="label">Rides</div><div class="v">${rides.length}</div></div>
         </div>
+        <div id="liveHint" class="livehints" data-route="${esc(id)}" hidden></div>
         <div class="row-actions">
           <button class="btn" id="rideBtn">Ride ▸</button>
           <button class="btn ghost" id="groupBtn">Ride together</button>
@@ -273,10 +353,10 @@ function detail(id) {
         <div class="panel workout-pick" style="margin-top:22px">
           <div class="field" style="border:0;padding:0;gap:10px;flex-wrap:wrap;justify-content:flex-start">
             <span class="label" style="min-width:130px">Training</span>
-            <select id="workSel" style="width:auto"><option value="">Free ride (route gradient)</option>${allWorkouts().map(w => `<option value="${w.id}">${w.mine ? '★ ' : ''}${esc(w.name)} · ${Math.round(workoutDuration(w) / 60)} min</option>`).join('')}</select>
+            <span class="mwpick"><select id="workSel" style="width:auto">${workoutOptions(id)}</select><button type="button" class="btn ghost small" id="wCustom" title="Adjust the chosen workout for this route and save it under your name">Customise</button><button type="button" class="mwlink" id="wMine" title="All your personal workouts and your FTP, in the profile">My workouts</button></span>
             <label style="display:flex;gap:8px;align-items:center;margin-left:auto" title="The trainer holds the target watts itself, however steep the route is"><input type="checkbox" class="toggle" id="ergChk" ${state.settings.erg !== false ? 'checked' : ''}> ERG (trainer holds the watts)</label>
           </div>
-          <div id="workInfo"></div>
+          <div id="workInfo"></div><div class="mwfitinfo" id="mwFitInfo"></div>
           <div class="field" id="chRow" style="border:0;padding:10px 0 0;gap:10px;flex-wrap:wrap;justify-content:flex-start" title="Along the way a knight, a granny, a gull, a sea eagle or a kid challenges you to short races. To accept, just attack (or press K). Never during a workout.">
             <span class="label" style="min-width:130px">Challenges</span>
             <select id="chSel" style="width:auto">${[0, 2, 3, 4, 6, 8].map(n => `<option value="${n}">${n ? n + ' per ride' : 'off'}</option>`).join('')}</select>
@@ -315,6 +395,7 @@ function detail(id) {
   const showWork = () => { const w = workoutById(state.settings.workout); $('#workInfo').innerHTML = w ? `<p style="margin:6px 0">${esc(w.what)} Target watts from your FTP (${state.settings.ftp || 200} W).</p>${workoutSVG(w)}` : ''; $('#rideBtn').textContent = w ? 'Start workout ▸' : 'Ride ▸'; $('#chRow').hidden = !!w; };
   $('#workSel').value = workoutById(state.settings.workout) ? state.settings.workout : ''; showWork();
   $('#workSel').onchange = e => { state.settings.workout = e.target.value; saveSettings(); showWork(); };
+  wireRoutePick(main, { route: r, state, saveSettings, rerender: () => detail(id), routes: allRoutes, openRoute: rid => go('detail', rid) });
   $('#ergChk').onchange = e => { state.settings.erg = e.target.checked; saveSettings(); };
   $('#chSel').value = String(state.settings.challenges ?? 4);
   $('#lapSel').value = String(state.settings.laps || 1);
@@ -332,6 +413,7 @@ function detail(id) {
   main.querySelectorAll('.share').forEach(b => b.onclick = () => shareRide(rides.find(r => r.id === b.dataset.id)));
   $('#ghostSel').onchange = e => { state.settings.ghost = e.target.value; saveSettings(); };
   $('#rideBtn').onclick = () => startRide(id);
+  showLive();
   const prof = $('#detailProfile');
   requestAnimationFrame(() => drawDetailProfile(prof, t));
   if ($('#renameBtn')) $('#renameBtn').onclick = async () => {
@@ -505,6 +587,11 @@ function settings() {
         <label class="field"><div>Push-to-Talk<div class="hint">Off = open mic, key T mutes. On = you are only heard while you hold T (or the “Mic” button).</div></div><input type="checkbox" class="toggle" id="voicePtt" ${s.voicePtt ? 'checked' : ''}></label>
         <label class="field"><div>Volume of the others <b id="voiceVolV">${s.voiceVol ?? 100}%</b><div class="hint">How loud you hear your friends. The music gets quieter while someone speaks.</div></div><input type="range" id="voiceVol" min="0" max="100" step="5" value="${s.voiceVol ?? 100}"></label>
       </div>
+      <div class="panel" id="livePanel"><h3>Friends &amp; riding now</h3>
+        <label class="field"><div>Show me as online<div class="hint">Friends with an account on this RIDEFRAME see a green dot while RIDEFRAME is open here, and in “Riding now” your route and kilometre while you ride (never your watts). Off = you always look offline, without “last seen”.</div></div><input type="checkbox" class="toggle" id="liveShow" ${s.liveShow !== false ? 'checked' : ''}></label>
+        <label class="field"><div>Friends can join me without asking<div class="hint">Their Join opens a group in your ride by itself and they start right next to you. Off = a short question in the ride first (Accept / Not now, controller A / B).</div></div><input type="checkbox" class="toggle" id="liveAuto" ${s.liveAuto !== false ? 'checked' : ''}></label>
+        ${account() ? '' : '<div class="hint" style="padding-top:10px">Needs an account: sign in at the top right.</div>'}
+      </div>
       <div class="panel"><h3>Your rider</h3>
         <div class="field"><div>Look<div class="hint">Type, height, build, face, hair, outfits (including 80s and really funny ones) and shoes. Your friends see it when riding together, you see it in the chase camera (key V).</div></div><button class="btn ghost small" id="lookBtn">Design rider</button></div>
       </div>
@@ -553,6 +640,8 @@ function settings() {
     off.onclick = async () => { await om.forgetOwnMusic(); off.hidden = true; v.textContent = 'No own folder, the game music plays.'; };
   });
   $('#cockpit').onchange = e => { s.cockpit = e.target.checked; saveSettings(); };
+  $('#liveShow').onchange = e => { s.liveShow = e.target.checked; saveSettings(); import('./live.js').then(l => l.putPrefs({ show: s.liveShow })).catch(() => {}).then(startOnline); };
+  $('#liveAuto').onchange = e => { s.liveAuto = e.target.checked; saveSettings(); import('./live.js').then(l => l.putPrefs({ auto: s.liveAuto })).catch(() => {}); };
   $('#together').onchange = e => { s.together = e.target.checked; saveSettings(); };
   { const pv = $('#poseV'), cal = async which => { // 3-2-1, then 2.5 s of that posture in front of the camera
       const m = await import('./posecam.js'); const pc = new m.PoseCam(s.poseCalib || null);
@@ -600,7 +689,7 @@ function updateTrainerPill() {
   const t = state.trainer, pill = $('#trainerPill');
   const on = t.connected;
   pill.classList.toggle('on', on);
-  pill.querySelector('.t').innerHTML = on ? `✓ ${esc(t.device.name || 'Trainer')} connected <span class="sub">${t.mode === 'ftms' ? 'FTMS' : t.mode === 'wahoo' ? 'Wahoo' : 'watts only'}</span>` : 'Connect KICKR';
+  pill.querySelector('.t').innerHTML = on ? `✓ ${esc(t.device.name || 'Trainer')} connected <span class="sub">${t.mode === 'pm' ? 'power meter only' : t.mode === 'ftms' ? 'FTMS' : t.mode === 'wahoo' ? 'Wahoo' : 'watts only'}</span>` : t.pmOnly ? 'Connect power meter' : 'Connect KICKR';
   pill.title = on ? 'Connected. Click to disconnect.' : 'Connect trainer via Bluetooth';
 }
 function updateHrPill() { // heart rate strap: its own Bluetooth connection, runs alongside the KICKR

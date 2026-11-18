@@ -375,11 +375,11 @@ async function stravaRoutesSheet(su, parent, add) {
     const j = await su.stravaRoutes(page), box = $('#srList', s); if (!box) return;
     if (j.error) { box.innerHTML = `<p class="hint">${esc(j.error)}</p>${j.reconnect ? '<button class="btn" id="srRe">Reconnect Strava</button>' : ''}`; const re = $('#srRe', s); if (re) re.onclick = async () => { if (await su.stravaConnect(true)) { page = 1; all = []; load(); } }; return; }
     all.push(...j.routes);
-    box.innerHTML = all.length ? all.map(r => `<button class="osrow" data-sr="${esc(r.id)}"><b>${esc(r.name)}</b><span>${fmtNum(r.distance / 1000, 1)} km · ${fmtNum(r.elevation_gain)} m climb${r.type === 'run' ? ' · run' : ''}${routes.some(x => x.stravaId === r.id) ? ' · saved' : ''}</span></button>`).join('')
+    box.innerHTML = all.length ? all.map(r => `<button class="osrow" data-sr="${esc(r.id)}"><b>${esc(r.name)}</b><span>${fmtNum(r.distance / 1000, 1)} km · ${fmtNum(r.elevation_gain)} m climb${r.type === 'run' ? ' · run' : ''}${routes.some(x => String(x.stravaId) === String(r.id)) ? ' · saved' : ''}</span></button>`).join('')
       + (j.more ? '<button class="btn ghost" id="srMore">More</button>' : '') : '<p class="hint">No routes on Strava yet.</p>';
     const more = $('#srMore', s); if (more) more.onclick = () => { page++; load(); };
     s.querySelectorAll('[data-sr]').forEach(b => b.onclick = async () => { const r = all.find(x => x.id === b.dataset.sr); b.disabled = true; b.querySelector('span').textContent = 'Loading …';
-      try { const p = parseRoute(r.name + '.gpx', await su.stravaRouteGpx(r.id)); const rt = await add(makeRoute(r.name, p.pts, { src: 'strava', stravaId: r.id }), x => x.stravaId === r.id);
+      try { const p = parseRoute(r.name + '.gpx', await su.stravaRouteGpx(r.id)); const rt = await add(makeRoute(r.name, p.pts, { src: 'strava', stravaId: r.id }), x => String(x.stravaId) === String(r.id));
         s.remove(); parent.remove(); render(); flash(`Route: ${short(rt.name, 24)}`); }
       catch (e) { b.disabled = false; b.querySelector('span').textContent = e.message || String(e); } });
   };

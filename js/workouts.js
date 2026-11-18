@@ -86,8 +86,9 @@ export function defFrom(w) {
   return { id: 'my_' + Date.now().toString(36), name: w.name + ' (adjusted)', warm: hadWarm, cool: hadCool, rows };
 }
 export function setMyWorkouts(defs = []) { MY.length = 0; for (const d of defs || []) if (d && d.id) MY.push(buildMy(d)); }
-export const allWorkouts = () => [...MY, ...WORKOUTS];
-export const workoutById = id => MY.find(w => w.id === id) || WORKOUTS.find(w => w.id === id) || null;
+export const PERSONAL = []; // personal workouts of the account (js/myworkouts-store.js), in the same shape as the built-ins
+export const allWorkouts = () => [...MY, ...PERSONAL, ...WORKOUTS];
+export const workoutById = id => MY.find(w => w.id === id) || PERSONAL.find(w => w.id === id) || WORKOUTS.find(w => w.id === id) || null;
 export const workoutDuration = w => w.steps.reduce((s, x) => s + x.dur, 0);
 
 /** live watt tuning in a workout (Freddy 17.11.: "turn the watts up when I can push more"): an offset in W on the hard
@@ -118,7 +119,7 @@ export function workoutState(w, t, ftp, o = {}) {
   const total = workoutDuration(w), main = steps.filter(isHard).map(stem).sort((a, b) => series({ label: b }).length - series({ label: a }).length)[0];
   const hardCount = steps.filter(x => isHard(x) && stem(x) === main).length;
   const ea = (p, st) => ftp && easyAdj && !st.free ? Math.max(50, p / 100 * ftp + easyAdj) / ftp * 100 : p; // the easy parts' offset (charts)
-  const list = steps.map(st => ({ dur: st.dur, pct: ftp && hardAdj && isHard(st) ? tunedTarget(st, st.pct / 100 * ftp, hardAdj) / ftp * 100 : isHard(st) ? st.pct : ea(st.pct, st), pct2: st.pct2 != null ? (isHard(st) ? st.pct2 : ea(st.pct2, st)) : null, hard: isHard(st), label: st.label || '' }));
+  const list = steps.map(st => ({ dur: st.dur, pct: ftp && hardAdj && isHard(st) ? tunedTarget(st, st.pct / 100 * ftp, hardAdj) / ftp * 100 : isHard(st) ? st.pct : ea(st.pct, st), pct2: st.pct2 != null ? (isHard(st) ? (ftp && hardAdj ? tunedTarget(st, st.pct2 / 100 * ftp, hardAdj) / ftp * 100 : st.pct2) : ea(st.pct2, st)) : null, hard: isHard(st), label: st.label || '' }));
   let s = 0, i = 0; for (; i < steps.length && t >= s + steps[i].dur; i++) s += steps[i].dur;
   if (i >= steps.length) return { done: true, i: steps.length, step: null, next: null, prev: steps[steps.length - 1] || null, left: 0, inStep: 0, target: null, plateau: null, lo: null, hi: null, ramp: null, hard: false,
     hardNo: 0, hardCount, nextHardNo: 0, name: '', nextTarget: null, nextName: '', nextDur: 0, totalLeft: 0, countdown: 0, steps: list };

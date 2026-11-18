@@ -27,6 +27,7 @@ async function loadSettings() {
   if (saved) Object.assign(S, saved);
   Object.assign(P, S.pure || {});
   setMyWorkouts(S.myWorkouts); G = gearSet(S);
+  await import('./myworkouts-store.js').then(m => m.loadPersonal()).catch(() => {}); // personal workouts selectable here too (js/myworkouts-store.js)
   applyTheme(S, 'trainer');
 }
 async function saveSettings() {

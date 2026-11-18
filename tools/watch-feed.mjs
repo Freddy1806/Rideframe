@@ -103,11 +103,11 @@ export async function segmentsFor(w, { lat, lon, type }) {
   const d = .06, ex = await exploreSegs(tok, [lat - d, lon - d * 2, lat + d, lon + d * 2], type === 'run' ? 'running' : 'riding'); // the phone's box (outdoor.js loadSegs)
   if (!ex) return { segs: [], strava: true, limited: nearLimit() }; // not cached: the next call may get through
   const { decode } = await ST(), { simplify, dist } = await NR(), me = [lat, lon];
-  const list = ex.map(e => ({ e, pts: typeof e.points === 'string' ? decode(e.points) : [] })).filter(x => x.pts.length > 1 && /^\d{1,20}$/.test(String(x.e.id)))
+  const list = ex.map(e => ({ e, pts: typeof e.points === 'string' ? decode(e.points) : [] })).filter(x => x.pts.length > 1 && /^\d{1,20}$/.test(String(x.e.id_str ?? x.e.id)))
     .map(x => ({ ...x, d: dist(me, x.pts[0]) })).sort((a, b) => a.d - b.d).slice(0, SEG_MAX);
   let asked = 0; const segs = [];
   for (const { e, pts } of list) {
-    const id = String(e.id); let det = segCached(link.key, id);
+    const id = String(e.id_str ?? e.id); let det = segCached(link.key, id);
     if (!det && asked < NEW_DETAILS && !nearLimit()) { asked++; const [code, v] = await segDetail(link.key, tok, id); if (code === 200) det = v; } // PR and KOM: a few new ones per call, 24 h cached
     segs.push({ id, n: cut(clean(e.name, 80) || 'Segment', 24), len: Math.round(+e.distance || 0), pr: Math.round(+det?.pr || 0), kom: Math.round(+det?.komS || 0), p: simplify(pts, SEG_PTS).map(q => [r5(q[0]), r5(q[1])]) });
   }
