@@ -230,7 +230,8 @@ export function makeRealTrack(j) {
   const open = (a, b) => { if (b - a > 50) segs.push({ name: 'Coast road', from: a, to: b, land: seaOn(a, b) ? 'coast' : 'valley', seaSide: seaSide(a, b) }); };
   let at = 0;
   if (j.roads?.length) { // the island (tools/island.mjs): each road of the tour keeps its own landscape (coast, cliff, valley, switchbacks)
-    const cut = []; for (const rd of j.roads) cut.push({ name: rd.name, from: rd.from_m, to: rd.to_m, land: rd.land, top: rd.edge === 'P1-G' && rd.dir === 1 ? 'castle' : undefined });
+    const cut = []; for (const rd of j.roads) { const [ea, eb] = rd.edge.split('-'), end = rd.dir === 1 ? eb : ea; // the junction this road leads to
+      cut.push({ name: rd.name, from: rd.from_m, to: rd.to_m, land: rd.land, top: rd.edge === 'P1-G' && rd.dir === 1 ? 'castle' : /^P\d$/.test(end) ? 'pass' : undefined, hospiz: end === 'P1' || undefined }); }
     for (const p of places) { // a village splits the road it lies on
       const a = Math.max(0, p.from_m), b = Math.min(L, p.to_m), k = cut.findIndex(c => c.from <= a + 1 && c.to > a); if (k < 0 || b <= a) continue;
       const c = cut[k], land = c.land === 'serp' || c.land === 'river' ? 'valley' : c.land === 'cliff' ? 'coast' : c.land;
@@ -249,7 +250,9 @@ export function makeRealTrack(j) {
   const d0 = COAST_DESIGN, p = defaultParams(d0), time = []; let t = 0;
   for (let i = 0; i < n; i++) { time.push(t); t += STEP / speedFor(d0.ftp * 0.7, tmp.grade[i], p); } // "footage" pace: steady endurance ride
   const track = finishTrack({ length: (n - 1) * STEP, time, lat, lon, altRaw: alt, eleSource: 'dem' });
-  return { ...track, curve: new Array(n).fill(0), theme: 'coast', world: 'lofoten', segments: segs, intervals: [], name: j.name, gpsLat: gps?.lat, gpsLon: gps?.lon,
+  const head = xs.map((_, i) => { const a = Math.max(0, i - 1), b = Math.min(n - 1, i + 1); return Math.atan2(xs[b] - xs[a], ys[b] - ys[a]); });
+  const curve = head.map((h, i) => { if (!i) return 0; let d = h - head[i - 1]; d = Math.atan2(Math.sin(d), Math.cos(d)); return Math.max(-0.15, Math.min(0.15, -d)); }); // heading change per sample: the hairpin walls and signs find the bends
+  return { ...track, curve, theme: 'coast', world: 'lofoten', segments: segs, intervals: [], name: j.name, gpsLat: gps?.lat, gpsLon: gps?.lon,
     dem: { file: j.file, n: j.n, size_m: j.size_m, start_px: [j.start_px[0] - 0.5, j.start_px[1] - 0.5], sat: j.sat, bridges: (j.bridges || []).filter(([a, b]) => b - a >= 25), tunnels: j.tunnels || [], tunnelKinds: j.tunnel_kinds || [] } }; // start_px counts pixel edges, the grid samples sit at pixel centres
 }
 

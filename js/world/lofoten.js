@@ -992,7 +992,15 @@ export class WorldScene {
         }
       }
       if (s.top === 'pass') { const pr = +(QS.get('passrot') ?? -0.7); // turned towards the oncoming rider so the board reads head-on (Mac mini QA: side-on it was unreadable)
-        place(byName('passschild'), s.to + 25, ROAD_W + 3.6, { face: 'road', gap: 1, radK: 0.4, scale: 1.5, rotT: pr }); place(byName('passschild'), s.to + 40, -(ROAD_W + 3.6), { face: 'road', gap: 1, radK: 0.4, scale: 1.5, rotT: pr }); }
+        place(byName('passschild'), s.to + 25, ROAD_W + 3.6, { face: 'road', gap: 1, radK: 0.4, scale: 1.5, rotT: pr }); place(byName('passschild'), s.to + 40, -(ROAD_W + 3.6), { face: 'road', gap: 1, radK: 0.4, scale: 1.5, rotT: pr });
+        if (s.hospiz) { const h = byName('passhospiz'); for (const [dd, sd] of [[70, 1], [70, -1], [110, 1], [40, 1]]) if (place(h, s.to + dd, sd * (ROAD_W + 4 + (h ? h.size[2] / 2 : 0)), { face: 'road', gap: 2, ground: 'centre' })) break; } } // island North Pass: the hospice on the saddle
+      // ---- island region 1 (Freddy 18.11.): marmots at the verge and ibex on the crags of the high passes ----
+      if (s.land === 'serp' && t.dem?.file === 'insel.bin') {
+        const mm = byName('murmeltier'), ib = byName('steinbock');
+        for (let d = s.from + 200; d < s.to - 100; d += 260 + r() * 260) { if (f.at(d).e < 650) continue; const sd = r() < 0.5 ? -1 : 1;
+          if (mm && r() < 0.55) place(mm, d, sd * (ROAD_W + 4 + r() * 6), { face: 'road', gap: 1.5, radK: 0.5, anim: 'Sitzen', flat: false });
+          if (ib && r() < 0.35) for (let k = 0; k < 1 + Math.floor(r() * 3); k++) place(ib, d + k * 6, sd * (ROAD_W + 22 + r() * 30 + k * 4), { face: r() * 6.28, gap: 4, anim: r() < 0.5 ? 'Stehen' : 'Grasen', flat: false }); }
+      }
       // ---- East Asian style (original): bamboo groves, lantern chains, monks training, pagodas on the tops ----
       if (s.style === 'asia') {
         const land = s.land === 'river' ? 1 : 0;
