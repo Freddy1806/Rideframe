@@ -104,6 +104,9 @@ export const EDGES = [
   ['S', 'T', 'bridge', 1.0, [[26.0, 1.2], [26.6, -1.0]], 'Long Bridge', 'Lange Brücke (5 km über das Meer)'],
   ['T', 'T', 'islet', 1.0, [], 'Seal Isle Loop', 'Robbeninsel-Runde (Zeitfahren)'],
 ].map(([a, b, kind, wind, via, name, de]) => ({ id: a + '-' + b, a, b, kind, wind, via, name, de }));
+// avalanche galleries (roof over the road, open to the valley; the renderer's 'avalanche_protector'): edge -> [[from, to] as
+// fractions of the edge from its a end]. Region 1 (North Pass): two on the steep upper part of the north ramp.
+const GALLERIES = { 'P1-N': [[0.16, 0.185], [0.27, 0.285]] };
 // what the existing world builder draws around each kind of road
 const LAND = { coast: 'coast', cliff: 'cliff', valley: 'river', pass: 'serp', summit: 'serp', hills: 'valley', bridge: 'coast', islet: 'coast' };
 
@@ -278,12 +281,13 @@ export const TOURS = {
 /** stretches of a tour over open water (the existing renderer builds deck, parapets and piers there): [[from_m, to_m]] */
 function wetRuns(P) { const out = []; let a = -1; P.forEach((p, i) => { const w = ground(...p) <= 0.5; if (w && a < 0) a = i; if ((!w || i === P.length - 1) && a >= 0) { if (i - a > 3) out.push([Math.max(0, a - 3) * STEP, (i + 2) * STEP]); a = -1; } }); return out; }
 function tourJSON(T, edges) {
-  let P = [], ele = [], at = 0; const places = [], nodes = [], kinds = [];
+  let P = [], ele = [], at = 0; const places = [], nodes = [], kinds = [], tunnels = [];
   for (let s = 0; s < T.via.length - 1; s++) {
     const a = T.via[s], b = T.via[s + 1], e = edges.find(x => (x.a === a && x.b === b) || (x.a === b && x.b === a));
     if (!e) throw new Error(`no road ${a}-${b}`);
     const fw = e.a === a, p = fw ? e.P : [...e.P].reverse(), el = fw ? e.ele : [...e.ele].reverse(), k0 = P.length ? 1 : 0;
     P = P.concat(p.slice(k0)); ele = ele.concat(el.slice(k0));
+    for (const [f0, f1] of GALLERIES[e.id] || []) { const a0 = fw ? f0 : 1 - f1, a1 = fw ? f1 : 1 - f0; tunnels.push([Math.round(at + a0 * e.len), Math.round(at + a1 * e.len)]); }
     kinds.push({ from_m: at, to_m: at + e.len, kind: e.kind, land: LAND[e.kind], name: e.name, edge: e.id, dir: fw ? 1 : -1 });
     at += e.len; const nd = NODES[b];
     if (['village', 'harbour', 'fishing', 'monastery'].includes(nd.kind)) places.push({ name: nd.name, from_m: Math.max(0, at - 300), to_m: at + 300 });
@@ -296,7 +300,7 @@ function tourJSON(T, edges) {
     format: 'Uint16 little-endian, decimetres, sea = 0, row 0 = north, column 0 = west (tools/island.mjs)',
     start_px: [s0[0] / PX, s0[1] / PX], route_step_m: STEP,
     route: P.map(([x, y]) => [+(x - s0[0]).toFixed(1), +(y - s0[1]).toFixed(1)]), ele: ele.map(v => +v.toFixed(1)),
-    places, sea_side, nodes, roads: kinds, tunnels: [], bridges: wetRuns(P) };
+    places, sea_side, nodes, roads: kinds, tunnels, tunnel_kinds: tunnels.map(() => 'avalanche_protector'), bridges: wetRuns(P) };
 }
 
 // ---------------- main ----------------
