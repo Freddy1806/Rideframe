@@ -32,8 +32,12 @@ const CX = 24, CY = 17;
 function landK(x, y) { // > 0 land
   const dx = (x - CX) / 21.3, dy = (y - CY) / 15, a = Math.atan2(dy, dx), r = Math.hypot(dx, dy);
   const edge = 1 + 0.07 * Math.sin(3 * a + 0.5) + 0.05 * Math.sin(7 * a + 1.3) + 0.12 * fbm(n1, x / 9, y / 9, 3);
-  return clamp((edge - r) / 0.1, -1, 1);
+  const main = clamp((edge - r) / 0.1, -1, 1);
+  // Seal Isle: a small island 5 km off the south coast, reached over the Long Bridge (Freddy 18.11.: "ne paar Kilometer lange Brücke")
+  const ir = Math.hypot((x - ISLE[0]) / ISLE[2], (y - ISLE[1]) / ISLE[3]), isle = clamp((1 + 0.06 * fbm(n2, x / 2, y / 2, 3) - ir) / 0.08, -1, 1);
+  return Math.max(main, isle);
 }
+export const ISLE = [26.5, -5.0, 2.4, 1.5]; // centre x, y (km, y north), half axes
 function ridgeK(x, y, [x0, y0], [x1, y1], h, w) {
   const vx = x1 - x0, vy = y1 - y0, t = clamp(((x - x0) * vx + (y - y0) * vy) / (vx * vx + vy * vy), 0, 1);
   return h * Math.exp(-((Math.hypot(x - (x0 + t * vx), y - (y0 + t * vy)) / w) ** 2));
@@ -48,7 +52,8 @@ export function groundK(x, y) {
     peakK(x, y, [8.5, 16.0], 1080, 3.4),               // west massif
     ridgeK(x, y, [5, 12], [12, 19], 820, 2.6),
     ridgeK(x, y, [19, 6.5], [31, 7.5], 480, 2.8),      // southern hills
-    ridgeK(x, y, [34, 19], [40, 26], 640, 2.4));       // east hills
+    ridgeK(x, y, [34, 19], [40, 26], 640, 2.4),        // east hills
+    peakK(x, y, [26.9, -5.4], 150, 1.1));              // Seal Isle hill
   z += z * 0.35 * (ridged(x / 3.2, y / 3.2) - 0.55);   // crags and gullies on the mountains, not on the plains
   z += 140 * fbm(n2, x / 4, y / 4) + 60 * fbm(n4, x / 1.5, y / 1.5, 4);
   const basin = Math.exp(-(((x - 25) / 6.5) ** 2 + ((y - 13.5) / 4) ** 2)); z = z * (1 - 0.75 * basin) + 250 * basin;
@@ -74,6 +79,7 @@ export const NODES = {
   P3: { x: 35.0, y: 21.5, z: 548, name: 'East Saddle', de: 'Ostsattel', kind: 'pass' },
   P4: { x: 24.0, y: 7.0, z: 385, name: 'South Saddle', de: 'Südsattel', kind: 'pass' },
   K: { x: 17.0, y: 11.0, z: 180, name: 'Monastery Plateau', de: 'Klosterplateau', kind: 'monastery' },
+  T: { x: 26.5, y: -3.85, z: 8, name: 'Seal Isle', de: 'Robbeninsel', kind: 'harbour', note: 'end of the Long Bridge, time-trial loop' },
 };
 // [a, b, kind, winding (road length / straight line), via points km, name]. Coast edges follow the traced coast instead.
 export const EDGES = [
@@ -95,9 +101,11 @@ export const EDGES = [
   ['P4', 'S', 'hills', 1.45, [[25.0, 4.5]], 'South Hills Descent', 'Südhügel Abfahrt'],
   ['H', 'P3', 'hills', 1.50, [[40.0, 17.5]], 'East Saddle Climb', 'Ostsattel Auffahrt'],
   ['P3', 'L', 'hills', 1.45, [[38.0, 26.0]], 'East Saddle North Side', 'Ostsattel Nordseite'],
+  ['S', 'T', 'bridge', 1.0, [[26.0, 1.2], [26.6, -1.0]], 'Long Bridge', 'Lange Brücke (5 km über das Meer)'],
+  ['T', 'T', 'islet', 1.0, [], 'Seal Isle Loop', 'Robbeninsel-Runde (Zeitfahren)'],
 ].map(([a, b, kind, wind, via, name, de]) => ({ id: a + '-' + b, a, b, kind, wind, via, name, de }));
 // what the existing world builder draws around each kind of road
-const LAND = { coast: 'coast', cliff: 'cliff', valley: 'river', pass: 'serp', summit: 'serp', hills: 'valley' };
+const LAND = { coast: 'coast', cliff: 'cliff', valley: 'river', pass: 'serp', summit: 'serp', hills: 'valley', bridge: 'coast', islet: 'coast' };
 
 // ---------------- coast ring: the traced coastline 600 m inland ----------------
 const RING_N = 1440;
@@ -140,16 +148,31 @@ function resample(P) {
 }
 /** zigzag from A to B with n bends whose swing is solved so the spline is `len` metres long (switchbacks on a pass,
  *  lazy bends on hills and in valleys) */
-function wind(A, B, len, n) {
+function wind(A, B, len, n, seed = 1) {
   const L = Math.hypot(B[0] - A[0], B[1] - A[1]); if (len <= L * 1.02 || n < 2) return [A, B];
-  const u = [(B[0] - A[0]) / L, (B[1] - A[1]) / L], p = [-u[1], u[0]];
-  const build = w => { const P = [A]; for (let k = 1; k < n; k++) { const s = k / n, o = (k % 2 ? 1 : -1) * w / 2 * Math.min(1, s * n, (1 - s) * n); P.push([A[0] + u[0] * L * s + p[0] * o, A[1] + u[1] * L * s + p[1] * o]); } P.push(B); return spline(P); };
+  const u = [(B[0] - A[0]) / L, (B[1] - A[1]) / L], p = [-u[1], u[0]], r = rng(seed * 7919 + 13);
+  // irregular, like a real pass (Freddy 18.11.: "zu gleichmäßig"): packs of 2-5 tight hairpins, then a long traverse;
+  // every leg its own length and swing, the zigzag's axis drifts across the slope, now and then a bend on the same side
+  const gaps = [], amp = [], side = []; let pack = 0, sd = 1;
+  for (let k = 1; k < n; k++) {
+    if (pack <= 0) { pack = 2 + Math.floor(r() * 4); gaps.push(1.6 + r() * 1.8); amp.push(1.0 + r() * 0.5); }
+    else { gaps.push(0.45 + r() * 0.5); amp.push(0.45 + r() * 0.55); }
+    pack--; if (r() > 0.1) sd = -sd; side.push(sd);
+  }
+  gaps.push(0.8 + r()); const tot = gaps.reduce((x, y) => x + y, 0); let acc = 0; const at = gaps.slice(0, -1).map(g => (acc += g) / tot);
+  const ph = r() * 6.28, fr = 0.6 + r() * 0.9;
+  const build = w => { const P = [A]; for (let k = 0; k < at.length; k++) { const s = at[k], fade = Math.min(1, s * 4, (1 - s) * 4);
+      const o = (side[k] * w / 2 * amp[k] + w * 0.35 * Math.sin(s * Math.PI * fr * 2 + ph)) * fade;
+      P.push([A[0] + u[0] * L * s + p[0] * o, A[1] + u[1] * L * s + p[1] * o]); } P.push(B); return spline(P); };
   let lo = 0, hi = len; for (let it = 0; it < 30; it++) { const w = (lo + hi) / 2; if (plen(build(w)) < len) lo = w; else hi = w; }
   return build(lo);
 }
 
 // ---------------- roads ----------------
 function edgePath(e) {
+  if (e.kind === 'islet') { const [cx, cy, rx, ry] = ISLE, P = []; for (let a = 0; a <= 360; a += 3) { const t = (90 - a) * Math.PI / 180; P.push(M(cx + Math.cos(t) * (rx - 0.45) * (1 + 0.05 * Math.sin(a / 19)), cy + 0.45 * 0 + Math.sin(t) * (ry - 0.45))); }
+    return resample(spline(P, 10)); } // starts and ends at the north shore (the bridge head)
+  if (e.kind === 'bridge') { const C = [NODES[e.a], ...e.via.map(([x, y]) => ({ x, y })), NODES[e.b]].map(n => M(n.x, n.y)); return resample(spline(C, 10)); }
   if (e.kind === 'coast' || e.kind === 'cliff') return resample(spline(ringPath(e.a, e.b).filter((_, i, a) => i % 4 === 0 || i === a.length - 1).map(p => M(...p)), 10));
   const C = [NODES[e.a], ...e.via.map(([x, y]) => ({ x, y })), NODES[e.b]].map(n => M(n.x, n.y));
   const straight = plen(C), target = straight * e.wind, P = [], Ls = [];
@@ -162,18 +185,23 @@ function edgePath(e) {
   const lowW = climb && upLen > 0 ? 1.15 : e.wind, upW = upLen > 0 ? Math.max(1.1, (target - lowLen * lowW) / upLen) : e.wind;
   for (let i = 0; i < C.length - 1; i++) {
     const len = Ls[i] * (upper[i] ? upW : lowW);
-    const every = upper[i] ? 380 : { summit: 900, pass: 1400, hills: 1500, valley: 1800 }[e.kind] || 1800, n = Math.max(2, Math.round(len / every));
-    const part = wind(C[i], C[i + 1], len, n); P.push(...(i ? part.slice(1) : part));
+    const every = upper[i] ? 430 : { summit: 900, pass: 1400, hills: 1500, valley: 1800 }[e.kind] || 1800, n = Math.max(2, Math.round(len / every));
+    const part = wind(C[i], C[i + 1], len, n, EDGES.indexOf(e) * 31 + i); P.push(...(i ? part.slice(1) : part));
   }
   void target; return resample(P);
 }
 // heights: draft 1's blend of a straight ramp between the junction heights and the smoothed ground (mix by kind),
 // then grades above maxG shaved off with both ends held
 function profile(e, P) {
+  if (e.kind === 'bridge') { // the deck: ground on land, over the sea a long gentle arch, 30 m high in the middle for the ships
+    const n = P.length, a = NODES[e.a], b = NODES[e.b], wet = P.map(p => ground(...p) <= 0.5); const i0 = wet.indexOf(true), i1 = wet.lastIndexOf(true);
+    return P.map((p, i) => { const base = lerp(a.z, b.z, i / (n - 1)); if (i0 < 0) return base; const t = clamp((i - i0 + 25) / (i1 - i0 + 50), 0, 1);
+      return Math.max(base, 6 + 24 * Math.pow(Math.sin(Math.PI * t), 0.6)); }).map((v, i, z) => i && i < n - 1 ? (z[i - 1] + v + z[i + 1]) / 3 : v);
+  }
   const n = P.length, a = NODES[e.a], b = NODES[e.b];
   const raw = P.map(p => ground(...p)), sig = 30, rad = sig * 3;
   const tz = raw.map((_, i) => { let s = 0, ws = 0; for (let k = -rad; k <= rad; k++) { const j = clamp(i + k, 0, n - 1), w = Math.exp(-(k * k) / (2 * sig * sig)); s += raw[j] * w; ws += w; } return s / ws; });
-  const mix = { coast: 0.9, cliff: 0.9, valley: 0.7, pass: 0.6, summit: 0.5, hills: 0.75 }[e.kind];
+  const mix = { islet: 0.9, coast: 0.9, cliff: 0.9, valley: 0.7, pass: 0.6, summit: 0.5, hills: 0.75 }[e.kind];
   let z = tz.map((t, i) => { const lin = lerp(a.z, b.z, i / (n - 1)), f = Math.sin(Math.PI * i / (n - 1)); return lin * (1 - mix * f) + t * mix * f; });
   z = z.map(v => Math.max(3, v));
   if (Math.abs(b.z - a.z) > 200) { // a real climb: never a dip on the way up (the trainer would go easy mid-pass)
@@ -202,6 +230,7 @@ export function buildNetwork() {
 function corrLevel(edges, base, CN, SIG) {
   const CS = SIZE / CN, num = new Float32Array(CN * CN), den = new Float32Array(CN * CN), rc = Math.ceil(SIG * 2.6 / CS);
   for (const e of edges) for (let i = 0; i < e.P.length; i += 3) {
+    if (e.kind === 'bridge' && ground(...e.P[i]) <= 0.5) continue; // the sea stays under the bridge
     const [x, y] = e.P[i], d = e.ele[i] - ground(x, y) - base(x, y), c0 = Math.floor(x / CS), r0 = Math.floor(y / CS);
     for (let r = r0 - rc; r <= r0 + rc; r++) for (let c = c0 - rc; c <= c0 + rc; c++) { if (r < 0 || c < 0 || r >= CN || c >= CN) continue;
       const q = ((c + 0.5) * CS - x) ** 2 + ((r + 0.5) * CS - y) ** 2, w = Math.exp(-q / (SIG * SIG)); num[r * CN + c] += w * d; den[r * CN + c] += w; }
@@ -222,6 +251,7 @@ export function buildGrid(edges, corr = correction(edges)) {
   // the slope beside the bench is as wide as the height step needs (no 100 m walls next to the road)
   const RAD = 220, best = new Float32Array(N * N).fill(1e9), be = new Float32Array(N * N), k = Math.ceil(RAD / PX);
   for (const e of edges) for (let i = 0; i < e.P.length; i++) {
+    if (e.kind === 'bridge' && ground(...e.P[i]) <= 0.5) continue;
     const [x, y] = e.P[i], c0 = Math.floor(x / PX), r0 = Math.floor(y / PX);
     for (let r = r0 - k; r <= r0 + k; r++) for (let c = c0 - k; c <= c0 + k; c++) { if (r < 0 || c < 0 || r >= N || c >= N) continue;
       const d = Math.hypot((c + 0.5) * PX - x, (r + 0.5) * PX - y), j = r * N + c; if (d < best[j]) { best[j] = d; be[j] = e.ele[i]; } }
@@ -241,9 +271,12 @@ export const TOURS = {
   insel_feierabend: { name: 'Island: East Saddle', via: ['H', 'P3', 'L', 'H'], what: 'one climb over the East Saddle, back along the cliffs' },
   insel_suedsattel: { name: 'Island: South Saddle', via: ['H', 'B', 'P4', 'S', 'H'], what: 'river valley, basin village, South Saddle, beach, coast' },
   insel_westpass: { name: 'Island: West Pass', via: ['H', 'B', 'K', 'P2', 'SW', 'S', 'H'], what: 'monastery and the long West Pass' },
+  insel_bruecke: { name: 'Island: Long Bridge', via: ['H', 'S', 'T', 'T', 'S', 'H'], what: 'along the vineyards, 5 km over the sea to Seal Isle, round the isle and back' },
   insel_runde: { name: 'Island: Coast Loop', via: ['H', 'L', 'N', 'W', 'SW', 'S', 'H'], what: 'the whole coast ring' },
   insel_koenig: { name: 'Island: Queen Stage', via: ['H', 'B', 'P1', 'G', 'P1', 'N', 'L', 'H'], what: 'North Pass, the castle on the summit, North Bay, lighthouse' },
 };
+/** stretches of a tour over open water (the existing renderer builds deck, parapets and piers there): [[from_m, to_m]] */
+function wetRuns(P) { const out = []; let a = -1; P.forEach((p, i) => { const w = ground(...p) <= 0.5; if (w && a < 0) a = i; if ((!w || i === P.length - 1) && a >= 0) { if (i - a > 3) out.push([Math.max(0, a - 3) * STEP, (i + 2) * STEP]); a = -1; } }); return out; }
 function tourJSON(T, edges) {
   let P = [], ele = [], at = 0; const places = [], nodes = [], kinds = [];
   for (let s = 0; s < T.via.length - 1; s++) {
@@ -263,7 +296,7 @@ function tourJSON(T, edges) {
     format: 'Uint16 little-endian, decimetres, sea = 0, row 0 = north, column 0 = west (tools/island.mjs)',
     start_px: [s0[0] / PX, s0[1] / PX], route_step_m: STEP,
     route: P.map(([x, y]) => [+(x - s0[0]).toFixed(1), +(y - s0[1]).toFixed(1)]), ele: ele.map(v => +v.toFixed(1)),
-    places, sea_side, nodes, roads: kinds, tunnels: [], bridges: [] };
+    places, sea_side, nodes, roads: kinds, tunnels: [], bridges: wetRuns(P) };
 }
 
 // ---------------- main ----------------

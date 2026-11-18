@@ -56,10 +56,10 @@ stops = [(-40, (22, 52, 78)), (0, (40, 86, 118)), (0.3, (214, 202, 160)), (8, (1
 rgb = np.stack([np.interp(zm, [s[0] for s in stops], [s[1][c] for s in stops]) for c in range(3)], -1)
 rgb = np.where((zm > 0.3)[..., None], rgb * shade[..., None], rgb)
 # crop to the island
-k = MS / net['size_m']; x0, y0 = int(2000 * k), int(8600 * k); x1, y1 = int((net['size_m'] - 2000) * k), int((net['size_m'] - 8600) * k)
+k = MS / net['size_m']; x0, y0 = int(2000 * k), int(8600 * k); x1, y1 = int((net['size_m'] - 2000) * k), int((net['size_m'] - 2200) * k)
 im = Image.fromarray(np.clip(rgb, 0, 255).astype(np.uint8)).crop((x0, y0, x1, y1)); dr = ImageDraw.Draw(im)
 P = lambda p: (p[0] * k - x0, p[1] * k - y0)
-COL = {'coast': (255, 255, 255), 'cliff': (225, 235, 245), 'valley': (255, 214, 120), 'pass': (255, 106, 0), 'summit': (230, 40, 20), 'hills': (255, 160, 60)}
+COL = {'bridge': (255, 106, 0), 'islet': (255, 255, 255), 'coast': (255, 255, 255), 'cliff': (225, 235, 245), 'valley': (255, 214, 120), 'pass': (255, 106, 0), 'summit': (230, 40, 20), 'hills': (255, 160, 60)}
 for e in net['edges']:
     pts = [P(p) for p in e['P'][::3]]
     dr.line(pts, fill=(25, 22, 20), width=7, joint='curve'); dr.line(pts, fill=COL[e['kind']], width=4, joint='curve')
@@ -71,8 +71,8 @@ for kk, n in net['nodes'].items():
     tw = dr.textlength(t, font=f2); tx = x + 12 if x + 12 + tw < im.size[0] - 8 else x - 12 - tw
     dr.text((tx, y - 10), t, font=f2, fill=(255, 255, 255), stroke_width=3, stroke_fill=(10, 10, 10))
 total = sum(e['len'] for e in net['edges']) / 1000; ring = sum(e['len'] for e in net['edges'] if e['kind'] in ('coast', 'cliff')) / 1000
-dr.text((22, 16), f"RIDEFRAME Insel · Entwurf 2 (fahrbar) · {total:.0f} km Straßen, davon {ring:.0f} km Küstenring", font=f1, fill=(255, 255, 255), stroke_width=3, stroke_fill=(10, 10, 10))
-for i, (lab, c) in enumerate([('Küste', COL['coast']), ('Tal', COL['valley']), ('Pass (Kehren)', COL['pass']), ('Gipfelstraße', COL['summit']), ('Hügel', COL['hills'])]):
+dr.text((22, 16), f"RIDEFRAME Insel · Entwurf 3 · {total:.0f} km Straßen, davon {ring:.0f} km Küstenring", font=f1, fill=(255, 255, 255), stroke_width=3, stroke_fill=(10, 10, 10))
+for i, (lab, c) in enumerate([('Küste', COL['coast']), ('Tal', COL['valley']), ('Pass (Kehren)', COL['pass']), ('Gipfelstraße', COL['summit']), ('Hügel', COL['hills']), ('Lange Brücke', COL['bridge'])]):
     yy = 62 + i * 24; dr.line((24, yy, 60, yy), fill=(20, 20, 20), width=8); dr.line((24, yy, 60, yy), fill=c, width=5)
     dr.text((70, yy - 10), lab, font=f3, fill=(255, 255, 255), stroke_width=2, stroke_fill=(10, 10, 10))
 W, H = im.size; bar = 5000 * k

@@ -67,7 +67,7 @@ async function boot() {
   const REAL = { kueste60: 'real coast road · almost flat, gently rolling', reine_aa: 'Lofoten classic · fishing villages, bridges, tunnels' };
   // the open-world island (tools/island.mjs, Freddy 18.11.): fixed tours until the junction choice is in, only with ?insel for now
   if (params.has('insel')) Object.assign(REAL, { insel_koenig: 'island · North Pass, castle summit, lighthouse', insel_feierabend: 'island · East Saddle and the cliffs',
-    insel_suedsattel: 'island · river valley, South Saddle, beach', insel_westpass: 'island · monastery and the West Pass', insel_runde: 'island · the whole coast ring' });
+    insel_suedsattel: 'island · river valley, South Saddle, beach', insel_westpass: 'island · monastery and the West Pass', insel_bruecke: 'island · 5 km bridge over the sea to Seal Isle', insel_runde: 'island · the whole coast ring' });
   await Promise.all(Object.entries(REAL).map(async ([id, what], k) => { const real = await loadRealTrack(id); if (!real) return;
     BUILTIN[id] = () => ({ id, name: ({ kueste60: 'Coast Road' })[id] || real.name || id, place: `${(real.length / 1000).toFixed(0)} km ${what} · ${real.gain} m climb`, source: 'demo', parts: [], track: real, createdAt: 2 + k, thumb: demoThumb(real, 1200) }); }));
   await reload();
