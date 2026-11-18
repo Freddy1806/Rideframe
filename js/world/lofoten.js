@@ -105,11 +105,15 @@ const TINT_A = new THREE.Color(1.0, 1.0, 0.95), TINT_B = new THREE.Color(1.12, 1
 const WET = new THREE.Color(0.55, 0.52, 0.5), SHALLOW = new THREE.Color(0.75, 1.0, 0.95), DEEP = new THREE.Color(0.15, 0.3, 0.33);
 function paint(f, x, z, h, ny, col, spl, i) {
   const n = f.n2(x / 60, z / 60), n2 = f.n3(x / 14, z / 14), n3 = f.n1(x / 230, z / 230);
-  let rock = Math.max(smooth(0.86, 0.68, ny + n2 * 0.04), smooth(300, 480, h + n * 50) * 0.8);
+  const rl = f.rockLine || 300; // Lofoten: bare rock from ~300 m; the island keeps alpine meadows up to ~1050 m
+  let rock = Math.max(smooth(0.86, 0.68, ny + n2 * 0.04), smooth(rl, rl + 180, h + n * 50) * 0.8);
   rock = Math.max(rock, smooth(0.25, 0.65, n3 * 0.5 + n2 * 0.5) * 0.35 * smooth(40, 120, h)); // rock outcrops in the meadows
   // scree tongues on the talus slopes below the walls (the shader turns rock on 30-45 deg slopes into scree)
   rock = Math.max(rock, smooth(0.93, 0.84, ny + n2 * 0.05) * smooth(0.1, 0.6, n * 0.6 + n2 * 0.4) * 0.75 * smooth(25, 90, h));
-  let snow = h > 520 ? smooth(520, 660, h + n * 60) * smooth(0.6, 0.8, ny) : 0;
+  // snow line per world: Lofoten from ~520 m; the island (Alps-like summer) only keeps snow patches in shaded gullies near the top
+  const sl = f.snowLine || 520;
+  let snow = h > sl ? smooth(sl, sl + 140, h + n * 60) * smooth(0.6, 0.8, ny) : 0;
+  if (f.snowLine > 1000) snow *= smooth(0.2, 0.45, n2 * 0.5 + n * 0.5) * smooth(0.97, 0.88, ny); // only patches in the rills, not on flat ground
   let sand = h < 2.4 ? smooth(2.4, 0.9, h + n2 * 0.4) : 0;
   if (h < -0.5) { sand = 1; rock *= 0.3; }
   const grass = Math.max(0, 1 - rock - sand - snow);
@@ -234,6 +238,7 @@ export class WorldScene {
     this.c = canvas; this.track = track;
     this.currentTime = 0; this.playbackRate = 1; this.paused = true; this.duration = track.time[track.time.length - 1];
     this.field = new Field(track, DEM);
+    if (track?.dem?.file === 'insel.bin') { this.field.snowLine = 1330; this.field.rockLine = 1050; } // island: green alpine pass, snow only in rills near the castle summit
     const renderer = this.renderer = new THREE.WebGLRenderer({ canvas, antialias: true, powerPreference: 'high-performance', preserveDrawingBuffer: !!track.__shot });
     renderer.setPixelRatio(Math.min(devicePixelRatio || 1, 1.25)); // Retina at 2x costs 4x the pixels; 1.25 is still sharp at riding distance
     renderer.toneMapping = THREE.ACESFilmicToneMapping; renderer.toneMappingExposure = 1.0;
@@ -261,7 +266,7 @@ export class WorldScene {
     this.clouds = cloudLayer(sun); scene.add(this.clouds);
     this.rain = rainLayer(); scene.add(this.rain); this.rainPlan = planRain(track.length || 40000, QS.has('rain'));
     this.cumulus = cumulusLayer(sun); scene.add(this.cumulus); // thick cumulus heaps (impostors) under the thin fbm deck
-    this.mist = mistLayer(this.cumulus.material.uniforms.tC.value); scene.add(this.mist); // mist rags drifting between the hairpins above ~850 m (island region 1)
+    this.mist = mistLayer(); scene.add(this.mist); // mist rags drifting between the hairpins above ~850 m (island region 1)
     this.sunGlow = sunGlow(); scene.add(this.sunGlow); // fake bloom: soft halo around the low sun, cut by the terrain in front
 
     const light = this.light = new THREE.DirectionalLight(0xffd8bc, 3.0);
@@ -521,7 +526,7 @@ export class WorldScene {
           const x = f.x[j] + tx * al - tz * off * side, z = f.z[j] + tz * al + tx * off * side;
           if (inT(x, z) && spl[vi(x, z) * 4] < 0.5 + r() * 0.3) continue;
           const rd = f.road(x, z); if (!rd || rd.d < ROAD_W + 0.5) continue;
-          const h = f.height(x, z); if (h < 2.2 || h > 500 + f.n2(x / 60, z / 60) * 60) continue; // no green tufts in the snow (Himmelsleiter)
+          const h = f.height(x, z); if (h < 2.2 || h > (f.rockLine ? f.rockLine + 150 : 500) + f.n2(x / 60, z / 60) * 60) continue; // no green tufts in the snow (Himmelsleiter)
           const patch = f.n2(x / 23, z / 23) * 0.5 + 0.5; // meadows are patchy: dense clumps, thin spots
           if (rd.d > ROAD_W + 2 && r() > 0.2 + 1.1 * patch) continue;
           const verge = rd.d < ROAD_W + 1.8; // mown strip next to the asphalt
@@ -1965,28 +1970,37 @@ void main() {
 // mist rags in the mountains (Freddy 18.11., island region 1: "Nebel ab 900 m"): soft grey-white cards hanging at 850-1250 m
 // around the rider, drifting slowly. They only appear once the road itself is high up, thin out near the camera (no grey wall
 // in the face) and leave the low coast untouched.
-function mistLayer(tex) {
-  const N = 70, rr = rng(1234), g = new THREE.InstancedBufferGeometry();
+function mistLayer() {
+  // soft procedural wisps (Mac mini QA 18.11.: the cumulus sprite looked like cut-out bluish clouds with hard edges):
+  // wide, flat cards whose alpha is a drifting fbm under a gaussian falloff, so no edge is ever visible
+  const N = 110, rr = rng(1234), g = new THREE.InstancedBufferGeometry();
   g.index = new THREE.BufferAttribute(new Uint16Array([0, 1, 2, 0, 2, 3]), 1);
   g.setAttribute('position', new THREE.Float32BufferAttribute([-0.5, 0, 0, 0.5, 0, 0, 0.5, 1, 0, -0.5, 1, 0], 3));
   const a = new Float32Array(N * 4), b = new Float32Array(N * 4);
-  for (let i = 0; i < N; i++) { a.set([(rr() - 0.5) * 2400, 850 + rr() * 400, (rr() - 0.5) * 2400, 140 + rr() * 260], i * 4); b.set([Math.floor(rr() * 4), rr(), rr() < 0.5 ? 1 : -1, 0.3 + rr() * 0.25], i * 4); }
+  for (let i = 0; i < N; i++) { a.set([(rr() - 0.5) * 2400, 840 + rr() * 420, (rr() - 0.5) * 2400, 220 + rr() * 380], i * 4); b.set([rr() * 50, rr(), rr() < 0.5 ? 1 : -1, 0.22 + rr() * 0.16], i * 4); }
   g.setAttribute('iA', new THREE.InstancedBufferAttribute(a, 4)); g.setAttribute('iB', new THREE.InstancedBufferAttribute(b, 4)); g.instanceCount = N;
-  const m = new THREE.ShaderMaterial({ transparent: true, depthWrite: false, fog: false, uniforms: { tC: { value: tex }, uTime: { value: 0 } },
-    vertexShader: `attribute vec4 iA, iB; uniform float uTime; varying vec2 vUv; varying float vFade;
+  const m = new THREE.ShaderMaterial({ transparent: true, depthWrite: false, fog: false, uniforms: { uTime: { value: 0 } },
+    vertexShader: `attribute vec4 iA, iB; uniform float uTime; varying vec2 vUv; varying float vFade, vSeed;
 void main() {
   vec2 c = iA.xz + vec2(uTime * 1.6, uTime * .7); c = mod(c - cameraPosition.xz + 1200., 2400.) - 1200.;
   vec3 C = vec3(cameraPosition.x + c.x, iA.y, cameraPosition.z + c.y);
   vec3 V = normalize(cameraPosition - C); vec3 R = normalize(cross(vec3(0., 1., 0.), V)); vec3 U = vec3(0., 1., 0.);
-  float w = iA.w, h = w * iB.w; vec3 P = C + R * position.x * w * iB.z + U * (position.y * h - h * .45);
+  float w = iA.w, h = w * iB.w; vec3 P = C + R * position.x * w * iB.z + U * (position.y * h - h * .5);
   float d = length(cameraPosition - C);
-  vFade = smoothstep(720., 900., cameraPosition.y) * smoothstep(40., 160., d) * (1. - smoothstep(900., 1200., d)) * (.6 + .4 * sin(uTime * .05 + iB.y * 6.28));
-  vUv = vec2(position.x + .5, (iB.x + 1. - position.y) / 4.);
+  vFade = smoothstep(720., 900., cameraPosition.y) * smoothstep(30., 180., d) * (1. - smoothstep(900., 1200., d)) * (.65 + .35 * sin(uTime * .05 + iB.y * 6.28));
+  vUv = position.xy; vSeed = iB.x;
   gl_Position = projectionMatrix * viewMatrix * vec4(P, 1.);
 }`,
-    fragmentShader: `uniform sampler2D tC; varying vec2 vUv; varying float vFade;
-void main() { vec4 t = texture2D(tC, vUv); float a = smoothstep(.05, .9, t.a) * vFade * .42; if (a < .01) discard;
-  gl_FragColor = vec4(vec3(.86, .88, .9), a);
+    fragmentShader: `uniform float uTime; varying vec2 vUv; varying float vFade, vSeed;
+float h(vec2 p) { return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }
+float n(vec2 p) { vec2 i = floor(p), f = fract(p); f = f * f * (3. - 2. * f); return mix(mix(h(i), h(i + vec2(1, 0)), f.x), mix(h(i + vec2(0, 1)), h(i + vec2(1, 1)), f.x), f.y); }
+float fbm(vec2 p) { float v = 0., a = .5; for (int k = 0; k < 4; k++) { v += a * n(p); p = p * 2.1 + 7.3; a *= .5; } return v; }
+void main() {
+  vec2 q = vec2(vUv.x * 2., vUv.y * 2. - 1.);            // -1..1 across the card
+  float fall = exp(-dot(q * vec2(1., 1.6), q * vec2(1., 1.6)) * 2.2); // gaussian: zero at every edge
+  float f = fbm(vec2(vUv.x * 4.5, vUv.y * 1.8) + vSeed + vec2(uTime * .012, 0.)) + .25 * fbm(vec2(vUv.x * 11., vUv.y * 6.) - vSeed);
+  float a = smoothstep(0., .3, f + fall * .6 - .85) * fall * vFade * .55; if (a < .004) discard; // noise eats the edge: ragged wisps, never a disc
+  gl_FragColor = vec4(vec3(.93, .93, .92), a);
   #include <tonemapping_fragment>
   #include <colorspace_fragment>
 }` });
