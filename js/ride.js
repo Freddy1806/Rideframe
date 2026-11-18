@@ -685,7 +685,7 @@ export class RideSession {
     const g = eagleGate(e, { win, stepI, busy: othersBusy(this.wiz, this.ch), wizIv: this._wizIv ?? -1 });
     if (g === 'go') { e.state = 'play'; this.eagle.start(); } else if (g === 'move') this.eg = moveEagle(this.workout, e, { stepI, ftp: this.ftp });
   }
-  /** while the eagle sits at the right edge: minimap, big grade and the next-interval pill fade out (css .hud.eagle-on); back on pause, end, abort */
+  /** while the eagle flies alongside on the right: minimap, big grade and the next-interval pill fade out (css .hud.eagle-on); back on pause, end, abort */
   _eagleHud() { const on = !!this.eagle?.perched && !this.paused && !this.finished; if (on !== !!this._egHud) { this._egHud = on; this.el?.querySelector('.hud')?.classList.toggle('eagle-on', on); } }
   _toggleEagle() {
     const s = this.state.settings; s.eagle = s.eagle === false;

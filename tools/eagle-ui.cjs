@@ -1,8 +1,10 @@
 // The Eagle of Destiny end to end (owner 18.11.): a workout ride (Harbour Loop, VO2max 5 × 5) with ?eagle: the eagle comes 3 s
-// into the first hard interval; its head sits at the right edge (visible part 25–38 % of the width, upper two thirds, never
-// over the interval bar) at 1280×720, 1920×1080 and 2560×1080; the beak moves while it speaks (no audio files in the cloud:
-// the fallback syllable timing); no text, subtitle or speech bubble appears; it flies off ahead swerving left and right and is
-// gone at the end. Also the Settings toggle and the pause menu Options. Without the Blender models (cloud checkout) the
+// into the first hard interval and flies alongside, a whole bird; it looks ahead first (beak within 15° of the ride direction
+// for >= 1.2 s), then turns its head to you (>= 1.0 s) and speaks with eye contact (< 8°); its head in the right 45 %, upper
+// two thirds, never over the interval bar or the stats row; the bird's box much bigger than the head's (body and near wing on
+// screen); at 1280×720, 1920×1080 and 2560×1080, with the procedural stand-in and the one rigged like adler_nah. The beak moves
+// while it speaks (no audio files in the cloud: the fallback syllable timing); no text, subtitle or speech bubble appears; it
+// flies off ahead swerving left and right and is gone at the end. Also the Settings toggle and the pause menu Options. Without the Blender models (cloud checkout) the
 // procedural stand-in plays the eagle. The 3D world draws at ~1 fps in headless Chromium, so the world sleeps while the
 // scene runs (the eagle's head box is measured in camera space, not from pixels) and wakes only for the screenshots.
 // Starts its own serve.mjs on a free port with a temp data folder.
@@ -22,7 +24,7 @@ let fails = 0, n = 0; const ok = (c, m, info = '') => { n++; console.log(`${c ? 
   const errs = [];
   try {
     const ctx = await b.newContext({ viewport: { width: 1280, height: 720 } });
-    const p = await ctx.newPage(); p.on('pageerror', e => errs.push(e.message)); const boxLog = [], offLog = []; p.on('console', m => { if (/^\[eagle\] head box/.test(m.text())) boxLog.push(m.text()); if (/^\[eagle\] look off/.test(m.text())) offLog.push(m.text()); }); p.on('dialog', d => d.accept());
+    const p = await ctx.newPage(); p.on('pageerror', e => errs.push(e.message)); const boxLog = [], offLog = [], birdLog = []; p.on('console', m => { const t = m.text(); if (/^\[eagle\] head box/.test(t)) boxLog.push(t); if (/^\[eagle\] bird box/.test(t)) birdLog.push(t); if (/^\[eagle\] look off/.test(t)) offLog.push(t); }); p.on('dialog', d => d.accept());
 
     // ---- Settings: the toggle, on by default ----
     await p.goto(BASE + '/?desktop&noprofile&laptest&eagle'); await p.waitForTimeout(700);
@@ -46,17 +48,18 @@ let fails = 0, n = 0; const ok = (c, m, info = '') => { n++; console.log(`${c ? 
 
     /** record one scene frame by frame; shots: freeze it at these moments for a screenshot */
     const scene = async (tag, shots) => {
-      await p.evaluate(shots => { const r = window.__ride, e = r.eagle; window.__log = []; window.__txt = []; window.__shotAt = shots ? { line: false, away: false } : null;
+      await p.evaluate(shots => { const r = window.__ride, e = r.eagle; window.__log = []; window.__txt = []; window.__shotAt = shots ? {} : null;
         const mo = window.__mo = new MutationObserver(ms => { for (const m of ms) for (const x of m.addedNodes) { const t = (x.textContent || '') + ' ' + (x.className || ''); if (t.trim()) window.__txt.push(t.slice(0, 120)); } });
         mo.observe(document.body, { childList: true, subtree: true, characterData: false });
-        const bar = () => document.querySelector('#hWork')?.getBoundingClientRect();
+        const bar = () => document.querySelector('#hWork')?.getBoundingClientRect(), stats = () => document.querySelector('.hud-bottom')?.getBoundingClientRect();
         window.__hudOp = () => { const op = s => { const x = document.querySelector(s); return x ? +getComputedStyle(x).opacity : -1; }; // the right-side HUD fades while the eagle sits there
           return { cls: !!document.querySelector('.hud.eagle-on'), map: op('.minimap'), grade: op('.grade-tag'), top: op('.hud-top'), stats: op('.hud-bottom'), bar: op('#hWork') }; };
         const loop = () => { if (!window.__log) return;
-          if (!window.__hold) { const b = e.box(), br = bar(); window.__log.push({ t: e.t, st: e.state, jaw: e.jaw, box: b, lineT: e.lineT, L: e.L, hud: window.__hudOp(), tOff: e.state === 'play' ? e.tOff : 0, iv: r.wNow?.i, el: r.elapsed, barTop: br ? br.top / innerHeight : 1, H: innerHeight, txt: document.body.innerText.length });
-            const S = window.__shotAt;
-            if (S && !S.line && e.lineT && e.t - e.lineT > 1.2 && e.jaw > 0.28) { S.line = true; window.__hold = 'line'; }
-            if (S && !S.away && e.state === 'play' && e.t > e.tOff + 1.25) { S.away = true; window.__hold = 'away'; } }
+          if (!window.__hold) { const b = e.box(), br = bar(), sr = stats(), on = e.state === 'play' && !!e.rig;
+            window.__log.push({ t: e.t, st: e.state, jaw: e.jaw, box: b, bird: on ? e.birdBox() : null, ah: on ? e.aheadOff() : null, lk: on ? e.lookOff() : null, lineT: e.lineT, L: e.L, hud: window.__hudOp(), tOff: e.state === 'play' ? e.tOff : 0, iv: r.wNow?.i, el: r.elapsed,
+              barTop: br ? br.top / innerHeight : 1, statsTop: sr ? sr.top / innerHeight : 1, H: innerHeight, txt: document.body.innerText.length });
+            const S = window.__shotAt, at = (k, c) => { if (S && !S[k] && c) { S[k] = true; window.__hold = k; } };
+            if (e.state === 'play') { at('1_ahead', e.t > 3.9 && e.t < 4.6); at('2_turn', e.t > 5.6 && e.t < 6.3); at('3_speaking', e.lineT && e.t - e.lineT > 1.2 && e.jaw > 0.28); at('4_fly_away', e.t > e.tOff + 1.25); } }
           if (e.state === 'done' && window.__log.some(x => x.st === 'play') && !window.__hold) { window.__done = true; return; }
           requestAnimationFrame(loop); };
         window.__done = false; window.__hold = null;
@@ -65,10 +68,10 @@ let fails = 0, n = 0; const ok = (c, m, info = '') => { n++; console.log(`${c ? 
       for (let k = 0; k < 600; k++) {
         const h = await p.evaluate(() => window.__hold || (window.__done ? 'done' : ''));
         if (h === 'done') break;
-        if (h === 'line' || h === 'away') { // wake the world for one picture of this moment
+        if (h && h !== 'done') { // wake the world for one picture of this moment
           await p.evaluate(() => { window.__world.sleep = false; window.__f0 = window.__world.renderer.info.render.frame; });
           await p.waitForFunction(() => window.__world.renderer.info.render.frame >= window.__f0 + 2, null, { timeout: 120000 });
-          if (SHOTS) await p.screenshot({ path: path.join(SHOTS, (shots === 'rig' ? 'eagle_rig_' : 'eagle_') + (h === 'line' ? 'mid_sentence_1280.png' : 'fly_away_1280.png')), timeout: 120000 });
+          if (SHOTS) await p.screenshot({ path: path.join(SHOTS, `${shots === 'rig' ? 'eagle_rig_' : 'eagle_'}${h}_1280.png`), timeout: 120000 });
           await p.evaluate(() => { window.__world.sleep = true; window.__hold = null; });
         }
         await p.waitForTimeout(200);
@@ -83,11 +86,22 @@ let fails = 0, n = 0; const ok = (c, m, info = '') => { n++; console.log(`${c ? 
     const checks = (tag, R) => {
       const { line, L, away } = R;
       ok(line.length > 10, `${tag}: the line plays (${line.length} frames)`);
-      const bx = line.filter(x => x.box), vis = bx.map(x => 1 - x.box.x0), cut = bx.every(x => x.box.x1 > 0.99); // box from the skinned vertices, projected
-      ok(bx.length === line.length && Math.min(...vis) >= 0.25 && Math.max(...vis) <= 0.38 && cut, `${tag}: head at the right edge, ${Math.round(Math.min(...vis) * 100)}–${Math.round(Math.max(...vis) * 100)} % of the width visible, cut by the edge`, JSON.stringify(bx[0]?.box));
-      const yc = bx.map(x => (x.box.y0 + x.box.y1) / 2), y1 = Math.max(...bx.map(x => x.box.y1)), bar = Math.min(...line.map(x => x.barTop));
+      // looks ahead first, then the slow turn, then eye contact (beak angles measured from the skinned head)
+      const P = R.log.filter(x => x.st === 'play' && x.ah != null), iE = P.findIndex(x => x.lk < 8), tE = iE >= 0 ? P[iE].t : Infinity;
+      let best = 0, t0 = null; for (const x of P.slice(0, Math.max(0, iE))) { if (x.ah < 15) { t0 ??= x.t; best = Math.max(best, x.t - t0); } else t0 = null; }
+      const lastAhead = [...P.slice(0, Math.max(0, iE))].reverse().find(x => x.ah < 15);
+      ok(best >= 1.2, `${tag}: looks ahead first (beak within 15° of the ride direction for ${best.toFixed(1)} s)`);
+      ok(lastAhead && tE - lastAhead.t >= 1.0, `${tag}: then turns its head to you, slowly (${lastAhead ? (tE - lastAhead.t).toFixed(1) : '?'} s from ahead to eye contact)`);
+      const lk = Math.max(...line.map(x => x.lk));
+      ok(lk < 8, `${tag}: eye contact while it speaks (beak at most ${lk.toFixed(1)}° off the camera)`);
+      const bx = line.filter(x => x.box), w = bx.map(x => x.box.x1 - x.box.x0);
+      ok(bx.length === line.length && bx.every(x => x.box.x0 >= 0.55 && x.box.x1 <= 1.02), `${tag}: head in the right 45 % (x ${Math.round(Math.min(...bx.map(x => x.box.x0)) * 100)}..${Math.round(Math.max(...bx.map(x => x.box.x1)) * 100)} %, ${Math.round(Math.min(...w) * 100)}–${Math.round(Math.max(...w) * 100)} % wide)`, JSON.stringify(bx[0]?.box));
+      const yc = bx.map(x => (x.box.y0 + x.box.y1) / 2), y1 = Math.max(...bx.map(x => x.box.y1)), bar = Math.min(...line.map(x => x.barTop)), sts = Math.min(...line.map(x => x.statsTop));
       ok(Math.max(...yc) < 2 / 3 && Math.min(...bx.map(x => x.box.y0)) > -0.05, `${tag}: in the upper two thirds (centre ${Math.round(Math.max(...yc) * 100)} % from the top)`);
-      ok(y1 < bar, `${tag}: interval bar not covered (head down to ${Math.round(y1 * 100)} %, bar from ${Math.round(bar * 100)} %)`);
+      ok(y1 < bar && y1 < sts, `${tag}: interval bar and stats row not covered (head down to ${Math.round(y1 * 100)} %, bar from ${Math.round(bar * 100)} %, stats from ${Math.round(sts * 100)} %)`);
+      const area = b => b ? Math.max(0, Math.min(1, b.x1) - Math.max(0, b.x0)) * Math.max(0, Math.min(1, b.y1) - Math.max(0, b.y0)) : 0;
+      const ratio = Math.min(...line.map(x => area(x.bird) / Math.max(1e-6, area(x.box))));
+      ok(ratio > 4, `${tag}: a whole bird: neck, body and the near wing on screen too (bird box ${ratio.toFixed(0)}× the head's on screen)`, JSON.stringify(line[0]?.bird));
       const jaws = line.map(x => x.jaw); let moves = 0; for (let i = 1; i < jaws.length; i++) if (Math.abs(jaws[i] - jaws[i - 1]) > 0.02) moves++;
       ok(Math.max(...jaws) > 0.2 && Math.min(...jaws) < 0.05 && moves >= 4, `${tag}: the beak opens and closes while it speaks (jaw ${Math.min(...jaws).toFixed(2)}–${Math.max(...jaws).toFixed(2)} rad, ${moves} changes)`);
       const bad = L.txt.filter(t => /eagle|destiny|bitch|faster|bubble|subtitle|caption/i.test(t));
@@ -115,16 +129,17 @@ let fails = 0, n = 0; const ok = (c, m, info = '') => { n++; console.log(`${c ? 
 
     const run = async (w, h, tag, shots) => {
       await p.setViewportSize({ width: w, height: h }); await p.waitForTimeout(500);
-      const n0 = boxLog.length, o0 = offLog.length;
+      const n0 = boxLog.length, o0 = offLog.length, b0 = birdLog.length;
       await p.evaluate(() => { window.__ride.eg = { state: 'wait', now: true, iv: -1 }; }); // ?eagle=now hook for another run
       checks(`${tag}${w}×${h}`, await scene(`${w}`, shots));
       ok(boxLog.length === n0 + 1 && /^\[eagle\] head box x\d+\.\.\d+ y-?\d+\.\.\d+ %/.test(boxLog.at(-1)), `${tag}${w}×${h}: one console line "${boxLog.at(-1)}"`);
       const off = +(/^\[eagle\] look off (\d+)°$/.exec(offLog.at(-1) || '') || [])[1];
-      ok(offLog.length === o0 + 1 && off < 12, `${tag}${w}×${h}: eye contact while it speaks ("${offLog.at(-1)}", beak to camera < 12°)`);
+      ok(offLog.length === o0 + 1 && off < 8, `${tag}${w}×${h}: eye contact while it speaks ("${offLog.at(-1)}", beak to camera < 8°)`);
+      ok(birdLog.length === b0 + 1 && /^\[eagle\] bird box x-?\d+\.\.-?\d+ y-?\d+\.\.-?\d+ %/.test(birdLog.at(-1)), `${tag}${w}×${h}: "${birdLog.at(-1)}"`);
     };
     await run(1920, 1080, '', false); await run(2560, 1080, '', false);
     ok(/^\[eagle\] head box x/.test(boxLog[0] || ''), `the first scene logged its head box too ("${boxLog[0]}")`);
-    ok(+(/look off (\d+)°$/.exec(offLog[0] || '') || [])[1] < 12, `the first scene (1280×720) has eye contact too ("${offLog[0]}")`);
+    ok(+(/look off (\d+)°$/.exec(offLog[0] || '') || [])[1] < 8 && /^\[eagle\] bird box/.test(birdLog[0] || ''), `the first scene (1280×720) logged eye contact and the bird box too ("${offLog[0]}", "${birdLog[0]}")`);
     // a stand-in rigged like the real adler_nah (one SkinnedMesh, armature −90° X / 180° Y, rotated head rest, jaw offset, 2.3 m wings)
     await p.evaluate(() => { history.replaceState(null, '', location.pathname + location.search + '&eaglerig=real'); const r = window.__ride, E = r.eagle.constructor; r.eagle = new E(window.__world); });
     ok(await p.evaluate(() => window.__ride.eagle.kind === 'rig' && !!window.__ride.eagle), '?eaglerig=real: the rigged stand-in');
@@ -135,7 +150,7 @@ let fails = 0, n = 0; const ok = (c, m, info = '') => { n++; console.log(`${c ? 
     await p.setViewportSize({ width: 1280, height: 720 }); await p.waitForTimeout(400);
     await p.evaluate(() => { window.__ride.eg = { state: 'wait', now: true, iv: -1 }; });
     await p.waitForFunction(() => window.__ride.eagle.perched && window.__ride.eagle.t > 5, null, { timeout: 60000 }); await p.waitForTimeout(400);
-    ok(await p.evaluate(() => window.__hudOp().cls && window.__hudOp().map === 0), 'perched: right-side HUD hidden');
+    ok(await p.evaluate(() => window.__hudOp().cls && window.__hudOp().map === 0), 'alongside: right-side HUD hidden');
     await p.keyboard.press('Space'); await p.waitForSelector('#pOpts'); await p.waitForTimeout(500);
     ok(await p.evaluate(() => { const h = window.__hudOp(); return !h.cls && h.map === 1 && h.grade === 1; }), 'pause: the HUD is back');
     await p.click('#pOpts'); await p.waitForSelector('#oEagle');

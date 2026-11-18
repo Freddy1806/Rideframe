@@ -33,7 +33,8 @@ test('slots: only the hard intervals (no warm-up, openers, spin, rests, cool-dow
   assert.equal(eagleSlots(SS, FTP).length, 3, 'sweet spot: the 90 % warm-up minute never counts');
   assert.equal(eagleSlots(SPR, FTP).length, 0, '30/30: too short for him, no eagle');
   assert.equal(planEagle(SPR), null); assert.equal(planEagle(null), null);
-  assert.ok(sceneLen() <= EAGLE.need && sceneLen() >= 13 && sceneLen() <= 15, 'the scene takes about 14 s, the gate asks for 16');
+  assert.ok(sceneLen() <= EAGLE.need && sceneLen() >= 16 && sceneLen() <= 18, 'the scene takes about 17 s (fly in, look ahead, the slow turn, the line, off), the gate asks for 19');
+  assert.ok(EAGLE.minIv > 30 && EAGLE.minIv >= EAGLE.need + EAGLE.lead, 'a 30 s interval never gets him, whatever the gate');
 });
 
 test('random interval and random moment, inside the interval with time left', () => {
@@ -122,10 +123,12 @@ test('the beak without audio: opens and closes on the syllables, shut in the pau
   for (let i = 0; i < 5; i++) e = follow(e, 0, 0.016, 0.3); assert.ok(e > 0.25 && e < 0.5, `release ~80 ms (${e.toFixed(2)})`);
 });
 
-test('framing: right edge, a quarter to a third visible, upper two thirds, on 4:3 to 32:9', () => {
+test('framing: the head looking at you in the right part, a little above the horizon, the same angle on 4:3 to 32:9', () => {
   for (const a of [4 / 3, 16 / 10, 16 / 9, 2560 / 1080, 32 / 9]) {
     const f = eagleFrame(a);
-    assert.ok(1 - f.left >= 0.25 && 1 - f.left <= 0.38, `visible ${(1 - f.left).toFixed(2)} at ${a.toFixed(2)}`);
-    assert.ok(f.left + f.width > 1, 'cut by the edge'); assert.ok(f.cy < 0.45);
+    assert.ok(f.cx - f.width / 2 >= 0.55 && f.cx + f.width / 2 < 1, `in the right 45 %, whole: ${f.cx.toFixed(2)} ± ${(f.width / 2).toFixed(3)} at ${a.toFixed(2)}`);
+    assert.ok(f.cy > 0.3 && f.cy + f.maxH / 2 < 2 / 3, 'upper two thirds, never down at the bar');
+    assert.ok(Math.abs(f.width * a - 0.095 * 16 / 9) < 1e-9, 'the same angular size on every aspect');
+    assert.ok(f.bank > 0 && f.bank < 0.4, 'banked a little away from you: the near wing over the sky');
   }
 });

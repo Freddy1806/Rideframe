@@ -1,5 +1,5 @@
 // The Eagle of Destiny (owner 18.11.): once per interval workout, at a random moment inside ONE hard interval, an eagle
-// lands beside the camera, says its line and flies off. Pure rules here (tested in tools/eagle-test.mjs); the scene itself
+// flies alongside the rider, turns its head to him, says its line and flies off. Pure rules here (tested in tools/eagle-test.mjs); the scene itself
 // (three.js, audio, lip sync) is js/world/eagle.js.
 // · only inside a hard interval as ivgate.js hardWindow() sees it (pct >= 88, >= 1 min, never warm-up / opener / spin /
 //   cool-down, never a rest), and only when at least EAGLE.need seconds of it are left for the whole scene
@@ -9,8 +9,9 @@
 // · group rides: every rider rolls his own eagle (Math.random), nothing is synced
 import { hardWindow } from './ivgate.js';
 
-/** scene length (s) without the line, the line's fallback length, what an interval must still have left to start it */
-export const EAGLE = { pre: 4.3, post: 5.6, line: 3.9, need: 16, lead: 5 };
+/** scene length (s) before / after the line, the line's fallback length, what an interval must still have left to start it,
+ *  the lead (never in its first seconds) and the shortest interval he comes in (30 s efforts never get him) */
+export const EAGLE = { pre: 7.0, post: 6.2, line: 3.9, need: 19, lead: 5, minIv: 45 }; // pre: cry, fly in, look ahead, the slow head turn, a beat
 export const sceneLen = (lineS = EAGLE.line) => EAGLE.pre + lineS + EAGLE.post;
 
 /** the hard intervals the eagle may use: [{ i, start, dur }] (the same test as the wizard's, so rests / openers never count) */
@@ -18,7 +19,7 @@ export function eagleSlots(workout, ftp = 200) {
   const out = []; let s = 0;
   for (const [i, st] of (workout?.steps || []).entries()) {
     const w = hardWindow(workout, s + 0.01, ftp);
-    if (w && w.i === i && st.dur >= EAGLE.need + EAGLE.lead) out.push({ i, start: s, dur: st.dur });
+    if (w && w.i === i && st.dur >= Math.max(EAGLE.minIv, EAGLE.need + EAGLE.lead)) out.push({ i, start: s, dur: st.dur });
     s += st.dur;
   }
   return out;
@@ -80,11 +81,14 @@ export function follow(env, rms, dt, peak) {
   return env + (target - env) * (1 - Math.exp(-dt / tau));
 }
 
-/** where the head sits on screen, as fractions of the viewport (aspect = width / height): the visible part of the head covers
- *  `vis` of the width at the right edge (a quarter to a third), its box centre `cy` from the top (upper two thirds), and the
- *  whole head is `width` wide (or less when it would be more than `maxH` of the height), so the rest is cut off by the edge. Narrower on ultrawide screens, so it never reaches the bar. */
+/** where the head sits on screen when it looks at you, as fractions of the viewport (aspect = width / height): its box
+ *  centre (cx from the left, cy from the top: the right part, a little above the horizon), `width` of the viewport wide (the
+ *  same angle on every aspect), at most `maxH` of the height. The eagle flies alongside, ahead and to the right, so the rest
+ *  of the bird sits behind and beside its head: neck, back and body towards the right edge, the near wing spread over the
+ *  sky. A head of ~9-10 % keeps it a whole bird; at 15-20 % the body would be at the camera and the near wing across the
+ *  whole screen (measured with both stand-ins, 18.11.). bank: its roll away from you (rad), so the near wing rises over the
+ *  sky instead of lying across the road. */
 export function eagleFrame(aspect) {
   const k = Math.max(0, Math.min(1, (aspect - 1.8) / 0.6));
-  const vis = 0.315 - 0.045 * k;
-  return { left: 1 - vis, width: vis * 1.12, cy: 0.34 + 0.03 * k, maxH: 0.56 + 0.1 * k }; // maxH: a tall head (looking at you) is made smaller, never longer
+  return { cx: 0.81 + 0.03 * k, cy: 0.41, width: 0.095 * (16 / 9) / aspect, maxH: 0.3, bank: 0.22 };
 }
