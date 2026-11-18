@@ -222,3 +222,19 @@ test('interval bar (main 17.11.): a personal workout with ramps runs and draws l
   const [, y0, y1] = ys(polys[1]), [, z0, z1] = ys(polys[0]); assert.ok(y1 < y0, 'the hard ramp rises'); assert.ok(z1 < z0, 'the warm-up rises');
   const st = b.steps[1]; assert.ok(Math.abs((st.pct2 - st.pct) - 20) < 0.01, `the 10 W offset lifts both ends of the hard ramp (${st.pct.toFixed(1)} -> ${st.pct2.toFixed(1)} %)`);
 });
+
+test('fast editor: templates are valid workouts, − / + steps sensibly within the limits, a set goes before the cool-down', () => {
+  assert.ok(MW.TEMPLATES.length >= 5);
+  for (const t of MW.TEMPLATES) { const r = MW.validateWorkout({ id: 'tpl_' + t.id, name: t.name, steps: t.steps() }); assert.ok(r.w, t.id + ': ' + r.error);
+    assert.equal(r.w.steps[0].label, 'Warm-up'); assert.equal(r.w.steps.at(-1).label, 'Cool-down'); assert.notEqual(t.steps(), t.steps(), 'a fresh copy each time'); }
+  const b = (min, f, d, pct = 90) => MW.bump({ min, pct }, f, d)[f];
+  assert.deepEqual([b(4, 'min', 1), b(5, 'min', 1), b(5, 'min', -1), b(12, 'min', 1), b(20, 'min', 1), b(25, 'min', -1), b(0.25, 'min', -1), b(120, 'min', 1)], [4.5, 6, 4.5, 13, 25, 20, 0.25, 120]);
+  assert.deepEqual([b(4, 'pct', 1, 93), b(4, 'pct', -1, 93), b(4, 'pct', 1, 200), b(4, 'pct', -1, 30)], [95, 90, 200, 30]);
+  assert.equal(MW.bump({ min: 3, pct: 100, pct2: 105 }, 'pct2', -1).pct2, undefined, 'a ramp to the same % turns flat');
+  const s = MW.addSet([{ min: 10, pct: 45, pct2: 70, label: 'Warm-up' }, { min: 8, pct: 60, pct2: 40, label: 'Cool-down' }]);
+  assert.equal(s.length, 10); assert.equal(s.at(-1).label, 'Cool-down'); assert.deepEqual(s.slice(1, 3).map(x => [x.min, x.pct, x.label]), [[4, 105, 'Interval 1/4'], [3, 55, 'Rest']]);
+  assert.equal(MW.insertAt([{ min: 5, pct: 50, label: 'Easy' }]), 1, 'no cool-down: at the end');
+  assert.deepEqual(MW.nextBlock([{ min: 4, pct: 110, label: 'Interval' }]), { min: 2, pct: 55, label: 'Rest' }, 'after a hard block its rest');
+  assert.equal(MW.nextBlock([{ min: 5, pct: 55, label: 'Rest' }]).pct, 105, 'after an easy one an interval');
+  assert.equal((MW.graphSVG(s).match(/data-i="\d+"/g) || []).length, s.length, 'every block in the chart can be tapped');
+});

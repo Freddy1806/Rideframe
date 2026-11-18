@@ -20,20 +20,38 @@
 .mwint label { flex: 1 1 180px; color: var(--muted); }
 .mwint input[type=range] { flex: 2 1 200px; accent-color: var(--mwa); min-width: 0; }
 .mwint b { min-width: 56px; text-align: right; font-variant-numeric: tabular-nums; color: var(--mwa); }
-.mwcols, .mwstep { display: grid; grid-template-columns: 34px minmax(0, 1fr) 92px 80px 96px 104px 156px; gap: 8px; align-items: center; }
-.mwcols { font-size: 10.5px; font-weight: 700; text-transform: uppercase; letter-spacing: .1em; color: var(--muted); padding: 8px 0 2px; }
-.mwsteps { display: flex; flex-direction: column; gap: 6px; }
-.mwstep { padding: 6px 0; border-bottom: 1px solid var(--line); }
-.mwno { display: grid; place-items: center; width: 34px; height: 30px; border-radius: 15px; background: var(--z); color: #0b0b0b; font-weight: 900; font-size: 12px; }
-.mwmodal .mwstep input { height: 38px; width: 100%; min-width: 0; padding: 0 8px; }
-.mwnum { display: flex; align-items: center; gap: 4px; min-width: 0; }
+/* blocks as cards (owner 17.11. 22:14: "clean, slick, very fast"): zone colour on the left edge, − / + on minutes and % */
+.mwsteps { display: flex; flex-direction: column; gap: 6px; margin-top: 10px; }
+.mwstep { display: grid; grid-template-columns: 30px minmax(90px, 1fr) 132px 132px 84px 92px auto; gap: 8px; align-items: center; padding: 8px 10px 8px 8px;
+  background: var(--ink); border: 1px solid var(--line); border-left: 4px solid var(--z, var(--line-2)); border-radius: 10px; transition: border-color .12s, background .12s; }
+.mwstep.sel { border-color: color-mix(in srgb, var(--mwa) 55%, var(--line)); border-left-color: var(--z, var(--mwa)); background: color-mix(in srgb, var(--mwa) 5%, var(--ink)); }
+.mwno { display: grid; place-items: center; width: 28px; height: 28px; border-radius: 50%; background: var(--z); color: #0b0b0b; font-weight: 900; font-size: 12px; }
+.mwmodal .mwstep input { height: 36px; width: 100%; min-width: 0; padding: 0 6px; }
+.mwmodal .mwstep input.mwlab { background: transparent; border-color: transparent; font-weight: 700; padding: 0 4px; }
+.mwmodal .mwstep input.mwlab:hover, .mwmodal .mwstep input.mwlab:focus { border-color: var(--line-2); background: var(--ink-2); }
+.mwst { display: flex; align-items: center; gap: 2px; min-width: 0; }
+.mwst .mwnum { flex: 1; } .mwmodal .mwst input { text-align: center; padding: 0 2px; }
+.mwpm { flex: none; width: 30px; height: 36px; border-radius: 8px; border: 1px solid var(--line-2); background: var(--ink-2); color: var(--paper); font-size: 17px; font-weight: 800; line-height: 1; cursor: pointer; touch-action: manipulation; }
+.mwpm:hover, .mwpm:focus-visible { border-color: var(--mwa); color: var(--mwa); }
+.mwpm:active { transform: scale(.94); }
+.mwnum { display: flex; align-items: center; gap: 3px; min-width: 0; }
 .mwnum small { font-size: 11px; color: var(--muted); font-weight: 700; }
+.mwramp { opacity: .8; } .mwramp:focus-within { opacity: 1; }
 .mwmodal .mwstep input.bad { border-color: #ff6b6b; }
 .mww { font-variant-numeric: tabular-nums; font-size: 14px; white-space: nowrap; text-align: right; }
-.mwbtns { display: flex; gap: 4px; }
-.mwbtns button { width: 36px; height: 36px; border-radius: 6px; border: 1px solid var(--line-2); background: transparent; color: var(--paper); font-size: 15px; cursor: pointer; }
+.mwbtns { display: flex; gap: 3px; }
+.mwbtns button { width: 32px; height: 34px; border-radius: 8px; border: 1px solid transparent; background: transparent; color: var(--muted); font-size: 15px; cursor: pointer; }
+.mwstep:hover .mwbtns button, .mwstep.sel .mwbtns button { border-color: var(--line-2); color: var(--paper); }
 .mwbtns button:hover:not(:disabled), .mwbtns button:focus-visible { border-color: var(--mwa); color: var(--mwa); }
-.mwbtns button:disabled { opacity: .3; cursor: default; }
+.mwbtns button:disabled { opacity: .25; cursor: default; }
+/* templates: one tap to a usable workout */
+.mwtpls { display: flex; gap: 8px; overflow-x: auto; padding: 2px 2px 8px; margin: 2px -2px 4px; scrollbar-width: thin; align-items: stretch; }
+.mwtl { flex: none; align-self: center; font-size: 11px; font-weight: 800; letter-spacing: .12em; text-transform: uppercase; color: var(--muted); margin-right: 2px; }
+.mwtpl { flex: none; display: flex; flex-direction: column; align-items: flex-start; gap: 2px; padding: 8px 12px; border-radius: 10px; border: 1px solid var(--line-2); background: var(--ink); color: var(--paper); font: inherit; cursor: pointer; text-align: left; }
+.mwtpl b { font-size: 14px; font-weight: 800; } .mwtpl small { font-size: 11.5px; color: var(--muted); white-space: nowrap; }
+.mwtpl:hover, .mwtpl:focus-visible, .mwtpl.on { border-color: var(--mwa); } .mwtpl.on b { color: var(--mwa); }
+.mwgraph { cursor: pointer; height: 110px; }
+.mwadds { display: flex; gap: 8px; flex-wrap: wrap; }
 .mwtools { display: flex; flex-wrap: wrap; gap: 10px 14px; align-items: center; justify-content: space-between; margin-top: 12px; }
 .mwrep { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; font-size: 13px; font-weight: 700; color: var(--muted); }
 .mwmodal .mwrep input { width: 60px; height: 40px; padding: 0 8px; }
@@ -46,13 +64,14 @@
 @media (max-width: 640px) {
   .mwmodal { padding: 0; }
   .mwmodal .box.mwbox { width: 100vw; min-height: 100dvh; border-radius: 0; padding: 16px 14px 24px; }
-  .mwcols { display: none; }
-  .mwstep { grid-template-columns: 34px minmax(0, 1fr) minmax(0, 1fr) minmax(0, 1fr); grid-template-areas: "no lab lab lab" ". min pct p2" "w w btn btn"; row-gap: 6px; }
-  .mwstep > .mwnum:nth-of-type(3) { grid-area: p2; } .mww { justify-self: start; padding-left: 4px; }
-  .mwbtns { justify-self: end; } .mwbtns button { height: 32px; }
-  .mwno { grid-area: no; } .mwlab { grid-area: lab; } .mwbtns { grid-area: btn; }
-  .mwstep > .mwnum:nth-of-type(1) { grid-area: min; } .mwstep > .mwnum:nth-of-type(2) { grid-area: pct; } .mww { grid-area: w; align-self: center; }
-  .mwbtns button { width: 34px; }
+  /* a card is two rows (name · watts, then minutes and %); the selected one opens its ramp and its buttons */
+  .mwstep { grid-template-columns: 28px minmax(0, 1fr) minmax(0, 1fr); grid-template-areas: "no lab w" ". min pct" ". p2 p2" "btn btn btn"; row-gap: 6px; padding: 8px; }
+  .mwno { grid-area: no; } .mwlab { grid-area: lab; } .mwsmin { grid-area: min; } .mwspct { grid-area: pct; } .mwramp { grid-area: p2; }
+  .mww { grid-area: w; justify-self: end; align-self: center; } .mwbtns { grid-area: btn; justify-self: end; }
+  .mwstep:not(.sel):not(:focus-within) .mwbtns, .mwstep:not(.sel):not(:focus-within) .mwramp.flat { display: none; }
+  .mwbtns button { border-color: var(--line-2); color: var(--paper); }
+  .mwpm { width: 34px; height: 38px; }
+  .mwgraph { height: 90px; }
   .mwacts .mwsp { display: none; }
   .mwacts .btn { flex: 1 1 auto; }
 }

@@ -3,7 +3,7 @@
 // with the FTP. Every control is a real <button> / <input>, so the gamepad focus navigation reaches it.
 import { esc, fmtTime, fmtKm } from './util.js';
 import { WORKOUTS, MY, workoutById } from './workouts.js';
-import { toRide, LIM, newId, totalSec, avgPct, stepAvg, isWork, watts, scaleWork, repeatBlock, graphSVG, zoneOf, fromBuiltin, freeTemplate, orderFor, kindOf, defaultName, nameSuggestions } from './myworkouts.js';
+import { TEMPLATES, bump, addSet, nextBlock, insertAt, toRide, LIM, newId, totalSec, avgPct, stepAvg, isWork, watts, scaleWork, repeatBlock, graphSVG, zoneOf, fromBuiltin, freeTemplate, orderFor, kindOf, defaultName, nameSuggestions } from './myworkouts.js';
 import { fitRoute, fittingRoutes, AFTER_PCT, FREE_PCT } from './routefit.js';
 import { loadPersonal, personalList, personalById, savePersonal, deletePersonal, localOnly, uploadLocal, storeMode } from './myworkouts-store.js';
 
@@ -40,7 +40,7 @@ export function openEditor({ draft, saved = false, ftp = 0, route = null, kind =
     const w = JSON.parse(JSON.stringify(draft)); if (route?.id && !w.routeId) { w.routeId = route.id; w.routeName = cut(route.name || ''); }
     kind ||= kindOf(workoutById(w.base)?.name || ''); // 'Intervals' when there is no built-in behind it
     const others = personalList().filter(x => x.id !== w.id).map(x => x.name);
-    if (!saved && !String(w.name || '').trim()) w.name = defaultName(w.routeName || '', kind, others);
+    let autoName = !saved && !String(w.name || '').trim(); if (autoName) w.name = defaultName(w.routeName || '', kind, others); // a default name follows the template until the rider names it
     const sugg = nameSuggestions(w.routeName || '', kind, others, { minutes: Math.round(totalSec(w.steps) / 60) });
     if (!sugg.includes(w.name)) sugg.unshift(w.name); sugg.length = Math.min(sugg.length, 4);
     const start = JSON.stringify([w.name, w.steps]), dirty = () => JSON.stringify([String(w.name).trim(), w.steps]) !== start;
@@ -51,13 +51,13 @@ export function openEditor({ draft, saved = false, ftp = 0, route = null, kind =
         <button type="button" class="mwx" id="mwClose" aria-label="Close">✕</button></div>
       <label class="mwname"><span class="label">Name</span><input type="text" id="mwName" maxlength="${LIM.name}" value="${esc(w.name)}" autocomplete="off"></label>
       <div class="mwchips" id="mwChips" aria-label="Name suggestions">${sugg.map(n => `<button type="button" class="mwchip${n === w.name ? ' on' : ''}" data-name="${esc(n)}">${esc(n)}</button>`).join('')}</div>
+      <div class="mwtpls" id="mwTpl" role="group" aria-label="Start from a template"><span class="mwtl">Start from</span>${TEMPLATES.map(t => `<button type="button" class="mwtpl" data-tpl="${t.id}" title="${esc(t.hint)}"><b>${esc(t.name)}</b><small>${esc(t.hint)}</small></button>`).join('')}</div>
       <div class="mwsum" id="mwSum"></div>
       <div class="mwgwrap" id="mwGraph"></div>
       <div class="mwint"><label for="mwInt">Intensity of the work steps</label><input type="range" id="mwInt" min="-20" max="20" step="1" value="0"><b id="mwIntV">±0 %</b></div>
-      <div class="mwcols" aria-hidden="true"><span>#</span><span>Step</span><span>Minutes</span><span>% FTP</span><span title="Empty = flat. A ramp moves the target evenly from % FTP to this value; set it to the same % to make the step flat again.">Ramp to</span><span>Watts</span><span></span></div>
       <div class="mwsteps" id="mwSteps"></div>
-      <div class="mwtools"><button type="button" class="btn ghost small" id="mwAdd">+ Step</button>
-        <div class="mwrep"><span>Repeat steps</span><input type="number" id="mwRf" min="1" inputmode="numeric" aria-label="Repeat from step"><span>to</span><input type="number" id="mwRt" min="1" inputmode="numeric" aria-label="Repeat to step"><span>×</span><input type="number" id="mwRn" min="2" max="${LIM.rep}" value="3" inputmode="numeric" aria-label="Times in a row"><button type="button" class="btn ghost small" id="mwRep">Repeat</button></div></div>
+      <div class="mwtools"><span class="mwadds"><button type="button" class="btn ghost small" id="mwAdd" title="A sensible next block: after a hard one its rest">+ Block</button><button type="button" class="btn ghost small" id="mwAddSet" title="4 × (4 min 105 %, 3 min 55 %) before the cool-down">+ Set of 4</button></span>
+        <div class="mwrep"><span>Repeat blocks</span><input type="number" id="mwRf" min="1" inputmode="numeric" aria-label="Repeat from step"><span>to</span><input type="number" id="mwRt" min="1" inputmode="numeric" aria-label="Repeat to step"><span>×</span><input type="number" id="mwRn" min="2" max="${LIM.rep}" value="3" inputmode="numeric" aria-label="Times in a row"><button type="button" class="btn ghost small" id="mwRep">Repeat</button></div></div>
       <p class="mwerr" id="mwErr" role="alert"></p>
       <div class="actions mwacts">${saved ? '<button type="button" class="btn danger small" id="mwDel">Delete</button>' : ''}<span class="mwsp"></span>
         <button type="button" class="btn ghost small" id="mwCancel">Cancel</button>${saved ? '<button type="button" class="btn ghost small" id="mwSaveNew">Save as new</button>' : ''}<button type="button" class="btn small mwsave" id="mwSave">Save</button></div></div>`;
@@ -84,18 +84,19 @@ export function openEditor({ draft, saved = false, ftp = 0, route = null, kind =
           : `<p class="mwfit" id="mwFit" title="${FIT_HOW}">Fits ${on}: about ${mins(f.routeSec)} at these watts${f.spare >= 60 ? `, ${mins(f.spare)} to spare` : ''}.</p>`; }
       $('#mwSum', m).innerHTML = `<span><b id="mwTotal">${fmtTime(sec)}</b><small>total</small></span><span><b>${avg} %</b><small>avg FTP</small></span>
         <span><b>${aw ? aw + ' W' : '–'}</b><small>${ftp ? `avg · FTP ${ftp} W` : 'set your FTP in the profile'}</small></span><span><b>${w.steps.length}</b><small>steps</small></span>${fit}`;
-      $('#mwGraph', m).innerHTML = graphSVG(w.steps, { h: 80, mark: sel });
+      $('#mwGraph', m).innerHTML = graphSVG(w.steps, { h: 110, mark: sel });
     };
-    const rowHTML = (s, i) => `<div class="mwstep" data-i="${i}">
+    const rowHTML = (s, i) => `<div class="mwstep${i === sel ? ' sel' : ''}" data-i="${i}" style="--z:${zoneOf(stepAvg(s))[2]}">
       <span class="mwno" style="--z:${zoneOf(stepAvg(s))[2]}">${i + 1}</span>
       <input type="text" class="mwlab" data-f="label" maxlength="${LIM.label}" value="${esc(s.label || '')}" placeholder="Label" aria-label="Step ${i + 1} label">
-      <label class="mwnum"><input type="number" data-f="min" min="${LIM.minMin}" max="${LIM.maxMin}" step="0.5" inputmode="decimal" value="${s.min}" aria-label="Step ${i + 1} minutes"><small>min</small></label>
-      <label class="mwnum"><input type="number" data-f="pct" min="${LIM.minPct}" max="${LIM.maxPct}" step="5" inputmode="numeric" value="${s.pct}" aria-label="Step ${i + 1} percent of FTP"><small>%</small></label>
-      <label class="mwnum mwramp"><small>→</small><input type="number" data-f="pct2" min="${LIM.minPct}" max="${LIM.maxPct}" step="5" inputmode="numeric" value="${s.pct2 ?? ''}" placeholder="flat" data-start="${s.pct}" aria-label="Step ${i + 1} ramp to percent of FTP, empty for flat"><small>%</small></label>
+      <span class="mwst mwsmin"><button type="button" class="mwpm" data-a="min-" aria-label="Step ${i + 1}: shorter" tabindex="-1">−</button><label class="mwnum"><input type="number" data-f="min" min="${LIM.minMin}" max="${LIM.maxMin}" step="0.5" inputmode="decimal" value="${s.min}" aria-label="Step ${i + 1} minutes"><small>min</small></label><button type="button" class="mwpm" data-a="min+" aria-label="Step ${i + 1}: longer" tabindex="-1">+</button></span>
+      <span class="mwst mwspct"><button type="button" class="mwpm" data-a="pct-" aria-label="Step ${i + 1}: easier" tabindex="-1">−</button><label class="mwnum"><input type="number" data-f="pct" min="${LIM.minPct}" max="${LIM.maxPct}" step="5" inputmode="numeric" value="${s.pct}" aria-label="Step ${i + 1} percent of FTP"><small>%</small></label><button type="button" class="mwpm" data-a="pct+" aria-label="Step ${i + 1}: harder" tabindex="-1">+</button></span>
+      <label class="mwnum mwramp${s.pct2 == null ? ' flat' : ''}" title="Ramp: the target moves evenly to this % over the block. Empty = flat."><small>↗</small><input type="number" data-f="pct2" min="${LIM.minPct}" max="${LIM.maxPct}" step="5" inputmode="numeric" value="${s.pct2 ?? ''}" placeholder="flat" data-start="${s.pct}" aria-label="Step ${i + 1} ramp to percent of FTP, empty for flat"><small>%</small></label>
       <b class="mww" data-w="${i}">${wattsText(s, ftp)}</b>
-      <span class="mwbtns"><button type="button" data-a="up" aria-label="Move step ${i + 1} up" ${i ? '' : 'disabled'}>↑</button><button type="button" data-a="down" aria-label="Move step ${i + 1} down" ${i < w.steps.length - 1 ? '' : 'disabled'}>↓</button><button type="button" data-a="dup" aria-label="Duplicate step ${i + 1}" title="Duplicate">⧉</button><button type="button" data-a="del" aria-label="Remove step ${i + 1}" title="Remove" ${w.steps.length > 1 ? '' : 'disabled'}>✕</button></span></div>`;
+      <span class="mwbtns"><button type="button" data-a="up" aria-label="Move step ${i + 1} up" ${i ? '' : 'disabled'}>↑</button><button type="button" data-a="down" aria-label="Move step ${i + 1} down" ${i < w.steps.length - 1 ? '' : 'disabled'}>↓</button><button type="button" data-a="dup" aria-label="Duplicate step ${i + 1}" title="Duplicate">⧉</button><button type="button" data-a="rep" aria-label="Repeat from step ${i + 1}" title="Repeat this block (with its rest) ×N">↻</button><button type="button" data-a="del" aria-label="Remove step ${i + 1}" title="Remove" ${w.steps.length > 1 ? '' : 'disabled'}>✕</button></span></div>`;
     const draw = () => {
       $('#mwSteps', m).innerHTML = w.steps.map(rowHTML).join('');
+      $('#mwAddSet', m).disabled = w.steps.length + 8 > LIM.steps;
       const rf = $('#mwRf', m), rt = $('#mwRt', m); rf.max = rt.max = w.steps.length;
       if (!(+rf.value >= 1 && +rf.value <= w.steps.length)) rf.value = Math.min(w.steps.length, 1);
       if (!(+rt.value >= +rf.value && +rt.value <= w.steps.length)) rt.value = Math.min(w.steps.length, +rf.value + 1);
@@ -103,7 +104,8 @@ export function openEditor({ draft, saved = false, ftp = 0, route = null, kind =
     };
     const edited = () => { snap = null; $('#mwInt', m).value = 0; $('#mwIntV', m).textContent = '±0 %'; };
     const structural = fn => { fn(); edited(); err(); draw(); };
-    const rowInfo = (row, s) => { row.querySelector('.mww').textContent = wattsText(s, ftp); row.querySelector('.mwno').style.setProperty('--z', zoneOf(stepAvg(s))[2]); row.querySelector('[data-f="pct2"]').dataset.start = s.pct; };
+    const rowInfo = (row, s) => { row.querySelector('.mww').textContent = wattsText(s, ftp); row.style.setProperty('--z', zoneOf(stepAvg(s))[2]); row.querySelector('.mwno').style.setProperty('--z', zoneOf(stepAvg(s))[2]); row.querySelector('[data-f="pct2"]').dataset.start = s.pct; row.querySelector('.mwramp').classList.toggle('flat', s.pct2 == null); };
+    const pick = i => { sel = i; m.querySelectorAll('.mwstep').forEach(r => r.classList.toggle('sel', +r.dataset.i === i)); $('#mwGraph', m).innerHTML = graphSVG(w.steps, { h: 110, mark: sel }); };
 
     $('#mwSteps', m).addEventListener('input', e => {
       const f = e.target.dataset.f, row = e.target.closest('.mwstep'); if (!f || !row) return;
@@ -120,9 +122,13 @@ export function openEditor({ draft, saved = false, ftp = 0, route = null, kind =
     });
     $('#mwSteps', m).addEventListener('change', e => { const f = e.target.dataset.f; if (!FIELD[f]) return; // leaving a field: back to the last good value
       const s = w.steps[+e.target.closest('.mwstep').dataset.i]; e.target.value = s[f] ?? ''; e.target.classList.remove('bad'); err(); });
-    $('#mwSteps', m).addEventListener('focusin', e => { const row = e.target.closest('.mwstep'); if (row && sel !== +row.dataset.i) { sel = +row.dataset.i; $('#mwGraph', m).innerHTML = graphSVG(w.steps, { h: 80, mark: sel }); } });
+    $('#mwSteps', m).addEventListener('focusin', e => { const row = e.target.closest('.mwstep'); if (row && sel !== +row.dataset.i) { sel = +row.dataset.i; pick(+row.dataset.i); } });
     $('#mwSteps', m).addEventListener('click', e => {
-      const b = e.target.closest('button[data-a]'); if (!b) return; const i = +b.closest('.mwstep').dataset.i, a = b.dataset.a, S = w.steps;
+      const b = e.target.closest('button[data-a]'); if (!b) { const r = e.target.closest('.mwstep'); if (r && +r.dataset.i !== sel) pick(+r.dataset.i); return; } const row = b.closest('.mwstep'), i = +row.dataset.i, a = b.dataset.a, S = w.steps;
+      if (/^(min|pct)[-+]$/.test(a)) { // − / +: in place, no redraw, the hand stays on the button
+        const f = a.slice(0, -1); S[i] = bump(S[i], f, a.endsWith('+') ? 1 : -1); const inp = row.querySelector(`[data-f="${f}"]`); inp.value = S[i][f]; inp.classList.remove('bad');
+        if (S[i].pct2 == null) row.querySelector('[data-f="pct2"]').value = ''; err(); edited(); rowInfo(row, S[i]); pick(i); return summary(); }
+      if (a === 'rep') { const nx = S[i + 1], to = nx && !isWork(nx) && isWork(S[i]) ? i + 1 : i; $('#mwRf', m).value = i + 1; $('#mwRt', m).value = to + 1; pick(i); $('#mwRn', m).focus(); return; }
       structural(() => {
         if (a === 'up' && i > 0) { [S[i - 1], S[i]] = [S[i], S[i - 1]]; sel = i - 1; }
         if (a === 'down' && i < S.length - 1) { [S[i + 1], S[i]] = [S[i], S[i + 1]]; sel = i + 1; }
@@ -131,7 +137,15 @@ export function openEditor({ draft, saved = false, ftp = 0, route = null, kind =
       });
       const nb = $(`.mwstep[data-i="${sel}"] button[data-a="${a}"]:not(:disabled)`, m) || $(`.mwstep[data-i="${sel}"] button:not(:disabled)`, m); nb?.focus(); // keep the focus where the hand is (gamepad, keyboard)
     });
-    $('#mwAdd', m).onclick = () => structural(() => { const last = w.steps[w.steps.length - 1]; w.steps.push({ min: 5, pct: last && isWork(last) ? 55 : 90, label: last && isWork(last) ? 'Rest' : 'Interval' }); sel = w.steps.length - 1; });
+    $('#mwAdd', m).onclick = () => structural(() => { const at = insertAt(w.steps); w.steps.splice(at, 0, nextBlock(w.steps)); sel = at; });
+    $('#mwAddSet', m).onclick = () => { if (w.steps.length + 8 > LIM.steps) return err(`At most ${LIM.steps} steps.`); structural(() => { const at = insertAt(w.steps); w.steps = addSet(w.steps); sel = at; }); };
+    $('#mwTpl', m).addEventListener('click', async e => { const b = e.target.closest('[data-tpl]'); if (!b) return; const t = TEMPLATES.find(x => x.id === b.dataset.tpl);
+      if (JSON.stringify(w.steps) !== JSON.stringify(t.steps())) {
+        if (dirty()) { asking = true; const v = await ask({ title: `Start from “${t.name}”?`, text: 'Your blocks are replaced by the template. The name stays.', buttons: [{ label: 'Keep mine', value: null }, { label: 'Use template', value: 'use', cls: 'mwsave' }] }); asking = false; if (v !== 'use') return b.focus(); }
+        structural(() => { w.steps = t.steps(); sel = -1; });
+        if (autoName) { const n = defaultName(w.routeName || '', kindOf(t.name), others); $('#mwName', m).value = n; setName(n); } }
+      m.querySelectorAll('.mwtpl').forEach(x => x.classList.toggle('on', x === b)); b.focus(); });
+    $('#mwGraph', m).addEventListener('click', e => { const i = e.target.closest('[data-i]')?.dataset.i; if (i == null) return; pick(+i); const r = $(`.mwstep[data-i="${i}"]`, m); r?.scrollIntoView({ block: 'nearest', behavior: 'smooth' }); r?.querySelector('[data-f="min"]')?.focus({ preventScroll: true }); });
     $('#mwRep', m).onclick = () => {
       const f = +$('#mwRf', m).value - 1, t = +$('#mwRt', m).value - 1, n = +$('#mwRn', m).value;
       if (!(f >= 0 && t >= f && t < w.steps.length)) return err('Repeat: choose the steps by their numbers, from ≤ to.');
@@ -143,8 +157,8 @@ export function openEditor({ draft, saved = false, ftp = 0, route = null, kind =
       w.steps = scaleWork(snap, d); $('#mwIntV', m).textContent = (d > 0 ? '+' : d < 0 ? '−' : '±') + Math.abs(d) + ' %';
       const keep = document.activeElement; $('#mwSteps', m).innerHTML = w.steps.map(rowHTML).join(''); summary(); keep?.focus?.(); };
     const setName = n => { w.name = n; m.querySelectorAll('.mwchip').forEach(c => c.classList.toggle('on', c.dataset.name === n)); err(); };
-    $('#mwName', m).oninput = e => setName(e.target.value);
-    $('#mwChips', m).addEventListener('click', e => { const c = e.target.closest('.mwchip'); if (!c) return; $('#mwName', m).value = c.dataset.name; setName(c.dataset.name); });
+    $('#mwName', m).oninput = e => { autoName = false; setName(e.target.value); };
+    $('#mwChips', m).addEventListener('click', e => { const c = e.target.closest('.mwchip'); if (!c) return; autoName = false; $('#mwName', m).value = c.dataset.name; setName(c.dataset.name); });
     const save = async asNew => {
       const name = String(w.name || '').trim().replace(/\s+/g, ' ');
       if (!name || name.length > LIM.name) { $('#mwName', m).focus(); return err(`Name: 1–${LIM.name} characters.`); }

@@ -105,6 +105,24 @@ let fails = 0; const ok = (c, m) => { console.log(`${c ? '✓' : '✗'} ${m}`); 
     await D.click('.mwask button:has-text("Delete")'); await D.waitForTimeout(400);
     ok(!(await listOf(token)).some(w => w.name === 'My VO2 copy') && await D.locator('.mwitem', { hasText: 'My VO2 copy' }).count() === 0, 'profile: delete removes the copy');
 
+    // ---- the fast editor (owner 17.11. 22:14): a template in one tap, − / +, a whole set, the chart picks a block ----
+    await D.click('#mwNew'); await D.waitForSelector('.mwbox');
+    await D.click('.mwtpl[data-tpl="vo2"]'); await D.waitForTimeout(150);
+    ok(!(await D.locator('.mwask').count()) && await D.locator('.mwstep').count() === 12 && /48:00/.test(await D.textContent('#mwTotal')), 'template “VO2max” in one tap: 12 blocks, 48 min (no question, nothing changed yet)');
+    ok(await D.inputValue('#mwName') === 'VO2 1', `the default name follows the template (${await D.inputValue('#mwName')})`);
+    const r1 = '.mwstep[data-i="1"]'; await D.click(`${r1} [data-a="min+"]`); await D.click(`${r1} [data-a="pct+"]`); await D.click(`${r1} [data-a="pct+"]`);
+    ok(await D.inputValue(`${r1} input[data-f="min"]`) === '3.5' && await D.inputValue(`${r1} input[data-f="pct"]`) === '125', '+ on minutes 3 → 3.5, + + on % 118 → 120 → 125 (to the next 5)');
+    ok((await D.textContent(`${r1} .mww`)).trim() === '325 W' && /48:30/.test(await D.textContent('#mwTotal')), 'watts and total follow at once (125 % of 260 W = 325 W, 48:30)');
+    const nB = await D.locator('.mwstep').count(); await D.click('#mwAddSet'); await D.waitForTimeout(100);
+    ok(await D.locator('.mwstep').count() === nB + 8 && /Cool-down/.test(await D.inputValue(`.mwstep[data-i="${nB + 7}"] .mwlab`)), '+ Set of 4: 8 blocks before the cool-down');
+    await D.click('.mwstep[data-i="3"] [data-a="rep"]'); ok(await D.inputValue('#mwRf') === '4' && await D.inputValue('#mwRt') === '5' && await D.evaluate(() => document.activeElement.id) === 'mwRn', '↻ on a hard block: repeat it with its rest, the count is next');
+    await D.locator('#mwGraph [data-i="0"]').click({ force: true }); await D.waitForTimeout(150);
+    ok(await D.locator('.mwstep[data-i="0"].sel').count() === 1 && await D.locator('#mwGraph [data-i="0"][stroke]').count() === 1, 'a tap on the chart picks that block');
+    if (SHOTS) await D.screenshot({ path: `${SHOTS}/myworkouts_editor_fast_1280.png` });
+    await D.click('.mwtpl[data-tpl="ss"]'); await D.waitForSelector('.mwask'); ok(/Start from “Sweet spot”/.test(await D.textContent('.mwask')), 'another template with changes: asked first (in the page)');
+    await D.click('.mwask button:has-text("Keep mine")'); await D.waitForTimeout(150); ok(await D.locator('.mwstep').count() === nB + 8, 'Keep mine: the blocks stay');
+    await D.click('#mwCancel'); await D.waitForSelector('.mwask'); await D.click('.mwask button:has-text("Discard")'); await D.waitForSelector('.mwbox', { state: 'detached' });
+
     // ---- ride with it: the first target is FTP × % of the first step, the saved ride carries the name ----
     // (the River Valley world is too heavy for the headless software renderer: the ride itself runs on the light Passo Demo,
     //  where the personal workout is in the choice like on every route)
@@ -197,6 +215,9 @@ let fails = 0; const ok = (c, m) => { console.log(`${c ? '✓' : '✗'} ${m}`); 
     ok(await padTo(pctSel), 'pad: right to the % field'); await press('A'); await press('up', 700); await press('A'); // held: repeats
     const p1 = +await val(pctSel); ok(p1 >= p0 + 15, `pad: held ↑ repeats (${p0} → ${p1} %)`);
     await press('R'); ok(+await val(pctSel) === p1 + 5, 'pad: R = one step up without change mode'); await press('L');
+    const plus = `.mwstep[data-i="${iv2}"] [data-a="pct+"]`, minus = `.mwstep[data-i="${iv2}"] [data-a="pct-"]`;
+    ok(await padTo(plus), 'pad: reaches the + of the %'); await press('A'); ok(+await val(pctSel) === p1 + 5, 'pad: A on + = 5 % more');
+    ok(await padTo(minus), 'pad: and its −'); await press('A'); ok(+await val(pctSel) === p1, 'pad: A on − = back');
     const wtxt = (await G.textContent(`.mwstep[data-i="${iv2}"] .mww`)).trim(); ok(wtxt === `${Math.round(p1 / 100 * 250)} W`, `pad: the watts follow (${wtxt})`);
     // B with unsaved changes: the question, B again keeps editing
     await press('B'); await G.waitForSelector('.mwask'); ok(/Discard your changes/.test(await G.textContent('.mwask')), 'pad: B with changes asks (in the page)');

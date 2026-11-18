@@ -104,6 +104,36 @@ export function fromBuiltin(bw) {
     st.label = clean(s.label, LIM.label); if (s.free) st.free = true; return st; });
   return { id: newId(), name: clean(bw.name, LIM.name) || 'My workout', base: bw.personal ? bw.base || null : bw.id || null, steps, updated: 0 };
 }
+/* ---- the fast editor (owner 17.11. 22:14: "a usable workout in a few taps"): templates, +/- steps, a whole set at once ---- */
+const WU = () => ({ min: 10, pct: 45, pct2: 70, label: 'Warm-up' }), CD = () => ({ min: 8, pct: 60, pct2: 40, label: 'Cool-down' });
+const set = (n, work, rest, wl) => Array.from({ length: n }, (_, i) => [{ ...work, label: `${wl} ${i + 1}/${n}` }, ...(rest ? [{ ...rest, label: 'Rest' }] : [])]).flat();
+/** starting points, one tap each: warm-up ramp, the main part, cool-down ramp */
+export const TEMPLATES = [
+  { id: 'end', name: 'Endurance', hint: '63 min · steady Z2', steps: () => [WU(), { min: 45, pct: 68, label: 'Endurance' }, CD()] },
+  { id: 'ss', name: 'Sweet spot', hint: '3 × 10 min at 90 %', steps: () => [WU(), ...set(3, { min: 10, pct: 90 }, { min: 4, pct: 55 }, 'Sweet spot'), CD()] },
+  { id: 'thr', name: 'Threshold', hint: '2 × 15 min at 100 %', steps: () => [WU(), ...set(2, { min: 15, pct: 100 }, { min: 5, pct: 55 }, 'Threshold'), CD()] },
+  { id: 'vo2', name: 'VO2max', hint: '5 × 3 min at 118 %', steps: () => [WU(), ...set(5, { min: 3, pct: 118 }, { min: 3, pct: 50 }, 'VO2max'), CD()] },
+  { id: 'spr', name: 'Sprints', hint: '6 × 30 s all out', steps: () => [WU(), ...set(6, { min: 0.5, pct: 170 }, { min: 4.5, pct: 50 }, 'Sprint'), CD()] },
+  { id: 'ramp', name: 'Ramp up', hint: '20 min climbing 60 → 105 %', steps: () => [WU(), { min: 20, pct: 60, pct2: 105, label: 'Ramp' }, { min: 5, pct: 55, label: 'Easy' }, CD()] },
+];
+/** one tap on − / +: minutes in 0.5 steps up to 5, 1 up to 20, then 5; % FTP in 5s (to the next multiple of 5); within the limits */
+export function bump(s, f, d) {
+  const dir = d > 0 ? 1 : -1;
+  if (f === 'min') { const v = s.min, st = (dir > 0 ? v < 5 : v <= 5) ? 0.5 : (dir > 0 ? v < 20 : v <= 20) ? 1 : 5, n = Math.round((dir > 0 ? Math.floor(v / st + 1e-9) * st + st : Math.ceil(v / st - 1e-9) * st - st) * 100) / 100;
+    return { ...s, min: Math.max(LIM.minMin, Math.min(LIM.maxMin, n)) }; }
+  const k = f === 'pct2' ? 'pct2' : 'pct', v = s[k] ?? s.pct, n = Math.max(LIM.minPct, Math.min(LIM.maxPct, dir > 0 ? Math.floor(v / 5 + 1e-9) * 5 + 5 : Math.ceil(v / 5 - 1e-9) * 5 - 5));
+  const o = { ...s, [k]: n }; if (o.pct2 != null && o.pct2 === o.pct) delete o.pct2; return o;
+}
+/** where new blocks go: before a cool-down at the end, else at the end */
+export const insertAt = steps => steps.length > 1 && /cool/i.test(steps[steps.length - 1].label || '') ? steps.length - 1 : steps.length;
+/** a whole interval set at once (n × work + rest), before the cool-down; the default when the editor adds a set */
+export function addSet(steps, { n = 4, work = { min: 4, pct: 105 }, rest = { min: 3, pct: 55 }, label = 'Interval' } = {}) {
+  n = Math.max(1, Math.min(LIM.rep, Math.floor(n))); const at = insertAt(steps), add = set(n, work, rest, label);
+  return [...steps.slice(0, at), ...add, ...steps.slice(at)].slice(0, LIM.steps);
+}
+/** a sensible next block: after a hard one its rest, else a hard one */
+export const nextBlock = steps => { const last = steps[insertAt(steps) - 1]; return last && isWork(last) ? { min: Math.max(1, Math.round(last.min / 2 * 2) / 2), pct: 55, label: 'Rest' } : { min: 4, pct: 105, label: 'Interval' }; };
+
 /** "free ride with intervals": the start when no workout is chosen */
 export function freeTemplate() {
   return { id: newId(), name: 'Free ride with intervals', base: null, updated: 0,
@@ -121,7 +151,7 @@ export function graphSVG(steps, { h = 60, mark = -1, cls = 'mwgraph' } = {}) {
   const tot = totalSec(steps) || 1, max = Math.max(130, ...steps.map(s => Math.max(s.pct, s.pct2 ?? 0))); let x = 0;
   const bars = steps.map((s, i) => {
     const bw = stepSec(s) / tot * 1000, bh = Math.max(2, s.pct / max * (h - 2)), z = zoneOf(stepAvg(s)), w = Math.max(0.8, bw - 1.2);
-    const att = `fill="${z[2]}"${s.free ? ' fill-opacity=".55"' : ''}${i === mark ? ' stroke="#ff5a1f" stroke-width="4" vector-effect="non-scaling-stroke"' : ''}`;
+    const att = `data-i="${i}" fill="${z[2]}"${s.free ? ' fill-opacity=".55"' : ''}${i === mark ? ' stroke="#ff5a1f" stroke-width="4" vector-effect="non-scaling-stroke"' : ''}`;
     const r = s.pct2 == null ? `<rect x="${x.toFixed(1)}" y="${(h - bh).toFixed(1)}" width="${w.toFixed(1)}" height="${bh.toFixed(1)}" ${att}/>`
       : `<polygon points="${x.toFixed(1)},${h} ${x.toFixed(1)},${(h - bh).toFixed(1)} ${(x + w).toFixed(1)},${(h - Math.max(2, s.pct2 / max * (h - 2))).toFixed(1)} ${(x + w).toFixed(1)},${h}" ${att}/>`; // a ramp: sloped top
     x += bw; return r;
