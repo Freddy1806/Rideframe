@@ -1,12 +1,12 @@
 // "Riding now" in the browser (server: tools/live-api.mjs). Owner 17.11.: "see when someone is online and join him with one tap".
-// - Presence: while a signed-in rider is in a 3D ride, a heartbeat every 20 s (never signed out, never with "Show me when I ride" off);
+// - Presence: while a signed-in rider is in a 3D ride, a heartbeat every 6 s (owner 18.11.: a join must not wait 20 s; the server allows 20 a minute) (never signed out, never with "Show me when I ride" off);
 //   the heartbeat answer carries join requests, the ride (js/ride.js) opens a group for them and the code goes back with the next beat.
 // - The list (library and route page in js/app.js, phone home in js/handy.js) and the joiner's side: ask, wait up to 45 s, join with the code.
 // Plain module: no imports from app.js or the 3D world, so the phone shell can use it too (sw.js SHELL).
 import { account } from './account.js';
 import { esc, fmtNum } from './util.js';
 
-export const EVERY = 20e3, REFRESH = 15e3, ASK_WAIT = 45e3, ASK_POLL = 2e3;
+export const EVERY = 6e3, REFRESH = 15e3, ASK_WAIT = 45e3, ASK_POLL = 2e3;
 
 async function call(path, opt = {}) {
   const a = account(); if (!a?.token) throw Object.assign(new Error('Sign in first.'), { status: 401 });
@@ -116,7 +116,7 @@ export class Presence {
     } catch (e) { if (e.status !== 400) this.answers.unshift(...answers); if (e.status === 401) this.stop(false); }
     finally { this._busy = false; if (this._again && this.on) { this._again = false; this.beat(); } }
   }
-  /** answer a request; goes out right away (not only with the next 20 s beat) */
+  /** answer a request; goes out right away (not only with the next beat) */
   answer(id, ok) { this.answers.push({ id, ok: !!ok }); this.beat(); }
   stop(tell = true) {
     if (!this.on) return; this.on = false; clearInterval(this.t); removeEventListener('pagehide', this._bye);
