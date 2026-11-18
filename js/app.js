@@ -22,7 +22,7 @@ import { routeFns } from './tcx.js';
 import { hudPrefs, hudControlsHTML, wireHudControls } from './hudprefs.js';
 import { allWorkouts, setMyWorkouts, workoutById, workoutDuration, workoutSVG } from './workouts.js';
 import { loadShared, sharedFor, shareRide, importShared, groupModal } from './share.js';
-import { workoutOptions, wireRoutePick, fitBadge } from './myworkouts-ui.js';
+import { workoutOptions, wireRoutePick } from './myworkouts-ui.js';
 import { loadPersonal } from './myworkouts-store.js';
 
 const $ = s => document.querySelector(s);
@@ -291,7 +291,6 @@ function card(r) {
   return `<div class="card" data-id="${r.id}" tabindex="0" role="button">
     <div class="thumb" style="background-image:url('${r.thumb || ''}')">
       ${best ? `<span class="badge">PB ${fmtTime(best.duration)}</span>` : ''}
-      ${fitBadge(r, workoutById(state.settings.workout), state.settings)}
       <span class="go"><svg width="18" height="18" viewBox="0 0 24 24"><path d="M7 4l12 8-12 8z" fill="currentColor"/></svg></span>
       ${profileSVG(t)}
     </div>

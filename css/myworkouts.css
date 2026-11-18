@@ -126,4 +126,3 @@
 .mwfitline.bad p { margin: 0; color: #ffb020; font-weight: 700; }
 .mwfitacts { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 8px; margin-top: 6px; }
 .mwfitacts span { color: var(--muted); font-size: 12px; }
-.card .badge.fitshort { top: auto; bottom: calc(38% + 6px); background: #ffb020; color: #111; max-width: calc(100% - 28px); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
