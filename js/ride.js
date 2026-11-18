@@ -8,7 +8,8 @@ import { drawHudProfile } from './profile.js';
 import { fmtTime, fmtKm, fmtNum, esc, bestAvg } from './util.js';
 import { bestClimb, distAtTime } from './climbghost.js';
 import { stravaButton } from './stravaup.js';
-import { padButtons } from './controller.js';
+import { padButtons, activePad } from './controller.js';
+import { remoteLabel, remoteCode } from './remotepad.js';
 import { click } from './zwiftclick.js';
 import { routeFns } from './tcx.js';
 import { gearsFrom, gearName, parseGear, estimateGear, virtualGrade } from './gears.js';
@@ -361,7 +362,7 @@ export class RideSession {
   }
 
   _pollPad() { // any Bluetooth gamepad (e.g. 8BitDo Micro on the bars) drives the whole ride; mapping in PAD_MAP (controller.js shows it)
-    const pad = navigator.getGamepads?.().find(Boolean); if (!pad) return;
+    const pad = activePad(); if (!pad) return; // a real pad or the phone remote (js/remotepad.js)
     const b = padButtons(pad), was = this.padPrev || [];
     this.padPrev = b;
     if (!this.padSeen) { this.padSeen = true; this._flash(`🎮 Controller ready · Start = pause${this.workout ? ' · D-pad ↑↓ / L R: target ±1 W, L2 R2: ±5 W' : ' · L/R = shift'}`); }
@@ -1019,6 +1020,7 @@ export class RideSession {
       ['oMusic', `Music: ${this.music?.on ? 'on' : 'off'}`, () => this._toggleMusic()],
       ['oNext', 'Next song', () => this.music?.skip()],
       ['oWide', 'Wider view', () => this._lens(-1)], ['oNarrow', 'Narrower view', () => this._lens(1)],
+      ['oRemote', remoteLabel(), () => remoteCode()], // phone remote: the code to enter on the phone (js/remotepad.js)
       ...(this.workout && !this.wDone && this.wNow?.step && !this.wNow.step.free ? [['oAdjUp', `Target +5 W (${this.wNow.hard ? 'intervals' : 'easy parts'} now ${fmtAdj(this.wNow.hard ? this.wAdj : this.wAdjE)})`, () => this._wTune(5)], ['oAdjDn', 'Target −5 W', () => this._wTune(-5)]] : []),
     ];
     o.querySelector('.box').innerHTML = `<div class="label">Pause</div><h2 class="display">Options</h2>

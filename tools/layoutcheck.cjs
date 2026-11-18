@@ -134,6 +134,7 @@ const SCREENS = [
   ['statistik-last', '/statistik.html', p => p.click('[data-by="load"]')],
   ['handy-aktivitaet', '/handy.html', p => p.click('[data-act]')],
   ['profil', '/profil.html', null],
+  ['remote', '/remote.html', null], // phone remote (js/remote.js): the code screen
   ['profil-daten', '/profil.html', p => p.click('#fSet')],
 ];
 const DESK = [ // the main app with its top bar (account pill, tabs) on tablet, laptop and TV widths
