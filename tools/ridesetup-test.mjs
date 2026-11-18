@@ -61,3 +61,11 @@ test('shifting: virtual (keeps auto when it was on) or on the bike; climb watts 
   setShift(r, 'real'); assert.deepEqual(r.log.at(-1), ['shift', 'real']); const n = r.log.length; setShift(r, 'real'); assert.equal(r.log.length, n, 'already: nothing');
   r.berg = true; setShift(r, 'real'); assert.deepEqual(r.log.at(-1), ['shift', 'real'], 'from climb watts back to plain');
 });
+
+test('a workout chosen mid-ride: its intervals are cut from the samples after that second (intervalRecords t0)', async () => {
+  const { intervalRecords } = await import('../js/ivhistory.js');
+  const w = { id: 'x', steps: [{ dur: 60, pct: 50, label: 'Warm' }, { dur: 120, pct: 110, label: 'Hard' }] };
+  const samples = []; for (let t = 1; t <= 900; t++) samples.push([t, 0, t < 660 ? 100 : 300]);
+  const iv = intervalRecords({ workout: w, samples, elapsed: 900, ftp: 250, t0: 600 });
+  assert.equal(iv.length, 1); assert.equal(iv[0].at, 660); assert.equal(iv[0].w, 300, 'the watts of the interval as ridden, not of the ride start');
+});

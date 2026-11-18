@@ -8,7 +8,8 @@ import { drawHudProfile } from './profile.js';
 import { fmtTime, fmtKm, fmtNum, esc, bestAvg } from './util.js';
 import { bestClimb, distAtTime } from './climbghost.js';
 import { stravaButton } from './stravaup.js';
-import { padButtons } from './controller.js';
+import { padButtons, activePad } from './controller.js';
+import { remoteLabel, remoteCode } from './remotepad.js';
 import { click } from './zwiftclick.js';
 import { routeFns } from './tcx.js';
 import { gearsFrom, gearName, parseGear, estimateGear, virtualGrade } from './gears.js';
@@ -20,6 +21,8 @@ import { Challenges } from './challenges.js';
 import { findSegments, segmentBests, segmentLast, SEG_KIND } from './segments.js';
 import { testResult } from './stats.js';
 import { Wizard, WIZ } from './wizard.js';
+import { intervalRecords } from './ivhistory.js';
+import { hardWindow, wizardGate, challengeGate, summonGap, wzOf, friendCalls, friendsLine } from './ivgate.js';
 import { Music, Coach } from './music.js';
 import { MIC_SVG, SPK_SVG, voiceStatus } from './voice.js';
 import { hudPrefs, applyHud, hudControlsHTML, wireHudControls, HUD_ORDER, HUD_PRESETS } from './hudprefs.js';
@@ -366,7 +369,7 @@ export class RideSession {
   }
 
   _pollPad() { // any Bluetooth gamepad (e.g. 8BitDo Micro on the bars) drives the whole ride; mapping in PAD_MAP (controller.js shows it)
-    const pad = navigator.getGamepads?.().find(Boolean); if (!pad) return;
+    const pad = activePad(); if (!pad) return; // a real pad or the phone remote (js/remotepad.js)
     const b = padButtons(pad), was = this.padPrev || [];
     this.padPrev = b;
     if (!this.padSeen) { this.padSeen = true; this._flash(`🎮 Controller ready · Start = pause${this.workout ? ' · D-pad ↑↓ / L R: target ±1 W, L2 R2: ±5 W' : ' · L/R = shift'}`); }
@@ -552,6 +555,8 @@ export class RideSession {
         if (w.done && !this.wDone) { this.wDone = true; this._flash?.('Workout done!'); } // no coach voice in workouts (owner 17.11.): the bar shows it all
   }
 
+  /** the hard interval running now (pct >= 88, 1 min or longer) with the rider's tuned target, or null (ivgate.js) */
+  _hardWin() { return hardWindow(this.workout, this._wClock(), this.ftp, { hard: this.wAdj, easy: this.wAdjE }); }
   /** ERG control on / off over the ride (seconds): only a marker (owner 17.11.: the climb, best times, segments and the export
    *  stay as on any ride, speed comes from the power on the route's grade); in ERG no shifting advice and no auto shifting */
   /** seconds into the workout: from the ride start, or from the second it was chosen in the ride (js/ridesetup.js) */
@@ -564,11 +569,11 @@ export class RideSession {
   }
   _ergRec() { const sp = (this._ergSpans || []).map(([a, b]) => [a, b ?? Math.round(this.elapsed)]).filter(([a, b]) => b > a); return sp.length ? { erg: true, mode: 'Workout (ERG)' } : {}; } // a structured ERG workout: a marker, nothing else
 
-  // ---------- challenges (never in a workout; in a group ride (Freddy 12.11.) the same challengers wait at the same spots for
+  // ---------- challenges (in a workout only inside a hard interval, at its target: ivgate.js; in a group ride (Freddy 12.11.) the same challengers wait at the same spots for
   // everyone, dice seeded with the group code; each races against his own FTP, the results are shared with the group) ----------
   _initChallenges() {
     const n = this.state.settings.challenges ?? 4, sp = this.player?.events?.surprises;
-    if (this.workout || this.autopilot || !n || this.track.__mode === 'leer') return; // graphics level 1: landscape only, nothing happens
+    if (this.autopilot || !n || this.track.__mode === 'leer') return; // graphics level 1: landscape only, nothing happens
     const grp = this.group ? seeded(this.group.code + this.route.id + 'ch' + (this.lap || 1)) : null;
     this.ch = new Challenges({ length: this.track.length, startD: grp ? 0 : this.d, n, ftp: this.ftp, params: this.params, gradeAt: d => gradeAt(this.track, d),
       has: models => !sp || models.some(m => sp.A.find(m)), rng: grp || Math.random });
@@ -577,9 +582,10 @@ export class RideSession {
     const c = document.createElement('div'); c.className = 'chcard glass'; c.id = 'hCh'; c.hidden = true; this.el.querySelector('.hud').append(c);
   }
   _chTick(dt) {
-    const ch = this.ch; if (!ch || this.workout) return;
+    const ch = this.ch; if (!ch) return;
     if (this.wiz?.busy && !ch.active) return; // the wizard's trial or flight or hell: no dares meanwhile
-    const sp = this.player?.events?.surprises, evs = ch.tick(dt, this.d, this.power, this._chKey, this.v); this._chKey = false;
+    const gate = this.workout ? challengeGate(this.wDone ? null : this._hardWin()) : null; // workout: only inside a hard interval, at its target
+    const sp = this.player?.events?.surprises, evs = ch.tick(dt, this.d, this.power, this._chKey, this.v, gate); this._chKey = false;
     for (const { type, ch: x } of evs) {
       if (type === 'offer') { x.h = sp?.challenger(x.c, x.spot); x.h?.say(x.c.ask, 3.2); if (sp) sp.hold = true; this.coach?.say('challenge', 0); }
       else if (type === 'accept') this.story?.challenge(x.c.id, 'accept');
@@ -615,17 +621,23 @@ export class RideSession {
   }
   _storyEnd() { if (!this.story || this._storySum) return this._storySum; this._storySum = this.story.finish(this.elapsed / 60); return this._storySum; }
 
-  // ---------- the wizard (rare, free rides only): a 60 s trial; pass = 30 s flight, fail = 5 min hell ----------
+  // ---------- the wizard (rare): a 60 s trial; pass = 30 s flight, fail = 5 min hell. In a workout only inside a hard
+  // interval, at its target (ivgate.js); in a group ride for everyone at once, each against his own target ----------
   _initWizard() {
-    if (this.workout || this.autopilot || this.state.settings.wizard === false || this.track.__mode === 'leer') return; // level 1: no wizard without his figure
+    if (this.autopilot || this.state.settings.wizard === false || this.track.__mode === 'leer') return; // level 1: no wizard without his figure
     const qs = new URLSearchParams(location.search), spots = this.ch?.list.map(x => x.at) || [];
-    // group ride (Freddy 12.11.): the wizard always comes, at the same spot for everyone (dice seeded with the group code);
-    // each rider takes the trial with his own watts, so one may fly while the other rides through hell
-    const grp = this.group ? seeded(this.group.code + this.route.id + this.lap) : null;
-    this.wiz = new Wizard({ length: this.track.length, startD: grp ? 0 : this.d, ftp: this.ftp, force: qs.has('wizard'), chance: qs.has('nowizard') ? 0 : grp ? 1 : 0.35, rng: grp || Math.random,
-      avoid: d => spots.some(a => d > a - 1400 && d < a + 2900) }); // never on top of a dare and its race
-    if (this.wiz.state === 'off' || (grp && this.d > this.wiz.at - 600)) { this.wiz = null; return; } // a late joiner already past his spot
-    if (qs.has('wizard')) for (const x of this.ch?.list || []) if (x.at > this.wiz.at - 1400 && x.at < this.wiz.at + 2900) x.state = 'skipped';
+    if (this.workout) { // no spot on the road: called inside a hard interval from 30–75 % of the workout on
+      this.wiz = new Wizard({ length: this.track.length, startD: this.d, ftp: this.ftp, force: qs.has('wizard'), chance: qs.has('nowizard') ? 0 : 0.35, workout: this.workout.steps.reduce((t, x) => t + x.dur, 0) });
+      if (this.wiz.state === 'off') { this.wiz = null; return; }
+    } else {
+      // group ride (Freddy 12.11.): the wizard always comes, at the same spot for everyone (dice seeded with the group code);
+      // each rider takes the trial with his own watts, so one may fly while the other rides through hell
+      const grp = this.group ? seeded(this.group.code + this.route.id + this.lap) : null;
+      this.wiz = new Wizard({ length: this.track.length, startD: grp ? 0 : this.d, ftp: this.ftp, force: qs.has('wizard'), chance: qs.has('nowizard') ? 0 : grp ? 1 : 0.35, rng: grp || Math.random,
+        avoid: d => spots.some(a => d > a - 1400 && d < a + 2900) }); // never on top of a dare and its race
+      if (this.wiz.state === 'off' || (grp && this.d > this.wiz.at - 600)) { this.wiz = null; return; } // a late joiner already past his spot
+      if (qs.has('wizard')) for (const x of this.ch?.list || []) if (x.at > this.wiz.at - 1400 && x.at < this.wiz.at + 2900) x.state = 'skipped';
+    }
     const c = document.createElement('div'); c.className = 'chcard glass wizcard'; c.id = 'hWiz'; c.hidden = true; this.el.querySelector('.hud').append(c);
     const hud = this.el.querySelector('.hud');
     for (const id of ['hHell', 'hWizFx']) { const f = document.createElement('div'); f.className = 'wizfx'; f.id = id; hud ? hud.before(f) : this.el.append(f); } // under the HUD: power and cards stay readable
@@ -635,13 +647,18 @@ export class RideSession {
     // the wizard always waits at the finish line of a free ride and has the last word (Freddy)
     if (sp0?.wizard && this.state.settings.wizard !== false && !this.workout && !this.autopilot && this.lap >= this.laps && this.track.length - this.d < 400 && !this._goalWiz) this._goalWiz = sp0.wizard(this.track.length + 6);
     if (this._goalWiz && !this._goalSaid && this.track.length - this.d < 70) { this._goalSaid = true; this.story?._line('wizard', 'goal'); }
-    const z = this.wiz; if (!z || this.workout) return;
+    const z = this.wiz; if (!z) return;
     if (z.exitH && this.d > z.exitH.d - 12) { sp0?.poof?.(z.exitH); z.exitH = null; } // he sends you on (up) and is gone in a puff
     if (z.state === 'hell' && !z.exitH && !z.exitDone && z.t >= WIZ.hell - 25) { z.exitDone = true; z.exitH = sp0?.wizard?.(this.d + Math.max(90, this.v * 25 + 15)); } // he waits where hell ends
     if (this.ch?.active && (z.state === 'wait' || z.state === 'ann')) return; // a race is on: the wizard waits his turn
     const sp = this.player?.events?.surprises, P = this.player, fx = this.q('#hWizFx');
+    const win = z.wk ? (this.wDone ? null : this._hardWin()) : null, g = z.wk ? wizardGate(z, win, { elapsed: this.elapsed, v: this.v, hold: WIZ.hold }) : null;
+    if (g === 'summon') z.summon(this.d, summonGap(this.v)); // workout: inside a hard interval with time for his trial
+    else if (g === 'dismiss') { sp?.poof?.(z.dismiss()); if (sp) sp.hold = false; } // the interval ends first: he waits for the next one
+    const os = this.group ? this.group.others() : null;
+    if (os && friendCalls(z, os, this.lap)) z.summon(this.d, summonGap(this.v)); // group: a friend met him, he comes for you now too
     const flashFx = k => { if (!fx) return; fx.className = 'wizfx'; void fx.offsetWidth; fx.classList.add(k); };
-    for (const e of z.tick(dt, this.d, this.power)) {
+    for (const e of z.tick(dt, this.d, this.power, win?.target || 0)) {
       if (e === 'ann') this.coach?.say('wizard', 0); // the card says it: no extra text in the middle
       else if (e === 'near') { z.h = sp?.wizard?.(z.at); if (sp) sp.hold = true; }
       else if (e === 'cast') { sp?.poof?.(z.h); flashFx('cast'); }
@@ -655,7 +672,9 @@ export class RideSession {
         this.q('#hHell')?.classList.remove('hell'); flashFx('land');
       }
     }
-    const el = this.q('#hWiz'); if (el) { el.classList.toggle('hellcard', z.state === 'hell'); this._card(el, z.card(this.d), '_wizHtml'); }
+    if (this.group) { const wz = wzOf(z, this.lap), k = JSON.stringify(wz); if (k !== this._wzK) { this._wzK = k; this.group.update({ wz }); } } // only when it changes
+    const card = z.card(this.d), foot = os && card ? friendsLine(os, this.lap) : '';
+    const el = this.q('#hWiz'); if (el) { el.classList.toggle('hellcard', z.state === 'hell'); this._card(el, card && foot ? { ...card, foot } : card, '_wizHtml'); }
   }
   /** music follows the ride: minor in a shower, motivation only in the hard parts of a workout, the wizard's flight and hell */
   _mood() {
@@ -676,7 +695,7 @@ export class RideSession {
   _card(el, card, key) { // the big centred card (challenges, wizard)
     el.hidden = !card; if (!card) return;
     el.classList.toggle('lead', !!card.lead); el.classList.toggle('trail', card.lead === false);
-    const html = `<div class="label">${esc(card.title)}</div><div class="chbig num">${esc(card.big)}</div><div class="chsub">${esc(card.sub)}</div>${card.bar != null ? `<div class="chbar"><i style="width:${Math.round(card.bar * 100)}%"></i>${card.hold ? `<b style="width:${Math.round(card.hold * 100)}%"></b>` : ''}</div>` : ''}`;
+    const html = `<div class="label">${esc(card.title)}</div><div class="chbig num">${esc(card.big)}</div><div class="chsub">${esc(card.sub)}</div>${card.bar != null ? `<div class="chbar"><i style="width:${Math.round(card.bar * 100)}%"></i>${card.hold ? `<b style="width:${Math.round(card.hold * 100)}%"></b>` : ''}</div>` : ''}${card.foot ? `<div class="chfoot">${esc(card.foot)}</div>` : ''}`;
     if (html !== this[key]) { this[key] = html; el.innerHTML = html; }
   }
   _chPanel(el, c) { // the challenge panel at the left edge (all challenge info, nowhere else)
@@ -1014,6 +1033,7 @@ export class RideSession {
       ['oMusic', `Music: ${this.music?.on ? 'on' : 'off'}`, () => this._toggleMusic()],
       ['oNext', 'Next song', () => this.music?.skip()],
       ['oWide', 'Wider view', () => this._lens(-1)], ['oNarrow', 'Narrower view', () => this._lens(1)],
+      ['oRemote', remoteLabel(), () => remoteCode()], // phone remote: the code to enter on the phone (js/remotepad.js)
       ...(this.workout && !this.wDone && this.wNow?.step && !this.wNow.step.free ? [['oAdjUp', `Target +5 W (${this.wNow.hard ? 'intervals' : 'easy parts'} now ${fmtAdj(this.wNow.hard ? this.wAdj : this.wAdjE)})`, () => this._wTune(5)], ['oAdjDn', 'Target −5 W', () => this._wTune(-5)]] : []),
     ];
     o.querySelector('.box').innerHTML = `<div class="label">Pause</div><h2 class="display">Options</h2>
@@ -1241,12 +1261,8 @@ export class RideSession {
   }
   /** the hard parts with time and average watts (Freddy 12.11.: into the Strava description): workout intervals, else the climbs */
   _intervals() {
-    const out = [], w = this._wDef, smp = this.samples;
-    if (w) { let s = this._wT0 || 0, n = 0, k = -1;
-      for (const st of w.steps) { const a = s, b = Math.min(s + st.dur, this.elapsed), sa = this._stepAdj[++k]; s += st.dur;
-        if (st.pct < 88 || b - a < 5) continue; const ps = smp.filter(x => x[0] > a && x[0] <= b).map(x => x[2]); if (!ps.length) continue;
-        out.push({ name: (l => /\d/.test(l) ? (++n, l) : `${l} ${++n}`)(st.label || st.name || 'Intervall'), t: Math.round(b - a), w: Math.round(ps.reduce((x, y) => x + y, 0) / ps.length), target: tunedTarget(st, Math.round(st.pct / 100 * (this.ftp || 0)), sa?.[1] ? Math.round(sa[0] / sa[1]) : 0) || undefined }); } // the target as ridden: with that interval's watt offset
-    } else for (const s of this.segDone) if (s.kind === 'climb') out.push({ name: s.name, t: Math.round(s.t), w: s.w });
+    const out = this._wDef ? intervalRecords({ workout: this._wDef, t0: this._wT0 || 0, samples: this.samples, elapsed: this.elapsed, ftp: this.ftp, stepAdj: this._stepAdj, kg: this.state.settings.riderKg })
+      : this.segDone.filter(s => s.kind === 'climb').map(s => ({ name: s.name, t: Math.round(s.t), w: s.w })); // ivhistory.js: ridden avg / max W, HR, cadence; the plan only as context
     return out.length ? out : undefined;
   }
   /** lap marks for the Strava file: climbs and route laps, plus start and end of every hard workout interval */
@@ -1304,6 +1320,7 @@ export class RideSession {
         <div><div class="label">Work</div><div class="v">${fmtNum(rec.avgPower * rec.duration / 1000)}<small>kJ</small></div></div>
       </div>
       ${this._segSummary()}
+      <div id="fIvs"></div>
       ${rec.erg ? '<div class="chsum">Workout (ERG) · the trainer held the target watts</div>' : ''}
       ${rec.wAdj || rec.wAdjAvg ? `<div class="chsum">Intervals ${fmtAdj(rec.wAdj)}${rec.wAdjAvg !== rec.wAdj ? ` · average ${fmtAdj(rec.wAdjAvg)}` : ''} ${rec.wAdjE ? ` · easy parts ${fmtAdj(rec.wAdjE)}` : ''} · targets tuned live</div>` : rec.wAdjE ? `<div class="chsum">Easy parts ${fmtAdj(rec.wAdjE)} · targets tuned live</div>` : ''}
       ${this._testHTML(rec)}
@@ -1312,6 +1329,9 @@ export class RideSession {
       ${rec.wizard ? `<div class="chsum">🧙 ${rec.wizard === 'fly' ? 'Passed the Wizard’s test · flew over the island' : 'Failed the Wizard’s test · rode through hell'}</div>` : ''}
       <div class="row-actions"><button class="btn ghost" id="fShare">Image to share</button><button class="btn ghost" id="fStrava">Upload to Strava</button><button class="btn" id="fDone">Done</button></div></div>`;
     this.el.append(o);
+    if (rec.ivs?.length) import('./ivview.js').then(async m => { const box = o.querySelector('#fIvs'); if (!box) return; // the ridden intervals, then "Last time …" per set
+      box.innerHTML = m.ivSummaryHTML(rec); const rides = await db.all('rides').catch(() => []);
+      box.innerHTML = m.ivSummaryHTML(rec, m.ivCompare(rec, rides, this.state.settings.riderKg)); }).catch(() => {});
     o.querySelector('#fDone').onclick = () => this._close(true);
     wireStory(o, this._storySum); // "?" for the three points, the strength set for extra points (Freddy 13.11.)
     o.querySelector('#fFtp')?.addEventListener('click', async e => { // fitness test: take the new FTP, the ride remembers it as a test

@@ -154,6 +154,7 @@ const SCREENS = [
   ['statistik-last', '/statistik.html', p => p.click('[data-by="load"]')],
   ['handy-aktivitaet', '/handy.html', p => p.click('[data-act]')],
   ['profil', '/profil.html', null],
+  ['remote', '/remote.html', null], // phone remote (js/remote.js): the code screen
   ['profil-daten', '/profil.html', p => p.click('#fSet')],
   // personal workouts (js/myworkouts-ui.js): the profile section with a long name, its editor, the route page editor on the phone
   ['profil-workouts', '/profil.html', async p => { await p.evaluate(() => localStorage.setItem('rf_myworkouts', JSON.stringify([{ id: 'pw_layout1', name: 'Schwelle lang über den Pass mit Freddy x', base: 'thr2x20', routeId: 'fluss', routeName: 'River Valley mit sehr langem Namen', updated: 1,

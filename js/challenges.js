@@ -42,11 +42,25 @@ export class Challenges {
   get active() { return this.list.find(x => x.state === 'offer' || x.state === 'count' || x.state === 'race'); }
 
   /** per tick: d = your position, power = your watts now. Returns events [{type, ch}] for the HUD and the world. */
-  tick(dt, d, power, accept = false, v = 0) {
+  /** gate (workout only, ivgate.js challengeGate): { ok, W, left, i }: dares only inside a hard interval with time for the
+   *  race, the target is the interval's (the rider's tuned target); the interval ends: the challenger leaves */
+  tick(dt, d, power, accept = false, v = 0, gate = null) {
     const ev = [], x = this.active;
+    if (gate && !x) { // in a workout a dare whose spot comes outside a fitting interval waits on the road, the next ones keep their gap
+      const need = y => OFFER_S + 3 + y.D / paceFor(gate.W || this.ftp, this.gradeAt(d), this.params) * 1.15;
+      const fits = y => gate.ok && gate.left >= need(y); let next = -Infinity;
+      for (const y of this.list.filter(y => y.state === 'wait').sort((a, b) => a.at - b.at)) {
+        if (y.at < next) y.at = next;
+        if (y.at - LEAD <= d && !fits(y)) y.at = d + LEAD + 1;
+        next = y.at + GAP;
+      }
+    }
+    if (gate && x && (!gate.ok || (x.gi != null && gate.i !== x.gi))) { x.state = 'gone'; ev.push({ type: 'expire', ch: x }); return ev; } // the interval is over: no race into the rest
+    if (gate?.ok && x) x.W = Math.round(gate.W);
     if (!x) {
       for (const y of this.list) if (y.state === 'wait' && d > y.at - 40) y.state = 'skipped'; // passed during another race: never offered from behind
       const n = this.list.find(y => y.state === 'wait' && d >= y.at - LEAD);
+      if (n && gate) { n.W = Math.round(gate.W); n.gi = gate.i; }
       if (n) { n.state = 'offer'; n.t = 0; n.hold = 0; n.spot = n.at; n.base = power; this.stats.offered++; ev.push({ type: 'offer', ch: n }); }
       return ev;
     }

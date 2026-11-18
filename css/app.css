@@ -961,3 +961,35 @@ img.face.big{width:96px;height:96px}
 .ride.wk .metric .sens { font-size: 10px; margin-top: 1px; }
 /* the countdown card says what comes; the step flash would sit on top of it */
 .ride:has(.wcd:not([hidden])) .flash { opacity: 0 !important; }
+
+/* ---- intervals: ridden values on the summary, "Intervals over time" (js/ivview.js) ---- */
+.ivsum { margin-top: 14px; text-align: left; max-height: 190px; overflow: auto; }
+.finish { overflow-y: auto; place-items: safe center; } /* a long summary (intervals, the bet) scrolls instead of losing its buttons */
+.ivtbl { width: 100%; border-collapse: collapse; font-size: 13px; font-variant-numeric: tabular-nums; }
+.ivtbl th { text-align: left; font-size: 11px; font-weight: 700; color: var(--muted); text-transform: uppercase; letter-spacing: .06em; padding: 4px 8px 4px 0; border-bottom: 1px solid var(--line-2); white-space: nowrap; }
+.ivtbl td { padding: 3px 8px 3px 0; border-bottom: 1px solid var(--line); white-space: nowrap; }
+.ivtbl td.num, .ivtbl th:not(:first-child) { text-align: right; }
+.ivtbl tr.ivpart td { color: var(--muted); }
+.ivtbl tr.ivcmprow td { border-bottom: 1px solid var(--line-2); padding: 6px 0 10px; white-space: normal; }
+.ivcmp { font-size: 13px; font-weight: 700; }
+.ivcmp span { color: var(--muted); font-weight: 700; margin-right: 6px; }
+.ivtbl tr.ivbest td { background: var(--ink-3); }
+.ivhist .ivpick { display: flex; align-items: center; gap: 12px; margin-bottom: 16px; flex-wrap: wrap; }
+.ivhist .ivpick select { width: auto; max-width: 100%; background: var(--ink-2); color: var(--paper); border: 1px solid var(--line-2); border-radius: var(--radius); padding: 8px 10px; font: inherit; font-weight: 700; }
+.ivhist .ivtiles { grid-template-columns: repeat(2, minmax(0, 1fr)); margin-bottom: 18px; }
+.ivhist .ivcap { font-size: 12px; font-weight: 700; color: var(--muted); margin: 10px 0 4px; display: flex; align-items: center; gap: 8px; }
+.ivhist .ivcap .sw { display: inline-block; width: 14px; height: 3px; border-radius: 2px; background: var(--accent); }
+.ivhist .ivcap .sw.h { background: var(--muted); }
+.ivhist .ivtwrap { overflow-x: auto; margin-top: 14px; }
+.dchart.ivchart .ax { font-size: 11px; }
+.dchart.ivchart .ivunit { font-weight: 700; }
+.dchart .ivlab { fill: var(--paper); font-size: 12px; font-weight: 800; font-variant-numeric: tabular-nums; }
+.dchart .lhr { fill: none; stroke: var(--muted); stroke-width: 2; stroke-linejoin: round; stroke-linecap: round; }
+.dchart .dhr { fill: var(--muted); stroke: var(--ink-2); stroke-width: 2; }
+.chcard .chfoot { font-size: 12px; opacity: .75; margin-top: 6px; font-weight: 700; }
+@media (max-width: 560px) {
+  .ivtbl .ivx { display: none; }
+  .ivhist .ivtiles { gap: 10px; }
+  .ivhist .record { padding: 14px; }
+  .ivhist .record .v { font-size: 32px; margin-top: 10px; }
+}
