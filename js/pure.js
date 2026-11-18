@@ -10,6 +10,7 @@ import { stravaExport } from './tcx.js';
 import { applyTheme, icon } from './theme.js';
 import { gearSet, gearName, parseGear, parseRings, shiftGrade, CASSETTES, COG_TEETH } from './gears.js';
 import { click } from './zwiftclick.js';
+import { padButtons } from './controller.js';
 
 const $ = (s, r = document) => r.querySelector(s);
 const params = new URLSearchParams(location.search), DEMO = params.has('demo');
@@ -444,5 +445,24 @@ if (draft?.samples?.length && Date.now() - draft.savedAt < 12 * 3600e3) {
   $('#rGo', s).onclick = () => { const { savedAt, ...r } = draft; Object.assign(R, r, { state: 'pause' }); s.remove(); start(); };
   $('#rDrop', s).onclick = () => { dropDraft(); s.remove(); };
 } else { if (draft) dropDraft(); if (DEMO && params.has('run')) start(); if (location.hash === '#sensors') sensorsSheet(); } // handy.html settings → Devices
+// ---------------- gamepad (owner 18.11.: the pad must work here too, like in the 3D ride) ----------------
+// L / R and D-pad ↑ ↓: ERG ±5 W, Grade ±0.5 % (L / R shift with virtual gears on), workout target ±1 W · L2 / R2: ±25 W, ±1 %, ±5 W
+// A or Start: start / pause · B: lap · Select: next mode (ERG, Grade, Workout). Pair the pad in the computer's Bluetooth settings.
+let padWas = [], padSeen = false;
+function padTick() {
+  requestAnimationFrame(padTick);
+  const pad = navigator.getGamepads?.().find(Boolean); if (!pad) { padWas = []; return; }
+  const now = padButtons(pad).map(Boolean), was = padWas, hit = i => now[i] && !was[i]; padWas = now;
+  if (!was.length || $('.psheet') || !now.some((v, i) => v && !was[i])) return;
+  if (!padSeen) { padSeen = true; flash('Controller ready', 1500); }
+  const d = k => el.querySelector(`[data-d="${k}"]`)?.click(), up = hit(5) || hit(12), dn = hit(4) || hit(13), big = hit(7) ? 1 : hit(6) ? -1 : 0;
+  if (hit(0) || hit(9) || hit(16)) R.state === 'run' ? pause() : R.state !== 'done' && start();
+  else if (hit(1)) { if (R.state === 'run') lap(); }
+  else if (hit(8)) setMode({ erg: 'grade', grade: 'work', work: 'erg' }[P.mode] || 'erg');
+  else if (P.mode === 'work') { if (up || dn) tune(up ? 1 : -1); else if (big) tune(big * 5); }
+  else if (P.mode === 'erg') { if (up || dn) d(up ? 5 : -5); else if (big) d(big * 25); }
+  else if (P.mode === 'grade') { if (VG() && (hit(4) || hit(5))) shift(hit(5) ? 1 : -1); else if (up || dn) d(up ? 0.5 : -0.5); else if (big) d(big); }
+}
+if (navigator.getGamepads) requestAnimationFrame(padTick);
 clickResume();
 if ('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js').catch(() => {});
