@@ -114,3 +114,5 @@ body.remote { --or: #ff5a1f; --glow: 0 0 22px rgba(255, 90, 31, .45); min-height
 @media (max-width: 359px) { .rbrand small { display: none; } #rm.connected .rpill { padding: 0 11px; gap: 0; } #rm.connected .rpill b { display: none; } }
 .rrow b:not(.num) { white-space: normal; font-size: 15px; line-height: 1.15; overflow-wrap: break-word; padding-top: 4px; } /* "Next: Recovery spin" wraps instead of being cut */
 @media (max-width: 359px) { .rrow span:nth-child(3) { grid-column: 1 / -1; flex-direction: row; align-items: baseline; gap: 8px; } } /* "Next" on its own line */
+/* 360-389 px with Safari's wider capitals: "RIDEFRAME REMOTE" stays whole, the header spacing gives a little instead */
+@media (min-width: 360px) and (max-width: 389px) { .rtop { gap: 6px; } .rback { padding-right: 4px; } .rbrand small { margin-left: 6px; letter-spacing: .1em; } .rpill { padding: 0 9px; gap: 6px; } }

@@ -138,6 +138,8 @@ html:has(.psheet), body:has(.psheet) { overflow: hidden !important; }
 @media (max-width: 440px) { body.outdoor .ptop .pbrand { display: none; } body.outdoor .ptop .pback + * { margin-left: auto; } }
 /* smallest phones (320 px): the unit moves under the number, so the number keeps the whole tile width */
 @media (max-width: 340px) { .ptile { grid-template-columns: minmax(0, 1fr); } .ptile b { font-size: clamp(15px, 19cqw, 30px); } .ptile small { line-height: 1.1; } }
+/* 341-400 px, three tiles a row: long values ("4,050.1 km/h") get 4 px more room and may go down to 12 px, so they are never cut */
+@media (min-width: 341px) and (max-width: 400px) { .ptiles:not(.n4):not(.n6) .ptile { padding-left: 8px; padding-right: 8px; } .ptiles:not(.n4):not(.n6) .ptile b { font-size: clamp(12px, 14cqw, 36px); } .ptile small { padding-left: 3px; } }
 .pgear { display: grid; place-items: center; color: var(--paper); } .gico { width: 18px; height: 18px; }
 .psheetin > .label:first-child { font-size: 15px; color: var(--paper); letter-spacing: .08em; }
 /* phone pages scroll like a normal app page (Freddy 16.11.: "sieht aus, als würde man scrollen, aber man kann nicht"); never sideways */

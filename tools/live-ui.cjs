@@ -119,7 +119,9 @@ async function peerOut({ page }, m) {
     await shot(PH, 'phone_friends_sheet_390.png'); await PH.click('#frOk');
     await PH.click('#hSet'); await PH.waitForSelector('#tLive');
     ok(await PH.isChecked('#tLive') && await PH.isChecked('#tLiveAuto'), 'phone settings: both switches, on by default');
-    await PH.locator('#tLive').scrollIntoViewIfNeeded(); await PH.waitForTimeout(300); await shot(PH, 'phone_settings_riding_now_390.png');
+    // the sheet redraws once if the server's prefs differ from the phone's (js/handy.js settings): re-query and retry until it holds still
+    for (let i = 0; ; i++) { try { await PH.locator('#tLive').scrollIntoViewIfNeeded({ timeout: 3000 }); break; } catch (e) { if (i >= 4) throw e; await PH.waitForSelector('#tLive'); await PH.waitForTimeout(200); } }
+    await PH.waitForTimeout(300); await shot(PH, 'phone_settings_riding_now_390.png');
     await PH.click('#tOk');
 
     await LB.waitForSelector('.frchip.online', { timeout: 20000 }).catch(() => {});

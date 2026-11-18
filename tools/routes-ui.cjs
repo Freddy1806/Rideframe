@@ -8,6 +8,8 @@ const { spawn } = require('node:child_process');
 const http = require('node:http'), net = require('node:net'), path = require('node:path'), fs = require('node:fs'), os = require('node:os');
 const ROOT = path.join(__dirname, '..'), SHOTS = process.env.SHOTS || '';
 const free = () => new Promise(r => { const s = net.createServer().listen(0, '127.0.0.1', () => { const p = s.address().port; s.close(() => r(p)); }); });
+// "Import from Strava routes" shows once /api/strava/status answers (js/outdoor.js routes sheet): slow on a busy Mac, so wait for it, generously
+const STRAVA_WAIT = 30000;
 let fails = 0; const ok = (c, m) => { console.log((c ? 'OK   ' : 'FAIL ') + m); if (!c) fails++; };
 // the demo loop around Reine (outdoor.js demoGPS / demoSegs): angle a -> position
 const C = [67.9326, 13.0890], RR = .006, at = a => [C[0] + Math.sin(a) * RR, C[1] + Math.cos(a) * RR * 2.4];
@@ -41,7 +43,7 @@ const routeGpx = (a0, a1, name) => `<?xml version="1.0" encoding="UTF-8"?><gpx v
   ok(await p.isVisible('#oRoute') && (await p.textContent('#oRoute')).includes('Routes'), 'route chip on the map before the start');
   await p.click('#oRoute'); await p.waitForSelector('#rFile', { state: 'attached' });
   ok(await p.textContent('.psheet').then(t => /No routes yet/.test(t)), 'empty list explains where routes come from');
-  await p.clock.runFor(500); await p.waitForSelector('#rStrava', { state: 'visible', timeout: 8000 }).catch(() => {}); ok(await p.isVisible('#rStrava'), 'Import from Strava routes is offered (connected)');
+  await p.clock.runFor(500); await p.waitForSelector('#rStrava', { state: 'visible', timeout: STRAVA_WAIT }).catch(() => {}); ok(await p.isVisible('#rStrava'), 'Import from Strava routes is offered (connected)');
   await p.setInputFiles('#rFile', gpx); await p.waitForSelector('.oroute');
   const row = await p.textContent('.oroute'); ok(/Reine loop/.test(row) && /km/.test(row) && /climb/.test(row), 'imported route listed: ' + row.replace(/\s+/g, ' ').trim());
   ok(await p.locator('.oroute.on').count() === 1 && await p.locator('.oroute svg path').count() === 1, 'it is selected, with its shape');
@@ -96,12 +98,12 @@ const routeGpx = (a0, a1, name) => `<?xml version="1.0" encoding="UTF-8"?><gpx v
   ok(/Morning|Lunch|Afternoon|Evening|Ride/.test(await p.textContent('#oRoute')), 'Use as route: the ride is the new route: ' + (await p.textContent('#oRoute')).trim());
   ok(await p.evaluate(async () => { const { db } = await import('/js/db.js'); return (await db.kvGet('navRoutes')).length; }) === 2, 'two routes stored');
   // Strava routes (fake Strava)
-  await p.click('#oRoute'); await p.clock.runFor(500); await p.waitForSelector('#rStrava:not([hidden])'); await p.click('#rStrava');
+  await p.click('#oRoute'); await p.clock.runFor(500); await p.waitForSelector('#rStrava', { state: 'visible', timeout: STRAVA_WAIT }); await p.click('#rStrava');
   await p.waitForSelector('[data-sr="9001"]'); await p.clock.runFor(200); await shot('08_strava_routes'); await noSide('strava routes');
   const nStrava = () => p.evaluate(async () => { const { db } = await import('/js/db.js'); return ((await db.kvGet('navRoutes')) || []).filter(r => r.stravaId === '9001').length; });
   await p.click('[data-sr="9001"]'); await p.waitForFunction(() => !document.querySelector('[data-sr]')); ok(await nStrava() === 1, 'Strava route saved');
   ok(true, 'Strava route imported and chosen: ' + (await p.textContent('#oRoute')).trim());
-  await p.click('#oRoute'); await p.clock.runFor(500); await p.click('#rStrava'); await p.waitForSelector('[data-sr="9001"]'); ok(/saved/.test(await p.textContent('[data-sr="9001"]')), 'marked as saved');
+  await p.click('#oRoute'); await p.clock.runFor(500); await p.waitForSelector('#rStrava', { state: 'visible', timeout: STRAVA_WAIT }); await p.click('#rStrava'); await p.waitForSelector('[data-sr="9001"]'); ok(/saved/.test(await p.textContent('[data-sr="9001"]')), 'marked as saved');
   await p.click('[data-sr="9001"]'); await p.waitForFunction(() => !document.querySelector('[data-sr]'));
   ok(await nStrava() === 1, 'importing it twice keeps one copy');
   // Send to watch (19.11.): signed in, one small toggle per route puts a simplified copy on the host for the Garmin watch

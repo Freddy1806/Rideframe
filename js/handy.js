@@ -118,7 +118,7 @@ function settings() {
       try { const l = await import('./live.js'), p = await l.putPrefs({ [k]: v }); S.liveShow = p.show; S.liveAuto = p.auto; l.startOnline({ show: () => S.liveShow !== false }); } catch { const h = $('#tLiveHint', s); if (h) h.textContent = 'Not saved on the server. Check your connection.'; } };
     $('#tLive', s)?.addEventListener('change', e => liveSet('show', e.target.checked));
     $('#tLiveAuto', s)?.addEventListener('change', e => liveSet('auto', e.target.checked));
-    if (acc && !draw.synced) { draw.synced = true; import('./live.js').then(l => l.getPrefs()).then(p => { if (S.liveShow === p.show && S.liveAuto === p.auto) return; S.liveShow = p.show; S.liveAuto = p.auto; if (s.isConnected) draw(); }).catch(() => {}); }
+    if (acc && !draw.synced) { draw.synced = true; import('./live.js').then(l => l.getPrefs()).then(p => { const same = (S.liveShow !== false) === p.show && (S.liveAuto !== false) === p.auto; S.liveShow = p.show; S.liveAuto = p.auto; if (!same && s.isConnected) draw(); }).catch(() => {}); }
     s.querySelectorAll('[data-rest]').forEach(b => b.onclick = () => { S.kraftRest = +b.dataset.rest; save(); draw(); });
     s.querySelectorAll('[data-th]').forEach(b => b.onclick = () => { S.theme = b.dataset.th; applyTheme(S, null); save(); draw(); });
     $('#tMc', s).onchange = e => { S.modeColors = e.target.checked; save(); draw(); render(); };
