@@ -247,9 +247,15 @@ function fakePad() { // a standard-mapping gamepad; window.__pad.press(i) holds 
       const zs = async pw => { await q2.evaluate(pw => { window.__tp = pw; window.__ride.powerHist = []; }, pw); await q2.waitForTimeout(1500);
         return q2.evaluate(() => ({ st: document.querySelector('#hWState').textContent, cls: document.querySelector('#hWPow').className, zone: document.querySelector('#hWZone').className, p: +document.querySelector('#hWP').textContent })); };
       const zl = await zs(base - 40), zo = await zs(base + 15), zh = await zs(base + 60);
-      ok(/^\d+ W too low$/.test(zl.st) && /z-lo/.test(zl.cls) && /z-lo/.test(zl.zone), `${base - 40} W: "${zl.st}", marked too low`, JSON.stringify(zl));
+      // ERG: the trainer holds the watts, so no red verdict for the rider (owner 18.11.), only a calm "trainer settling", after 12 s "trainer N W off"
+      ok(zl.st === 'trainer settling' && !/z-/.test(zl.cls) && !/z-/.test(zl.zone), `ERG, ${base - 40} W: "${zl.st}", no red verdict`, JSON.stringify(zl));
       ok(zo.st === 'in zone' && !/z-/.test(zo.cls), `${base + 15} W: "in zone"`, JSON.stringify(zo));
-      ok(/^\d+ W too high$/.test(zh.st) && /z-hi/.test(zh.cls), `${base + 60} W: "${zh.st}", marked too high`, JSON.stringify(zh));
+      ok(zh.st === 'trainer settling' && !/z-/.test(zh.cls), `ERG, ${base + 60} W: "${zh.st}", no red verdict`, JSON.stringify(zh));
+      await q2.evaluate(() => { window.__ride._ergOffAt = performance.now() - 13000; }); await q2.waitForTimeout(700);
+      const zo2 = await q2.evaluate(() => ({ st: document.querySelector('#hWState').textContent, cls: document.querySelector('#hWPow').className }));
+      ok(/^trainer \d+ W off$/.test(zo2.st) && !/z-/.test(zo2.cls), `ERG, off for 12 s: "${zo2.st}", still not red`, JSON.stringify(zo2));
+      const ne = await q2.evaluate(async () => { const r = window.__ride, was = r._ergOn; r._ergOn = false; r._workoutHUD(r.power); const o = { st: document.querySelector('#hWState').textContent, cls: document.querySelector('#hWPow').className }; r._ergOn = was; return o; });
+      ok(/^\d+ W too high$/.test(ne.st) && /z-hi/.test(ne.cls), `without ERG the verdict stays: "${ne.st}"`, JSON.stringify(ne));
       await q2.evaluate(() => { window.__tp = 240; });
       await q2.keyboard.press('Shift+ArrowDown'); await q2.waitForTimeout(100);
       ok(await q2.evaluate(() => window.__ride.wAdj === -2 && !window.__ride.keyPower), 'Shift+↓ = −5 W');

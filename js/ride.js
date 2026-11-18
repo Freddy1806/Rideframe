@@ -176,7 +176,7 @@ export class RideSession {
     this.q = s => el.querySelector(s);
     this._wireWorkoutStop();
     el.querySelector('#hGearChip')?.addEventListener('click', () => this.toggleShift());
-    if (!this._closed) this._clickOff = click.on('shift', d => { if (!this.paused && !this.finished) this._padShift(d); }); // Zwift Click (connected in Settings): + / − like the pad's L/R
+    if (!this._closed) this._clickOff = click.on('shift', d => { if (this.paused || this.finished) return; if (this.workout && !this.wDone && this.source === 'trainer') this._wTune(d); else this._padShift(d); }); // Zwift Click (connected in Settings): + / − like the pad's L/R: target ±1 W in a workout, gears otherwise
     el.querySelector('#hPause')?.addEventListener('click', () => this.paused ? this._resume() : this._pause());
     el.querySelector('#hCam')?.addEventListener('click', () => this._cycleView());
     el.querySelector('#hBar')?.addEventListener('click', () => this._toggleBar());
@@ -771,14 +771,18 @@ export class RideSession {
     else {
       const free = !!w.step.free, hard = w.hard, rest = !hard && !free && !w.ramp && /rest|easy|recover/i.test(w.step.label || '');
       const sp = this._sensors().pw; // no power source: "–", no verdict
-      const z = free || w.ramp || sp !== 'ok' ? '' : pShow < w.lo ? 'lo' : pShow > w.hi ? 'hi' : 'ok';
+      const zRaw = free || w.ramp || sp !== 'ok' ? '' : pShow < w.lo ? 'lo' : pShow > w.hi ? 'hi' : 'ok';
+      // ERG: the trainer holds the watts, so being off is never the rider's mistake. No red verdict; only after 12 s off a calm note
+      const now = performance.now(); if (!this._ergOn || !zRaw || zRaw === 'ok') this._ergOffAt = 0; else if (!this._ergOffAt) this._ergOffAt = now;
+      const ergOff = this._ergOn && this._ergOffAt && now - this._ergOffAt > 12000;
+      const z = this._ergOn && zRaw ? 'ok' : zRaw;
       q('#hWStep').textContent = w.step.label || 'Block';
       q('#hWOf').textContent = hard ? `${/^opener/i.test(w.series) ? 'opener' : 'interval'} ${w.hardNo} of ${w.hardCount}` : w.ramp === 'in' ? 'ramp up' : w.ramp === 'out' ? 'ramp down' : w.ramp === 'step' ? `ramp to ${w.rampTo} W` : '';
       q('#hWT').textContent = w.target;
       q('#hWP').textContent = sp === 'ok' ? pShow : '–'; q('#hWRc').hidden = sp !== 'lost';
       q('#hWLeft').textContent = q('#hWTime').textContent = fmtTime(Math.ceil(w.left));
       arc.setAttribute('stroke-dasharray', `${(C * Math.max(0, Math.min(1, w.left / w.step.dur))).toFixed(1)} ${C.toFixed(1)}`);
-      q('#hWState').textContent = sp !== 'ok' ? (sp === 'lost' ? 'connection lost' : 'no connection') : free ? 'free' : w.ramp === 'in' ? 'ramp up' : w.ramp === 'out' ? 'ramp down' : w.ramp === 'step' ? 'ramp' : rest || !z ? 'easy' : z === 'ok' ? 'in zone' : z === 'lo' ? `${w.target - pShow} W too low` : `${pShow - w.target} W too high`;
+      q('#hWState').textContent = sp !== 'ok' ? (sp === 'lost' ? 'connection lost' : 'no connection') : free ? 'free' : w.ramp === 'in' ? 'ramp up' : w.ramp === 'out' ? 'ramp down' : w.ramp === 'step' ? 'ramp' : rest || !z ? 'easy' : ergOff ? `trainer ${Math.abs(pShow - w.target)} W off` : z === 'ok' ? (this._ergOn && zRaw !== 'ok' ? 'trainer settling' : 'in zone') : z === 'lo' ? `${w.target - pShow} W too low` : `${pShow - w.target} W too high`;
       wp.classList.toggle('off', sp !== 'ok');
       if (hard && z && z !== 'ok') { wp.classList.add('z-' + z); pw?.classList.add('z-' + z); } else if (hard) pw?.classList.add('z-ok');
       // the zone band: ±5 % around the target in the middle of a track from 80 to 120 %; the marker is your power
