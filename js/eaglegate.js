@@ -82,9 +82,9 @@ export function follow(env, rms, dt, peak) {
 
 /** where the head sits on screen, as fractions of the viewport (aspect = width / height): the visible part of the head covers
  *  `vis` of the width at the right edge (a quarter to a third), its box centre `cy` from the top (upper two thirds), and the
- *  whole head is `width` wide, so the rest is cut off by the edge. Narrower on ultrawide screens, so it never reaches the bar. */
+ *  whole head is `width` wide (or less when it would be more than `maxH` of the height), so the rest is cut off by the edge. Narrower on ultrawide screens, so it never reaches the bar. */
 export function eagleFrame(aspect) {
   const k = Math.max(0, Math.min(1, (aspect - 1.8) / 0.6));
   const vis = 0.315 - 0.045 * k;
-  return { left: 1 - vis, width: vis * 1.12, cy: 0.34 };
+  return { left: 1 - vis, width: vis * 1.12, cy: 0.34 + 0.03 * k, maxH: 0.56 + 0.1 * k }; // maxH: a tall head (looking at you) is made smaller, never longer
 }
