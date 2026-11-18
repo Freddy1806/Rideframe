@@ -294,7 +294,7 @@ input[type=number]::-webkit-inner-spin-button, input[type=number]::-webkit-outer
 .groupchip .grow b { font-weight: 600; }
 .groupchip .grow.behind b { color: var(--paper); }
 .groupchip .grow.ahead b { color: var(--accent); }
-.groupchip .grow i { font-style: normal; color: var(--muted); font-size: 11px; }
+.groupchip .grow i { font-style: normal; color: var(--muted); font-size: 11px; white-space: nowrap; } .groupchip .grow .ghr { color: var(--paper); font-weight: 700; max-width: none; overflow: visible; }
 .group-code { font: 700 44px/1 var(--display, inherit); letter-spacing: .18em; text-transform: uppercase; margin: 14px 0 6px; }
 .group-list { display: grid; gap: 6px; margin: 14px 0; }
 .group-list div { display: flex; justify-content: space-between; padding: 8px 12px; border-radius: 10px; background: rgba(255,255,255,.06); }

@@ -149,6 +149,12 @@ async function peerOut({ page }, m) {
     ok(await vis(LB, '#hPause') && (await LB.textContent('#hGCode').catch(() => '')).trim() === code, 'B is riding in A\'s group (late join next to the host)');
     await RA.waitForFunction(() => /Freddy/.test(document.querySelector('#hGroup .glist')?.textContent || ''), null, { timeout: 15000 }).catch(() => {});
     ok(/Freddy/.test(await RA.textContent('#hGroup .glist')), 'A sees Freddy in his group chip');
+    const rowB = () => RA.evaluate(() => [...document.querySelectorAll('#hGroup .grow')].find(x => /Freddy/.test(x.textContent))?.querySelector('i')?.textContent || '');
+    ok(/\d+ W · – bpm/.test(await rowB()), `no strap on B: “–” next to his watts (${await rowB()})`);
+    await LB.evaluate(() => { window.__ride.state.hr = { hr: 142, connected: true }; }); // B puts his strap on
+    await RA.waitForFunction(() => /142 bpm/.test(document.querySelector('#hGroup .glist')?.textContent || ''), null, { timeout: 15000 }).catch(() => {});
+    ok(/\d+ W · 142 bpm/.test(await rowB()), `B's heart rate next to his watts at A (${await rowB()})`);
+    await shot(RA, 'group_chip_hr_1280.png');
     // ---- A's workout after B joined: the same workout, offsets, ERG and clock; the target is what A's own clock asks for ----
     const wk = await RA.evaluate(async () => { clearInterval(window.__elT); const { workoutState } = await import('/js/workouts.js'), r = window.__ride, b = window.__wB, s = window.__elS;
       let back = 0, jump = 0, paused = 0; for (let i = 1; i < s.length; i++) { const de = s[i][1] - s[i - 1][1], dw = (s[i][0] - s[i - 1][0]) / 1000; if (de < -1e-9) back++; if (de > dw + 0.3) jump++; if (s[i][2]) paused++; }
