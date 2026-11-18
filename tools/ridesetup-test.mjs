@@ -3,13 +3,14 @@
 // Usage: node --test tools/ridesetup-test.mjs   (no browser)
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { MODES, modeOf, shiftOf, modeChange, workoutChoices, setMode, setShift, setWorkout } from '../js/ridesetup.js';
+import { MODES, modeOf, shiftOf, sourceOf, modeChange, workoutChoices, setMode, setShift, setWorkout, setSource, SOURCE_NOTE } from '../js/ridesetup.js';
+import { Trainer } from '../js/trainer.js';
 import { WORKOUTS, PERSONAL, workoutById } from '../js/workouts.js';
 
 /** a ride as js/ride.js keeps it, with the trainer and the HUD recorded */
 function fakeRide(o = {}) {
   const log = [], els = new Set(['.hud-top']);
-  const r = { state: { settings: { erg: true }, trainer: { connected: true, setPower: w => log.push(['power', w]), setGrade: (g, f) => log.push(['grade', g]) } },
+  const r = { state: { settings: { erg: true }, trainer: { connected: true, setPower: w => log.push(['power', w]), setGrade: (g, f) => log.push(['grade', g]), pmOnly: false, setPmOnly(on) { log.push(['pmOnly', on]); const was = this.connected; this.connected = false; this.pmOnly = on; return was; } } },
     workout: null, erg: true, flatRide: false, virtual: false, auto: false, berg: false, elapsed: 600, power: 180, ftp: 250, log, els,
     q: s => (els.has(s) ? { remove: () => els.delete(s), insertAdjacentHTML: () => { els.add('#hWork'); els.add('#hWName'); }, classList: { remove() {} }, set textContent(v) { log.push(['name', v]); } } : null),
     el: { classList: { toggle: (c, on) => log.push(['class', c, on]) } },
@@ -68,4 +69,26 @@ test('a workout chosen mid-ride: its intervals are cut from the samples after th
   const samples = []; for (let t = 1; t <= 900; t++) samples.push([t, 0, t < 660 ? 100 : 300]);
   const iv = intervalRecords({ workout: w, samples, elapsed: 900, ftp: 250, t0: 600 });
   assert.equal(iv.length, 1); assert.equal(iv[0].at, 660); assert.equal(iv[0].w, 300, 'the watts of the interval as ridden, not of the ride start');
+});
+
+test('power meter only: never with trainer control; ERG, gradient modes and virtual gears off, the workout keeps its targets', () => {
+  const r = fakeRide({ virtual: true }); setWorkout(r, workoutById('ss3x10')); r.log.length = 0;
+  assert.equal(setSource(r, 'pm'), true); assert.equal(sourceOf(r), 'pm'); assert.equal(r.state.settings.powerSource, 'pm');
+  assert.deepEqual(r.log.find(x => x[0] === 'shift'), ['shift', 'real'], 'virtual gears end'); assert.deepEqual(r.log.find(x => x[0] === 'power'), ['power', null], 'ERG released');
+  assert.ok(r.log.some(x => x[0] === 'flash' && /connect the power meter/.test(x[1])), 'the trainer was dropped: say what to connect');
+  assert.equal(r.erg, false); assert.equal(r.workout.id, 'ss3x10', 'the workout goes on'); assert.equal(modeOf(r), 'pm');
+  assert.equal(setMode(r, 'erg'), false); assert.equal(setMode(r, 'flat'), false, 'no gradient modes either'); assert.equal(modeChange('sim', true, true), null);
+  r.log.length = 0; setShift(r, 'virtual'); assert.equal(r.log.filter(x => x[0] === 'shift').length, 0, 'virtual gears refused');
+  assert.equal(setSource(r, 'pm'), false, 'already');
+  assert.equal(setSource(r, 'trainer'), true); assert.equal(r.erg, true, 'back to ERG from the setting'); assert.ok(r.log.some(x => x[0] === 'workout'));
+  assert.match(SOURCE_NOTE.pm, /never controls the trainer/);
+});
+
+test('Trainer in power meter only mode writes nothing to the trainer; switching drops the connected device', async () => {
+  const t = new Trainer(), writes = []; let gone = false;
+  t.device = { gatt: { get connected() { return !gone; }, disconnect() { gone = true; } } }; t.cp = { writeValue: b => { writes.push([...b]); return Promise.resolve(); } }; t.mode = 'ftms';
+  t.setPower(200); assert.equal(t.erg, 200); await t.queue; assert.equal(writes.length, 1, 'trainer control: the target went out'); assert.equal(t.setPmOnly(true), true, 'the trainer is disconnected'); assert.ok(gone);
+  assert.equal(t.erg, null); assert.equal(t.cp, null);
+  t.device = { gatt: { connected: true, disconnect() {} } }; t.cp = { writeValue: b => { writes.push([...b]); return Promise.resolve(); } }; const n = writes.length;
+  t.setPower(250); t.setGrade(5, true); await t.queue; assert.equal(t.erg, null); assert.equal(writes.length, n, 'no ERG, no grade');
 });

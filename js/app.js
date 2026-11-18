@@ -54,6 +54,7 @@ function getDemoRoute() { return getBuiltin('demo'); }
 async function boot() {
   const saved = await db.kvGet('settings').catch(() => null);
   if (saved) Object.assign(state.settings, saved);
+  state.trainer.pmOnly = state.settings.powerSource === 'pm'; // power meter only (js/ridesetup.js): RIDEFRAME never controls the trainer
   setMyWorkouts(state.settings.myWorkouts);
   const hasAcc = await accountsAvailable();
   if (hasAcc && account()) await syncAccount(state).catch(e => console.warn('Konto-Abgleich:', e.message));
@@ -688,7 +689,7 @@ function updateTrainerPill() {
   const t = state.trainer, pill = $('#trainerPill');
   const on = t.connected;
   pill.classList.toggle('on', on);
-  pill.querySelector('.t').innerHTML = on ? `✓ ${esc(t.device.name || 'Trainer')} connected <span class="sub">${t.mode === 'ftms' ? 'FTMS' : t.mode === 'wahoo' ? 'Wahoo' : 'watts only'}</span>` : 'Connect KICKR';
+  pill.querySelector('.t').innerHTML = on ? `✓ ${esc(t.device.name || 'Trainer')} connected <span class="sub">${t.mode === 'pm' ? 'power meter only' : t.mode === 'ftms' ? 'FTMS' : t.mode === 'wahoo' ? 'Wahoo' : 'watts only'}</span>` : t.pmOnly ? 'Connect power meter' : 'Connect KICKR';
   pill.title = on ? 'Connected. Click to disconnect.' : 'Connect trainer via Bluetooth';
 }
 function updateHrPill() { // heart rate strap: its own Bluetooth connection, runs alongside the KICKR

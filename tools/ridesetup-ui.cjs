@@ -26,7 +26,7 @@ let fails = 0; const ok = (c, m) => { console.log(`${c ? '✓' : '✗'} ${m}`); 
     const BTN = { A: 0, B: 1, start: 9, up: 12, down: 13 };
     const press = async (k, hold = 80) => { await R.evaluate(i => { const x = window.__pad.buttons[i]; x.pressed = true; x.value = 1; }, BTN[k]); await R.waitForTimeout(hold);
       await R.evaluate(i => { const x = window.__pad.buttons[i]; x.pressed = false; x.value = 0; }, BTN[k]); await R.waitForTimeout(120); };
-    const on = () => R.evaluate(() => { const a = document.activeElement; return a ? (a.id || a.dataset.mode || a.dataset.shift || (a.dataset.w !== undefined ? 'w:' + a.dataset.w : a.textContent.trim())) : ''; });
+    const on = () => R.evaluate(() => { const a = document.activeElement; return a ? (a.id || (a.dataset.src ? 'src:' + a.dataset.src : '') || a.dataset.mode || a.dataset.shift || (a.dataset.w !== undefined ? 'w:' + a.dataset.w : a.textContent.trim())) : ''; });
     /** the ride's own menu: D-pad down / up until the wanted button is the focused one */
     const padTo = async (want, dir = 'down', max = 60) => { for (let i = 0; i < max; i++) { if (await on() === want) return true; await press(dir); } return (await on()) === want; };
     const st = () => R.evaluate(() => { const r = window.__ride, t = r.state.trainer; return { w: r.workout?.id || null, erg: r.erg, flat: r.flatRide, virt: r.virtual, t0: r._wT0, el: r.elapsed, step: r.wNow?.i ?? null, target: r.wNow?.target ?? null,
@@ -68,6 +68,35 @@ let fails = 0; const ok = (c, m) => { console.log(`${c ? '✓' : '✗'} ${m}`); 
     ok(await R.locator('.rsbox [data-mode="erg"]').isDisabled(), 'ERG greyed out again');
     const n0 = s.n; await R.keyboard.press('Enter').catch(() => {}); await tabTo('oBack'); await R.keyboard.press('Enter'); await R.waitForTimeout(2500);
     s = await st(); ok(!s.paused && s.n > n0, `recording went on all along (${s.n} samples)`);
+
+    // ---- power meter only (Freddy 18.11. 11:34): a connected trainer is dropped, nothing is ever written to a trainer ----
+    await R.evaluate(() => { const t = window.__ride.state.trainer; window.__w = []; window.__gone = false;
+      t.device = { name: 'KICKR TEST', gatt: { get connected() { return !window.__gone; }, disconnect() { window.__gone = true; } } };
+      t.cp = { writeValue: b => { window.__w.push([...b]); return Promise.resolve(); } }; t.mode = 'ftms'; });
+    await R.keyboard.press('o'); await R.waitForSelector('.rsbox');
+    ok(await tabTo('w:ss2x12'), 'keyboard: Tab to “Sweet Spot 2 × 12”'); await R.keyboard.press('Enter'); await R.waitForTimeout(300);
+    ok((await R.evaluate(() => window.__w.length)) > 0, 'trainer control: the ERG target went to the (fake) trainer');
+    ok(await padTo('src:pm', 'up'), 'pad: up to “Power meter only”'); await press('A'); await R.waitForTimeout(300);
+    const pm = await R.evaluate(() => { const r = window.__ride, t = r.state.trainer, b = document.querySelector('.rsbox');
+      return { pm: t.pmOnly, gone: window.__gone, dev: !!t.device, erg: r.erg, tErg: t.erg ?? null, w: r.workout?.id, set: r.state.settings.powerSource,
+        modesOff: [...b.querySelectorAll('[data-mode]')].every(x => x.disabled), virtOff: b.querySelector('[data-shift="virtual"]').disabled, realOn: b.querySelector('[data-shift="real"]').classList.contains('on'),
+        note: b.querySelector('#rsNote')?.textContent || '', conn: b.querySelector('#rsConn')?.textContent || '', on: b.querySelector('[data-src="pm"]').classList.contains('on') }; });
+    ok(pm.pm && pm.gone && !pm.dev && pm.set === 'pm' && pm.on, 'power meter only: the trainer is disconnected, the choice is kept');
+    ok(!pm.erg && pm.tErg === null && pm.modesOff && pm.virtOff && pm.realOn, 'no ERG, no gradient modes, no virtual gears');
+    ok(/never controls the trainer/.test(pm.note) && /Connect power meter/.test(pm.conn), `one line explains it, a button connects the power meter (“${pm.note.slice(0, 60)}…”)`);
+    if (SHOTS) await R.screenshot({ path: `${SHOTS}/ridesetup_pm_1280.png` });
+    await R.evaluate(() => { const t = window.__ride.state.trainer; window.__w = []; // a power meter connected (fake): watts in, nothing out
+      t.device = { name: 'ASSIOMA TEST', gatt: { connected: true, disconnect() {} } }; t.mode = 'pm'; t.lastData = performance.now();
+      t.cp = { writeValue: b => { window.__w.push([...b]); return Promise.resolve(); } }; });
+    await press('B'); await R.waitForTimeout(2500);
+    const pr = await R.evaluate(() => { const r = window.__ride; return { w: window.__w.length, paused: r.paused, target: r.wNow?.target, wt: document.querySelector('#hWT')?.textContent || '', step: document.querySelector('#hWStep')?.textContent || '' }; });
+    ok(!pr.paused && pr.w === 0, `riding with the power meter: nothing written to a trainer (${pr.w} writes)`);
+    ok(pr.target > 0 && /\d/.test(pr.wt + pr.step), `the workout shows its target only (${pr.target} W)`);
+    await R.keyboard.press('o'); await R.waitForSelector('.rsbox'); ok(/ASSIOMA TEST · watts only/.test(await R.locator('#rsNote').textContent()), 'the setup names the connected power meter');
+    ok(await tabTo('src:trainer'), 'keyboard: Tab to “Trainer control”'); await R.keyboard.press('Enter'); await R.waitForTimeout(300);
+    const tc = await R.evaluate(() => { const r = window.__ride; return { pm: r.state.trainer.pmOnly, dev: !!r.state.trainer.device, erg: r.erg, set: r.state.settings.powerSource }; });
+    ok(!tc.pm && !tc.dev && tc.erg && tc.set === 'trainer', 'trainer control again: the power meter is disconnected, ERG back');
+    await R.keyboard.press('Escape').catch(() => {}); await tabTo('oBack'); await R.keyboard.press('Enter'); await R.waitForTimeout(500);
 
     // ---- the phone width: the panel fits ----
     await R.evaluate(() => document.fullscreenElement && document.exitFullscreen()).catch(() => {}); await R.waitForTimeout(300); await R.setViewportSize({ width: 390, height: 844 }); await R.keyboard.press('o'); await R.waitForSelector('.rsbox'); await R.waitForTimeout(300);

@@ -93,7 +93,7 @@ const WB_VIEWS = ['big', 'compact', 'focus'], WB_NAMES = { big: 'big', compact: 
 export class RideSession {
   constructor({ route, ghost, state, onExit, autopilot = false, at = 0, group = null, ghostName = '', workout = null, catchUp = false, elapsed0 = 0 }) {
     Object.assign(this, { route, ghost, state, onExit, autopilot, group, ghostName, workout }); this._wId = workout?.id;
-    this.erg = state.settings.erg !== false; this.ftp = state.settings.ftp || 200;
+    this.erg = state.settings.erg !== false && !state.trainer.pmOnly; this.ftp = state.settings.ftp || 200;
     this.wAdj = 0; this.wAdjE = 0; this._adjAcc = 0; this._adjT = 0; this._stepAdj = []; // live watt offset on the hard intervals (_wTune): per rider, never sent to the group
     this.track = route.track;
     this.params = defaultParams(state.settings);
@@ -260,6 +260,7 @@ export class RideSession {
   }
   /** cycle the shifting mid-ride (click on the gear chip or G): real bike -> virtual (Q/E) -> automatic -> Berg-Watt -> real */
   toggleShift() {
+    if (this.state.trainer.pmOnly) return this._flash('Power meter only: shift on the bike (virtual gears need trainer control)', 2500);
     const mode = this.berg ? 'berg' : this.auto ? 'auto' : this.virtual ? 'virtual' : 'real';
     this._setShift({ real: 'virtual', virtual: 'auto', auto: 'berg', berg: 'real' }[mode]);
   }
@@ -493,7 +494,7 @@ export class RideSession {
     q('#hGrade2').textContent = fmtNum(g, 1);
     q('#hTime').textContent = fmtTime(this.elapsed);
     const tag = q('#hGradeTag'); tag.className = 'grade-tag ' + (g > 0.5 ? 'up' : g < -0.5 ? 'down' : 'flat');
-    if (this.source) q('#hTrainer').textContent = this.source === 'trainer' ? `Trainer ${fmtNum(this._trainerGrade(), 1)} %` : 'No trainer · ↑ ↓ watts';
+    if (this.source) q('#hTrainer').textContent = this.source === 'trainer' ? (this.state.trainer.pmOnly ? 'Power meter · trainer free' : `Trainer ${fmtNum(this._trainerGrade(), 1)} %`) : 'No trainer · ↑ ↓ watts';
     // climb info
     const cur = this.climbs.find(c => this.d >= c.from && this.d < c.to);
     const next = this.climbs.find(c => c.from > this.d);

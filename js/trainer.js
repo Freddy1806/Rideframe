@@ -37,13 +37,14 @@ export class Trainer extends EventTarget {
     this.data = { power: 0, cadence: 0, speed: 0, hr: 0 };
     this.lastGrade = null; this.lastSend = 0; this.queue = Promise.resolve();
     this._crank = null;
+    this.pmOnly = false; // "Power meter only" (Freddy 18.11.): read the watts, never take control of the trainer (another app runs it)
   }
   static supported() { return !!navigator.bluetooth; }
   get connected() { return !!this.device?.gatt?.connected; }
   emit(type, detail) { this.dispatchEvent(new CustomEvent(type, { detail })); }
 
   async connect() {
-    this.device = await pickDevice({
+    this.device = await pickDevice(this.pmOnly ? { filters: [{ services: [CPS] }], optionalServices: [CPS, FTMS, U(0x180a)] } : {
       filters: [{ services: [FTMS] }, { services: [CPS] }, { namePrefix: 'KICKR' }],
       optionalServices: [FTMS, CPS, WAHOO_CP, 'a026ee01-0a7d-4ab3-97fa-f1500f9feb8b', U(0x180a)],
     });
@@ -66,6 +67,7 @@ export class Trainer extends EventTarget {
   async _setupSteps(at) {
     const server = await this.device.gatt.connect();
     at('Reading the trainer');
+    if (this.pmOnly) return this._listenOnly(server);
     let ftms = null;
     try { ftms = await server.getPrimaryService(FTMS); } catch {}
     if (ftms) {
@@ -96,6 +98,24 @@ export class Trainer extends EventTarget {
     this.lastGrade = null;
     if (this.sim) try { await this.setSim(this.sim); } catch {}
     this.emit('status', 'connected');
+  }
+
+  /** power meter only: the watts (and cadence) from the Cycling Power Service, or a trainer's own data; no control point is
+   *  ever opened, so no ERG, no gradient, and another app keeps the trainer */
+  async _listenOnly(server) {
+    let cps = null; try { cps = await server.getPrimaryService(CPS); } catch {}
+    if (cps) { const m = await cps.getCharacteristic(CPM); m.addEventListener('characteristicvaluechanged', e => this._onCPM(e.target.value)); await m.startNotifications(); }
+    else { const ibd = await (await server.getPrimaryService(FTMS)).getCharacteristic(IBD); ibd.addEventListener('characteristicvaluechanged', e => this._onIBD(e.target.value)); await ibd.startNotifications(); }
+    this.cp = null; this.mode = 'pm'; this.erg = null; this.lastGrade = null;
+    this.emit('status', 'connected');
+  }
+  /** switch between trainer control and power meter only: never both, so the device connected for the other one is dropped.
+   *  Returns true when a device was disconnected. */
+  setPmOnly(on) {
+    on = !!on; if (on === this.pmOnly) return false;
+    const was = !!this.device; if (was) this.disconnect();
+    this.pmOnly = on; this.cp = null; this.erg = null; this.lastGrade = null; this.mode = null;
+    return was;
   }
 
   disconnect() { const d = this.device; this.device = null; d?.gatt?.disconnect(); this.emit('status', 'disconnected'); }
@@ -154,6 +174,7 @@ export class Trainer extends EventTarget {
 
   /** ERG mode: the trainer holds this power whatever the cadence (training programs). null = back to road grade. */
   setPower(watts) {
+    if (this.pmOnly) { this.erg = null; return; } // power meter only: never a target to the trainer
     if (!this.cp || !this.connected) { this.erg = watts; return; }
     if (watts == null) { if (this.erg != null) { this.erg = null; this.lastGrade = null; } return; }
     watts = Math.max(0, Math.min(2000, Math.round(watts)));
@@ -166,7 +187,7 @@ export class Trainer extends EventTarget {
 
   /** Send road grade in % (already scaled by difficulty). Rate-limited. */
   setGrade(grade, force = false) {
-    if (!this.cp || !this.connected || this.erg != null) return;
+    if (this.pmOnly || !this.cp || !this.connected || this.erg != null) return;
     grade = Math.max(-20, Math.min(20, grade));
     const now = performance.now();
     if (!force && this.lastGrade !== null && Math.abs(grade - this.lastGrade) < 0.1 && now - this.lastSend < 5000) return;

@@ -25,7 +25,7 @@
 .mwstep { display: grid; grid-template-columns: 30px minmax(90px, 1fr) 132px 132px 84px 92px auto; gap: 8px; align-items: center; padding: 8px 10px 8px 8px;
   background: var(--ink); border: 1px solid var(--line); border-left: 4px solid var(--z, var(--line-2)); border-radius: 10px; transition: border-color .12s, background .12s; }
 .mwstep.sel { border-color: color-mix(in srgb, var(--mwa) 55%, var(--line)); border-left-color: var(--z, var(--mwa)); background: color-mix(in srgb, var(--mwa) 5%, var(--ink)); }
-.mwno { display: grid; place-items: center; width: 28px; height: 28px; border-radius: 50%; background: var(--z); color: #0b0b0b; font-weight: 900; font-size: 12px; }
+.mwno { display: grid; place-items: center; min-width: 30px; height: 28px; padding: 0 7px; box-sizing: border-box; border-radius: 14px; background: var(--z); color: #0b0b0b; font-weight: 900; font-size: 12px; }
 .mwmodal .mwstep input { height: 36px; width: 100%; min-width: 0; padding: 0 6px; }
 .mwmodal .mwstep input.mwlab { background: transparent; border-color: transparent; font-weight: 700; padding: 0 4px; }
 .mwmodal .mwstep input.mwlab:hover, .mwmodal .mwstep input.mwlab:focus { border-color: var(--line-2); background: var(--ink-2); }
@@ -45,10 +45,10 @@
 .mwbtns button:hover:not(:disabled), .mwbtns button:focus-visible { border-color: var(--mwa); color: var(--mwa); }
 .mwbtns button:disabled { opacity: .25; cursor: default; }
 /* templates: one tap to a usable workout */
-.mwtpls { display: flex; gap: 8px; overflow-x: auto; padding: 2px 2px 8px; margin: 2px -2px 4px; scrollbar-width: thin; align-items: stretch; }
-.mwtl { flex: none; align-self: center; font-size: 11px; font-weight: 800; letter-spacing: .12em; text-transform: uppercase; color: var(--muted); margin-right: 2px; }
-.mwtpl { flex: none; display: flex; flex-direction: column; align-items: flex-start; gap: 2px; padding: 8px 12px; border-radius: 10px; border: 1px solid var(--line-2); background: var(--ink); color: var(--paper); font: inherit; cursor: pointer; text-align: left; }
-.mwtpl b { font-size: 14px; font-weight: 800; } .mwtpl small { font-size: 11.5px; color: var(--muted); white-space: nowrap; }
+.mwtpls { display: grid; grid-template-columns: repeat(auto-fill, minmax(118px, 1fr)); gap: 8px; padding: 2px 0 8px; margin: 2px 0 4px; } /* wraps: every template visible, no sideways scroll */
+.mwtl { grid-column: 1 / -1; font-size: 11px; font-weight: 800; letter-spacing: .12em; text-transform: uppercase; color: var(--muted); margin-right: 2px; }
+.mwtpl { min-width: 0; display: flex; flex-direction: column; align-items: flex-start; gap: 2px; padding: 8px 12px; border-radius: 10px; border: 1px solid var(--line-2); background: var(--ink); color: var(--paper); font: inherit; cursor: pointer; text-align: left; }
+.mwtpl b { font-size: 14px; font-weight: 800; } .mwtpl small { font-size: 11.5px; color: var(--muted); line-height: 1.3; }
 .mwtpl:hover, .mwtpl:focus-visible, .mwtpl.on { border-color: var(--mwa); } .mwtpl.on b { color: var(--mwa); }
 .mwgraph { cursor: pointer; height: 110px; }
 .mwadds { display: flex; gap: 8px; flex-wrap: wrap; }
