@@ -26,6 +26,7 @@ export class Surprises {
       { id: 'pig', need: ['schwein'], w: 0.35, go: () => this._pig() }, // farmer and pig: a rare treat, not every few km
       { id: 'ship', need: ['langschiff'], sea: true, go: () => this._ship() },
       { id: 'juggler', need: ['gaukler'], go: () => this._juggler() },
+      { id: 'herd', need: ['schaf'], pass: true, w: 0.6, go: () => this._herd() }, // island region 1: a flock driven over the pass
       { id: 'goats', need: ['ziege'], go: () => this._crossing('ziege', 5, 'Meeeh!') },
       { id: 'dog', need: ['hund'], go: () => this._dog() },
       { id: 'eagle', need: ['seeadler'], go: () => this._flyby('seeadler', 1, 'Screeech!') },
@@ -50,7 +51,7 @@ export class Surprises {
     if (time > this.next && this.f.tunnelNear?.(d, 20, 220)) this.next = time + 3; // nothing starts right before or inside a tunnel
     if (time > this.next && this.hold) this.next = time + 3; // a challenge is on: no other surprise steals the show
     if (time > this.next) {
-      const free = this.list.filter(s => (!s.need.length || s.need.some(n => this.A.find(n))) && (!s.sea || this._seaSide(d + 120)) && (!s.village || this._inVillage(d + 60)))
+      const free = this.list.filter(s => (!s.need.length || s.need.some(n => this.A.find(n))) && (!s.sea || this._seaSide(d + 120)) && (!s.pass || this._onPass(d + 160)) && (!s.village || this._inVillage(d + 60)))
         .sort((a, b) => (this.used.get(a.id) || 0) / (a.w || 1) - (this.used.get(b.id) || 0) / (b.w || 1) || Math.random() - .5);
       const s = free[0];
       if (s && s.go() !== false) { this.used.set(s.id, time); this.next = time + 11 + Math.random() * 8; }
@@ -75,6 +76,7 @@ export class Surprises {
   _pt(d, off) { const p = this.f.at(Math.max(0, Math.min(this.track.length - 1, d))), l = Math.hypot(p.tx, p.tz) || 1;
     const x = p.x - p.tz / l * off, z = p.z + p.tx / l * off; return { x, z, y: this.f.ground(x, z), head: Math.atan2(p.tx, p.tz), e: p.e }; }
   _seaSide(d) { for (const s of [-1, 1]) for (const o of [60, 120, 200]) if (this.f.height(this._pt(d, s * o).x, this._pt(d, s * o).z) < -3) return s * o; return 0; }
+  _onPass(d) { const s = (this.track.segments || []).find(q => d >= q.from && d < q.to); return s?.land === 'serp' && !this.f.tunnelNear?.(d, 60, 260); }
   _inVillage(d) { return this.villages.some(s => d > s.from + (s.to - s.from) * s.village[0] && d < s.from + (s.to - s.from) * s.village[1]); }
   _landSide(d) { // the side where the ground next to the road is fairly flat
     let best = 0, bs = 1e9;
@@ -276,6 +278,27 @@ export class Surprises {
       }, { idle: ['Grasen', 'Fressen', 'Stehen'] });
       if (e && k === 0) setTimeout(() => this._say(e.obj, call, 2), 4000);
     }
+  }
+  _herd() { // a whole flock walks up the pass ON the road, driven by a shepherd and his dog; as you come close it parts to both
+    // verges and lets you through, then drifts back behind you (Freddy 18.11., island region 1)
+    const nm = ['schaf_glocke', 'schaf_weiss', 'schaf'].find(n => this.A.find(n)); if (!nm) return false;
+    const d0 = this.w.d + 170, t0 = this.clock, N = 22, vH = 1.2, lerp = (a, b, t) => a + (b - a) * t;
+    const head = () => d0 + vH * (this.clock - t0); let first = null, tail = 0;
+    for (let k = 0; k < N; k++) {
+      const lane = ((k % 4) - 1.5) * 1.6 + (Math.random() - .5) * .7, back = Math.floor(k / 4) * 2.3 + Math.random() * 1.4, side = lane < 0 ? -1 : 1; let part = 0; tail = Math.max(tail, back);
+      const e = this._run(nm, [['Schritt', 1.1], ['Gehen', 1.1]], (t, v, dt) => { if (t > 100) return null;
+        const me = head() - back, gap = me - this.w.d;
+        part = gap < 30 && gap > -12 ? Math.min(1, part + dt * 0.9) : gap <= -12 ? Math.max(0, part - dt * 0.25) : part;
+        return { d: me, off: lerp(lane, side * (ROAD_W + 1.6 + Math.abs(lane) * 0.7), part), doff: part > 0 && part < 1 ? side * 0.6 : 0 };
+      }, { idle: ['Grasen', 'Fressen', 'Stehen'] });
+      if (e && !first) first = e;
+    }
+    if (!first) return false;
+    const hirte = this._run(this.A.find('hirte') ? 'hirte' : 'bauer_sense', 'Gehen', t => t > 100 ? null : { d: head() - tail - 4, off: ROAD_W + 0.6 }, { idle: ['Winken', 'Stehen'] });
+    const dogN = this.A.find('huetehund') ? 'huetehund' : 'hund';
+    this._run(dogN, [['Rennen', 1], ['Schritt', 1.6]], t => t > 100 ? null : { d: head() - tail - 1 + Math.sin(t * 0.9) * 3, off: Math.sin(t * 0.55) * (ROAD_W + 2) });
+    setTimeout(() => this._say(first.obj, 'Baaa! Baaa!', 2), 3000);
+    if (hirte) setTimeout(() => this._say(hirte.obj, 'Easy now, rider, they will let you by!', 3), 9000);
   }
   _pig() { // a runaway pig dashes along your lane with the farmer right behind it, then both bolt into the field
     const d0 = this.w.d + 100, side = Math.random() < .5 ? -1 : 1; let dd = 0, bolt = 0;
