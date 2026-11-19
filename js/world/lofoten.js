@@ -323,7 +323,7 @@ export class WorldScene {
     this.lakeMeshes = (this.field.lakes || []).map(L => {
       const sh = new THREE.Shape(L.P.map(([x, z]) => new THREE.Vector2(x, -z))), g = new THREE.ShapeGeometry(sh, 6); g.rotateX(-Math.PI / 2);
       const nm = this.water.material.uniforms.normalSampler.value.clone(); nm.wrapS = nm.wrapT = THREE.RepeatWrapping; nm.repeat.set(0.012, 0.012); nm.needsUpdate = true;
-      const m = new THREE.Mesh(g, new THREE.MeshStandardMaterial({ color: 0x2c7480, roughness: 0.1, metalness: 0.05, normalMap: nm, normalScale: new THREE.Vector2(0.35, 0.35), envMapIntensity: 1.25 }));
+      const m = new THREE.Mesh(g, new THREE.MeshStandardMaterial({ color: 0x3c9ca6, roughness: 0.16, metalness: 0, normalMap: nm, normalScale: new THREE.Vector2(0.3, 0.3), envMapIntensity: 0.55 }));
       m.position.y = L.level; m.receiveShadow = true; m.userData.lakeNormal = nm; scene.add(m); return m; });
     if (QS.has('noreflect')) { const wr = this.water.onBeforeRender; let k = 0; this.water.onBeforeRender = (...x) => { if (k++ < 30) wr.apply(this.water, x); }; } // mirror frozen after the first frames
 
@@ -632,7 +632,13 @@ export class WorldScene {
       }
     }
     this.falls = placeWaterfalls(this, null, []);
+    // the castle stands on a levelled terrace of the real ground (Freddy 19.11.: it floated; Mac check: a plinth read as a board)
+    for (const s of segs) { const c = s.top === 'castle' && this._castleSpot(s); if (!c) continue;
+      const hs = []; for (let k = 0; k < 16; k++) { const a = k / 16 * Math.PI * 2; hs.push(this.field.height(c.x + Math.cos(a) * 19, c.z + Math.sin(a) * 19)); }
+      this.field.pads.push({ x: c.x, z: c.z, y: hs.reduce((u, v) => u + v, 0) / hs.length, ri: 22, ro: 48, keep: true }); }
   }
+  _castleSpot(s) { const f = this.field, d = s.to + 70, p = f.at(d), l = Math.hypot(p.tx, p.tz), x = p.x - p.tz / l * 34, z = p.z + p.tx / l * 34;
+    const rr = f.road(x, z); return rr && rr.d >= 22 ? { x, z } : null; }
 
   /** an old-town lane from d0 to d1 (see _placeAssets) */
   _lane(d0, d1, { A, place, byName, spot, r, segAt }) {
@@ -770,7 +776,8 @@ export class WorldScene {
       obj.traverse(c => { if (c.userData.millWheel) this.wheels.push(c); });
       return obj;
     };
-    const pick = (cat) => A.pick(cat, r), byName = part => A.find(part, r); // the placement dice, never Math.random: same village every load and in every world mode
+    let wine = false; // island Vineyard Coast (Freddy 19.11.): no fishing huts, no stockfish racks, stone houses instead
+    const pick = (cat) => A.pick(cat, r), byName = part => wine && /hjell/.test(part) ? null : A.find(wine && /^rorbu/.test(part) ? 'steinhaus' : part, r); // the placement dice, never Math.random: same village every load and in every world mode
     /** a group template at d, centre offset off (local x along the road, local +z towards the road); members whose variant
      *  is not loaded this ride fall back to their base model. Returns how many members stood. */
     const placeGroup = (g, d, off) => {
@@ -794,7 +801,7 @@ export class WorldScene {
       this.village = buildVillage({ place, byName, make: e => A.make(e, null, r).obj, mirror: d => segAt(d).seaSide === 1, r, spot, f, scene: this.scene, props: this.props, anim: this.villageAnim, len: t.length }, t.__village);
     } catch (e) { console.warn('village', e); }
     for (const s of segs) {
-      const L = s.to - s.from;
+      const L = s.to - s.from; wine = t.dem?.file === 'insel.bin' && s.edge === 'S-H';
       // ---- villages: houses, harbour, market square, musicians, people ----
       const vb = s.village && (this.village ? Math.min(s.from + L * s.village[1], t.length - 650) : s.from + L * s.village[1]); /* the messenger's village owns the last ~600 m: a theme village there sat right on top of it (Mac mini 12.11.) */
       if (s.village && vb - (s.from + L * s.village[0]) >= 250) {
@@ -875,7 +882,7 @@ export class WorldScene {
         // harbour on the sea side: rorbuer on stilts at the water, piers, boats, a fisherman
         let fishers = 0;
         for (let d = a; d < b; d += 22 + r() * 14) {
-          const w = waterline(d, -1, 8); if (w === null) continue;
+          if (wine) break; const w = waterline(d, -1, 8); if (w === null) continue;
           place(r() < 0.6 ? byName('rorbu_rot') : byName('rorbu_ocker'), d, -(w + 2), { face: 'road', dy: -0.3 });
           if (place(byName('brygge'), d + 9, -(w + 3), { face: 'road', water: true, y: 0.2 }) && fishers++ < 2 && r() < 0.6)
             place(byName('fischer_netz'), d + 9, -(w + 1.2), { radK: 0.4, anim: 'Flicken', overlap: true, water: true, y: 1.6 });
@@ -914,7 +921,7 @@ export class WorldScene {
       if (s.land === 'coast' && !s.village) {
         for (let d = s.from + 200; d < s.to - 100; d += 380 + r() * 300) {
           const w = waterline(d, -1, 8);
-          if (w !== null) { place(byName('rorbu_rot'), d, -(w + 2), { dy: -0.3 }); place(byName('brygge'), d + 9, -(w + 3), { water: true, y: 0.2 }); place(byName('nordlandboot'), d + 2, -(w + 16), { water: true, y: 0.12, face: 'along' }); }
+          if (w !== null && !wine) { place(byName('rorbu_rot'), d, -(w + 2), { dy: -0.3 }); place(byName('brygge'), d + 9, -(w + 3), { water: true, y: 0.2 }); place(byName('nordlandboot'), d + 2, -(w + 16), { water: true, y: 0.12, face: 'along' }); }
           if (r() < 0.5) place(byName('hjell'), d + 60, ROAD_W + 10 + r() * 6, { face: 'along' });
         }
       }
@@ -1017,15 +1024,18 @@ export class WorldScene {
       // ---- island, Freddy 19.11.: seals on the rocks of Seal Isle (they lie at the waterline, lift their heads, some shuffle) ----
       if (t.dem?.file === 'insel.bin' && s.edge === 'T-T') {
         const seals = ['robbe_grau', 'robbe_gefleckt'].map(n => byName(n)).filter(Boolean);
-        if (seals.length) for (let d = s.from + 150; d < s.to - 150; d += 200 + r() * 220) {
+        const cand = []; // every 15 m: how far is the water on the sea side? seal colonies where it comes close (the coves)
+        if (seals.length) for (let d = s.from + 150; d < s.to - 150; d += 15) {
           if (f.bridge?.[Math.round(d / DS)]) continue; // never under the bridge
-          const sea = segAt(d).seaSide === 1 ? 1 : -1; let ow = 0; // walk out on the sea side to the waterline
-          if (f.height(spot(d, sea * 8).x, spot(d, sea * 8).z) < 1) continue; // must start on land
-          for (let o = 12; o < 130; o += 3) { const q = spot(d, sea * o); if (f.height(q.x, q.z) < 0.35) { ow = o; break; } }
-          if (!ow) continue; // water too far to see them from the road
-          const n = 2 + Math.floor(r() * 6);
-          for (let k = 0; k < n; k++) { const e = seals[Math.floor(r() * seals.length)], o = Math.max(ROAD_W + 6, ow - 2 - r() * 9);
-            place(e, d + (k - n / 2) * (2.2 + r() * 1.6), -(o), { face: r() * 6.28, gap: 2, radK: 0.35, anim: r() < 0.8 ? 'Liegen' : 'Robben', flat: false, overlap: true }); }
+          const sea = segAt(d).seaSide === 1 ? 1 : -1, q8 = spot(d, sea * 8); if (f.height(q8.x, q8.z) < 1) continue; // must start on land
+          for (let o = 10; o <= 46; o += 2) { const q = spot(d, sea * o); if (f.height(q.x, q.z) < 0.35) { cand.push({ d, ow: o, sea }); break; } }
+        }
+        cand.sort((x, y) => x.ow - y.ow); const used = [];
+        for (const c of cand) { if (used.some(u => Math.abs(u - c.d) < 220)) continue; used.push(c.d);
+          const n = 3 + Math.floor(r() * 5);
+          for (let k = 0; k < n; k++) { const e = seals[Math.floor(r() * seals.length)], o = Math.max(ROAD_W + 5, c.ow - 1.5 - r() * 6), dd = c.d + (k - n / 2) * (2.4 + r() * 1.8), q = spot(dd, c.sea * o);
+            if (f.height(q.x, q.z) < 0.3) continue; // on the rocks at the waterline, never in the water
+            place(e, dd, -o, { face: r() * 6.28, gap: 1.5, radK: 0.35, anim: r() < 0.8 ? 'Liegen' : 'Robben', flat: false, overlap: true }); }
         }
       }
       // ---- island, Freddy 19.11.: vineyards on the Vineyard Coast and the East Saddle (rows on the land side, cypresses, a wine estate) ----
@@ -1383,20 +1393,7 @@ export class WorldScene {
       const p = f.at(d), l = Math.hypot(p.tx, p.tz), x = p.x - p.tz / l * off * side, z = p.z + p.tx / l * off * side;
       const rr = f.road(x, z); if (!rr || rr.d < (s.top === 'castle' ? 22 : 9)) continue;
       const o = house(s.top); let y = f.height(x, z) - 0.15;
-      if (s.top === 'castle') { // never hover on a slope (Freddy 19.11.): settle on the footprint's average and stand on a rock plinth down to the lowest corner
-        const hs = []; for (let k = 0; k < 16; k++) { const a = k / 16 * Math.PI * 2; hs.push(f.height(x + Math.cos(a) * 18, z + Math.sin(a) * 18)); }
-        const lo = Math.min(...hs), avg = hs.reduce((u, v) => u + v, 0) / hs.length; y = Math.min(y, avg - 0.3);
-        // a rough rock outcrop, not a board (Mac check 19.11.): jagged, wider at the foot, textured, sinking into the slope
-        const drop = y - lo + 8, g = new THREE.CylinderGeometry(19.5, 31, drop, 30, Math.max(3, Math.round(drop / 3)), false), pa = g.attributes.position, rk = rng(977);
-        const jag = Array.from({ length: 30 }, () => 0.75 + rk() * 0.6);
-        for (let i = 0; i < pa.count; i++) { const vx = pa.getX(i), vy = pa.getY(i), vz = pa.getZ(i), a = Math.atan2(vz, vx), u = (drop / 2 - vy) / drop; // u: 0 top .. 1 foot
-          const j = jag[((Math.round((a + Math.PI) / (Math.PI * 2) * 30) % 30) + 30) % 30], k = 1 + u * (j - 0.85) * 0.45 + (rk() - 0.5) * 0.12 * u;
-          pa.setXYZ(i, vx * k, vy + (u > 0.05 ? (rk() - 0.5) * 1.2 : 0), vz * k); }
-        g.computeVertexNormals();
-        const sm = stone().clone(); sm.wrapS = sm.wrapT = THREE.RepeatWrapping; sm.repeat.set(9, Math.max(1, drop / 7)); sm.needsUpdate = true;
-        const plinth = new THREE.Mesh(g, new THREE.MeshStandardMaterial({ color: 0x9a948a, roughness: 1, map: sm, flatShading: true, side: THREE.DoubleSide }));
-        plinth.position.y = -drop / 2 + 0.1; plinth.castShadow = plinth.receiveShadow = true; o.add(plinth);
-      }
+      if (s.top === 'castle') y = f.height(x, z) - 0.3; // on its terrace (pad set up with the terrain)
       o.position.set(x, y, z); o.rotation.y = Math.atan2(p.tx, p.tz);
       this.scene.add(o); o.traverse(c => { if (c.userData.flag) this.animated.push(c); });
     }

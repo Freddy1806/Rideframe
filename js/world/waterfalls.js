@@ -19,7 +19,7 @@ export function placeWaterfalls(world, A, taken = []) {
   const frame = d => { const p = f.at(d), l = Math.hypot(p.tx, p.tz) || 1; return { x: p.x, z: p.z, e: p.e, tx: p.tx / l, tz: p.tz / l }; };
   const spot = (d, off) => { const p = frame(d); return { x: p.x - p.tz * off, z: p.z + p.tx * off }; };
   // ground levelled under the waterfall models: every later height query (tiles, grass, props) sees the pads
-  const pads = [], base = f.height;
+  const pads = (f.pads || []).filter(q => q.keep), base = f.height; // kept: the castle terrace
   if (!f.pads) f.height = function (x, z) {
     let h = base.call(this, x, z);
     for (const q of this.pads) { const dx = x - q.x, dz = z - q.z, d2 = dx * dx + dz * dz; if (d2 >= q.ro * q.ro) continue;
@@ -452,6 +452,23 @@ export function placeWaterfalls(world, A, taken = []) {
     scene.add(obj); F.objs.push(obj); F.glbObj = obj;
     if (F.glbWheel) { obj.traverse(c => { c.matrixAutoUpdate = c === F.glbWheel; }); } else freeze(obj);
     taken.push([F.x, F.z, Math.max(e.size[0], e.size[2]) * 0.55]);
+    if (kind === 'small') { // the water has to come from somewhere (Freddy 19.11.; the Mac check saw the model stand alone): the hillside rises
+      // behind the model to its lip, and a brook runs down that slope to it from a spring between boulders further up
+      const wb = new THREE.Box3(); obj.traverse(c => { if (c.isMesh && /wasserfall_wasser/.test(c.name + (c.parent?.name || ''))) wb.expandByObject(c); });
+      const lipY = wb.isEmpty() ? y + sz.y * 0.9 : wb.max.y, R0 = Math.max(sz.x, sz.z) / 2;
+      const bx = cx + nx * (R0 + 5), bz = cz + nz * (R0 + 5); // the shoulder right behind the model, at lip height
+      pads.push({ x: bx, z: bz, y: lipY - 0.6, ri: 5, ro: 20 });
+      const src = [[cx + nx * (R0 - 1), lipY - 0.3, cz + nz * (R0 - 1)], [bx, H(bx, bz), bz]]; let x = bx, z = bz;
+      for (let k = 0; k < 40 && H(x, z) - lipY < 70; k++) { const h0 = H(x, z), gx = (H(x + 4, z) - h0) / 4, gz = (H(x, z + 4) - h0) / 4, sl = Math.hypot(gx, gz);
+        let ux = sl > 0.03 ? gx / sl : nx, uz = sl > 0.03 ? gz / sl : nz; if (k < 4 || sl <= 0.03) { const m = k < 4 ? k / 4 : 0; ux = lerp(nx, ux, m); uz = lerp(nz, uz, m); }
+        x += ux * 5; z += uz * 5; src.push([x, H(x, z), z]); if (sl <= 0.03 && k > 8) break; }
+      for (let it = 0; it < 4; it++) for (let i = 2; i < src.length - 1; i++) { src[i][0] = (src[i - 1][0] + src[i][0] * 2 + src[i + 1][0]) / 4; src[i][2] = (src[i - 1][2] + src[i][2] * 2 + src[i + 1][2]) / 4; src[i][1] = H(src[i][0], src[i][2]); }
+      const S = src.reverse(), m = S.length;
+      const wm = new THREE.Mesh(drapeStrip(S, i => 1.1 + 1.6 * i / (m - 1), 0.25, H, r() * 10, 3), wMat); wm.renderOrder = 2; add(wm, true); F.objs.push(wm);
+      const hd = S[0], sb = []; for (let k = 0; k < 6; k++) { const an = r() * 6.28, rr = 1.8 + r() * 2.4, q = 0.9 + r() * 1.5, qx = hd[0] + Math.cos(an) * rr, qz = hd[2] + Math.sin(an) * rr;
+        sb.push(blockGeo(r, q * 1.3, q, q, qx, H(qx, qz) - 0.4, qz, r() * 3)); }
+      const sm = new THREE.Mesh(mergeGeometries(sb), rockMat); sm.castShadow = sm.receiveShadow = true; add(sm); F.objs.push(sm);
+    }
     // the stream leaves the front edge at x ~ +15 (mill) / +5.7 (small): brook to the road, stone bridge parapets there
     const sx = kind === 'mill' ? 15 : 5.7, ex = obj.localToWorld(new THREE.Vector3(fz ? fex + sx * fz : fex, 0, fz ? fez : fez - sx * fx)), at = f.road(ex.x, ex.z);
     if (at && at.d < 30) brookBridge(F, s.s, ex.x, ex.z, 1.5);
