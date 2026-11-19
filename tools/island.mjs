@@ -119,6 +119,13 @@ export const EDGES = [
   ['T', 'T', 'islet', 1.0, [], 'Seal Isle Loop', 'Robbeninsel-Runde (Zeitfahren)'],
 ].map(([a, b, kind, wind, via, name, de]) => ({ id: a + '-' + b, a, b, kind, wind, via, name, de }));
 EDGES.find(e => e.id === 'B-K').land = 'valley'; // the lake road: meadows and the lake, no river drawn beside it
+// hamlets along the roads (Freddy 19.11.: "mit diesen Dörfern, dass es da einfach auch genug gibt"): edge -> [fraction from its a end, name]
+const HAMLETS = {
+  'H-L': [[0.35, 'Gull Cove']], 'L-N': [[0.5, 'Skerry Point']], 'N-W': [[0.3, 'Fjordheim'], [0.72, 'Seal Rock']], 'W-SW': [[0.55, 'Cliffside']],
+  'SW-S': [[0.5, 'Dune Village']], 'S-H': [[0.3, 'Vintners\' Village'], [0.7, 'Olive Bay']], 'H-B': [[0.3, 'Millbrook'], [0.68, 'Three Bridges']],
+  'B-P1': [[0.22, 'Alpine Hamlet']], 'P1-N': [[0.8, 'Upper Fjord']], 'B-K': [[0.28, 'Lakeside']], 'K-P2': [[0.2, 'Bell Hamlet']],
+  'P2-SW': [[0.75, 'Chestnut Grove']], 'B-P4': [[0.5, 'Hilltop']], 'H-P3': [[0.35, 'Windmill Hill']], 'P3-L': [[0.65, 'Heather End']], 'T-T': [[0.08, 'Seal Harbour']],
+};
 // avalanche galleries (roof over the road, open to the valley; the renderer's 'avalanche_protector'): edge -> [[from, to] as
 // fractions of the edge from its a end]. Region 1 (North Pass): two on the steep upper part of the north ramp.
 const GALLERIES = { 'P1-N': [[0.16, 0.185], [0.27, 0.285]] };
@@ -310,6 +317,7 @@ function tourJSON(T, edges) {
     P = P.concat(p.slice(k0)); ele = ele.concat(el.slice(k0));
     for (const [f0, f1] of GALLERIES[e.id] || []) { const a0 = fw ? f0 : 1 - f1, a1 = fw ? f1 : 1 - f0; tunnels.push([Math.round(at + a0 * e.len), Math.round(at + a1 * e.len)]); }
     kinds.push({ from_m: at, to_m: at + e.len, kind: e.kind, land: e.land || LAND[e.kind], name: e.name, edge: e.id, dir: fw ? 1 : -1 });
+    for (const [fr, nm] of HAMLETS[e.id] || []) { const c = at + (fw ? fr : 1 - fr) * e.len; places.push({ name: nm, from_m: Math.round(c - 220), to_m: Math.round(c + 220), hamlet: true }); }
     at += e.len; const nd = NODES[b];
     if (['village', 'harbour', 'fishing', 'monastery'].includes(nd.kind)) places.push({ name: nd.name, from_m: Math.max(0, at - 300), to_m: at + 300 });
     nodes.push({ id: b, name: nd.name, at_m: at });

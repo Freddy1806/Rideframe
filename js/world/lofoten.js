@@ -1014,6 +1014,30 @@ export class WorldScene {
           if (mm && r() < 0.55) place(mm, d, sd * (ROAD_W + 4 + r() * 6), { face: 'road', gap: 1.5, radK: 0.5, anim: 'Sitzen', flat: false });
           if (ib && r() < 0.35) for (let k = 0; k < 1 + Math.floor(r() * 3); k++) place(ib, d + k * 6, sd * (ROAD_W + 22 + r() * 30 + k * 4), { face: r() * 6.28, gap: 4, anim: r() < 0.5 ? 'Stehen' : 'Grasen', flat: false }); }
       }
+      // ---- island, Freddy 19.11.: seals on the rocks of Seal Isle (they lie at the waterline, lift their heads, some shuffle) ----
+      if (t.dem?.file === 'insel.bin' && (s.edge === 'T-T' || s.edge === 'S-T')) {
+        const seals = ['robbe_grau', 'robbe_gefleckt'].map(n => byName(n)).filter(Boolean);
+        if (seals.length) for (let d = s.edge === 'S-T' ? s.to - 700 : s.from + 120; d < s.to - 60; d += 260 + r() * 280) {
+          const sea = segAt(d).seaSide === 1 ? 1 : -1; let ow = 0; // walk out on the sea side to the waterline
+          for (let o = 8; o < 260; o += 4) { const q = spot(d, sea * o); if (f.height(q.x, q.z) < 0.35) { ow = o; break; } }
+          if (!ow) continue;
+          const n = 2 + Math.floor(r() * 6);
+          for (let k = 0; k < n; k++) { const e = seals[Math.floor(r() * seals.length)], o = Math.max(ROAD_W + 6, ow - 2 - r() * 9);
+            place(e, d + (k - n / 2) * (2.2 + r() * 1.6), -(o), { face: r() * 6.28, gap: 2, radK: 0.35, anim: r() < 0.8 ? 'Liegen' : 'Robben', flat: false, overlap: true }); }
+        }
+      }
+      // ---- island, Freddy 19.11.: vineyards on the Vineyard Coast and the East Saddle (rows on the land side, cypresses, a wine estate) ----
+      if (t.dem?.file === 'insel.bin' && (s.edge === 'S-H' || s.edge === 'H-P3')) {
+        const rows = ['rebzeile_a', 'rebzeile_b'].map(n => byName(n)).filter(Boolean), cy = byName('zypresse'), wg = byName('weingut');
+        let estates = 0;
+        if (rows.length) for (let d = s.from + 150; d < s.to - 150; d += 180 + r() * 220) {
+          if (r() < 0.25) continue; const land = segAt(d).seaSide === 1 ? -1 : 1, nr = 5 + Math.floor(r() * 6), len = 2 + Math.floor(r() * 3), o0 = ROAD_W + 7 + r() * 6;
+          let stood = 0;
+          for (let k = 0; k < nr; k++) for (let j = 0; j < len; j++) stood += !!place(rows[(k + j) % rows.length], d + j * 10.6, land * (o0 + k * 2.7), { face: 'along', gap: 2, radK: 0.12, flat: false, overlap: true });
+          if (stood && cy && r() < 0.7) for (let j = 0; j < 4; j++) place(cy, d - 14 + j * 9, land * (ROAD_W + 3.2), { face: r() * 6.28, gap: 1, radK: 0.4, flat: false }); // a cypress row by the road
+          if (stood && wg && estates < 2 && r() < 0.35) { estates += !!place(wg, d + len * 10.6 + 14, land * (ROAD_W + 12), { face: 'road', gap: 3, ground: 'centre' }); }
+        }
+      }
       // ---- East Asian style (original): bamboo groves, lantern chains, monks training, pagodas on the tops ----
       if (s.style === 'asia') {
         const land = s.land === 'river' ? 1 : 0;

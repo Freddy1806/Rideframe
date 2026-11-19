@@ -231,7 +231,7 @@ export function makeRealTrack(j) {
   let at = 0;
   if (j.roads?.length) { // the island (tools/island.mjs): each road of the tour keeps its own landscape (coast, cliff, valley, switchbacks)
     const cut = []; for (const rd of j.roads) { const [ea, eb] = rd.edge.split('-'), end = rd.dir === 1 ? eb : ea; // the junction this road leads to
-      cut.push({ name: rd.name, from: rd.from_m, to: rd.to_m, land: rd.land, top: rd.edge === 'P1-G' && rd.dir === 1 ? 'castle' : /^P\d$/.test(end) ? 'pass' : undefined, hospiz: end === 'P1' || undefined }); }
+      cut.push({ name: rd.name, from: rd.from_m, to: rd.to_m, land: rd.land, top: rd.edge === 'P1-G' && rd.dir === 1 ? 'castle' : /^P\d$/.test(end) ? 'pass' : undefined, hospiz: end === 'P1' || undefined, edge: rd.edge }); }
     for (const p of places) { // a village splits the road it lies on
       const a = Math.max(0, p.from_m), b = Math.min(L, p.to_m), k = cut.findIndex(c => c.from <= a + 1 && c.to > a); if (k < 0 || b <= a) continue;
       const c = cut[k], land = c.land === 'serp' || c.land === 'river' ? 'valley' : c.land === 'cliff' ? 'coast' : c.land;
