@@ -413,7 +413,7 @@ export function placeWaterfalls(world, A, taken = []) {
 
   /** Blender waterfall: origin at the bottom of the road-side edge, front +Z towards the road. */
   function glbFall(e, s, kind) {
-    const p = frame(s.d), nx = -p.tz * s.s, nz = p.tx * s.s, o0 = kind === 'mill' ? 11 : 10; // front edge this far from the road centre
+    const p = frame(s.d); let nx = -p.tz * s.s, nz = p.tx * s.s; const o0 = kind === 'mill' ? 11 : 10; // front edge this far from the road centre
     const { obj } = A.make(e, null, r);
     // which way the model faces: from its middle towards its water and wheel (should be +Z; snapped to an axis)
     obj.updateMatrixWorld(true);
@@ -457,6 +457,7 @@ export function placeWaterfalls(world, A, taken = []) {
       // behind the model to its lip, and a brook runs down that slope to it from a spring between boulders further up
       const wb = new THREE.Box3(); obj.traverse(c => { if (c.isMesh && /wasserfall_wasser/.test(c.name + (c.parent?.name || ''))) wb.expandByObject(c); });
       const lipY = wb.isEmpty() ? y + sz.y * 0.9 : wb.max.y, R0 = Math.max(sz.x, sz.z) / 2;
+      { const dA = f.road(cx + nx * 25, cz + nz * 25)?.d ?? 99, dB = f.road(cx - nx * 25, cz - nz * 25)?.d ?? 99; if (dB > dA) { nx = -nx; nz = -nz; } } // behind = the side away from the road (Mac check 6: it ran to the road)
       const bx = cx + nx * (R0 + 5), bz = cz + nz * (R0 + 5); // the shoulder right behind the model, at lip height
       pads.push({ x: bx, z: bz, y: lipY - 0.6, ri: 5, ro: 20 });
       const src = [[cx + nx * (R0 - 1), lipY - 0.3, cz + nz * (R0 - 1)], [bx, H(bx, bz), bz]]; let x = bx, z = bz;

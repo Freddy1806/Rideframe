@@ -1024,17 +1024,17 @@ export class WorldScene {
       }
       // ---- island, Freddy 19.11.: seals on the rocks of Seal Isle (they lie at the waterline, lift their heads, some shuffle) ----
       if (t.dem?.file === 'insel.bin' && s.edge === 'T-T') {
-        const seals = ['robbe_grau', 'robbe_gefleckt'].map(n => byName(n)).filter(Boolean);
+        const seals = ['robbe_grau'].map(n => byName(n)).filter(Boolean); // the spotted one stood upright on the Mac
         const cand = []; // every 15 m: how far is the water on the sea side? seal colonies where it comes close (the coves)
         if (seals.length) for (let d = s.from + 150; d < s.to - 150; d += 15) {
           if (f.bridge?.[Math.round(d / DS)]) continue; // never under the bridge
           const sea = segAt(d).seaSide === 1 ? 1 : -1, q8 = spot(d, sea * 8); if (f.height(q8.x, q8.z) < 1) continue; // must start on land
-          for (let o = 10; o <= 46; o += 2) { const q = spot(d, sea * o); if (f.height(q.x, q.z) < 0.35) { cand.push({ d, ow: o, sea }); break; } }
+          for (let o = 10; o <= 32; o += 2) { const q = spot(d, sea * o); if (f.height(q.x, q.z) < 0.35) { cand.push({ d, ow: o, sea }); break; } }
         }
         cand.sort((x, y) => x.ow - y.ow); const used = [], slabs = [];
         for (const c of cand) { if (used.some(u => Math.abs(u - c.d) < 220)) continue; used.push(c.d);
           // walk back from the water onto the first low, dry rock: they lie right at the waterline, not up in the meadow (Mac check 5)
-          let oc = 0; for (let o = c.ow; o > ROAD_W + 4; o -= 0.5) { const q = spot(c.d, c.sea * o), h = f.height(q.x, q.z); if (h > 0.6 && h < 1.8) { oc = o; break; } if (h >= 1.8) break; }
+          let oc = 0; for (let o = c.ow; o > ROAD_W + 4; o -= 0.5) { const q = spot(c.d, c.sea * o), h = f.height(q.x, q.z); if (h > 0.5 && h < 3.2) { oc = o; break; } if (h >= 3.2) break; }
           if (!oc) continue;
           const n = 3 + Math.floor(r() * 4), cq = spot(c.d, c.sea * oc); (f.bare ||= []).push([cq.x, cq.z, 9 * 9]); // a bare rock shore, no tall grass hiding them
           for (let k = 0; k < n; k++) { const e = seals[Math.floor(r() * seals.length)], dd = c.d + (k - n / 2) * (2.6 + r() * 1.6), o = oc - 0.5 + (r() - 0.5) * 2.5, q = spot(dd, c.sea * o);
@@ -1044,8 +1044,8 @@ export class WorldScene {
             if (so) { so.scale.multiplyScalar(1.3); so.position.y = Math.max(so.position.y, h + 0.12); so.updateMatrixWorld(true); const bb = new THREE.Box3().setFromObject(so), sz = bb.getSize(new THREE.Vector3()); console.info(`RIDEFRAME Robbe d=${Math.round(dd)} ${o.toFixed(1)} m neben der Straße, y=${so.position.y.toFixed(2)}, Größe ${sz.x.toFixed(1)}×${sz.y.toFixed(1)}×${sz.z.toFixed(1)} m`); } }
         }
         if (slabs.length) { const sm = stone().clone(); sm.wrapS = sm.wrapT = THREE.RepeatWrapping; sm.repeat.set(0.6, 0.6); // flat grey rock slabs they lie on
-          const gs = slabs.map(([x, y, z, w, a]) => { const g = new THREE.CylinderGeometry(w * 0.55, w * 0.7, 0.7, 7, 1); g.scale(1, 1, 0.75); g.rotateY(a); g.translate(x, y - 0.2, z); return g.index ? g.toNonIndexed() : g; });
-          const m = new THREE.Mesh(mergeGeometries(gs), new THREE.MeshStandardMaterial({ color: 0x8d8a84, roughness: 0.95, map: sm, flatShading: true })); m.receiveShadow = m.castShadow = true; this.scene.add(m); }
+          const gs = slabs.map(([x, y, z, w, a]) => { const g = new THREE.IcosahedronGeometry(w * 0.6, 1); g.scale(1, 0.22, 0.75); g.rotateY(a); g.translate(x, y - 0.05, z); // low rounded rock, not a column return g.index ? g.toNonIndexed() : g; });
+          const m = new THREE.Mesh(mergeGeometries(gs), new THREE.MeshStandardMaterial({ color: 0xa29d94, roughness: 0.95, map: sm })); m.receiveShadow = m.castShadow = true; this.scene.add(m); }
       }
       // ---- island, Freddy 19.11.: vineyards on the Vineyard Coast and the East Saddle (rows on the land side, cypresses, a wine estate) ----
       if (t.dem?.file === 'insel.bin' && (s.edge === 'S-H' || s.edge === 'H-P3')) {
