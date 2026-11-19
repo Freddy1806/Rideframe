@@ -21,3 +21,22 @@
 @media (max-width: 640px) { .paused .box.rsbox { padding: 18px 16px; } .rsrow { grid-template-columns: minmax(0, 1fr); } .rsw { grid-template-columns: minmax(0, 1fr); } }
 .rsnote { margin-top: 8px; font-size: 12.5px; line-height: 1.4; color: var(--muted, #9a9a9a); display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; }
 .rsnote .btn { padding: 6px 12px; font-size: 13px; } .rsdev { color: var(--paper, #f4f1ea); font-weight: 700; }
+
+/* adjust step (js/ridesetup.js openAdjust) */
+.rsoff .rsl { margin-bottom: 0; }
+.paused .box.rsbox h2.rsah { font-size: clamp(26px, 4vw, 44px); margin: 6px 0 6px; }
+.rsasum { display: flex; align-items: center; gap: 16px; font-size: 13px; font-weight: 700; color: var(--muted, #9a9a9a); margin-bottom: 14px; }
+.rsasum .rsabig { flex: 1; min-width: 0; }
+.rsarow0 { display: flex; flex-wrap: wrap; gap: 8px; }
+.rsarow0 [aria-pressed="true"] { border-color: var(--rs); color: var(--rs); }
+.rsa { display: flex; flex-direction: column; gap: 6px; }
+.rsar { display: grid; grid-template-columns: minmax(120px, 1.4fr) auto auto auto; align-items: center; gap: 14px; padding: 8px 12px; border-radius: 12px; border: 1.5px solid rgba(255,255,255,.12); }
+.rsar.off { opacity: .45; }
+.rsan b { display: block; font-size: 15px; font-weight: 800; } .rsan small { font-size: 12px; color: var(--muted, #9a9a9a); }
+.rsaf { display: flex; align-items: center; gap: 6px; }
+.rsaf span { min-width: 78px; text-align: center; } .rsaf span b { font-size: 18px; font-weight: 800; font-variant-numeric: tabular-nums; } .rsaf span small { margin-left: 4px; font-size: 11px; color: var(--muted, #9a9a9a); }
+.rsaf .rsafree { font-size: 12px; color: var(--muted, #9a9a9a); }
+.rsaf button, .rsask { height: 36px; min-width: 36px; padding: 0 10px; border-radius: 9px; border: 1.5px solid rgba(255,255,255,.18); background: transparent; color: inherit; font: 800 16px/1 inherit; cursor: pointer; }
+.rsask { font-size: 12px; } .rsask[aria-pressed="true"] { border-color: var(--rs); color: var(--rs); }
+.rsaf button:focus-visible, .rsask:focus-visible { outline: 3px solid var(--rs); outline-offset: 3px; }
+@media (max-width: 640px) { .rsar { grid-template-columns: 1fr 1fr; } }

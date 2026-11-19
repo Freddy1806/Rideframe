@@ -81,9 +81,9 @@ export function setSource(r, s) {
 }
 
 /** a new workout (or none) mid-ride: from its first step, offsets back to 0, the interval bar built or removed */
-export function setWorkout(r, w) {
+export function setWorkout(r, w, again = false) {
   const t = r.state.trainer, old = r.workout;
-  if (old && w && old.id === w.id && !r.wDone) return;
+  if (old && w && old.id === w.id && !r.wDone && !again) return; // again: the same workout adjusted (openAdjust) starts over
   if (old) r._wName = old.name + (r.wDone ? '' : ' (ended early)');
   const wasErg = old && r.erg && !r.wDone;
   r.workout = w || null; r.wNow = null; r.wDone = false; r._wi = undefined; r._wT = 0; r._wbh = 0;
@@ -110,8 +110,8 @@ export function openSetup(r, focus = 0) {
         <div class="rsnote" id="rsNote">${esc(SOURCE_NOTE[src])} ${t.connected ? `<span class="rsdev">✓ ${esc(t.device?.name || (pm ? 'Power meter' : 'Trainer'))}${pm ? ' · watts only' : ''}</span>` : `<button type="button" class="btn ghost small" id="rsConn">Connect ${pm ? 'power meter' : 'trainer'}</button>`}</div></div>
       <div class="rsg" role="group" aria-label="Mode"><div class="rsl">Mode${pm ? ' <span class="rscur">off: the trainer is not controlled</span>' : ''}</div><div class="rsrow">${MODES.map(([id, n, h]) => { const off = pm, hold = id === 'erg' && !r.workout;
         return `<button type="button" data-mode="${id}" ${press(mode === id, off ? ' disabled' : '')} title="${esc(h)}"><b>${n}</b><small>${pm ? (id === 'erg' ? 'Power meter only: targets shown' : 'Power meter only') : hold ? (mode === 'erg' ? `Holds ${r._holdW} W · pad L / R ±5 W, L2 / R2 ±1 W` : 'Holds your watts · L / R ±5 W, L2 / R2 ±1 W') : h}</small></button>`; }).join('')}</div></div>
-      <div class="rsg" role="group" aria-label="Shifting"><div class="rsl">Shifting</div><div class="rsrow">${SHIFTS.map(([id, n, h]) => { const off = pm && id === 'virtual';
-        return `<button type="button" data-shift="${id}" ${press(shift === id && !r.berg, off ? ' disabled' : '')} title="${esc(h)}"><b>${n}</b><small>${off ? 'Needs trainer control' : h}</small></button>`; }).join('')}</div></div>
+      ${mode === 'erg' ? '<div class="rsg rsoff"><div class="rsl">Shifting <span class="rscur">not needed in ERG: the trainer holds the watts in any gear</span></div></div>' : `<div class="rsg" role="group" aria-label="Shifting"><div class="rsl">Shifting</div><div class="rsrow">${SHIFTS.map(([id, n, h]) => { const off = pm && id === 'virtual';
+        return `<button type="button" data-shift="${id}" ${press(shift === id && !r.berg, off ? ' disabled' : '')} title="${esc(h)}"><b>${n}</b><small>${off ? 'Needs trainer control' : h}</small></button>`; }).join('')}</div></div>`}
       <div class="rsg" role="group" aria-label="Workout"><div class="rsl">Workout${r.workout ? ` <span class="rscur">now: ${esc(r.workout.name)}${r.wDone ? ' · done' : ''}</span>` : ''}</div>
         <div class="rsw"><button type="button" data-w="" ${press(!cur)}><b>No workout</b><small>Ride freely</small></button>${list.map(x => `<button type="button" data-w="${esc(x.id)}" ${press(cur === x.id)}>
           <b>${x.own ? '★ ' : ''}${esc(x.name)}</b><small>${x.min} min${ftp ? ` · FTP ${ftp} W` : ''}</small><span class="rsmini">${workoutSVG(x.w, null, 18)}</span></button>`).join('')}</div></div>
@@ -128,7 +128,63 @@ export function openSetup(r, focus = 0) {
     catch (e) { if (e?.name !== 'NotFoundError') r._flash(e?.name === 'SecurityError' ? 'Bluetooth needs a click or Enter: press Enter or click “Connect”' : 'Connection failed: ' + (e?.message || e), 4000); }
     if (box.isConnected && box.classList.contains('rsbox')) again(conn); };
   box.querySelectorAll('[data-shift]').forEach(b => b.onclick = () => { setShift(r, b.dataset.shift); again(b); });
-  box.querySelectorAll('[data-w]').forEach(b => b.onclick = () => { setWorkout(r, list.find(x => x.id === b.dataset.w)?.w || null); again(b); });
+  box.querySelectorAll('[data-w]').forEach(b => b.onclick = () => { const w = list.find(x => x.id === b.dataset.w)?.w || null; if (!w) { setWorkout(r, null); return again(b); } openAdjust(r, w, [...box.querySelectorAll('.padmenu button')].indexOf(b)); });
   r._padFocus(focus);
   const f = [...box.querySelectorAll('.padmenu button')][r._padI || 0]; f?.scrollIntoView?.({ block: 'nearest' });
+}
+
+/* ---------------- adjust the chosen workout before it starts (owner 19.11.: "die einzelnen Zonen … Wattwerte und Zeit
+   eintragen", and no second warm-up after 20 minutes of riding). Equal steps are one row (5 × Interval, 4 × Rest), each
+   with its minutes and watts and a way to leave it out; nothing is saved to the account, the ride gets the adjusted copy. */
+const kindKey = s => [s.dur, s.pct, s.pct2 ?? '', String(s.label || '').replace(/\s*\d+\s*\/\s*\d+\s*$/, ''), s.free ? 1 : 0].join('|');
+/** rows of equal steps in riding order: [{ name, n, idx: [step indexes], dur, pct, pct2, free, skip }] */
+export function stepGroups(steps) {
+  const rows = [], by = new Map();
+  steps.forEach((s, i) => { const k = kindKey(s); let g = by.get(k);
+    if (!g) { g = { name: String(s.label || '').replace(/\s*\d+\s*\/\s*\d+\s*$/, '') || (s.pct >= 76 ? 'Interval' : 'Easy'), n: 0, idx: [], dur: s.dur, pct: s.pct, pct2: s.pct2 ?? null, free: !!s.free, skip: false }; by.set(k, g); rows.push(g); }
+    g.n++; g.idx.push(i); });
+  return rows;
+}
+/** everything before the main part (the row with the most riding time that is not a ramp): warm-up ramp, openers, spins */
+export function warmupRows(rows) {
+  const main = rows.filter(g => g.pct2 == null).sort((a, b) => b.n * b.dur - a.n * a.dur)[0]; if (!main) return [];
+  return rows.filter(g => g !== main && g.idx.every(i => i < main.idx[0]));
+}
+/** the workout with the rows' changes: skipped rows left out, minutes and % FTP of each row on all its steps */
+export function applyGroups(w, rows) {
+  const steps = [];
+  w.steps.forEach((s, i) => { const g = rows.find(x => x.idx.includes(i)); if (!g || g.skip) return;
+    steps.push({ ...s, dur: g.dur, pct: g.pct, ...(g.pct2 != null ? { pct2: g.pct2 } : {}) }); });
+  const changed = steps.length !== w.steps.length || steps.some((s, i) => s.dur !== w.steps[i].dur || s.pct !== w.steps[i].pct || (s.pct2 ?? null) !== (w.steps[i].pct2 ?? null));
+  return changed ? { ...w, name: w.name.replace(/ \(adjusted\)$/, '') + ' (adjusted)', steps } : w;
+}
+const mmss = s => `${Math.floor(s / 60)}:${String(Math.round(s % 60)).padStart(2, '0')}`;
+const durStep = (dur, d) => { const st = (d < 0 ? dur <= 120 : dur < 120) ? 15 : 60; return Math.max(15, Math.min(7200, dur + d * st)); };
+export function openAdjust(r, w, back = 0, rows = stepGroups(w.steps), focus = 0) {
+  const box = r.q('#pauseOverlay .box'); if (!box) return;
+  const ftp = r.ftp || 200, W = p => Math.round(p / 100 * ftp), out = applyGroups(w, rows), total = out.steps.reduce((a, s) => a + s.dur, 0), warm = warmupRows(rows), warmOff = warm.length > 0 && warm.every(g => g.skip);
+  box.classList.add('rsbox');
+  box.innerHTML = `<div class="label">Workout · adjust before it starts</div><h2 class="display rsah">${esc(w.name)}</h2>
+    <div class="rsasum">${Math.round(total / 60)} min · FTP ${ftp} W<span class="rsmini rsabig">${out.steps.length ? workoutSVG(out, null, 44) : ''}</span></div>
+    <div class="padmenu rs">
+      <div class="rsarow0"><button class="btn rsgo" id="raGo"${out.steps.length ? '' : ' disabled'}>Start workout ▸</button>${warm.length ? `<button type="button" class="btn ghost" id="raWarm" aria-pressed="${warmOff}">${warmOff ? 'Warm-up skipped ✓' : 'Skip warm-up'}</button>` : ''}<button type="button" class="btn ghost" id="raBack">Back</button></div>
+      <div class="rsa">${rows.map((g, i) => `<div class="rsar${g.skip ? ' off' : ''}" data-i="${i}">
+        <div class="rsan"><b>${g.n > 1 ? g.n + ' × ' : ''}${esc(g.name)}</b><small>${g.free ? 'free riding' : g.pct2 != null ? `${g.pct} → ${g.pct2} % FTP` : `${g.pct} % FTP`}</small></div>
+        <div class="rsaf"><button type="button" data-a="t-" aria-label="Shorter">−</button><span><b>${mmss(g.dur)}</b><small>min</small></span><button type="button" data-a="t+" aria-label="Longer">+</button></div>
+        <div class="rsaf">${g.free ? '<span class="rsafree">free</span>' : `<button type="button" data-a="w-" aria-label="Fewer watts">−</button><span><b>${g.pct2 != null ? `${W(g.pct)}–${W(g.pct2)}` : W(g.pct)}</b><small>W</small></span><button type="button" data-a="w+" aria-label="More watts">+</button>`}</div>
+        <button type="button" class="rsask" data-a="skip" aria-pressed="${g.skip}">${g.skip ? 'Left out' : 'Leave out'}</button></div>`).join('')}</div>
+    </div>
+    <div class="hint pad-hint">🎮 D-pad to choose · A change · B back &nbsp;·&nbsp; time in 1 min steps (15 s under 2 min), watts in 5 W steps</div>`;
+  const again = el => openAdjust(r, w, back, rows, Math.max(0, [...box.querySelectorAll('.padmenu button')].indexOf(el)));
+  box.querySelector('#raBack').onclick = () => openSetup(r, back);
+  box.querySelector('#raGo').onclick = () => { setWorkout(r, applyGroups(w, rows), true); box.classList.remove('rsbox'); r._resume(); };
+  const wb = box.querySelector('#raWarm'); if (wb) wb.onclick = () => { const on = !warmOff; warm.forEach(g => g.skip = on); again(wb); };
+  box.querySelectorAll('.rsar [data-a]').forEach(b => b.onclick = () => {
+    const g = rows[+b.closest('.rsar').dataset.i], a = b.dataset.a, d = a.endsWith('+') ? 1 : -1;
+    if (a === 'skip') g.skip = !g.skip;
+    else if (a[0] === 't') g.dur = durStep(g.dur, d);
+    else { const dp = d * 5 / ftp * 100, cl = v => Math.max(30, Math.min(200, Math.round((v + dp) * 10) / 10)); g.pct = cl(g.pct); if (g.pct2 != null) g.pct2 = cl(g.pct2); }
+    again(b); });
+  r._padFocus(focus);
+  [...box.querySelectorAll('.padmenu button')][r._padI || 0]?.scrollIntoView?.({ block: 'nearest' });
 }

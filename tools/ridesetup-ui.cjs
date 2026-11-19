@@ -53,7 +53,20 @@ let fails = 0; const ok = (c, m) => { console.log(`${c ? '✓' : '✗'} ${m}`); 
       await R.evaluate(() => { const r = window.__ride; r.erg = true; r.state.settings.erg = true; }); } // as before this detour: ERG is the setting for the workout picked next
     if (SHOTS) await R.screenshot({ path: `${SHOTS}/ridesetup_1280.png` });
     const el0 = (await st()).el;
-    ok(await padTo('w:ss2x12'), 'pad: down to “Sweet Spot 2 × 12”'); await press('A'); await R.waitForTimeout(300);
+    ok(await padTo('w:ss2x12'), 'pad: down to “Sweet Spot 2 × 12”'); await press('A'); await R.waitForSelector('#raGo');
+    { // the adjust step (owner 19.11.): rows of equal steps, minutes and watts, leave the warm-up out
+      const a0 = await R.evaluate(() => ({ rows: document.querySelectorAll('.rsar').length, focus: document.activeElement?.id, warm: !!document.querySelector('#raWarm'), sum: document.querySelector('.rsasum').textContent, w: window.__ride.workout?.id || null }));
+      ok(a0.rows >= 3 && a0.focus === 'raGo' && a0.warm && !a0.w, `adjust: ${a0.rows} rows, the pad stands on “Start workout”, nothing started yet (${a0.sum.trim()})`);
+      await R.click('#raWarm'); const a1 = await R.evaluate(() => ({ off: document.querySelectorAll('.rsar.off').length, sum: document.querySelector('.rsasum').textContent }));
+      ok(a1.off >= 1 && a1.sum !== a0.sum, `“Skip warm-up” leaves it out (${a1.sum.trim()})`);
+      await R.click('#raWarm'); // back in: the checks below ride the standard workout
+      const row = '.rsar:nth-last-child(2)', rd = () => R.evaluate(q => [...document.querySelectorAll(q + ' .rsaf b')].map(b => b.textContent), row);
+      const b0 = await rd(); await R.click(row + ' [data-a="t+"]'); await R.click(row + ' [data-a="w+"]'); const b1 = await rd();
+      ok(b0[0] !== b1[0] && +b1[1] === +b0[1] + 5, `a row: time ${b0[0]} → ${b1[0]}, watts ${b0[1]} → ${b1[1]}`);
+      await R.click(row + ' [data-a="t-"]'); await R.click(row + ' [data-a="w-"]'); ok(JSON.stringify(await rd()) === JSON.stringify(b0), 'and back');
+      await R.evaluate(() => document.querySelector('#raGo').focus()); await R.click('#raGo'); await R.waitForTimeout(300);
+      ok(!(await R.locator('.rsbox').count()), '“Start workout” rides on');
+      await R.keyboard.press('o'); await R.waitForSelector('.rsbox [data-mode]'); }
     s = await st(); ok(s.w === 'ss2x12' && s.bar && s.wk && Math.abs(s.t0 - el0) < 1, `pad A: the workout from now (clock from ${s.t0?.toFixed(1)} s), the interval bar is there`);
     ok(s.step === 0 && s.target > 0 && s.trainerErg === s.target, `step 1, ERG target ${s.target} W at the trainer`);
     ok(await R.locator('.rsbox [data-mode="erg"].on').count() === 1, 'the panel shows ERG on');
@@ -82,7 +95,7 @@ let fails = 0; const ok = (c, m) => { console.log(`${c ? '✓' : '✗'} ${m}`); 
       t.device = { name: 'KICKR TEST', gatt: { get connected() { return !window.__gone; }, disconnect() { window.__gone = true; } } };
       t.cp = { writeValue: b => { window.__w.push([...b]); return Promise.resolve(); } }; t.mode = 'ftms'; });
     await R.keyboard.press('o'); await R.waitForSelector('.rsbox');
-    ok(await tabTo('w:ss2x12'), 'keyboard: Tab to “Sweet Spot 2 × 12”'); await R.keyboard.press('Enter'); await R.waitForTimeout(300);
+    ok(await tabTo('w:ss2x12'), 'keyboard: Tab to “Sweet Spot 2 × 12”'); await R.keyboard.press('Enter'); await R.waitForSelector('#raGo'); await R.keyboard.press('Enter'); await R.waitForTimeout(300); await R.keyboard.press('o'); await R.waitForSelector('.rsbox [data-mode]');
     ok((await R.evaluate(() => window.__w.length)) > 0, 'trainer control: the ERG target went to the (fake) trainer');
     ok(await padTo('src:pm', 'up'), 'pad: up to “Power meter only”'); await press('A'); await R.waitForTimeout(300);
     const pm = await R.evaluate(() => { const r = window.__ride, t = r.state.trainer, b = document.querySelector('.rsbox');
@@ -110,7 +123,7 @@ let fails = 0; const ok = (c, m) => { console.log(`${c ? '✓' : '✗'} ${m}`); 
     await R.evaluate(() => document.fullscreenElement && document.exitFullscreen()).catch(() => {}); await R.waitForTimeout(300); await R.setViewportSize({ width: 390, height: 844 }); await R.keyboard.press('o'); await R.waitForSelector('.rsbox'); await R.waitForTimeout(300);
     ok(await R.evaluate(() => { const b = document.querySelector('.rsbox').getBoundingClientRect(); return b.left >= 0 && b.right <= innerWidth && document.documentElement.scrollWidth <= innerWidth; }), 'setup at 390 px: inside the screen, no sideways scroll');
     if (SHOTS) await R.screenshot({ path: `${SHOTS}/ridesetup_390.png` });
-    await R.click('.rsbox [data-w="ss2x12"]'); await R.waitForTimeout(200); await R.click('#oBack'); await R.setViewportSize({ width: 1280, height: 860 });
+    await R.click('.rsbox [data-w="ss2x12"]'); await R.waitForSelector('#raGo'); ok(await R.evaluate(() => { const b = document.querySelector('.rsbox').getBoundingClientRect(); return b.left >= 0 && b.right <= innerWidth && document.documentElement.scrollWidth <= innerWidth; }), 'adjust at 390 px: inside the screen'); await R.click('#raGo'); await R.setViewportSize({ width: 1280, height: 860 });
     await R.waitForTimeout(31000); // a saved ride needs 30 s
     await R.click('#hPause'); await R.click('#pSave'); await R.waitForTimeout(2500);
     const rec = await R.evaluate(async () => { const { db } = await import('/js/db.js'); return (await db.all('rides')).filter(r => r.routeId === 'demo').sort((a, b) => b.date - a.date)[0]; });

@@ -24,6 +24,7 @@ import { testResult } from './stats.js';
 import { Wizard, WIZ } from './wizard.js';
 import { intervalRecords } from './ivhistory.js';
 import { hardWindow, wizardGate, challengeGate, summonGap, wzOf, friendCalls, friendsLine } from './ivgate.js';
+import { planEagleAny, eagleGate, moveEagle, othersBusy } from './eaglegate.js';
 import { Music, Coach } from './music.js';
 import { MIC_SVG, SPK_SVG, voiceStatus } from './voice.js';
 import { hudPrefs, applyHud, hudControlsHTML, wireHudControls, HUD_ORDER, HUD_PRESETS } from './hudprefs.js';
@@ -195,6 +196,7 @@ export class RideSession {
     if (this.group) { this._wireVoice(); this._wireGroupChip(); }
     this._initChallenges();
     this._initWizard();
+    this._initEagle();
     this._initStory();
     if (!this.group) this.player?.events?.surprises?.startArch?.(this.d + 14); // ride off under the START arch
     this.running = true; this.last = performance.now();
@@ -350,6 +352,7 @@ export class RideSession {
     if (!this.running) return;
     const dt = Math.min(0.25, (now - this.last) / 1000); this.last = now;
     this._pollPad();
+    this._eagleHud();
     if (!this.paused && !this.finished) {
       this._readInputs(); this._autoShift(dt);
       const g = gradeAt(this.track, this.d);
@@ -368,6 +371,7 @@ export class RideSession {
       this._segTick(d0, dt);
       this._cgTick();
       this._wizTick(dt);
+      this._eagleTick(dt);
       if ((this._moodT = (this._moodT || 0) + dt) > 1) { this._moodT = 0; this._mood(); }
       if (this.berg && !(this.workout && this.erg)) this.state.trainer.setPower(this._bergTarget());
       else this.state.trainer.setGrade(this._trainerGrade());
@@ -612,7 +616,7 @@ export class RideSession {
   }
   _chTick(dt) {
     const ch = this.ch; if (!ch) return;
-    if (this.wiz?.busy && !ch.active) return; // the wizard's trial or flight or hell: no dares meanwhile
+    if ((this.wiz?.busy || this.eagle?.busy) && !ch.active) return; // the wizard's trial or flight or hell, the eagle: no dares meanwhile
     const gate = this.workout ? challengeGate(this.wDone ? null : this._hardWin()) : null; // workout: only inside a hard interval, at its target
     const sp = this.player?.events?.surprises, evs = ch.tick(dt, this.d, this.power, this._chKey, this.v, gate); this._chKey = false;
     for (const { type, ch: x } of evs) {
@@ -662,6 +666,11 @@ export class RideSession {
       // group ride (Freddy 12.11.): the wizard always comes, at the same spot for everyone (dice seeded with the group code);
       // each rider takes the trial with his own watts, so one may fly while the other rides through hell
       const grp = this.group ? seeded(this.group.code + this.route.id + this.lap) : null;
+      if (!grp && !qs.has('wizard')) { // alone: every ride, once, by the clock: called between minute 8 and 23, so his trial is done by minute 30 (owner 19.11.)
+        if (this._wizMet || qs.has('nowizard')) return;
+        this._wizArm ??= qs.has('wizardat') ? +qs.get('wizardat') : 480 + Math.random() * 900;
+        this.wiz = new Wizard({ length: this.track.length, startD: this.d, ftp: this.ftp, timed: this._wizArm });
+      } else
       this.wiz = new Wizard({ length: this.track.length, startD: grp ? 0 : this.d, ftp: this.ftp, force: qs.has('wizard'), chance: qs.has('nowizard') ? 0 : grp ? 1 : 0.35, rng: grp || Math.random,
         avoid: d => spots.some(a => d > a - 1400 && d < a + 2900) }); // never on top of a dare and its race
       if (this.wiz.state === 'off' || (grp && this.d > this.wiz.at - 600)) { this.wiz = null; return; } // a late joiner already past his spot
@@ -680,12 +689,13 @@ export class RideSession {
     if (z.exitH && this.d > z.exitH.d - 12) { sp0?.poof?.(z.exitH); z.exitH = null; } // he sends you on (up) and is gone in a puff
     if (z.state === 'hell' && !z.exitH && !z.exitDone && z.t >= WIZ.hell - 25) { z.exitDone = true; z.exitH = sp0?.wizard?.(this.d + Math.max(90, this.v * 25 + 15)); } // he waits where hell ends
     if (this.ch?.active && (z.state === 'wait' || z.state === 'ann')) return; // a race is on: the wizard waits his turn
+    if (z.timed && z.state === 'wait' && !Number.isFinite(z.at) && this.elapsed >= z.armAt && this.track.length - this.d > 2500 && !this.eagle?.busy) { z.summon(this.d, summonGap(this.v)); this._wizMet = true; } // his minute has come and the lap has room for the trial
     const sp = this.player?.events?.surprises, P = this.player, fx = this.q('#hWizFx');
     const win = z.wk ? (this.wDone ? null : this._hardWin()) : null, g = z.wk ? wizardGate(z, win, { elapsed: this.elapsed, v: this.v, hold: WIZ.hold }) : null;
-    if (g === 'summon') z.summon(this.d, summonGap(this.v)); // workout: inside a hard interval with time for his trial
+    if (g === 'summon' && !this.eagle?.busy) { z.summon(this.d, summonGap(this.v)); this._wizIv = win.i; } // workout: inside a hard interval with time for his trial (never while the eagle speaks)
     else if (g === 'dismiss') { sp?.poof?.(z.dismiss()); if (sp) sp.hold = false; } // the interval ends first: he waits for the next one
     const os = this.group ? this.group.others() : null;
-    if (os && friendCalls(z, os, this.lap)) z.summon(this.d, summonGap(this.v)); // group: a friend met him, he comes for you now too
+    if (os && !this.eagle?.busy && friendCalls(z, os, this.lap)) z.summon(this.d, summonGap(this.v)); // group: a friend met him, he comes for you now too
     const flashFx = k => { if (!fx) return; fx.className = 'wizfx'; void fx.offsetWidth; fx.classList.add(k); };
     for (const e of z.tick(dt, this.d, this.power, win?.target || 0)) {
       if (e === 'ann') this.coach?.say('wizard', 0); // the card says it: no extra text in the middle
@@ -704,6 +714,33 @@ export class RideSession {
     if (this.group) { const wz = wzOf(z, this.lap), k = JSON.stringify(wz); if (k !== this._wzK) { this._wzK = k; this.group.update({ wz }); } } // only when it changes
     const card = z.card(this.d), foot = os && card ? friendsLine(os, this.lap) : '';
     const el = this.q('#hWiz'); if (el) { el.classList.toggle('hellcard', z.state === 'hell'); this._card(el, card && foot ? { ...card, foot } : card, '_wizHtml'); }
+  }
+  // ---------- the Eagle of Destiny (owner 18.11.): once per interval workout, inside one hard interval, never with the wizard or a
+  // dare (eaglegate.js); the scene in camera space with lip sync: world/eagle.js. ?eagle = 3 s into the workout, ?eagle=now ----------
+  _initEagle() {
+    const q = new URLSearchParams(location.search).get('eagle'), now = q === 'now';
+    if (this.autopilot || this.state.settings.eagle === false || !this.player?.camera || this.player.instant || this.eg) return;
+    // a free ride alone (owner 19.11.: the wizard in the first 30 minutes, "der Adler kann dann danach kommen, in den nächsten 30 Minuten"):
+    // once, by the clock, between minute 30 and 55; ?eagleat=seconds for tests
+    const qa = new URLSearchParams(location.search).get('eagleat');
+    this.eg = now ? { state: 'wait', now: true, iv: -1 } : this.workout ? planEagleAny(this.workout, { force: q != null }) // a workout: at any moment of it (owner 19.11.), by the workout clock
+      : this.group ? null : { state: 'wait', free: true, iv: -1, at: qa != null ? +qa : q != null ? 3 : 1800 + Math.random() * 1500 }; if (!this.eg) return;
+    import('./world/eagle.js').then(m => { if (!this._closed && this.player?.camera) this.eagle = new m.Eagle(this.player); }).catch(e => console.warn('eagle', e));
+  }
+  _eagleTick(dt) {
+    const e = this.eg; if (!e || !this.eagle || this.state.settings.eagle === false) return;
+    if (e.state === 'play') { if (this.eagle.tick(dt) === 'end') e.state = 'done'; return; }
+    if (e.free) { if (e.state === 'wait' && (e.wk ? this.workout && !this.wDone && this._wClock() : this.elapsed) >= e.at && !othersBusy(this.wiz, this.ch)) { e.state = 'play'; this.eagle.start(); } return; }
+    const stepI = this.wDone ? Infinity : this.wNow?.i ?? -1, win = this.workout && !this.wDone ? this._hardWin() : null;
+    const g = eagleGate(e, { win, stepI, busy: othersBusy(this.wiz, this.ch), wizIv: this._wizIv ?? -1 });
+    if (g === 'go') { e.state = 'play'; this.eagle.start(); } else if (g === 'move') this.eg = moveEagle(this.workout, e, { stepI, ftp: this.ftp });
+  }
+  /** while the eagle flies alongside on the right: minimap, big grade and the next-interval pill fade out (css .hud.eagle-on); back on pause, end, abort */
+  _eagleHud() { const on = !!this.eagle?.perched && !this.paused && !this.finished; if (on !== !!this._egHud) { this._egHud = on; this.el?.querySelector('.hud')?.classList.toggle('eagle-on', on); } }
+  _toggleEagle() {
+    const s = this.state.settings; s.eagle = s.eagle === false;
+    if (!s.eagle && this.eagle?.busy) { this.eagle.stop(); this.eg.state = 'done'; } else if (s.eagle && !this.eg) this._initEagle();
+    import('./app.js').then(m => m.saveSettings());
   }
   /** music follows the ride: minor in a shower, motivation only in the hard parts of a workout, the wizard's flight and hell */
   _mood() {
@@ -1070,6 +1107,7 @@ export class RideSession {
       ...(this.workout ? [['oWView', `Interval display: ${WB_NAMES[this._wbView()]}`, () => this._cycleWbView()]] : []),
       ['oBar', `Bars: ${s.cockpit === false ? 'off' : 'on'}`, () => this._toggleBar()],
       ['oMusic', `Music: ${this.music?.on ? 'on' : 'off'}`, () => this._toggleMusic()],
+      ['oEagle', `Eagle of Destiny: ${s.eagle === false ? 'off' : 'on'}`, () => this._toggleEagle()],
       ...(this.group && this._voiceTap ? [['oVoice', `Voice chat: ${!this.group.voice?.on ? 'off' : this.group.voice.muted ? 'muted' : 'on'}`, () => this._voiceTap()]] : []),
       ['oNext', 'Next song', () => this.music?.skip()],
       ['oWide', 'Wider view', () => this._lens(-1)], ['oNarrow', 'Narrower view', () => this._lens(1)],

@@ -609,6 +609,7 @@ function settings() {
         <label class="field"><div>Weather in Unreal<div class="hint">Auto = the weather changes with the section of the route. Otherwise it stays the same for the whole ride.</div></div>${seg('ueWeather', s.ueWeather || 'auto', UE_WEATHER_OPTS)}</label>
         <label class="field"><div>Keep the group together<div class="hint">In a group ride, whoever falls behind gets an invisible tailwind so you do not lose each other. Off = everyone rides on their own power only.</div></div><input type="checkbox" class="toggle" id="together" ${s.together !== false ? 'checked' : ''}></label>
         <label class="field"><div>Position via camera<div class="hint" id="poseV">The camera in front of the bike detects whether you ride upright, in an aero position or out of the saddle: aero saves drag, standing costs a little. The image stays on your computer. Calibrate once for the best detection.</div></div><div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap"><button class="btn ghost small" id="poseUp" type="button">Calibrate upright</button><button class="btn ghost small" id="poseAero" type="button">Calibrate aero</button><input type="checkbox" class="toggle" id="poseCam" ${s.poseCam ? 'checked' : ''}></div></label>
+        <label class="field"><div>Eagle of Destiny<div class="hint">Once per interval workout an eagle lands beside you in a hard interval and has a few rude words for you (one swear word). Off = no eagle.</div></div><input type="checkbox" class="toggle" id="eagle" ${s.eagle !== false ? 'checked' : ''}></label>
         <label class="field"><div>Handlebars in view<div class="hint">Drop bars with hoods and forearms in the rider view. Off = clear view only. While riding: key H or the “Bars” button.</div></div><input type="checkbox" class="toggle" id="cockpit" ${s.cockpit !== false ? 'checked' : ''}></label>
         <label class="field"><div>Camera<div class="hint">Switch while riding with key V or the camera button.</div></div>${seg('view3d', String(s.view3d || 0), VIEW_OPTS)}</label>
       </div>
@@ -644,6 +645,7 @@ function settings() {
     off.onclick = async () => { await om.forgetOwnMusic(); off.hidden = true; v.textContent = 'No own folder, the game music plays.'; };
   });
   $('#cockpit').onchange = e => { s.cockpit = e.target.checked; saveSettings(); };
+  $('#eagle').onchange = e => { s.eagle = e.target.checked; saveSettings(); };
   $('#liveShow').onchange = e => { s.liveShow = e.target.checked; saveSettings(); import('./live.js').then(l => l.putPrefs({ show: s.liveShow })).catch(() => {}).then(startOnline); };
   $('#liveAuto').onchange = e => { s.liveAuto = e.target.checked; saveSettings(); import('./live.js').then(l => l.putPrefs({ auto: s.liveAuto })).catch(() => {}); };
   $('#together').onchange = e => { s.together = e.target.checked; saveSettings(); };

@@ -5,8 +5,11 @@ export const WIZ = { ann: 1000, near: 200, cast: 15, hold: 60, fly: 30, hell: 30
 
 export class Wizard {
   /** chance: probability that this ride has a wizard at all; avoid(d) = true where something else is planned */
-  constructor({ length, startD, ftp, chance = 0.35, force = false, avoid = () => false, rng = Math.random, workout = 0 }) {
+  constructor({ length, startD, ftp, chance = 0.35, force = false, avoid = () => false, rng = Math.random, workout = 0, timed = 0 }) {
     this.state = 'off'; this.ftp = ftp;
+    // free ride alone (owner 19.11.: "der Wizard auf jeden Fall in den ersten 30 Minuten"): no spot on the road either; the ride
+    // calls him once `timed` seconds are ridden (js/ride.js _wizTick), early enough that his trial is over by minute 30
+    if (timed > 0) { this.timed = true; this.at = Infinity; this.armAt = timed; this.W = Math.round(ftp * WIZ.k / 5) * 5; this.state = 'wait'; return; }
     // in a workout (owner 17.11.): no spot on the road; from armAt (s, 30–75 % into the workout) he is called inside the next
     // hard interval with time left for his trial (ivgate.js wizardGate), and his target is that interval's target
     if (workout > 0) { if (!(force || rng() < chance)) return; this.wk = true; this.at = Infinity; this.armAt = force ? 0 : workout * (0.3 + rng() * 0.45); this.W = Math.round(ftp * WIZ.k / 5) * 5; this.state = 'wait'; return; }
