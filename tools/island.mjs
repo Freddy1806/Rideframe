@@ -43,6 +43,17 @@ function ridgeK(x, y, [x0, y0], [x1, y1], h, w) {
   return h * Math.exp(-((Math.hypot(x - (x0 + t * vx), y - (y0 + t * vy)) / w) ** 2));
 }
 const peakK = (x, y, [px, py], h, w) => h * Math.exp(-((x - px) ** 2 + (y - py) ** 2) / w ** 2);
+// mountain lake in the high valley west of the basin village (Freddy 19.11.: "einen See in den Bergen, an so einem See lang fahren");
+// the Monastery Valley road runs along its north shore. km, y north; level in m
+export const LAKE = { x: 22.6, y: 12.7, rx: 1.75, ry: 0.45, level: 214, depth: 24 };
+export const lakeR = (x, y) => { const a = Math.atan2((y - LAKE.y) / LAKE.ry, (x - LAKE.x) / LAKE.rx);
+  return Math.hypot((x - LAKE.x) / LAKE.rx, (y - LAKE.y) / LAKE.ry) * (1 + 0.07 * Math.sin(a * 3 + 1) + 0.05 * Math.sin(a * 5 + 2.2) + 0.03 * Math.sin(a * 9 + 0.4)); };
+/** the shore as a polygon in grid metres (where lakeR = 1), for the renderer's water surface and the map */
+export function lakeShore() { const out = [];
+  for (let k = 0; k < 128; k++) { const a = k / 128 * Math.PI * 2, dx = Math.cos(a) * LAKE.rx, dy = Math.sin(a) * LAKE.ry; let lo = 0, hi = 2;
+    for (let it = 0; it < 30; it++) { const m = (lo + hi) / 2; if (lakeR(LAKE.x + dx * m, LAKE.y + dy * m) < 1) lo = m; else hi = m; }
+    out.push(M(LAKE.x + dx * lo, LAKE.y + dy * lo)); }
+  return out; }
 const SADDLES = [[19.0, 22.6, 1012, 1.6], [11.5, 15.5, 705, 1.5], [35.0, 21.5, 548, 1.6], [24.0, 7.0, 385, 1.4]];
 /** natural ground in metres at draft km (x, y north) */
 export function groundK(x, y) {
@@ -59,6 +70,9 @@ export function groundK(x, y) {
   const basin = Math.exp(-(((x - 25) / 6.5) ** 2 + ((y - 13.5) / 4) ** 2)); z = z * (1 - 0.75 * basin) + 250 * basin;
   const riv = ridgeK(x, y, [26, 14], [46, 13], 1, 1.3); z = z * (1 - 0.8 * riv) + (60 + 190 * clamp((46 - x) / 20, 0, 1)) * 0.8 * riv;
   for (const [px, py, pz, w] of SADDLES) { const s = Math.exp(-((x - px) ** 2 + (y - py) ** 2) / w ** 2); z = z * (1 - 0.85 * s) + pz * 0.85 * s; }
+  { const r = lakeR(x, y), L = LAKE.level; // lake bowl below the level, a rim that holds the water around it
+    if (r < 1) z = Math.min(z, lerp(L - LAKE.depth, L - 0.8, smooth(0.45, 1, r)));
+    else z = Math.max(z, lerp(L + 2.5, Math.min(z, L + 2.5), smooth(1, 1.9, r))); }
   const land = landK(x, y), cliff = clamp((8 - x) / 4, 0, 1) * (y > 8) + clamp((x - 40) / 3, 0, 1) * (y > 18);
   return land > 0 ? Math.max(z, 0) * Math.pow(clamp(land, 0, 1), 0.6 - 0.45 * clamp(cliff, 0, 1)) + 2 : -40 + 30 * land;
 }
@@ -93,7 +107,7 @@ export const EDGES = [
   ['B', 'P1', 'pass', 1.75, [[23.0, 17.0], [21.0, 20.5]], 'North Pass South Ramp', 'Nordpass Südrampe (Kehren)'],
   ['P1', 'N', 'pass', 1.70, [[20.0, 26.0], [22.5, 29.0]], 'North Pass North Ramp', 'Nordpass Nordrampe (Kehren, Wasserfälle)'],
   ['P1', 'G', 'summit', 1.45, [[21.5, 23.8]], 'Castle Road', 'Gipfelstraße zur Burg (Sackgasse)'],
-  ['B', 'K', 'valley', 1.20, [[21.0, 12.0]], 'Monastery Valley', 'Hochtal zum Kloster'],
+  ['B', 'K', 'valley', 1.02, [[25.0, 13.45], [24.0, 13.07], [23.5, 13.17], [23.0, 13.23], [22.5, 13.245], [22.0, 13.21], [21.5, 13.07], [20.7, 12.98], [19.9, 12.5]], 'Lake Road', 'Seestraße am Bergsee zum Kloster'],
   ['K', 'P2', 'pass', 1.65, [[14.0, 13.5]], 'West Pass East Ramp', 'Westpass Ostrampe'],
   ['P2', 'W', 'pass', 1.60, [[8.0, 18.0], [5.5, 20.0]], 'West Pass West Ramp', 'Westpass Westrampe'],
   ['P2', 'SW', 'pass', 1.55, [[10.0, 10.0]], 'West Pass South Ramp', 'Westpass Südrampe'],
@@ -104,6 +118,7 @@ export const EDGES = [
   ['S', 'T', 'bridge', 1.0, [[26.0, 1.2], [26.6, -1.0]], 'Long Bridge', 'Lange Brücke (5 km über das Meer)'],
   ['T', 'T', 'islet', 1.0, [], 'Seal Isle Loop', 'Robbeninsel-Runde (Zeitfahren)'],
 ].map(([a, b, kind, wind, via, name, de]) => ({ id: a + '-' + b, a, b, kind, wind, via, name, de }));
+EDGES.find(e => e.id === 'B-K').land = 'valley'; // the lake road: meadows and the lake, no river drawn beside it
 // avalanche galleries (roof over the road, open to the valley; the renderer's 'avalanche_protector'): edge -> [[from, to] as
 // fractions of the edge from its a end]. Region 1 (North Pass): two on the steep upper part of the north ramp.
 const GALLERIES = { 'P1-N': [[0.16, 0.185], [0.27, 0.285]] };
@@ -206,7 +221,7 @@ function profile(e, P) {
   const tz = raw.map((_, i) => { let s = 0, ws = 0; for (let k = -rad; k <= rad; k++) { const j = clamp(i + k, 0, n - 1), w = Math.exp(-(k * k) / (2 * sig * sig)); s += raw[j] * w; ws += w; } return s / ws; });
   const mix = { islet: 0.9, coast: 0.9, cliff: 0.9, valley: 0.7, pass: 0.6, summit: 0.5, hills: 0.75 }[e.kind];
   let z = tz.map((t, i) => { const lin = lerp(a.z, b.z, i / (n - 1)), f = Math.sin(Math.PI * i / (n - 1)); return lin * (1 - mix * f) + t * mix * f; });
-  z = z.map(v => Math.max(3, v));
+  z = z.map((v, i) => { const q = lakeR(...K(...P[i])); return Math.max(3, q < 1.9 ? lerp(LAKE.level + 6, v, smooth(1.35, 1.9, q)) : v); }); // along the lake: 6 m above the water on an open bank, so you look onto it
   if (Math.abs(b.z - a.z) > 200) { // a real climb: never a dip on the way up (the trainer would go easy mid-pass)
     const up = b.z > a.z; for (let i = 1; i < n; i++) z[i] = up ? Math.max(z[i], z[i - 1]) : Math.min(z[i], z[i - 1]);
     const lo = z[0], hi = z[n - 1]; z = z.map((v, i) => lerp(a.z, b.z, (v - lo) / ((hi - lo) || 1)) * 0.85 + lerp(a.z, b.z, i / (n - 1)) * 0.15); }
@@ -260,6 +275,12 @@ export function buildGrid(edges, corr = correction(edges)) {
       const d = Math.hypot((c + 0.5) * PX - x, (r + 0.5) * PX - y), j = r * N + c; if (d < best[j]) { best[j] = d; be[j] = e.ele[i]; } }
   }
   for (let j = 0; j < N * N; j++) if (best[j] < RAD) { const w = Math.min(RAD, 45 + Math.abs(H[j] - be[j]) * 1.4); if (best[j] < w) H[j] = lerp(Math.max(be[j] - 0.3, 0.6), H[j], smooth(6, w, best[j])); }
+  // the lake: the correction field and the road corridor must not lift the bed above the water (or drain it)
+  { const [lx, ly] = M(LAKE.x, LAKE.y), ex = (LAKE.rx + 0.4) * 1000, ey = (LAKE.ry + 0.4) * 1000;
+    for (let r = Math.floor((ly - ey) / PX); r < (ly + ey) / PX; r++) for (let c = Math.floor((lx - ex) / PX); c < (lx + ex) / PX; c++) {
+      const j = r * N + c, [kx, ky] = K((c + 0.5) * PX, (r + 0.5) * PX), q = lakeR(kx, ky);
+      if (q < 1) H[j] = Math.min(H[j], lerp(LAKE.level - LAKE.depth, LAKE.level - 0.8, smooth(0.45, 1, q)));
+      else if (q < 1.45) { if (q < 1.25 && best[j] > 9) H[j] = Math.max(H[j], LAKE.level + 0.6); if (best[j] > 7) H[j] = Math.min(H[j], LAKE.level + 0.4 + 30 * (q - 1)); } } } // the bank holds the water and falls openly to it from the road
   // castle summit: a flat top for the keep, just above the road's end
   const [cx, cy] = M(NODES.G.x, NODES.G.y), top = NODES.G.z + 4;
   for (let r = Math.floor((cy - 300) / PX); r < (cy + 300) / PX; r++) for (let c = Math.floor((cx - 300) / PX); c < (cx + 300) / PX; c++) {
@@ -288,7 +309,7 @@ function tourJSON(T, edges) {
     const fw = e.a === a, p = fw ? e.P : [...e.P].reverse(), el = fw ? e.ele : [...e.ele].reverse(), k0 = P.length ? 1 : 0;
     P = P.concat(p.slice(k0)); ele = ele.concat(el.slice(k0));
     for (const [f0, f1] of GALLERIES[e.id] || []) { const a0 = fw ? f0 : 1 - f1, a1 = fw ? f1 : 1 - f0; tunnels.push([Math.round(at + a0 * e.len), Math.round(at + a1 * e.len)]); }
-    kinds.push({ from_m: at, to_m: at + e.len, kind: e.kind, land: LAND[e.kind], name: e.name, edge: e.id, dir: fw ? 1 : -1 });
+    kinds.push({ from_m: at, to_m: at + e.len, kind: e.kind, land: e.land || LAND[e.kind], name: e.name, edge: e.id, dir: fw ? 1 : -1 });
     at += e.len; const nd = NODES[b];
     if (['village', 'harbour', 'fishing', 'monastery'].includes(nd.kind)) places.push({ name: nd.name, from_m: Math.max(0, at - 300), to_m: at + 300 });
     nodes.push({ id: b, name: nd.name, at_m: at });
@@ -300,7 +321,8 @@ function tourJSON(T, edges) {
     format: 'Uint16 little-endian, decimetres, sea = 0, row 0 = north, column 0 = west (tools/island.mjs)',
     start_px: [s0[0] / PX, s0[1] / PX], route_step_m: STEP,
     route: P.map(([x, y]) => [+(x - s0[0]).toFixed(1), +(y - s0[1]).toFixed(1)]), ele: ele.map(v => +v.toFixed(1)),
-    places, sea_side, nodes, roads: kinds, tunnels, tunnel_kinds: tunnels.map(() => 'avalanche_protector'), bridges: wetRuns(P) };
+    places, sea_side, nodes, roads: kinds, tunnels, tunnel_kinds: tunnels.map(() => 'avalanche_protector'), bridges: wetRuns(P),
+    lakes: [{ level: LAKE.level, shore: lakeShore().map(([x, y]) => [+(x - s0[0]).toFixed(1), +(y - s0[1]).toFixed(1)]) }] }; // water surfaces above the sea (relative to the start like route)
 }
 
 // ---------------- main ----------------
@@ -316,7 +338,8 @@ if (import.meta.url === `file://${process.argv[1]}`) {
     const r = v => +v.toFixed(1);
     fs.writeFileSync(new URL('insel_net.json', OUT), JSON.stringify({ name: 'Island', n: N, pixel_m: PX, size_m: SIZE, step_m: STEP,
       nodes: Object.fromEntries(Object.entries(NODES).map(([k, v]) => [k, { name: v.name, de: v.de, kind: v.kind, z: v.z, p: M(v.x, v.y).map(r) }])),
-      edges: edges.map(e => ({ id: e.id, a: e.a, b: e.b, kind: e.kind, land: LAND[e.kind], name: e.name, de: e.de, len: e.len, gain: Math.round(e.gain), loss: Math.round(e.loss), maxGrade: r(e.maxG), P: e.P.map(p => p.map(r)), ele: e.ele.map(r) })) }));
+      lakes: [{ level: LAKE.level, shore: lakeShore().map(p => p.map(r)) }],
+      edges: edges.map(e => ({ id: e.id, a: e.a, b: e.b, kind: e.kind, land: e.land || LAND[e.kind], name: e.name, de: e.de, len: e.len, gain: Math.round(e.gain), loss: Math.round(e.loss), maxGrade: r(e.maxG), P: e.P.map(p => p.map(r)), ele: e.ele.map(r) })) }));
     for (const [id, T] of Object.entries(TOURS)) { const j = tourJSON(T, edges); fs.writeFileSync(new URL(id + '.json', OUT), JSON.stringify(j));
       let g = 0; for (let i = 1; i < j.ele.length; i++) g += Math.max(0, j.ele[i] - j.ele[i - 1]); console.log(`${id}: ${(j.route.length * STEP / 1000).toFixed(1)} km, +${Math.round(g)} m`); }
     console.log(`written in ${((Date.now() - t0) / 1000).toFixed(1)} s`);

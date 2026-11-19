@@ -46,6 +46,13 @@ col = lerpc(col, [128, 122, 112], np.clip((slope - 0.55) / 0.35, 0, 1))         
 col = lerpc(col, [150, 146, 138], np.clip((zs - 1250) / 200, 0, 1) * np.clip((slope - 0.25) / 0.3, 0, 1))  # scree near the top
 col = lerpc(col, [200, 186, 148], np.clip((6 - zs) / 4, 0, 1) * (zs > 0.3))          # sand at the shore
 col[zs <= 0.3] = [40, 62, 70]
+# mountain lakes (insel_net.json 'lakes'): the bed under the water surface reads dark, a pale stony shore around it
+for lk in net.get('lakes', []):
+    from PIL import ImageDraw as _D
+    m = Image.new('L', (S, S), 0); _D.Draw(m).polygon([(x / net['size_m'] * S, y / net['size_m'] * S) for x, y in lk['shore']], fill=255)
+    mb = np.asarray(m.filter(ImageFilter.GaussianBlur(3)), np.float32) / 255
+    col = lerpc(col, [150, 146, 130], np.clip(mb * 3, 0, 1) * (1 - np.clip(mb * 3 - 1.2, 0, 1)) * 0.6)
+    col = lerpc(col, [34, 58, 62], np.clip((mb - 0.5) * 3, 0, 1))
 Image.fromarray(np.clip(col, 0, 255).astype(np.uint8)).save(os.path.join(DEM, 'insel_sat.jpg'), quality=88)
 
 # ---------------- map ----------------
@@ -59,6 +66,7 @@ rgb = np.where((zm > 0.3)[..., None], rgb * shade[..., None], rgb)
 k = MS / net['size_m']; x0, y0 = int(2000 * k), int(8600 * k); x1, y1 = int((net['size_m'] - 2000) * k), int((net['size_m'] - 2200) * k)
 im = Image.fromarray(np.clip(rgb, 0, 255).astype(np.uint8)).crop((x0, y0, x1, y1)); dr = ImageDraw.Draw(im)
 P = lambda p: (p[0] * k - x0, p[1] * k - y0)
+for lk in net.get('lakes', []): dr.polygon([P(p) for p in lk['shore']], fill=(52, 104, 140), outline=(30, 70, 100))
 COL = {'bridge': (255, 106, 0), 'islet': (255, 255, 255), 'coast': (255, 255, 255), 'cliff': (225, 235, 245), 'valley': (255, 214, 120), 'pass': (255, 106, 0), 'summit': (230, 40, 20), 'hills': (255, 160, 60)}
 for e in net['edges']:
     pts = [P(p) for p in e['P'][::3]]

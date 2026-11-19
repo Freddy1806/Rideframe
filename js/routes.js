@@ -253,7 +253,7 @@ export function makeRealTrack(j) {
   const head = xs.map((_, i) => { const a = Math.max(0, i - 1), b = Math.min(n - 1, i + 1); return Math.atan2(xs[b] - xs[a], ys[b] - ys[a]); });
   const curve = head.map((h, i) => { if (!i) return 0; let d = h - head[i - 1]; d = Math.atan2(Math.sin(d), Math.cos(d)); return Math.max(-0.15, Math.min(0.15, -d)); }); // heading change per sample: the hairpin walls and signs find the bends
   return { ...track, curve, theme: 'coast', world: 'lofoten', segments: segs, intervals: [], name: j.name, gpsLat: gps?.lat, gpsLon: gps?.lon,
-    dem: { file: j.file, n: j.n, size_m: j.size_m, start_px: [j.start_px[0] - 0.5, j.start_px[1] - 0.5], sat: j.sat, bridges: (j.bridges || []).filter(([a, b]) => b - a >= 25), tunnels: j.tunnels || [], tunnelKinds: j.tunnel_kinds || [] } }; // start_px counts pixel edges, the grid samples sit at pixel centres
+    dem: { file: j.file, n: j.n, size_m: j.size_m, start_px: [j.start_px[0] - 0.5, j.start_px[1] - 0.5], sat: j.sat, bridges: (j.bridges || []).filter(([a, b]) => b - a >= 25), lakes: j.lakes || [], tunnels: j.tunnels || [], tunnelKinds: j.tunnel_kinds || [] } }; // start_px counts pixel edges, the grid samples sit at pixel centres
 }
 
 /** inverse UTM (WGS84): easting e0 + x, northing n0 - y (y = metres south) -> { lat[], lon[] } in degrees; lon0 = central meridian */

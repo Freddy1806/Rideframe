@@ -318,6 +318,13 @@ export class WorldScene {
     this.water.material.transparent = true;
     this.water.rotation.x = -Math.PI / 2; this.water.position.y = 0; scene.add(this.water);
     { const wr0 = this.water.onBeforeRender; this.water.onBeforeRender = (...x) => { if (this.water.material.uniforms.uHigh.value < 0.999) wr0.apply(this.water, x); }; } // high in the flight the planar mirror no longer fits the perspective (a sharp bright wedge with an upside-down ridge): no mirror at all up there, and one render pass saved
+    // mountain lakes (island, Freddy 19.11.): a still, dark surface at the lake's level that mirrors the sky (environment map)
+    // with the sea's wave normals drifting slowly over it; its own shore polygon from tools/island.mjs
+    this.lakeMeshes = (this.field.lakes || []).map(L => {
+      const sh = new THREE.Shape(L.P.map(([x, z]) => new THREE.Vector2(x, -z))), g = new THREE.ShapeGeometry(sh, 6); g.rotateX(-Math.PI / 2);
+      const nm = this.water.material.uniforms.normalSampler.value.clone(); nm.wrapS = nm.wrapT = THREE.RepeatWrapping; nm.repeat.set(0.012, 0.012); nm.needsUpdate = true;
+      const m = new THREE.Mesh(g, new THREE.MeshStandardMaterial({ color: 0x1b363d, roughness: 0.07, metalness: 0.15, normalMap: nm, normalScale: new THREE.Vector2(0.35, 0.35), envMapIntensity: 1.25 }));
+      m.position.y = L.level; m.receiveShadow = true; m.userData.lakeNormal = nm; scene.add(m); return m; });
     if (QS.has('noreflect')) { const wr = this.water.onBeforeRender; let k = 0; this.water.onBeforeRender = (...x) => { if (k++ < 30) wr.apply(this.water, x); }; } // mirror frozen after the first frames
 
 
@@ -526,7 +533,7 @@ export class WorldScene {
           const x = f.x[j] + tx * al - tz * off * side, z = f.z[j] + tz * al + tx * off * side;
           if (inT(x, z) && spl[vi(x, z) * 4] < 0.5 + r() * 0.3) continue;
           const rd = f.road(x, z); if (!rd || rd.d < ROAD_W + 0.5) continue;
-          const h = f.height(x, z); if (h < 2.2 || h > (f.rockLine ? f.rockLine + 150 : 500) + f.n2(x / 60, z / 60) * 60) continue; // no green tufts in the snow (Himmelsleiter)
+          const h = f.height(x, z); if (h < 2.2 || (f.lakes.length && f.inLake(x, z, 2) !== null) || h > (f.rockLine ? f.rockLine + 150 : 500) + f.n2(x / 60, z / 60) * 60) continue; // no green tufts in the snow (Himmelsleiter)
           const patch = f.n2(x / 23, z / 23) * 0.5 + 0.5; // meadows are patchy: dense clumps, thin spots
           if (rd.d > ROAD_W + 2 && r() > 0.2 + 1.1 * patch) continue;
           const verge = rd.d < ROAD_W + 1.8; // mown strip next to the asphalt
@@ -558,7 +565,7 @@ export class WorldScene {
     const sb = [];
     for (let k = 0; k < 420; k++) {
       const x = ox + r() * TILE, z = oz + r() * TILE, i = vi(x, z);
-      if (spl[i * 4] < 0.6 || H[i] < 2.6) continue;
+      if (spl[i * 4] < 0.6 || H[i] < 2.6 || (f.lakes.length && f.inLake(x, z, 3) !== null)) continue;
       const rd = f.road(x, z); if (!rd || rd.d < ROAD_W + 3 || rd.d > 60) continue;
       if (f.n2(x / 31, z / 31) * 0.5 + 0.5 < 0.45 + r() * 0.3) continue; // in patches, open meadow between them
       const sz = 0.55 + r() * r() * 1.3, h0 = f.height(x, z);
@@ -728,6 +735,7 @@ export class WorldScene {
       const q = spot(d, off), rad = Math.max(e.size[0], e.size[2]) / 2 * (o.radK ?? 0.85);
       const rd = f.road(q.x, q.z);
       if (!rd || rd.d - rad < ROAD_W + (o.gap ?? 1.2)) return null; // never on the road
+      if (f.lakes.length && !o.water && f.inLake(q.x, q.z, rad) !== null) return null; // never in a mountain lake
       if (!o.overlap && !free(q.x, q.z, rad)) return null;
       if (o.water && /boot/.test(e.file)) { // boats: deep water under the whole hull (never into a rock or a shore) and never under a bridge
         const R = Math.max(e.size[0], e.size[2]) / 2 + 1.5;
@@ -1084,7 +1092,7 @@ export class WorldScene {
     };
     if (trees.length) {
       // land all round (14 m): no tree on a thin spit or skerry, where the coarse far terrain shows only sea
-      const dry = (x, z) => [[14, 0], [-14, 0], [0, 14], [0, -14], [10, 10], [-10, -10]].every(([a, c]) => f.height(x + a, z + c) > 1.2);
+      const dry = (x, z) => f.inLake(x, z, 6) === null && [[14, 0], [-14, 0], [0, 14], [0, -14], [10, 10], [-10, -10]].every(([a, c]) => f.height(x + a, z + c) > 1.2);
       let n = 0;
       for (let d = 80; d < t.length - 60 && n < 1400; d += 9 + r() * 10) {
         const grove = f.n2(d / 400, 7.3) * 0.5 + 0.5; // stretches with woods and open stretches between them
@@ -1704,6 +1712,7 @@ export class WorldScene {
     this._speedBlur(Math.max(0, Math.min(1, ((this.speed || 0) * 3.6 - 24) / 36))); /* visible from ~28 km/h, full at 60 (at 42 it smeared the mountains, Mac mini 12.11.) */
     this.streaks.position.copy(this.camera.position); this.streaks.quaternion.copy(this.camera.quaternion); this.streaks.userData.tick(dt, this.speed || 0, this.view === 2 || this._shot ? 0 : this.fast || 0);
     this.water.position.x = Math.round(cam.x / 100) * 100; this.water.position.z = Math.round(cam.z / 100) * 100;
+    for (const m of this.lakeMeshes || []) m.userData.lakeNormal.offset.set(time * 0.0009, time * 0.0005); // a breath of wind over the lake
     this.water.material.uniforms.time.value = time * 0.6; this.grassTime.value = time; TIME.value = time;
     { const sd = this.sky.material.uniforms.sunPosition.value, g = this.sunGlow, veil = this.weather?.veil || 0;
       g.position.copy(this.camera.position).addScaledVector(sd, 8200); g.material.opacity = 0.5 * (1 - 0.65 * veil) * (1 - (this.tunnelK || 0)) * (1 - 0.85 * (this.dusk || 0)); }

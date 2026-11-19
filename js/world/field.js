@@ -87,6 +87,9 @@ export class Field {
       set(a + 1, b - 1, this.tunnel); // mountain raised over the whole tube
       set(a - 1, Math.min(b, a + 22), this.tunnelHole ||= new Uint8Array(m)); set(Math.max(a, b - 22), b + 1, this.tunnelHole); }); } // terrain cut open at both mouths (see holeAt)
     if (track.dem?.bridges?.length) { this.bridge = new Uint8Array(m); for (const [a, b] of track.dem.bridges) for (let j = Math.max(0, Math.floor(a / DS)); j <= Math.min(m - 1, b / DS); j++) this.bridge[j] = 1; }
+    // mountain lakes (island): shore polygons in world metres; inLake() keeps trees, grass and props out of the water
+    this.lakes = (track.dem?.lakes || []).map(l => { const P = l.shore, xs = P.map(p => p[0]), zs = P.map(p => p[1]);
+      return { level: l.level, P, x0: Math.min(...xs), x1: Math.max(...xs), z0: Math.min(...zs), z1: Math.max(...zs) }; });
     // spatial hashes over every 4th dense sample (10 m): fine and coarse
     this.fine = this._hash(40, SUB); this.coarse = this._hash(250, SUB * 8); this.huge = this._hash(1000, SUB * 8);
     const r = rng(77); this.n1 = createNoise2D(r); this.n2 = createNoise2D(r); this.n3 = createNoise2D(r);
@@ -163,6 +166,14 @@ export class Field {
     return { i, d: Math.abs(side), side, e: lerp(this.e[i], this.e[j], Math.abs(f)), ew: bl(1),
       sea: lerp(bl(2), this.sea[i], near), cliff: lerp(bl(3), this.cliff[i], near), beach: lerp(bl(4), this.beach[i], near), river: lerp(bl(5), this.river[i], near) };
   }
+  /** Water level of the mountain lake at x,z (+ margin metres of shore), or null. */
+  inLake(x, z, margin = 0) {
+    for (const L of this.lakes) { if (x < L.x0 - margin || x > L.x1 + margin || z < L.z0 - margin || z > L.z1 + margin) continue;
+      let ins = false; const P = L.P; for (let i = 0, j = P.length - 1; i < P.length; j = i++) { const [xi, zi] = P[i], [xj, zj] = P[j];
+        if ((zi > z) !== (zj > z) && x < (xj - xi) * (z - zi) / (zj - zi) + xi) ins = !ins; }
+      if (ins || (margin > 0 && this.height(x, z) < L.level + 0.4)) return L.level; }
+    return null;
+  }
   /** Real elevation (m) at world x,z; mirrored beyond the edges so it never ends. */
   demH(x, z) {
     if (!this.dem) return null;
@@ -196,7 +207,9 @@ export class Field {
     const nearLand = base + Math.min(35, Math.max(0, out) * 0.18) + detail * smooth(0, 15, out);
     const target = real === null ? Math.max(mtn, nearLand) : lerp(mtn, Math.max(mtn, nearLand), smooth(0, 30, real));
     if (this.real && real !== null) { // the DEM is the truth here: only a short flat shoulder blends into it, sea stays sea
-      const ground = lerp(real <= 0.5 ? -4 - smooth(0, 40, out) * 12 : real + rough * smooth(20, 200, real), -16, smooth(0, 1200, this.demOut));
+      let rk = smooth(20, 200, real);
+      for (const L of this.lakes) if (x > L.x0 - 300 && x < L.x1 + 300 && z > L.z0 - 300 && z < L.z1 + 300) rk *= smooth(1, 14, Math.abs(real - L.level)); // calm, open shores: no bumps hiding the lake, no islets in it
+      const ground = lerp(real <= 0.5 ? -4 - smooth(0, 40, out) * 12 : real + rough * rk, -16, smooth(0, 1200, this.demOut));
       if (this.bridge?.[r.i]) return Math.min(real <= 0.5 ? -16 : ground, r.e - 3); // over the sea: deep water right under the deck (the shallow road shelf showed as light bands beside the bridge, Freddy 19.11.) // on a bridge: water (or the valley) right under the deck
       if (this.tunnel?.[r.i]) return Math.max(ground, r.e + 9); // rock tunnel: the mountain stays closed above the tube
       const h = lerp(base + detail * smooth(0, 15, out), ground, smooth(3, 35, out));
