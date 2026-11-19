@@ -674,13 +674,18 @@ export class RideSession {
   // dare (eaglegate.js); the scene in camera space with lip sync: world/eagle.js. ?eagle = 3 s into the first hard interval, ?eagle=now ----------
   _initEagle() {
     const q = new URLSearchParams(location.search).get('eagle'), now = q === 'now';
-    if (this.autopilot || this.state.settings.eagle === false || !this.player?.camera || this.player.instant || (!this.workout && !now)) return;
-    this.eg = now ? { state: 'wait', now: true, iv: -1 } : planEagle(this.workout, { force: q != null, ftp: this.ftp }); if (!this.eg) return;
+    if (this.autopilot || this.state.settings.eagle === false || !this.player?.camera || this.player.instant || this.eg) return;
+    // a free ride alone (owner 19.11.: the wizard in the first 30 minutes, "der Adler kann dann danach kommen, in den nächsten 30 Minuten"):
+    // once, by the clock, between minute 30 and 55; ?eagleat=seconds for tests
+    const qa = new URLSearchParams(location.search).get('eagleat');
+    this.eg = now ? { state: 'wait', now: true, iv: -1 } : this.workout ? planEagle(this.workout, { force: q != null, ftp: this.ftp })
+      : this.group ? null : { state: 'wait', free: true, iv: -1, at: qa != null ? +qa : q != null ? 3 : 1800 + Math.random() * 1500 }; if (!this.eg) return;
     import('./world/eagle.js').then(m => { if (!this._closed && this.player?.camera) this.eagle = new m.Eagle(this.player); }).catch(e => console.warn('eagle', e));
   }
   _eagleTick(dt) {
     const e = this.eg; if (!e || !this.eagle || this.state.settings.eagle === false) return;
     if (e.state === 'play') { if (this.eagle.tick(dt) === 'end') e.state = 'done'; return; }
+    if (e.free) { if (e.state === 'wait' && this.elapsed >= e.at && !othersBusy(this.wiz, this.ch) && !this.workout) { e.state = 'play'; this.eagle.start(); } return; }
     const stepI = this.wDone ? Infinity : this.wNow?.i ?? -1, win = this.workout && !this.wDone ? this._hardWin() : null;
     const g = eagleGate(e, { win, stepI, busy: othersBusy(this.wiz, this.ch), wizIv: this._wizIv ?? -1 });
     if (g === 'go') { e.state = 'play'; this.eagle.start(); } else if (g === 'move') this.eg = moveEagle(this.workout, e, { stepI, ftp: this.ftp });
