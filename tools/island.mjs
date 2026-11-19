@@ -40,7 +40,7 @@ function landK(x, y) { // > 0 land
 }
 export const ISLE = [26.5, -5.0, 2.4, 1.5]; // centre x, y (km, y north), half axes
 // seal coves (Freddy 19.11.: the seals must be visible): small bays on Seal Isle that reach to ~20 m from the loop road, rocks and sand at the water
-const SEAL_COVES = [40, 115, 200, 250, 320].map(a => { const t = (90 - a) * Math.PI / 180; return [ISLE[0] + Math.cos(t) * ISLE[2] * 1.02, ISLE[1] + Math.sin(t) * ISLE[3] * 1.02]; });
+const SEAL_COVES = [40, 115, 200, 250, 320].map(a => { const t = (90 - a) * Math.PI / 180; return [ISLE[0] + Math.cos(t) * ISLE[2] * 1.05, ISLE[1] + Math.sin(t) * ISLE[3] * 1.05]; });
 function ridgeK(x, y, [x0, y0], [x1, y1], h, w) {
   const vx = x1 - x0, vy = y1 - y0, t = clamp(((x - x0) * vx + (y - y0) * vy) / (vx * vx + vy * vy), 0, 1);
   return h * Math.exp(-((Math.hypot(x - (x0 + t * vx), y - (y0 + t * vy)) / w) ** 2));

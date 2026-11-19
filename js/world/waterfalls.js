@@ -58,7 +58,7 @@ export function placeWaterfalls(world, A, taken = []) {
   };
   const gMill = A?.find('wasserfall_muehle'), gSmall = A?.find('wasserfall_klein');
   const millSite = pickNear(11, 1500, gMill ? 28 : 14, 0, gMill);
-  const cliff = findCliff();
+  const cliff = world.track.dem?.file === 'insel.bin' ? null : findCliff(); // island: no lone rock-tower fall on the snow (Mac check 19.11.)
   if (cliff) used.push(cliff.d);
   // small cascades 10-15 m from the road, one every 3-5 km
   const smalls = [];
@@ -452,7 +452,7 @@ export function placeWaterfalls(world, A, taken = []) {
     scene.add(obj); F.objs.push(obj); F.glbObj = obj;
     if (F.glbWheel) { obj.traverse(c => { c.matrixAutoUpdate = c === F.glbWheel; }); } else freeze(obj);
     taken.push([F.x, F.z, Math.max(e.size[0], e.size[2]) * 0.55]);
-    if (kind === 'small') { // the water has to come from somewhere (Freddy 19.11.; the Mac check saw the model stand alone): the hillside rises
+    if (kind === 'small' || kind === 'mill') { // the water has to come from somewhere (Freddy 19.11.; the Mac check saw the model stand alone): the hillside rises
       // behind the model to its lip, and a brook runs down that slope to it from a spring between boulders further up
       const wb = new THREE.Box3(); obj.traverse(c => { if (c.isMesh && /wasserfall_wasser/.test(c.name + (c.parent?.name || ''))) wb.expandByObject(c); });
       const lipY = wb.isEmpty() ? y + sz.y * 0.9 : wb.max.y, R0 = Math.max(sz.x, sz.z) / 2;
@@ -461,7 +461,8 @@ export function placeWaterfalls(world, A, taken = []) {
       const src = [[cx + nx * (R0 - 1), lipY - 0.3, cz + nz * (R0 - 1)], [bx, H(bx, bz), bz]]; let x = bx, z = bz;
       for (let k = 0; k < 40 && H(x, z) - lipY < 70; k++) { const h0 = H(x, z), gx = (H(x + 4, z) - h0) / 4, gz = (H(x, z + 4) - h0) / 4, sl = Math.hypot(gx, gz);
         let ux = sl > 0.03 ? gx / sl : nx, uz = sl > 0.03 ? gz / sl : nz; if (k < 4 || sl <= 0.03) { const m = k < 4 ? k / 4 : 0; ux = lerp(nx, ux, m); uz = lerp(nz, uz, m); }
-        x += ux * 5; z += uz * 5; src.push([x, H(x, z), z]); if (sl <= 0.03 && k > 8) break; }
+        const dn = ux * nx + uz * nz; if (dn < 0.35) { ux += nx * (0.35 - dn); uz += nz * (0.35 - dn); const l = Math.hypot(ux, uz) || 1; ux /= l; uz /= l; } // always away from the road, never across it
+        x += ux * 5; z += uz * 5; const rq = f.road(x, z); if (rq && rq.d < ROAD_W + 8) break; src.push([x, H(x, z), z]); if (sl <= 0.03 && k > 8) break; }
       for (let it = 0; it < 4; it++) for (let i = 2; i < src.length - 1; i++) { src[i][0] = (src[i - 1][0] + src[i][0] * 2 + src[i + 1][0]) / 4; src[i][2] = (src[i - 1][2] + src[i][2] * 2 + src[i + 1][2]) / 4; src[i][1] = H(src[i][0], src[i][2]); }
       const S = src.reverse(), m = S.length;
       const wm = new THREE.Mesh(drapeStrip(S, i => 1.1 + 1.6 * i / (m - 1), 0.25, H, r() * 10, 3), wMat); wm.renderOrder = 2; add(wm, true); F.objs.push(wm);

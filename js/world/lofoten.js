@@ -612,11 +612,12 @@ export class WorldScene {
       if (s.village) {
         const a = i0 + Math.round(len * s.village[0]), b = i0 + Math.round(len * s.village[1]);
         for (let i = a; i < b; i += 4 + Math.floor(r() * 4)) {
-          if (r() < 0.7) put(r() < 0.75 ? 'rorbu' : 'rorbu2', i, -1, 12, (r() - .5) * .2);
-          if (r() < 0.3) put('boat', i + 2, -1, 14, r() * 3);
+          const vine = this.track.dem?.file === 'insel.bin' && /^(Olive Bay|Vintners' Village)$/.test(s.name || ''); // wine hamlets: no fishing huts
+          if (r() < 0.7 && !vine) put(r() < 0.75 ? 'rorbu' : 'rorbu2', i, -1, 12, (r() - .5) * .2);
+          if (r() < 0.3 && !vine) put('boat', i + 2, -1, 14, r() * 3);
           if (r() < 0.55) put(r() < 0.5 ? 'stone' : 'timber', i, 1, 12 + r() * 8, (r() - .5) * .3);
         }
-        if (s.edge !== 'S-H') put('hjell', a + 3, 1, 14, 0.2); // no stockfish racks among the vines
+        if (s.edge !== 'S-H' && !/^(Olive Bay|Vintners' Village)$/.test(s.name || '')) put('hjell', a + 3, 1, 14, 0.2); // no stockfish racks among the vines
         if (s === segs[0]) put('church', b - 6, 1, 22, 0.1);
       }
       if (s.land === 'coast' && !s.village && s.edge !== 'S-H') for (let i = i0; i < i1; i += 30 + Math.floor(r() * 40)) {
@@ -801,7 +802,7 @@ export class WorldScene {
       this.village = buildVillage({ place, byName, make: e => A.make(e, null, r).obj, mirror: d => segAt(d).seaSide === 1, r, spot, f, scene: this.scene, props: this.props, anim: this.villageAnim, len: t.length }, t.__village);
     } catch (e) { console.warn('village', e); }
     for (const s of segs) {
-      const L = s.to - s.from; wine = t.dem?.file === 'insel.bin' && s.edge === 'S-H';
+      const L = s.to - s.from; wine = t.dem?.file === 'insel.bin' && (s.edge === 'S-H' || /^(Olive Bay|Vintners' Village)$/.test(s.name || '')); // the hamlets on that coast too
       // ---- villages: houses, harbour, market square, musicians, people ----
       const vb = s.village && (this.village ? Math.min(s.from + L * s.village[1], t.length - 650) : s.from + L * s.village[1]); /* the messenger's village owns the last ~600 m: a theme village there sat right on top of it (Mac mini 12.11.) */
       if (s.village && vb - (s.from + L * s.village[0]) >= 250) {
@@ -1034,7 +1035,7 @@ export class WorldScene {
         for (const c of cand) { if (used.some(u => Math.abs(u - c.d) < 220)) continue; used.push(c.d);
           const n = 3 + Math.floor(r() * 5);
           for (let k = 0; k < n; k++) { const e = seals[Math.floor(r() * seals.length)], o = Math.max(ROAD_W + 5, c.ow - 1.5 - r() * 6), dd = c.d + (k - n / 2) * (2.4 + r() * 1.8), q = spot(dd, c.sea * o);
-            if (f.height(q.x, q.z) < 0.3) continue; // on the rocks at the waterline, never in the water
+            if (f.height(q.x, q.z) < 0.6) continue; // on the rocks at the waterline, never in the water
             place(e, dd, -o, { face: r() * 6.28, gap: 1.5, radK: 0.35, anim: r() < 0.8 ? 'Liegen' : 'Robben', flat: false, overlap: true }); }
         }
       }
