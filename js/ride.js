@@ -160,6 +160,7 @@ export class RideSession {
             if (L || q != null) this.track.__village = { km: q != null ? +q : L.life.km, hm: L?.life.hm || 0, leader: L ? (leaderOf(L.pts) || L.colour) : null, colour: new URLSearchParams(location.search).get('week') || L?.colour || null }; }
           { const q = new URLSearchParams(location.search).get('sunset'); this.track.__sunset = q != null ? q === '1' : this.state.settings.light !== 'fest'; } /* the sun sets over the ride (route page: Licht) */
           this.track.__mode = mode; /* Voll / Ohne Menschen / ... (route page) */
+          this.track.__look = this.state.settings.look || null; /* shop gloves on the first-person bars */
           this.player = new WorldScene(c, this.track); window.__world = this.player; }
         catch (e) { console.warn('3D world failed, using 2D scene', e); }
         clearInterval(tk); ld0.remove();
@@ -658,7 +659,7 @@ export class RideSession {
     const el = this.q('#hCh'); if (el) this._chPanel(el, (this._chRes && performance.now() < this._chRes.until ? this._chRes.card : null) || ch.card(this.d));
   }
 
-  // ---------- the story "The Bet" (js/story.js): points for the weekly wager, short English lines ----------
+  // ---------- the story "The Bet" (js/story.js): Wizard points for the ride, short English lines ----------
   _initStory() {
     const qs = new URLSearchParams(location.search);
     if ((this.autopilot && !qs.has('story')) || qs.has('nostory')) return; // the autopilot (demo, tests) books nothing unless ?story
@@ -1446,7 +1447,7 @@ export class RideSession {
       box.innerHTML = m.ivSummaryHTML(rec); const rides = await db.all('rides').catch(() => []);
       box.innerHTML = m.ivSummaryHTML(rec, m.ivCompare(rec, rides, this.state.settings.riderKg)); }).catch(() => {});
     o.querySelector('#fDone').onclick = () => this._close(true);
-    wireStory(o, this._storySum); // "?" for the three points, the strength set for extra points (Freddy 13.11.)
+    wireStory(o, this._storySum); // Wizard points: "?", the shop, the strength set for extra points (Freddy 13.11.)
     o.querySelector('#fFtp')?.addEventListener('click', async e => { // fitness test: take the new FTP, the ride remembers it as a test
       const b = e.currentTarget, w = +b.dataset.w; b.disabled = true;
       this.state.settings.ftp = w; rec.ftpTest = w;

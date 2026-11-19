@@ -1,4 +1,6 @@
 // The rider's look: choices and sanitising. No three.js here, so the lobby and the network code stay light.
+// A third entry 1 marks a shop item (js/shop.js, bought with Wizard points): randomLook never picks it, the editor shows it
+// locked until you own it. Remote riders render whatever look they send.
 export const SKINS = ['#f6d7c3', '#e9b896', '#d39a6f', '#a96f45', '#7a4a2c', '#4e2f1d'];
 export const HAIRCOL = ['#1d1612', '#4a2f1f', '#8a5a33', '#d9b36a', '#f1e3b0', '#b8401f', '#9aa0a6', '#e8e8e8', '#ff4fb0', '#3fa9ff'];
 export const COLORS = ['#ff5a1f', '#e0452b', '#ffd23f', '#2fb36b', '#18b5c4', '#2f7fd8', '#6b4bd6', '#e84393', '#1b1d22', '#f4f4ef'];
@@ -8,11 +10,18 @@ export const OPTIONS = {
   beard: [['none', 'None'], ['bart', 'Full beard'], ['schnauzer', 'Moustache'], ['stoppeln', 'Stubble']],
   glasses: [['none', 'None'], ['sport', 'Sport glasses'], ['retro', 'Round retro'], ['sonne', '80s sunglasses']],
   outfit: [['team', 'Team jersey'], ['neon80', '80s neon'], ['retro', 'Retro wool'], ['hawaii', 'Hawaii'], ['anzug', 'Business'],
-    ['superheld', 'Superhero'], ['banane', 'Banana'], ['wikinger', 'Viking'], ['tutu', 'Ballet'], ['dino', 'Dino']],
-  helmet: [['aero', 'Aero helmet'], ['klassisch', 'Helmet'], ['cap', 'Cycling cap'], ['stirnband', '80s headband'], ['keiner', 'None']],
+    ['superheld', 'Superhero'], ['banane', 'Banana'], ['wikinger', 'Viking'], ['tutu', 'Ballet'], ['dino', 'Dino'],
+    ['sterne', 'Star and moon jersey', 1], ['adler', 'Eagle jersey', 1], ['ritter', 'Knight armour', 1]],
+  helmet: [['aero', 'Aero helmet'], ['klassisch', 'Helmet'], ['cap', 'Cycling cap'], ['stirnband', '80s headband'], ['keiner', 'None'], ['zauberhut', 'Wizard hat', 1], ['krone', 'Crown', 1]],
   shoes: [['rennrad', 'Cycling shoes'], ['sneaker', 'Sneakers'], ['clogs', 'Clogs'], ['socken', 'Just socks']],
+  feather: [['none', 'None'], ['adler', 'Eagle feather', 1]],
+  cape: [['none', 'None'], ['zauber', 'Wizard cloak', 1]],
+  bike: [['standard', 'Standard'], ['holz', 'Wooden retro bike', 1], ['drache', 'Dragon frame', 1], ['gold', 'Golden bike', 1]],
+  wheels: [['standard', 'Standard'], ['glow', 'Glowing wheels', 1]],
+  gloves: [['standard', 'Standard'], ['zauber', 'Wizard gloves', 1]],
 };
-export const DEFAULT_LOOK = { body: 'm', height: 1, build: 0.4, skin: 1, hair: 'kurz', hairColor: 1, beard: 'none', glasses: 'sport', outfit: 'team', c1: 0, c2: 8, helmet: 'aero', shoes: 'rennrad', shoeColor: 9 };
+export const DEFAULT_LOOK = { body: 'm', height: 1, build: 0.4, skin: 1, hair: 'kurz', hairColor: 1, beard: 'none', glasses: 'sport', outfit: 'team', c1: 0, c2: 8, helmet: 'aero', shoes: 'rennrad', shoeColor: 9,
+  feather: 'none', cape: 'none', bike: 'standard', wheels: 'standard', gloves: 'standard' };
 
 const pick = (opts, v, d) => (opts.some(o => o[0] === v) ? v : d);
 /** never trust a look from the network or an old save */
@@ -22,10 +31,11 @@ export function cleanLook(l) {
   return { body: pick(O.body, l.body, D.body), height: n(l.height, 0.88, 1.12, 1), build: n(l.build, 0, 1, 0.4), skin: n(l.skin, 0, SKINS.length - 1, 1) | 0,
     hair: pick(O.hair, l.hair, D.hair), hairColor: n(l.hairColor, 0, HAIRCOL.length - 1, 1) | 0, beard: pick(O.beard, l.beard, 'none'), glasses: pick(O.glasses, l.glasses, 'none'),
     outfit: pick(O.outfit, l.outfit, 'team'), c1: n(l.c1, 0, COLORS.length - 1, 0) | 0, c2: n(l.c2, 0, COLORS.length - 1, 8) | 0,
-    helmet: pick(O.helmet, l.helmet, 'aero'), shoes: pick(O.shoes, l.shoes, 'rennrad'), shoeColor: n(l.shoeColor, 0, COLORS.length - 1, 9) | 0 };
+    helmet: pick(O.helmet, l.helmet, 'aero'), shoes: pick(O.shoes, l.shoes, 'rennrad'), shoeColor: n(l.shoeColor, 0, COLORS.length - 1, 9) | 0,
+    feather: pick(O.feather, l.feather, 'none'), cape: pick(O.cape, l.cape, 'none'), bike: pick(O.bike, l.bike, 'standard'), wheels: pick(O.wheels, l.wheels, 'standard'), gloves: pick(O.gloves, l.gloves, 'standard') };
 }
 export function randomLook() {
-  const r = a => a[Math.floor(Math.random() * a.length)], O = OPTIONS;
+  const r = a => { a = a.filter(o => !o[2]); return a[Math.floor(Math.random() * a.length)]; }, O = OPTIONS; // never a shop item
   return cleanLook({ body: r(O.body)[0], height: 0.9 + Math.random() * 0.2, build: Math.random(), skin: Math.random() * SKINS.length | 0, hair: r(O.hair)[0],
     hairColor: Math.random() * HAIRCOL.length | 0, beard: Math.random() < 0.3 ? r(O.beard)[0] : 'none', glasses: r(O.glasses)[0], outfit: r(O.outfit)[0],
     c1: Math.random() * COLORS.length | 0, c2: Math.random() * COLORS.length | 0, helmet: r(O.helmet)[0], shoes: r(O.shoes)[0], shoeColor: Math.random() * COLORS.length | 0 });
