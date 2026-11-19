@@ -377,6 +377,7 @@ export class RideSession {
         this.samples.push([this.lastSample, Math.round(this._ridden()), Math.round(this.power), Math.round(this.v * 36) / 10, Math.round(this.cadence), this.hr]);
         this.powerHist.push(this.power);
       }
+      this._keepPlace();
       if (this.d >= this.track.length) { if (this.lap < this.laps) this._nextLap(); else if (this.autopilot) this._finish(); else this._goalAsk(); }
     }
     if (now - (this.lastHud || 0) > 100) { this.lastHud = now; this._updateHUD(); }
@@ -1234,8 +1235,17 @@ export class RideSession {
     return this._wDef ? { ...(this.wAdj || avg ? { wAdj: this.wAdj, wAdjAvg: avg } : {}), ...(this.wAdjE ? { wAdjE: this.wAdjE } : {}) } : {};
   }
 
+  /** open world (Freddy 19.11.): where you are on an island route is kept every 20 s, so closing the app mid-ride lets you go on
+   *  from there next time (app.js startRide asks). Solo rides only; reaching the finish clears it. */
+  _keepPlace(clear = false) {
+    if (this.group || this.autopilot || !/^insel/.test(this.route.id)) return;
+    if (!clear && this.elapsed - (this._placeT || 0) < 20) return; this._placeT = this.elapsed;
+    const s = this.state.settings, all = s.resume ||= {};
+    if (clear || this.d > this.track.length - 400) delete all[this.route.id]; else all[this.route.id] = { d: Math.round(this.d), t: Math.round(this.elapsed), at: Date.now() };
+    import('./app.js').then(m => m.saveSettings()).catch(() => {});
+  }
   async _finish() {
-    this.finished = true; this.player.pause();
+    this.finished = true; this.player.pause(); if (this.d > this.track.length - 400) this._keepPlace(true);
     const full = this.startD < 50 && this.laps === 1 && !this._jumps; // jumped to a friend: no time on this route // only a ride from the start line is a time on this route (one lap)
     const rec = this._rideRecord(full);
     if (this.keyPower) { rec.unsaved = true; return this._summary(rec, null, 'Ridden with the arrow keys: not saved'); }

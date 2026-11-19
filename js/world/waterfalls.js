@@ -63,7 +63,7 @@ export function placeWaterfalls(world, A, taken = []) {
   // small cascades 10-15 m from the road, one every 3-5 km
   const smalls = [];
   for (let d0 = 1200; d0 < L - 800;) {
-    const c = near.filter(n => n.o === 11 && n.d >= d0 && n.d < d0 + 1600 && far(n.d, 900, false) && free(n.x, n.z, 12) && fits(n, gSmall))
+    const c = near.filter(n => n.o === 11 && n.d >= d0 && n.d < d0 + 1600 && n.rise >= (f.real ? 12 : 0) && far(n.d, 900, false) && free(n.x, n.z, 12) && fits(n, gSmall)) // real maps: only where a slope rises behind it (Mac mini 19.11.: rocks with a fall in flat meadows)
       .sort((a, b) => b.rise + b.land * 4 - a.rise - a.land * 4)[0];
     if (c) { smalls.push(c); used.push(c.d); d0 = c.d + 3000 + r() * 2000; } else d0 += 1600;
   }

@@ -65,8 +65,8 @@ async function boot() {
   applyAccent();
   // real Lofoten roads on their real terrain, present once the Mac has built them (assets/dem/<id>.json + .bin)
   const REAL = { kueste60: 'real coast road · almost flat, gently rolling', reine_aa: 'Lofoten classic · fishing villages, bridges, tunnels' };
-  // the open-world island (tools/island.mjs, Freddy 18.11.): fixed tours until the junction choice is in, only with ?insel for now
-  if (params.has('insel')) Object.assign(REAL, { insel_koenig: 'island · North Pass, castle summit, lighthouse', insel_feierabend: 'island · East Saddle and the cliffs',
+  // the open-world island (tools/island.mjs, Freddy 18.11., live 19.11.): fixed tours until the junction choice is in; ?noinsel hides them
+  if (!params.has('noinsel')) Object.assign(REAL, { insel_koenig: 'island · North Pass, castle summit, lighthouse', insel_feierabend: 'island · East Saddle and the cliffs',
     insel_suedsattel: 'island · river valley, South Saddle, beach', insel_westpass: 'island · monastery and the West Pass', insel_bruecke: 'island · 5 km bridge over the sea to Seal Isle', insel_runde: 'island · the whole coast ring' });
   await Promise.all(Object.entries(REAL).map(async ([id, what], k) => { const real = await loadRealTrack(id); if (!real) return;
     BUILTIN[id] = () => ({ id, name: ({ kueste60: 'Coast Road' })[id] || real.name || id, place: `${(real.length / 1000).toFixed(0)} km ${what} · ${real.gain} m climb`, source: 'demo', parts: [], track: real, createdAt: 2 + k, thumb: demoThumb(real, 1200) }); }));
@@ -836,6 +836,14 @@ async function startRide(id, opts = {}) {
   let ghostName = '';
   if (state.settings.ghost?.startsWith('s:')) { ghost = (state.shared || []).find(r => 's:' + r.id === state.settings.ghost && r.routeId === id) || bestRide(id); ghostName = ghost?.rider || ''; }
   const workout = opts.group ? null : workoutById(state.settings.workout);
+  const keep = state.settings.resume?.[id]; // island: go on where you stopped last time (ride.js _keepPlace)
+  if (keep && !opts.group && !opts.at && !opts.autopilot && keep.d > 300 && keep.d < route.track.length - 400 && Date.now() - keep.at < 60 * 864e5) {
+    const { ask } = await import('./myworkouts-ui.js');
+    const go = await ask({ title: 'Continue where you stopped?', text: `Last time you got to km ${(keep.d / 1000).toFixed(1)} on ${route.name}.`,
+      buttons: [{ label: `Continue at km ${(keep.d / 1000).toFixed(1)}`, value: 'go', cls: 'primary' }, { label: 'From the start', value: 'new' }] });
+    if (go === null) return;
+    if (go === 'go') opts = { ...opts, at: keep.d }; else { delete state.settings.resume[id]; saveSettings(); }
+  }
   session = new RideSession({ route, ghost, ghostName, workout, state, ...opts, onExit: async saved => { session = null; await reload(); if (saved) go('detail', id); else go(state.view === 'detail' ? 'detail' : state.view, id); } });
   await session.start();
 }
