@@ -319,7 +319,7 @@ export function placeWaterfalls(world, A, taken = []) {
       if (src.length > 5) {
         for (let it = 0; it < 4; it++) for (let i = 1; i < src.length - 1; i++) { src[i][0] = (src[i - 1][0] + src[i][0] * 2 + src[i + 1][0]) / 4; src[i][2] = (src[i - 1][2] + src[i][2] * 2 + src[i + 1][2]) / 4; }
         const S = src.reverse().map(q => [q[0], H(q[0], q[2]), q[2]]), m = S.length, w1 = Math.max(1.6, o.wf * 0.55);
-        parts.push(drapeStrip(S, i => 0.9 + (w1 - 0.9) * i / (m - 1), 0.25, H, r() * 10, 3));
+        parts.push(ribbon(S.map((q, i) => ({ x: q[0], z: q[2], y: H(q[0], q[2]) + 0.14, w: 0.9 + (w1 - 0.9) * i / (m - 1), st: 0.15, fade: i === 0 ? 0 : 1 })), r() * 10));
         const hd = S[0], sb = []; for (let k = 0; k < 5; k++) { const an = r() * 6.28, rr = 1.6 + r() * 2.2, sz = 0.9 + r() * 1.4, bx = hd[0] + Math.cos(an) * rr, bz = hd[2] + Math.sin(an) * rr; // the spring: water out between boulders
           sb.push(blockGeo(r, sz * 1.3, sz, sz, bx, H(bx, bz) - 0.4, bz, r() * 3)); }
         const sm = new THREE.Mesh(mergeGeometries(sb), rockMat); sm.castShadow = sm.receiveShadow = true; add(sm); F.objs.push(sm);
@@ -468,7 +468,10 @@ export function placeWaterfalls(world, A, taken = []) {
       console.info(`RIDEFRAME Wasserfall-Zulauf ${kind} d=${Math.round(s.d)}: ${src.length} Punkte, ${Math.round(src[src.length - 1][1] - lipY)} m über der Kante`);
       for (let it = 0; it < 4; it++) for (let i = 2; i < src.length - 1; i++) { src[i][0] = (src[i - 1][0] + src[i][0] * 2 + src[i + 1][0]) / 4; src[i][2] = (src[i - 1][2] + src[i][2] * 2 + src[i + 1][2]) / 4; src[i][1] = H(src[i][0], src[i][2]); }
       const S = src.reverse(), m = S.length;
-      const wm = new THREE.Mesh(drapeStrip(S, i => 1.1 + 1.6 * i / (m - 1), 0.25, H, r() * 10, 3), wMat); wm.renderOrder = 2; add(wm, true); F.objs.push(wm);
+      // the same clearly visible brook ribbon as the outflow (the draped strip read as nothing from above, Mac check 5)
+      const rowsF = S.map((q, i) => { const A = S[Math.max(0, i - 1)], B = S[Math.min(m - 1, i + 1)], sl = Math.abs(B[1] - A[1]) / (Math.hypot(B[0] - A[0], B[2] - A[2]) || 1);
+        return { x: q[0], z: q[2], y: i === m - 1 ? lipY - 0.2 : H(q[0], q[2]) + 0.14, w: 1.2 + 1.3 * i / (m - 1), st: 0.12 + Math.min(0.6, sl * 0.9), fade: i === 0 ? 0 : 1 }; });
+      const wm = new THREE.Mesh(ribbon(rowsF, r() * 10), wMat); wm.renderOrder = 2; add(wm); F.objs.push(wm);
       const hd = S[0], sb = []; for (let k = 0; k < 6; k++) { const an = r() * 6.28, rr = 1.8 + r() * 2.4, q = 0.9 + r() * 1.5, qx = hd[0] + Math.cos(an) * rr, qz = hd[2] + Math.sin(an) * rr;
         sb.push(blockGeo(r, q * 1.3, q, q, qx, H(qx, qz) - 0.4, qz, r() * 3)); }
       const sm = new THREE.Mesh(mergeGeometries(sb), rockMat); sm.castShadow = sm.receiveShadow = true; add(sm); F.objs.push(sm);

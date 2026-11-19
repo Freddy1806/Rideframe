@@ -533,7 +533,7 @@ export class WorldScene {
           const x = f.x[j] + tx * al - tz * off * side, z = f.z[j] + tz * al + tx * off * side;
           if (inT(x, z) && spl[vi(x, z) * 4] < 0.5 + r() * 0.3) continue;
           const rd = f.road(x, z); if (!rd || rd.d < ROAD_W + 0.5) continue;
-          const h = f.height(x, z); if (h < 2.2 || (f.lakes.length && f.inLake(x, z, 2) !== null) || h > (f.rockLine ? f.rockLine + 150 : 500) + f.n2(x / 60, z / 60) * 60) continue; // no green tufts in the snow (Himmelsleiter)
+          const h = f.height(x, z); if (h < 2.2 || f.bare?.some(b => (x - b[0]) ** 2 + (z - b[1]) ** 2 < b[2]) || (f.lakes.length && f.inLake(x, z, 2) !== null) || h > (f.rockLine ? f.rockLine + 150 : 500) + f.n2(x / 60, z / 60) * 60) continue; // no green tufts in the snow (Himmelsleiter)
           const patch = f.n2(x / 23, z / 23) * 0.5 + 0.5; // meadows are patchy: dense clumps, thin spots
           if (rd.d > ROAD_W + 2 && r() > 0.2 + 1.1 * patch) continue;
           const verge = rd.d < ROAD_W + 1.8; // mown strip next to the asphalt
@@ -565,7 +565,7 @@ export class WorldScene {
     const sb = [];
     for (let k = 0; k < 420; k++) {
       const x = ox + r() * TILE, z = oz + r() * TILE, i = vi(x, z);
-      if (spl[i * 4] < 0.6 || H[i] < 2.6 || (f.lakes.length && f.inLake(x, z, 3) !== null)) continue;
+      if (spl[i * 4] < 0.6 || H[i] < 2.6 || f.bare?.some(b => (x - b[0]) ** 2 + (z - b[1]) ** 2 < b[2]) || (f.lakes.length && f.inLake(x, z, 3) !== null)) continue;
       const rd = f.road(x, z); if (!rd || rd.d < ROAD_W + 3 || rd.d > 60) continue;
       if (f.n2(x / 31, z / 31) * 0.5 + 0.5 < 0.45 + r() * 0.3) continue; // in patches, open meadow between them
       const sz = 0.55 + r() * r() * 1.3, h0 = f.height(x, z);
@@ -1031,14 +1031,21 @@ export class WorldScene {
           const sea = segAt(d).seaSide === 1 ? 1 : -1, q8 = spot(d, sea * 8); if (f.height(q8.x, q8.z) < 1) continue; // must start on land
           for (let o = 10; o <= 46; o += 2) { const q = spot(d, sea * o); if (f.height(q.x, q.z) < 0.35) { cand.push({ d, ow: o, sea }); break; } }
         }
-        cand.sort((x, y) => x.ow - y.ow); const used = [];
+        cand.sort((x, y) => x.ow - y.ow); const used = [], slabs = [];
         for (const c of cand) { if (used.some(u => Math.abs(u - c.d) < 220)) continue; used.push(c.d);
-          const n = 3 + Math.floor(r() * 5);
-          for (let k = 0; k < n; k++) { const e = seals[Math.floor(r() * seals.length)], o = Math.max(ROAD_W + 5, c.ow - 1.5 - r() * 6), dd = c.d + (k - n / 2) * (2.4 + r() * 1.8), q = spot(dd, c.sea * o);
-            if (f.height(q.x, q.z) < 0.6) continue; // on the rocks at the waterline, never in the water
-            const so = place(e, dd, -o, { face: r() * 6.28, gap: 1.5, radK: 0.35, anim: r() < 0.8 ? 'Liegen' : 'Robben', flat: false, overlap: true });
-            if (so) { so.updateMatrixWorld(true); const bb = new THREE.Box3().setFromObject(so), sz = bb.getSize(new THREE.Vector3()); console.info(`RIDEFRAME Robbe d=${Math.round(dd)} ${o.toFixed(1)} m neben der Straße, y=${so.position.y.toFixed(2)}, Größe ${sz.x.toFixed(1)}×${sz.y.toFixed(1)}×${sz.z.toFixed(1)} m, Boden-Unterkante ${bb.min.y.toFixed(2)}`); } }
+          // walk back from the water onto the first low, dry rock: they lie right at the waterline, not up in the meadow (Mac check 5)
+          let oc = 0; for (let o = c.ow; o > ROAD_W + 4; o -= 0.5) { const q = spot(c.d, c.sea * o), h = f.height(q.x, q.z); if (h > 0.6 && h < 1.8) { oc = o; break; } if (h >= 1.8) break; }
+          if (!oc) continue;
+          const n = 3 + Math.floor(r() * 4), cq = spot(c.d, c.sea * oc); (f.bare ||= []).push([cq.x, cq.z, 9 * 9]); // a bare rock shore, no tall grass hiding them
+          for (let k = 0; k < n; k++) { const e = seals[Math.floor(r() * seals.length)], dd = c.d + (k - n / 2) * (2.6 + r() * 1.6), o = oc - 0.5 + (r() - 0.5) * 2.5, q = spot(dd, c.sea * o);
+            const h = f.height(q.x, q.z); if (h < 0.5) continue; // never in the water
+            slabs.push([q.x, h, q.z, 2.6 + r() * 1.4, r() * 3]);
+            const so = place(e, dd, -o, { face: r() * 6.28, gap: 1.2, radK: 0.35, anim: 'Liegen', flat: false, overlap: true });
+            if (so) { so.scale.multiplyScalar(1.3); so.position.y = Math.max(so.position.y, h + 0.12); so.updateMatrixWorld(true); const bb = new THREE.Box3().setFromObject(so), sz = bb.getSize(new THREE.Vector3()); console.info(`RIDEFRAME Robbe d=${Math.round(dd)} ${o.toFixed(1)} m neben der Straße, y=${so.position.y.toFixed(2)}, Größe ${sz.x.toFixed(1)}×${sz.y.toFixed(1)}×${sz.z.toFixed(1)} m`); } }
         }
+        if (slabs.length) { const sm = stone().clone(); sm.wrapS = sm.wrapT = THREE.RepeatWrapping; sm.repeat.set(0.6, 0.6); // flat grey rock slabs they lie on
+          const gs = slabs.map(([x, y, z, w, a]) => { const g = new THREE.CylinderGeometry(w * 0.55, w * 0.7, 0.7, 7, 1); g.scale(1, 1, 0.75); g.rotateY(a); g.translate(x, y - 0.2, z); return g.index ? g.toNonIndexed() : g; });
+          const m = new THREE.Mesh(mergeGeometries(gs), new THREE.MeshStandardMaterial({ color: 0x8d8a84, roughness: 0.95, map: sm, flatShading: true })); m.receiveShadow = m.castShadow = true; this.scene.add(m); }
       }
       // ---- island, Freddy 19.11.: vineyards on the Vineyard Coast and the East Saddle (rows on the land side, cypresses, a wine estate) ----
       if (t.dem?.file === 'insel.bin' && (s.edge === 'S-H' || s.edge === 'H-P3')) {
@@ -1395,7 +1402,18 @@ export class WorldScene {
       const p = f.at(d), l = Math.hypot(p.tx, p.tz), x = p.x - p.tz / l * off * side, z = p.z + p.tx / l * off * side;
       const rr = f.road(x, z); if (!rr || rr.d < (s.top === 'castle' ? 22 : 9)) continue;
       const o = house(s.top); let y = f.height(x, z) - 0.15;
-      if (s.top === 'castle') y = f.height(x, z) - 0.8; // on its terrace (pad set up with the terrain)
+      if (s.top === 'castle') { y = f.height(x, z) - 0.8; // on its terrace (pad set up with the terrain)
+        // and a rocky shoulder in the terrain's own material down to wherever the slope falls away (coarse distant tiles miss the terrace, Mac check 5)
+        let lo = 1e9; for (let k = 0; k < 24; k++) { const a = k / 24 * Math.PI * 2; for (const rad of [20, 28]) lo = Math.min(lo, f.height(x + Math.cos(a) * rad, z + Math.sin(a) * rad)); }
+        const drop = y - lo + 6;
+        if (drop > 2) { const g = new THREE.CylinderGeometry(20, 20 + drop * 1.3, drop, 40, Math.max(2, Math.round(drop / 3)), true), pa = g.attributes.position, rk = rng(4411);
+          for (let i = 0; i < pa.count; i++) { const vx = pa.getX(i), vy = pa.getY(i), vz = pa.getZ(i), u = (drop / 2 - vy) / drop, k = 1 + (rk() - 0.5) * 0.12 * u;
+            pa.setXYZ(i, vx * k, vy + (u > 0.05 && u < 0.95 ? (rk() - 0.5) * 0.8 : 0), vz * k); }
+          g.computeVertexNormals(); const n = pa.count, spl = new Float32Array(n * 4), col = new Float32Array(n * 3).fill(0.86);
+          for (let i = 0; i < n; i++) spl[i * 4 + 1] = 1; // rock
+          g.setAttribute('splat', new THREE.BufferAttribute(spl, 4)); g.setAttribute('color', new THREE.BufferAttribute(col, 3));
+          const sk = new THREE.Mesh(g, this.terrainMat); sk.position.set(x, y - drop / 2 + 0.6, z); sk.receiveShadow = true; this.scene.add(sk); }
+      }
       o.position.set(x, y, z); o.rotation.y = Math.atan2(p.tx, p.tz);
       this.scene.add(o); o.traverse(c => { if (c.userData.flag) this.animated.push(c); });
     }
