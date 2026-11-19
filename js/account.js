@@ -34,7 +34,7 @@ export async function syncAccount(state, preferServer = false) {
   for (const r of local) if (!have.has(r.id)) await pushRide(r);
   for (const id of ids) if (!mine.has(id)) { const r = await api('rides/' + id).catch(() => null); if (r?.id) await db.put('rides', r); }
   await syncKraft().catch(() => {});
-  const L = await db.kvGet('story').catch(() => null); if (L) pushStory(L); /* the leaderboard shows this week's wager points too */
+  await syncStory(state).catch(() => {}); /* the Wizard points wallet both ways; the leaderboard shows this week's points */
   return true;
 }
 async function pushSettings(settings, at) { if (acc) await api('settings', { method: 'PUT', body: JSON.stringify({ settings, at }) }); }
@@ -67,8 +67,27 @@ export async function syncKraft() {
 export async function pushKraft(w) { if (acc) await api('kraft/' + w.id, { method: 'PUT', body: JSON.stringify(w) }).catch(() => {}); }
 export async function deleteKraftRemote(id) { if (acc) await api('kraft/' + id, { method: 'DELETE' }); }
 
-/** the wager's points of this week, for the friends leaderboard */
-export async function pushStory(L) { if (acc && L?.week) await api('story', { method: 'PUT', body: JSON.stringify({ week: L.week, pts: L.pts }) }).catch(() => {}); }
+/** this week's Wizard points (the leaderboard), the wallet and the worn shop items (a new device gets them back) */
+export async function pushStory(L) {
+  if (!acc || !L?.week || L.wp?.grant != null) return; // the ?wp test hook never reaches the account
+  const { equipOf } = await import('./shop.js'), look = (await db.kvGet('settings').catch(() => null))?.look;
+  const wallet = L.wp ? { earned: L.wp.earned, spent: L.wp.spent, owned: L.wp.owned } : undefined;
+  await api('story', { method: 'PUT', body: JSON.stringify({ week: L.week, pts: L.pts, wp: L.weekWp || 0, wallet, equip: equipOf(look) }) }).catch(() => {});
+}
+/** the wallet from the server merged into this device's ledger (max earned, max spent, union owned); on a device that owned
+ *  nothing yet, the worn shop items come back onto the rider */
+async function syncStory(state) {
+  const [{ loadLedger }, { mergeWallet }, { applyEquip, equipOf }] = await Promise.all([import('./story.js'), import('./wizpoints.js'), import('./shop.js')]);
+  const L = await loadLedger(), s = await api('story').catch(() => null);
+  if (s?.wallet) {
+    const had = L.wp.owned.length, m = mergeWallet(L.wp, s.wallet); Object.assign(L.wp, m);
+    if (s.week === L.week && +s.wp > (L.weekWp || 0)) L.weekWp = +s.wp;
+    await db.kvSet('story', L.wp.grant != null ? { ...L, wp: { ...m } } : L);
+    const look = state.settings.look;
+    if (!had && s.equip && look && !Object.keys(equipOf(look)).length) { const nl = applyEquip(look, s.equip, L.wp); if (JSON.stringify(nl) !== JSON.stringify(look)) { state.settings.look = nl; await db.kvSet('settings', state.settings); } }
+  }
+  await pushStory(L);
+}
 /** weekly leaderboard of all accounts on this host (null without an account) */
 export async function loadBoard() { return acc ? api('board').catch(() => null) : null; }
 

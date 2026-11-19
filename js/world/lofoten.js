@@ -20,6 +20,7 @@ import { mergeGeometries } from '../../vendor/jsm/utils/BufferGeometryUtils.js';
 import { loadAssets, upgradeAssets, worldView } from './assets.js';
 import { buildVillage, tickVillage } from './village.js';
 import { Riders } from './riders.js';
+import { makeCockpit, gloveCockpit, gloveMaterial } from './avatar.js';
 import { ROAD_LINES_GLSL } from './roadlines.js';
 import { Events } from './events.js';
 import { placeWaterfalls } from './waterfalls.js';
@@ -1246,7 +1247,10 @@ export class WorldScene {
     this.scene.updateMatrixWorld(true); // every prop's matrix once: far ones skip the per-frame update and would otherwise sit at the world origin = the start (the mill in the Hafenrunde start view, Mac mini QA)
     const ck = A.by.cockpit?.[0]; // handlebar, hoods and forearms in the rider's view, hung on the camera
     if (ck) { const { obj, mixer } = A.make(ck, 'Treten'); obj.traverse(c => { c.castShadow = false; c.layers.set(1); c.frustumCulled = false; });
+      gloveCockpit(obj, this.track.__look); /* shop gloves (Wizard points) on the hoods */
       this.camera.add(obj); this.scene.add(this.camera); this.cockpit = obj; this.cockpitMixer = mixer; this._placeCockpit(); }
+    else if (gloveMaterial(this.track.__look)) { const obj = makeCockpit(this.track.__look); // no cockpit model (cloud, ?fakeassets): built-in bars, so the shop gloves still show
+      this.camera.add(obj); this.scene.add(this.camera); this.cockpit = obj; this.cockpitMixer = null; this._placeCockpit(); }
     if (A !== ASSETS) { // world mode: drop the copies of switched-off models (placed only so everything else stands where it does in the full world)
       const off = o => o?.userData.off, gone = []; this.scene.traverse(o => { if (off(o)) gone.push(o); }); for (const o of gone) o.parent?.remove(o);
       this.props = this.props.filter(o => !off(o)); this.birds = this.birds.filter(o => !off(o)); this.whales = this.whales.filter(w => !off(w.obj));
