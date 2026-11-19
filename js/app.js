@@ -173,7 +173,7 @@ function library() {
         <div class="meta">${routes.length} ${routes.length === 1 ? 'route' : 'routes'} · ${fmtKm(routes.reduce((s, r) => s + r.track.length, 0))} km · ${fmtNum(routes.reduce((s, r) => s + r.track.gain, 0))} m climbing</div>
       </div>
       <div class="libside"><div id="rmMiniBox"></div>
-      <div class="libacts"><button class="btn ghost" id="wishBtnLib" hidden>Wish list</button><button class="btn ghost" id="lookBtnLib">My rider</button><button class="btn ghost" id="shopBtnLib" title="Spend your Wizard points on looks for your rider">Shop <span class="shopbtnbal" id="shopBalLib">🧙</span></button><button class="btn ghost" id="groupBtnLib">Ride together</button><button class="btn" id="uploadBtn">＋ Upload route</button></div></div>
+      <div class="libacts"><button class="btn ghost" id="wishBtnLib" hidden>Wish list</button><button class="btn ghost" id="lookBtnLib">My rider</button><button class="btn ghost" id="groupBtnLib">Ride together</button><button class="btn" id="uploadBtn">＋ Upload route</button><button class="btn ghost" id="shopBtnLib" title="Spend your Wizard points on looks for your rider">Shop <span class="shopbtnbal" id="shopBalLib">🧙</span></button></div></div>
     </div>
     <div id="board" hidden></div>
     ${myWorkoutsRow()}

@@ -628,6 +628,7 @@ img.face.big{width:96px;height:96px}
 .libacts { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; min-width: min(100%, 580px); }
 .libacts .btn { width: 100%; justify-content: center; white-space: nowrap; }
 .libacts .btn[hidden] { display: none; }
+.libacts #shopBtnLib { grid-column: 1 / -1; } /* the Shop: its own full row under the others (Wizard points), so the 2 × 2 above keeps its order */
 @media (max-width: 700px) { .libacts { grid-template-columns: 1fr; } }
 /* long segmented choices (Wetter in Unreal: 7 options) wrap inside the card instead of running out of it */
 #ueWeather.seg, .seg.wrap { display: flex; flex-wrap: wrap; border-radius: 18px; flex-shrink: 1; max-width: 100%; }
