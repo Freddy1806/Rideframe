@@ -27,7 +27,7 @@ let fails = 0, n = 0; const ok = (c, m, info = '') => { n++; console.log(`${c ? 
     const p = await ctx.newPage(); p.on('pageerror', e => errs.push(e.message)); const boxLog = [], offLog = [], birdLog = []; p.on('console', m => { const t = m.text(); if (/^\[eagle\] head box/.test(t)) boxLog.push(t); if (/^\[eagle\] bird box/.test(t)) birdLog.push(t); if (/^\[eagle\] look off/.test(t)) offLog.push(t); }); p.on('dialog', d => d.accept());
 
     // ---- Settings: the toggle, on by default ----
-    await p.goto(BASE + '/?desktop&noprofile&laptest&eagle'); await p.waitForTimeout(700);
+    await p.goto(BASE + '/?desktop&noprofile&laptest'); await p.waitForTimeout(700);
     await p.click('.tab[data-view="settings"]'); await p.waitForSelector('#eagle');
     const st = await p.evaluate(() => { const i = document.querySelector('#eagle'); return { on: i.checked, label: i.closest('label').textContent }; });
     ok(st.on && /Eagle of Destiny/.test(st.label), 'Settings: "Eagle of Destiny" toggle, on by default', JSON.stringify(st));
@@ -41,10 +41,10 @@ let fails = 0, n = 0; const ok = (c, m, info = '') => { n++; console.log(`${c ? 
     await p.evaluate(() => { const r = window.__ride, t = r.state.trainer; t.device = { gatt: { connected: true } }; t.data = { power: 300, cadence: 92, speed: 9, hr: 160 };
       clearInterval(window.__tl); window.__tl = setInterval(() => { t.lastData = performance.now(); }, 100); t.lastData = performance.now();
       const s = r.workout.steps, at = l => s.slice(0, s.findIndex(x => x.label === l)).reduce((a, x) => a + x.dur, 0);
-      window.__A = at('VO2max 1/5'); r.elapsed = window.__A - 20; });
+      window.__A = at('VO2max 1/5'); r.elapsed = window.__A - 20; r.eg.at = window.__A + 3; }); // he comes at any moment of a workout now (random); pinned here to 3 s into the first interval
     ok(await p.evaluate(() => window.__ride.eg?.state === 'wait' && window.__ride.eagle.kind === 'standin'), 'eagle planned; no Blender model here: the procedural stand-in');
     await p.waitForTimeout(1500);
-    ok(await p.evaluate(() => window.__ride.eagle.state === 'idle'), 'not in the rest before the interval');
+    ok(await p.evaluate(() => window.__ride.eagle.state === 'idle'), 'not before his moment');
 
     /** record one scene frame by frame; shots: freeze it at these moments for a screenshot */
     const scene = async (tag, shots) => {
@@ -91,7 +91,7 @@ let fails = 0, n = 0; const ok = (c, m, info = '') => { n++; console.log(`${c ? 
       let best = 0, t0 = null; for (const x of P.slice(0, Math.max(0, iE))) { if (x.ah < 15) { t0 ??= x.t; best = Math.max(best, x.t - t0); } else t0 = null; }
       const lastAhead = [...P.slice(0, Math.max(0, iE))].reverse().find(x => x.ah < 15);
       ok(best >= 1.2, `${tag}: looks ahead first (beak within 15° of the ride direction for ${best.toFixed(1)} s)`);
-      ok(lastAhead && tE - lastAhead.t >= 1.0, `${tag}: then turns its head to you, slowly (${lastAhead ? (tE - lastAhead.t).toFixed(1) : '?'} s from ahead to eye contact)`);
+      ok(lastAhead && tE - lastAhead.t >= 0.5 && tE < 5.2, `${tag}: then turns its head to you at once (${lastAhead ? (tE - lastAhead.t).toFixed(1) : '?'} s from ahead to eye contact)`);
       const lk = Math.max(...line.map(x => x.lk));
       ok(lk < 8, `${tag}: eye contact while it speaks (beak at most ${lk.toFixed(1)}° off the camera)`);
       const bx = line.filter(x => x.box), w = bx.map(x => x.box.x1 - x.box.x0);
@@ -119,8 +119,8 @@ let fails = 0, n = 0; const ok = (c, m, info = '') => { n++; console.log(`${c ? 
 
     // 1280×720: the real gate, 3 s into the first hard interval, with the screenshots
     const R1 = await scene('1280', true);
-    ok(R1.first && Math.abs(R1.first.el - (await p.evaluate(() => window.__A)) - 3) < 0.6, '?eagle: starts 3 s into the first hard interval', JSON.stringify(R1.first));
-    ok(R1.first && R1.first.iv === (await p.evaluate(() => window.__ride.workout.steps.findIndex(x => x.label === 'VO2max 1/5'))), 'inside the hard interval VO2max 1/5');
+    ok(R1.first && Math.abs(R1.first.el - (await p.evaluate(() => window.__A)) - 3) < 0.6, 'starts at his planned second of the workout clock', JSON.stringify(R1.first));
+    ok(R1.first && R1.first.iv === (await p.evaluate(() => window.__ride.workout.steps.findIndex(x => x.label === 'VO2max 1/5'))), 'here: inside VO2max 1/5');
     checks('1280×720', R1);
     // once per workout
     await p.evaluate(() => { const r = window.__ride, s = r.workout.steps; r.elapsed = s.slice(0, s.findIndex(x => x.label === 'VO2max 2/5')).reduce((a, x) => a + x.dur, 0) + 2; });

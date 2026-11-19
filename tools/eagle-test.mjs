@@ -125,9 +125,13 @@ test('the beak without audio: opens and closes on the syllables, shut in the pau
 
 test('framing: the head looking at you in the right part, a little above the horizon, the same angle on 4:3 to 32:9', () => {
   for (const a of [4 / 3, 16 / 10, 16 / 9, 2560 / 1080, 32 / 9]) {
+    for (const free of [0.66, 0.72, 0.78, 0.86]) { // workout bar 1280x720 .. slim free-ride bar 1920x1080
+      const f = eagleFrame(a, free);
+      assert.ok(f.cy + f.maxH / 2 <= free - EAGLE.gap - EAGLE.sway + 1e-9, `the head's box ends above the bottom UI (${free})`);
+      assert.ok(f.cy - f.maxH / 2 >= EAGLE.top - 1e-9 && f.maxH >= 0.3, `under the top bar and room for a quarter-width head (${free})`);
+    }
     const f = eagleFrame(a);
     assert.ok(f.cx - f.width / 2 >= 0.55 && f.cx + f.width / 2 < 1, `in the right 45 %, whole: ${f.cx.toFixed(2)} ± ${(f.width / 2).toFixed(3)} at ${a.toFixed(2)}`);
-    assert.ok(f.cy > 0.3 && f.cy + f.maxH / 2 < 0.75, 'never down at the bottom bar');
     assert.ok(Math.abs(f.width * a - 0.25 * 16 / 9) < 1e-9, 'the same angular size on every aspect');
     assert.ok(f.bank > 0 && f.bank < 0.4, 'banked a little away from you: the near wing over the sky');
   }

@@ -11,7 +11,7 @@ import { hardWindow } from './ivgate.js';
 
 /** scene length (s) before / after the line, the line's fallback length, what an interval must still have left to start it,
  *  the lead (never in its first seconds) and the shortest interval he comes in (30 s efforts never get him) */
-export const EAGLE = { pre: 5.0, post: 6.2, line: 3.9, need: 19, lead: 5, minIv: 45 }; // pre: cry, fly in, look ahead, the slow head turn, a beat
+export const EAGLE = { pre: 4.8, post: 6.2, line: 3.9, need: 19, lead: 5, minIv: 45, gap: 0.03, sway: 0.04, top: 0.13, low: 0.8 }; // pre: cry, fly in, the head turns to you right away (owner 19.11.), a beat
 export const sceneLen = (lineS = EAGLE.line) => EAGLE.pre + lineS + EAGLE.post;
 
 /** the hard intervals the eagle may use: [{ i, start, dur }] (the same test as the wizard's, so rests / openers never count) */
@@ -99,7 +99,11 @@ export function follow(env, rms, dt, peak) {
  *  sky. A head of ~9-10 % keeps it a whole bird; at 15-20 % the body would be at the camera and the near wing across the
  *  whole screen (measured with both stand-ins, 18.11.). bank: its roll away from you (rad), so the near wing rises over the
  *  sky instead of lying across the road. */
-export function eagleFrame(aspect) {
-  const k = Math.max(0, Math.min(1, (aspect - 1.8) / 0.6));
-  return { cx: 0.82 + 0.03 * k, cy: 0.47, width: 0.25 * (16 / 9) / aspect, maxH: 0.5, bank: 0.35 }; // head a quarter of the screen width at the right edge (owner 17.11.), clear of the wing and the bottom panel
+export function eagleFrame(aspect, free = 0.78) {
+  // free: the share of the picture above the bottom UI (workout bar or the slim free-ride bar, measured from the DOM by the scene).
+  // The head's box (with all its talking poses) ends EAGLE.gap above that edge plus EAGLE.sway for the flight's own movement, so
+  // chin and lower beak never reach into the bar; it never rises into the top bar either (EAGLE.top)
+  const k = Math.max(0, Math.min(1, (aspect - 1.8) / 0.6)), bottom = Math.min(EAGLE.low, Math.max(0.5, free)) - EAGLE.gap - EAGLE.sway; // low: above the handlebar and gloves of the 3D view too
+  const maxH = Math.max(0.2, Math.min(0.42, bottom - EAGLE.top)), cy = bottom - maxH / 2;
+  return { cx: 0.82 + 0.03 * k, cy, width: 0.25 * (16 / 9) / aspect, maxH, bank: 0.35 }; // head a quarter of the screen width at the right edge (owner 17.11.), clear of the wing and the bottom UI
 }

@@ -26,7 +26,7 @@ import { EAGLE, pickEagleModel, synthMouth, follow, eagleFrame } from '../eagleg
 const JAW_OPEN = 0.45, D = 0.9; // D: the head's distance from the camera (m) when it looks at you; the scale follows from the framing
 // the clock (s from the cry): flies in, alongside looking ahead, turns its head to you, holds, speaks from T.line for the
 // line's own length, a smug beat, then off (head forward, flaps, away)
-const T = { in0: 1.0, in1: 3.0, turn0: 3.1, turn1: 4.4, line: EAGLE.pre, smug: 0.7, away: EAGLE.post - 0.7 }; // owner 19.11.: it arrives and turns its head at once
+const T = { in0: 1.0, in1: 3.0, turn0: 3.0, turn1: 4.3, line: EAGLE.pre, smug: 0.7, away: EAGLE.post - 0.7 }; // owner 19.11.: it arrives and turns its head at once
 const sm = (a, b, x) => { const u = Math.max(0, Math.min(1, (x - a) / (b - a))); return u * u * (3 - 2 * u); };
 const _v = new THREE.Vector3(), _w = new THREE.Vector3(), _q = new THREE.Quaternion(), _q2 = new THREE.Quaternion(), _m = new THREE.Matrix4();
 const _X = new THREE.Vector3(1, 0, 0), _Y = new THREE.Vector3(0, 1, 0);
@@ -159,10 +159,17 @@ export class Eagle {
   /** level flight in the ride direction (camera -Z), beak first; roll / pitch / yaw: small accents (rad) */
   _flyQ(roll = 0, pitch = 0, yaw = 0) { return yawQ(Math.PI + yaw, roll + (this.bank || 0), pitch).multiply(yawQ(-(this.rig.fwdYaw || 0))); }
 
+  /** the share of the picture above the bottom UI: top of the visible workout bar (#hWork) or stats bar (.hud-bottom), as a fraction of the canvas */
+  _free() {
+    const c = this.w.c; if (!c?.getBoundingClientRect || typeof document === 'undefined') return 0.78;
+    const cr = c.getBoundingClientRect(); if (!cr.height) return 0.78; let top = cr.bottom;
+    for (const el of document.querySelectorAll('.hud-bottom, #hWork')) { const b = el.getBoundingClientRect(), cs = getComputedStyle(el); if (b.height > 0 && cs.display !== 'none' && cs.visibility !== 'hidden' && +cs.opacity > 0.05) top = Math.min(top, b.top); }
+    return Math.max(0.5, Math.min(1, (top - cr.top) / cr.height));
+  }
   /** where it flies: position and scale so the head, looking at you, covers the eagleFrame() spot for this FOV and aspect */
   _solve() {
-    const R = this.rig, { a, tv, th } = this._view(), f = eagleFrame(a); this.bank = f.bank || 0;
-    const key = `${a.toFixed(3)}|${this.cam.fov}`; if (this._solved === key) return; this._solved = key;
+    const R = this.rig, { a, tv, th } = this._view(), free = this._free(), f = eagleFrame(a, free); this.bank = f.bank || 0;
+    const key = `${a.toFixed(3)}|${this.cam.fov}|${free.toFixed(2)}`; if (this._solved === key) return; this._solved = key;
     const keep = { p: R.root.position.clone(), q: R.root.quaternion.clone(), s: R.root.scale.x, vis: R.root.visible };
     R.root.quaternion.copy(this._flyQ()); R.root.scale.setScalar(this.s || 1); R.root.position.copy(this.fly || _w.set(0.5, 0, -2 * D));
     const tx = 2 * f.cx - 1, ty = 1 - 2 * f.cy, tw = 2 * f.width; // NDC

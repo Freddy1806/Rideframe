@@ -715,7 +715,7 @@ export class RideSession {
     const el = this.q('#hWiz'); if (el) { el.classList.toggle('hellcard', z.state === 'hell'); this._card(el, card && foot ? { ...card, foot } : card, '_wizHtml'); }
   }
   // ---------- the Eagle of Destiny (owner 18.11.): once per interval workout, inside one hard interval, never with the wizard or a
-  // dare (eaglegate.js); the scene in camera space with lip sync: world/eagle.js. ?eagle = 3 s into the first hard interval, ?eagle=now ----------
+  // dare (eaglegate.js); the scene in camera space with lip sync: world/eagle.js. ?eagle = 3 s into the workout, ?eagle=now ----------
   _initEagle() {
     const q = new URLSearchParams(location.search).get('eagle'), now = q === 'now';
     if (this.autopilot || this.state.settings.eagle === false || !this.player?.camera || this.player.instant || this.eg) return;
