@@ -661,6 +661,11 @@ export class RideSession {
       // group ride (Freddy 12.11.): the wizard always comes, at the same spot for everyone (dice seeded with the group code);
       // each rider takes the trial with his own watts, so one may fly while the other rides through hell
       const grp = this.group ? seeded(this.group.code + this.route.id + this.lap) : null;
+      if (!grp && !qs.has('wizard')) { // alone: every ride, once, by the clock: called between minute 8 and 23, so his trial is done by minute 30 (owner 19.11.)
+        if (this._wizMet || qs.has('nowizard')) return;
+        this._wizArm ??= qs.has('wizardat') ? +qs.get('wizardat') : 480 + Math.random() * 900;
+        this.wiz = new Wizard({ length: this.track.length, startD: this.d, ftp: this.ftp, timed: this._wizArm });
+      } else
       this.wiz = new Wizard({ length: this.track.length, startD: grp ? 0 : this.d, ftp: this.ftp, force: qs.has('wizard'), chance: qs.has('nowizard') ? 0 : grp ? 1 : 0.35, rng: grp || Math.random,
         avoid: d => spots.some(a => d > a - 1400 && d < a + 2900) }); // never on top of a dare and its race
       if (this.wiz.state === 'off' || (grp && this.d > this.wiz.at - 600)) { this.wiz = null; return; } // a late joiner already past his spot
@@ -679,6 +684,7 @@ export class RideSession {
     if (z.exitH && this.d > z.exitH.d - 12) { sp0?.poof?.(z.exitH); z.exitH = null; } // he sends you on (up) and is gone in a puff
     if (z.state === 'hell' && !z.exitH && !z.exitDone && z.t >= WIZ.hell - 25) { z.exitDone = true; z.exitH = sp0?.wizard?.(this.d + Math.max(90, this.v * 25 + 15)); } // he waits where hell ends
     if (this.ch?.active && (z.state === 'wait' || z.state === 'ann')) return; // a race is on: the wizard waits his turn
+    if (z.timed && z.state === 'wait' && !Number.isFinite(z.at) && this.elapsed >= z.armAt && this.track.length - this.d > 2500) { z.summon(this.d, summonGap(this.v)); this._wizMet = true; } // his minute has come and the lap has room for the trial
     const sp = this.player?.events?.surprises, P = this.player, fx = this.q('#hWizFx');
     const win = z.wk ? (this.wDone ? null : this._hardWin()) : null, g = z.wk ? wizardGate(z, win, { elapsed: this.elapsed, v: this.v, hold: WIZ.hold }) : null;
     if (g === 'summon') z.summon(this.d, summonGap(this.v)); // workout: inside a hard interval with time for his trial
