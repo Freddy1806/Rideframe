@@ -617,7 +617,7 @@ export class WorldScene {
           if (r() < 0.3 && !vine) put('boat', i + 2, -1, 14, r() * 3);
           if (r() < 0.55) put(r() < 0.5 ? 'stone' : 'timber', i, 1, 12 + r() * 8, (r() - .5) * .3);
         }
-        if (s.edge !== 'S-H' && !/^(Olive Bay|Vintners' Village)$/.test(s.name || '')) put('hjell', a + 3, 1, 14, 0.2); // no stockfish racks among the vines
+        if (!(s.edge === 'S-H' && !s.village) && !/^(Olive Bay|Vintners' Village)$/.test(s.name || '')) put('hjell', a + 3, 1, 14, 0.2); // no stockfish racks among the vines
         if (s === segs[0]) put('church', b - 6, 1, 22, 0.1);
       }
       if (s.land === 'coast' && !s.village && s.edge !== 'S-H') for (let i = i0; i < i1; i += 30 + Math.floor(r() * 40)) {
@@ -802,7 +802,7 @@ export class WorldScene {
       this.village = buildVillage({ place, byName, make: e => A.make(e, null, r).obj, mirror: d => segAt(d).seaSide === 1, r, spot, f, scene: this.scene, props: this.props, anim: this.villageAnim, len: t.length }, t.__village);
     } catch (e) { console.warn('village', e); }
     for (const s of segs) {
-      const L = s.to - s.from; wine = t.dem?.file === 'insel.bin' && (s.edge === 'S-H' || /^(Olive Bay|Vintners' Village)$/.test(s.name || '')); // the hamlets on that coast too
+      const L = s.to - s.from; wine = t.dem?.file === 'insel.bin' && (s.edge === 'S-H' && !s.village || /^(Olive Bay|Vintners' Village)$/.test(s.name || '')); // the hamlets on that coast too
       // ---- villages: houses, harbour, market square, musicians, people ----
       const vb = s.village && (this.village ? Math.min(s.from + L * s.village[1], t.length - 650) : s.from + L * s.village[1]); /* the messenger's village owns the last ~600 m: a theme village there sat right on top of it (Mac mini 12.11.) */
       if (s.village && vb - (s.from + L * s.village[0]) >= 250) {
@@ -1052,14 +1052,16 @@ export class WorldScene {
           const m = new THREE.Mesh(mergeGeometries(gs), this.terrainMat); m.receiveShadow = m.castShadow = true; this.scene.add(m); }
       }
       // ---- island, Freddy 19.11.: vineyards on the Vineyard Coast and the East Saddle (rows on the land side, cypresses, a wine estate) ----
-      if (t.dem?.file === 'insel.bin' && (s.edge === 'S-H' || s.edge === 'H-P3')) {
+      if (t.dem?.file === 'insel.bin' && (s.edge === 'S-H' || s.edge === 'H-P3') && !s.village) {
         const rows = ['rebzeile_a', 'rebzeile_b'].map(n => byName(n)).filter(Boolean), cy = byName('zypresse'), wg = byName('weingut');
         let estates = 0;
-        if (rows.length) for (let d = s.from + 150; d < s.to - 150; d += 180 + r() * 220) {
-          if (r() < 0.25) continue; const land = segAt(d).seaSide === 1 ? -1 : 1, nr = 5 + Math.floor(r() * 6), len = 2 + Math.floor(r() * 3), o0 = ROAD_W + 7 + r() * 6;
+        // Mac 19.11.: from the saddle it read as meadow with cypresses (rows 30-80 m off): now the rows start at the verge and climb the slope
+        if (rows.length) for (let d = s.from + 120; d < s.to - 120; d += 150 + r() * 90) {
+          if (r() < 0.1) continue; const land = segAt(d).seaSide === 1 ? -1 : 1, nr = 8 + Math.floor(r() * 4), len = 3 + Math.floor(r() * 2), o0 = ROAD_W + 4.5 + r() * 1.5;
           let stood = 0;
-          for (let k = 0; k < nr; k++) for (let j = 0; j < len; j++) stood += !!place(rows[(k + j) % rows.length], d + j * 10.6, land * (o0 + k * 2.7), { face: 'along', gap: 2, radK: 0.12, flat: false, overlap: true });
-          if (stood && cy && r() < 0.7) for (let j = 0; j < 4; j++) place(cy, d - 14 + j * 9, land * (ROAD_W + 3.2), { face: r() * 6.28, gap: 1, radK: 0.4, flat: false }); // a cypress row by the road
+          for (let k = 0; k < nr; k++) for (let j = 0; j < len; j++) stood += !!place(rows[(k + j) % rows.length], d + j * 10.6, land * (o0 + k * 2.4), { face: 'along', gap: 1, radK: 0.12, flat: false, overlap: true });
+          if (r() < 0.5) for (let k = 0; k < 10; k++) for (let j = 0; j < len; j++) place(rows[(k + j + 1) % rows.length], d + 5 + j * 10.6, land * (o0 + nr * 2.4 + 9 + k * 2.4), { face: 'along', gap: 1, radK: 0.12, flat: false, overlap: true }); // a second block further up the hill
+          if (stood && cy && r() < 0.7) for (let j = 0; j < 4; j++) place(cy, d - 22 - j * 9, land * (ROAD_W + 3.2), { face: r() * 6.28, gap: 1, radK: 0.4, flat: false }); // a cypress row by the road, just before the vines
           if (stood && wg && estates < 2 && r() < 0.35) { estates += !!place(wg, d + len * 10.6 + 14, land * (ROAD_W + 12), { face: 'road', gap: 3, ground: 'centre' }); }
         }
       }

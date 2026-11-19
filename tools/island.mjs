@@ -313,6 +313,7 @@ export const TOURS = {
 function wetRuns(P) { const out = []; let a = -1; P.forEach((p, i) => { const w = ground(...p) <= 0.5; if (w && a < 0) a = i; if ((!w || i === P.length - 1) && a >= 0) { if (i - a > 3) out.push([Math.max(0, a - 3) * STEP, (i + 2) * STEP]); a = -1; } }); return out; }
 function tourJSON(T, edges) {
   let P = [], ele = [], at = 0; const places = [], nodes = [], kinds = [], tunnels = [];
+  { const n0 = NODES[T.via[0]]; if (['village', 'harbour', 'fishing', 'monastery'].includes(n0.kind)) places.push({ name: n0.name, from_m: 0, to_m: 450 }); } // the start town too
   for (let s = 0; s < T.via.length - 1; s++) {
     const a = T.via[s], b = T.via[s + 1], e = edges.find(x => (x.a === a && x.b === b) || (x.a === b && x.b === a));
     if (!e) throw new Error(`no road ${a}-${b}`);
@@ -322,7 +323,7 @@ function tourJSON(T, edges) {
     kinds.push({ from_m: at, to_m: at + e.len, kind: e.kind, land: e.land || LAND[e.kind], name: e.name, edge: e.id, dir: fw ? 1 : -1 });
     for (const [fr, nm] of HAMLETS[e.id] || []) { const c = at + (fw ? fr : 1 - fr) * e.len; places.push({ name: nm, from_m: Math.round(c - 220), to_m: Math.round(c + 220), hamlet: true }); }
     at += e.len; const nd = NODES[b];
-    if (['village', 'harbour', 'fishing', 'monastery'].includes(nd.kind)) places.push({ name: nd.name, from_m: Math.max(0, at - 300), to_m: at + 300 });
+    if (['village', 'harbour', 'fishing', 'monastery'].includes(nd.kind)) places.push({ name: nd.name, from_m: Math.max(0, at - 450), to_m: at + 450 }); // the towns at the junctions: 900 m of houses
     nodes.push({ id: b, name: nd.name, at_m: at });
   }
   const s0 = P[0], sea_side = P.map(([x, y], i) => { // sea within 700 m on the left (-1) or right (1) of travel

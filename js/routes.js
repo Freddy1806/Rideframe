@@ -233,10 +233,14 @@ export function makeRealTrack(j) {
     const cut = []; for (const rd of j.roads) { const [ea, eb] = rd.edge.split('-'), end = rd.dir === 1 ? eb : ea; // the junction this road leads to
       cut.push({ name: rd.name, from: rd.from_m, to: rd.to_m, land: rd.land, top: rd.edge === 'P1-G' && rd.dir === 1 ? 'castle' : /^P\d$/.test(end) ? 'pass' : undefined, hospiz: end === 'P1' || undefined, edge: rd.edge }); }
     for (const p of places) { // a village splits the road it lies on
-      const a = Math.max(0, p.from_m), b = Math.min(L, p.to_m), k = cut.findIndex(c => c.from <= a + 1 && c.to > a); if (k < 0 || b <= a) continue;
-      const c = cut[k], land = c.land === 'serp' || c.land === 'river' ? 'valley' : c.land === 'cliff' ? 'coast' : c.land;
-      const parts = [c.from < a - 50 && { ...c, to: a, top: undefined }, { name: p.name, from: a, to: Math.min(b, c.to), land, village: [0.1, 0.9] }, c.to > b + 50 && { ...c, from: b }].filter(Boolean);
-      cut.splice(k, 1, ...parts);
+      // a town at a junction spans the end of one road and the start of the next (it was cut to 300 m there and too short to build: empty, Mac 19.11.)
+      let a = Math.max(0, p.from_m), b = Math.min(L, p.to_m); for (const [ba, bb] of j.bridges || []) if (ba < b && bb > a) { if ((ba + bb) / 2 < (a + b) / 2) a = Math.max(a, bb + 30); else b = Math.min(b, ba - 30); } // no houses on the bridge
+      const k = cut.findIndex(c => c.from <= a + 1 && c.to > a); if (k < 0 || b - a < 330) continue;
+      const mid = (a + b) / 2, cm = cut.find(c => c.from <= mid && c.to > mid) || cut[k], land = cm.land === 'serp' || cm.land === 'river' ? 'valley' : cm.land === 'cliff' ? 'coast' : cm.land;
+      const out = []; for (const c of cut) { if (c.to <= a || c.from >= b) { out.push(c); continue; }
+        if (c.from < a - 50) out.push({ ...c, to: a, top: undefined }); if (c.to > b + 50) out.push({ ...c, from: b }); }
+      out.push({ name: p.name, from: a, to: b, land, village: [0.1, 0.9], edge: cm.edge }); out.sort((x, y) => x.from - y.from);
+      cut.splice(0, cut.length, ...out);
     }
     for (const c of cut) { const sd = seaSide(c.from, c.to); segs.push({ ...c, seaSide: c.land === 'coast' || c.land === 'cliff' ? sd : seaOn(c.from, c.to) ? sd : 1 }); if (segs[segs.length - 1].top === undefined) delete segs[segs.length - 1].top; }
     at = L; places.length = 0;
