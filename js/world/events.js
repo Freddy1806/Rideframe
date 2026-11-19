@@ -267,9 +267,10 @@ export class Events {
       this._brDone ||= new Set();
       for (const [a, b] of br) for (const frac of b - a > 1500 ? [0.22, 0.62] : [0.5]) {
         const at = a + (b - a) * frac;
-        if (this._brDone.has(at) || d < at - 75 || d > at - 35) continue;
+        const prev = this._brPrev ?? d; // only when the rider rides into it (not when a ride resumes or loads right there)
+        if (this._brDone.has(at) || !(prev < at - 30 && d >= at - 30)) continue;
         this._brDone.add(at);
-        const p = this.f.at(at), l = Math.hypot(p.tx, p.tz) || 1, rx = -p.tz / l, rz = p.tx / l, side = Math.random() < 0.5 ? -1 : 1;
+        const v = Math.max(3, this.w.speed || 8), p = this.f.at(d + 12 + v * 1.7), l = Math.hypot(p.tx, p.tz) || 1, rx = -p.tz / l, rz = p.tx / l, side = Math.random() < 0.5 ? -1 : 1;
         if (this.f.height(p.x + rx * 30, p.z + rz * 30) > -2 || this.f.height(p.x - rx * 30, p.z - rz * 30) > -2) continue; // open water on both sides
         const n = 1 + Math.floor(Math.random() * 3), top = p.e + 4.5 + Math.random() * 2;
         for (let k = 0; k < n; k++) {
@@ -281,6 +282,7 @@ export class Events {
         setTimeout(() => this.sound.play3d('orca', this._where(spot, 260)), 300);
         setTimeout(() => this.sound.play3d('wal', this._where(spot, 260, 0.8)), 1400);
       }
+      this._brPrev = d;
     }
     for (const e of this.active) if (e.kind === 'leap') {
       e.t += dt; const u = e.t / e.T; if (u < 0) continue; if (u > 1.05) { e.dead = true; continue; }

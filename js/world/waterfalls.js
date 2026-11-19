@@ -240,9 +240,9 @@ export function placeWaterfalls(world, A, taken = []) {
     let poolY = -1e9; for (let k = 0; k < 9; k++) { const an = k / 8 * 6.283, rr = k === 8 ? 0 : R; const [x, z] = W(Math.cos(an) * rr, Math.sin(an) * rr); poolY = Math.max(poolY, H(x, z)); }
     poolY += 0.12;
     const Hl = o.mill ? Math.max(o.Hl, 2 * rw + 1.2) : o.Hl, lipY = poolY + Hl;
-    // the water has to come from somewhere (Freddy 19.11.): behind the lip the hillside rises to it, a brook runs down
-    // to the lip from a spring pool ~35 m back. The pad lifts the ground there before the step and the tiles are built
-    const feed = !o.mill; if (feed) for (const [a, b] of [[-11, 28], [0, 31], [11, 28]]) { const [px, pz] = W(a, R + 0.5 + b); pads.push({ x: px, z: pz, y: lipY + 1.2, ri: 8, ro: 22 }); } // a ridge, not a cone
+    // the water has to come from somewhere (Freddy 19.11.): a brook runs over the step to the lip and on up the
+    // real hillside behind it (draped on the terrain below), from a spring between boulders
+    const feed = !o.mill;
     const half = o.mill ? aw + 2.2 : o.cliff ? 9 + r() * 4 : Math.max(o.wf / 2 + 2.5, 4 + r() * 3); // flat part of the step
     const bk = o.cliff ? 2.2 : 1; // block scale
     const outA = o.mill ? -1 : 1; // outflow along the road, away from the mill house
@@ -303,14 +303,27 @@ export function placeWaterfalls(world, A, taken = []) {
     const parts = [], v0 = 1.5, T = Math.sqrt(2 * Hl / G);
     const sheet = (a0, wf, b0, y0, y1, seed, spill = false) => { // free-falling sheet from (a0, b0, y0) down to y1
       const rowsW = [], tt = Math.sqrt(2 * Math.max(0.3, y0 - y1) / G);
-      if (!spill) for (const b of feed ? [36, 30, 24, 18, 13, 9, 6.5, 5, 3.2, 1.8, 0.8, 0.2] : [5, 3.2, 1.8, 0.8, 0.2]) { const wob = feed && b > 6 ? Math.sin(b * 0.33 + seed) * Math.min(3, b * 0.1) : 0, [x, z] = W(a0 + wob, b0 + b);
-        rowsW.push({ x, z, y: Math.max(H(x, z), lipY + b * 0.06) + 0.1, w: wf * (feed ? lerp(0.8, 0.35, smooth(5, 34, b)) : 0.8), st: 0.12 + Math.max(0, 5 - b) * 0.06, fade: b === 36 || (!feed && b > 4) ? 0 : 1 }); }
+      if (!spill) for (const b of feed ? [14, 11, 9, 6.5, 5, 3.2, 1.8, 0.8, 0.2] : [5, 3.2, 1.8, 0.8, 0.2]) { const wob = feed && b > 6 ? Math.sin(b * 0.33 + seed) * Math.min(3, b * 0.1) : 0, [x, z] = W(a0 + wob, b0 + b);
+        rowsW.push({ x, z, y: Math.max(H(x, z), lipY + b * 0.06) + 0.1, w: wf * (feed ? lerp(0.8, 0.45, smooth(5, 14, b)) : 0.8), st: 0.12 + Math.max(0, 5 - b) * 0.06, fade: !feed && b > 4 ? 0 : 1 }); }
       for (let k = 0; k <= 12; k++) { const u = k / 12, tk = u * tt, [x, z] = W(a0, b0 - (spill ? 0.6 : v0) * tk);
         rowsW.push({ x, z, y: y0 - 0.5 * G * tk * tk, w: wf * (1 + u * 0.4), st: 1, fade: 1 }); }
       parts.push(ribbon(rowsW, seed));
     };
     sheet(0, o.wf, bL - 0.05, lipY + 0.12, poolY + 0.02, r() * 10);
-    if (feed) { const [sx, sz] = W(0, bL + 37.5); parts.push(pool(W, 0, bL + 37.5, 3.6, 0, bL + 36, H(sx, sz) + 0.15, [tx, tz], [nx, nz])); } // the spring
+    if (feed) { // the brook up the hillside: follow the slope upwards from behind the step
+      const [x0, z0] = W(Math.sin(r() * 6) * 0.5, bL + 12), src = [[x0, H(x0, z0), z0]]; let x = x0, z = z0, gain = 0;
+      for (let k = 0; k < 40 && gain < 70; k++) { const h0 = H(x, z), gx = (H(x + 4, z) - h0) / 4, gz = (H(x, z + 4) - h0) / 4, sl = Math.hypot(gx, gz);
+        if (sl < 0.05) break; let ux = gx / sl, uz = gz / sl; if (k < 4) { ux = lerp(nx, ux, k / 4); uz = lerp(nz, uz, k / 4); } // leave the step straight back first
+        x += ux * 5; z += uz * 5; gain = H(x, z) - src[0][1]; src.push([x, H(x, z), z]); }
+      if (src.length > 5) {
+        for (let it = 0; it < 4; it++) for (let i = 1; i < src.length - 1; i++) { src[i][0] = (src[i - 1][0] + src[i][0] * 2 + src[i + 1][0]) / 4; src[i][2] = (src[i - 1][2] + src[i][2] * 2 + src[i + 1][2]) / 4; }
+        const S = src.reverse().map(q => [q[0], H(q[0], q[2]), q[2]]), m = S.length, w1 = Math.max(1.6, o.wf * 0.55);
+        parts.push(drapeStrip(S, i => 0.9 + (w1 - 0.9) * i / (m - 1), 0.25, H, r() * 10, 3));
+        const hd = S[0], sb = []; for (let k = 0; k < 5; k++) { const an = r() * 6.28, rr = 1.6 + r() * 2.2, sz = 0.9 + r() * 1.4, bx = hd[0] + Math.cos(an) * rr, bz = hd[2] + Math.sin(an) * rr; // the spring: water out between boulders
+          sb.push(blockGeo(r, sz * 1.3, sz, sz, bx, H(bx, bz) - 0.4, bz, r() * 3)); }
+        const sm = new THREE.Mesh(mergeGeometries(sb), rockMat); sm.castShadow = sm.receiveShadow = true; add(sm); F.objs.push(sm);
+      }
+    }
     const impB = bL - v0 * T;
     parts.push(pool(W, 0, 0, R, 0, impB, poolY, [tx, tz], [nx, nz]));
     if (brookOk && brookBridge(F, s.s, brookE[0], brookE[1], 1.3)) { // pool rim -> brook start

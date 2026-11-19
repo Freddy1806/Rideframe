@@ -323,7 +323,7 @@ export class WorldScene {
     this.lakeMeshes = (this.field.lakes || []).map(L => {
       const sh = new THREE.Shape(L.P.map(([x, z]) => new THREE.Vector2(x, -z))), g = new THREE.ShapeGeometry(sh, 6); g.rotateX(-Math.PI / 2);
       const nm = this.water.material.uniforms.normalSampler.value.clone(); nm.wrapS = nm.wrapT = THREE.RepeatWrapping; nm.repeat.set(0.012, 0.012); nm.needsUpdate = true;
-      const m = new THREE.Mesh(g, new THREE.MeshStandardMaterial({ color: 0x1b363d, roughness: 0.07, metalness: 0.15, normalMap: nm, normalScale: new THREE.Vector2(0.35, 0.35), envMapIntensity: 1.25 }));
+      const m = new THREE.Mesh(g, new THREE.MeshStandardMaterial({ color: 0x2c7480, roughness: 0.1, metalness: 0.05, normalMap: nm, normalScale: new THREE.Vector2(0.35, 0.35), envMapIntensity: 1.25 }));
       m.position.y = L.level; m.receiveShadow = true; m.userData.lakeNormal = nm; scene.add(m); return m; });
     if (QS.has('noreflect')) { const wr = this.water.onBeforeRender; let k = 0; this.water.onBeforeRender = (...x) => { if (k++ < 30) wr.apply(this.water, x); }; } // mirror frozen after the first frames
 
@@ -616,10 +616,10 @@ export class WorldScene {
           if (r() < 0.3) put('boat', i + 2, -1, 14, r() * 3);
           if (r() < 0.55) put(r() < 0.5 ? 'stone' : 'timber', i, 1, 12 + r() * 8, (r() - .5) * .3);
         }
-        put('hjell', a + 3, 1, 14, 0.2);
+        if (s.edge !== 'S-H') put('hjell', a + 3, 1, 14, 0.2); // no stockfish racks among the vines
         if (s === segs[0]) put('church', b - 6, 1, 22, 0.1);
       }
-      if (s.land === 'coast' && !s.village) for (let i = i0; i < i1; i += 30 + Math.floor(r() * 40)) {
+      if (s.land === 'coast' && !s.village && s.edge !== 'S-H') for (let i = i0; i < i1; i += 30 + Math.floor(r() * 40)) {
         if (r() < 0.5) put('rorbu', i, -1, 12, (r() - .5) * .3);
         if (r() < 0.25) put('hjell', i + 5, 1, 12 + r() * 6, r());
       }
@@ -1015,12 +1015,14 @@ export class WorldScene {
           if (ib && r() < 0.35) for (let k = 0; k < 1 + Math.floor(r() * 3); k++) place(ib, d + k * 6, sd * (ROAD_W + 22 + r() * 30 + k * 4), { face: r() * 6.28, gap: 4, anim: r() < 0.5 ? 'Stehen' : 'Grasen', flat: false }); }
       }
       // ---- island, Freddy 19.11.: seals on the rocks of Seal Isle (they lie at the waterline, lift their heads, some shuffle) ----
-      if (t.dem?.file === 'insel.bin' && (s.edge === 'T-T' || s.edge === 'S-T')) {
+      if (t.dem?.file === 'insel.bin' && s.edge === 'T-T') {
         const seals = ['robbe_grau', 'robbe_gefleckt'].map(n => byName(n)).filter(Boolean);
-        if (seals.length) for (let d = s.edge === 'S-T' ? s.to - 700 : s.from + 120; d < s.to - 60; d += 260 + r() * 280) {
+        if (seals.length) for (let d = s.from + 150; d < s.to - 150; d += 200 + r() * 220) {
+          if (f.bridge?.[Math.round(d / DS)]) continue; // never under the bridge
           const sea = segAt(d).seaSide === 1 ? 1 : -1; let ow = 0; // walk out on the sea side to the waterline
-          for (let o = 8; o < 260; o += 4) { const q = spot(d, sea * o); if (f.height(q.x, q.z) < 0.35) { ow = o; break; } }
-          if (!ow) continue;
+          if (f.height(spot(d, sea * 8).x, spot(d, sea * 8).z) < 1) continue; // must start on land
+          for (let o = 12; o < 130; o += 3) { const q = spot(d, sea * o); if (f.height(q.x, q.z) < 0.35) { ow = o; break; } }
+          if (!ow) continue; // water too far to see them from the road
           const n = 2 + Math.floor(r() * 6);
           for (let k = 0; k < n; k++) { const e = seals[Math.floor(r() * seals.length)], o = Math.max(ROAD_W + 6, ow - 2 - r() * 9);
             place(e, d + (k - n / 2) * (2.2 + r() * 1.6), -(o), { face: r() * 6.28, gap: 2, radK: 0.35, anim: r() < 0.8 ? 'Liegen' : 'Robben', flat: false, overlap: true }); }
@@ -1301,7 +1303,7 @@ export class WorldScene {
       for (let d = a - 10; d < b + 10; d += 5) {
         const p = f.at(d), l = Math.hypot(p.tx, p.tz) || 1, ang = Math.atan2(p.tx, p.tz), rx = -p.tz / l, rz = p.tx / l;
         const p2 = f.at(d + 5), grade = Math.atan2(p2.e - p.e, 5); q.setFromEuler(new THREE.Euler(-grade, ang, 0, 'YXZ'));
-        for (const s of [-1, 1]) parts.rail.push(m4.compose(P.set(p.x + rx * s * (ROAD_W + 0.85), p.e + 1.15, p.z + rz * s * (ROAD_W + 0.85)), q, S.set(0.08, 0.08, 5.2)).clone()); // steel hand rail on the parapet
+        for (const s of [-1, 1]) parts.rail.push(m4.compose(P.set(p.x + rx * s * (ROAD_W + 0.85), p.e + 0.94, p.z + rz * s * (ROAD_W + 0.85)), q, S.set(0.14, 0.08, 5.2)).clone()); // steel hand rail sitting right on the parapet (Freddy 19.11.: no slit to look through)
         if (Math.round((d - a) / 5) % 7 === 3 && d > a + 5 && d < b - 5) { const g = Math.min(-2, f.height(p.x + rx * 9, p.z + rz * 9)); // pier pair down to the bottom
           for (const s of [-1, 1]) parts.pier.push(m4.compose(P.set(p.x + rx * s * 2.2, (p.e - 1 + g) / 2, p.z + rz * s * 2.2), q.setFromAxisAngle(up, ang), S.set(1.6, p.e - 1 - g, 2.2)).clone()); }
       }
@@ -1384,8 +1386,16 @@ export class WorldScene {
       if (s.top === 'castle') { // never hover on a slope (Freddy 19.11.): settle on the footprint's average and stand on a rock plinth down to the lowest corner
         const hs = []; for (let k = 0; k < 16; k++) { const a = k / 16 * Math.PI * 2; hs.push(f.height(x + Math.cos(a) * 18, z + Math.sin(a) * 18)); }
         const lo = Math.min(...hs), avg = hs.reduce((u, v) => u + v, 0) / hs.length; y = Math.min(y, avg - 0.3);
-        const drop = y - lo + 6, plinth = new THREE.Mesh(new THREE.CylinderGeometry(19, 24, drop, 18, 1), new THREE.MeshStandardMaterial({ color: 0x8a8274, roughness: .98, map: stone() }));
-        plinth.position.y = -drop / 2 + 0.2; plinth.castShadow = plinth.receiveShadow = true; o.add(plinth);
+        // a rough rock outcrop, not a board (Mac check 19.11.): jagged, wider at the foot, textured, sinking into the slope
+        const drop = y - lo + 8, g = new THREE.CylinderGeometry(19.5, 31, drop, 30, Math.max(3, Math.round(drop / 3)), false), pa = g.attributes.position, rk = rng(977);
+        const jag = Array.from({ length: 30 }, () => 0.75 + rk() * 0.6);
+        for (let i = 0; i < pa.count; i++) { const vx = pa.getX(i), vy = pa.getY(i), vz = pa.getZ(i), a = Math.atan2(vz, vx), u = (drop / 2 - vy) / drop; // u: 0 top .. 1 foot
+          const j = jag[((Math.round((a + Math.PI) / (Math.PI * 2) * 30) % 30) + 30) % 30], k = 1 + u * (j - 0.85) * 0.45 + (rk() - 0.5) * 0.12 * u;
+          pa.setXYZ(i, vx * k, vy + (u > 0.05 ? (rk() - 0.5) * 1.2 : 0), vz * k); }
+        g.computeVertexNormals();
+        const sm = stone().clone(); sm.wrapS = sm.wrapT = THREE.RepeatWrapping; sm.repeat.set(9, Math.max(1, drop / 7)); sm.needsUpdate = true;
+        const plinth = new THREE.Mesh(g, new THREE.MeshStandardMaterial({ color: 0x9a948a, roughness: 1, map: sm, flatShading: true, side: THREE.DoubleSide }));
+        plinth.position.y = -drop / 2 + 0.1; plinth.castShadow = plinth.receiveShadow = true; o.add(plinth);
       }
       o.position.set(x, y, z); o.rotation.y = Math.atan2(p.tx, p.tz);
       this.scene.add(o); o.traverse(c => { if (c.userData.flag) this.animated.push(c); });

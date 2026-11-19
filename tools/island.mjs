@@ -45,7 +45,7 @@ function ridgeK(x, y, [x0, y0], [x1, y1], h, w) {
 const peakK = (x, y, [px, py], h, w) => h * Math.exp(-((x - px) ** 2 + (y - py) ** 2) / w ** 2);
 // mountain lake in the high valley west of the basin village (Freddy 19.11.: "einen See in den Bergen, an so einem See lang fahren");
 // the Monastery Valley road runs along its north shore. km, y north; level in m
-export const LAKE = { x: 22.6, y: 12.7, rx: 1.75, ry: 0.45, level: 214, depth: 24 };
+export const LAKE = { x: 22.6, y: 12.7, rx: 1.75, ry: 0.485, level: 214, depth: 24 };
 export const lakeR = (x, y) => { const a = Math.atan2((y - LAKE.y) / LAKE.ry, (x - LAKE.x) / LAKE.rx);
   return Math.hypot((x - LAKE.x) / LAKE.rx, (y - LAKE.y) / LAKE.ry) * (1 + 0.07 * Math.sin(a * 3 + 1) + 0.05 * Math.sin(a * 5 + 2.2) + 0.03 * Math.sin(a * 9 + 0.4)); };
 /** the shore as a polygon in grid metres (where lakeR = 1), for the renderer's water surface and the map */
@@ -93,7 +93,7 @@ export const NODES = {
   P3: { x: 35.0, y: 21.5, z: 548, name: 'East Saddle', de: 'Ostsattel', kind: 'pass' },
   P4: { x: 24.0, y: 7.0, z: 385, name: 'South Saddle', de: 'Südsattel', kind: 'pass' },
   K: { x: 17.0, y: 11.0, z: 180, name: 'Monastery Plateau', de: 'Klosterplateau', kind: 'monastery' },
-  T: { x: 26.5, y: -3.85, z: 8, name: 'Seal Isle', de: 'Robbeninsel', kind: 'harbour', note: 'end of the Long Bridge, time-trial loop' },
+  T: { x: 26.5, y: -3.57, z: 8, name: 'Seal Isle', de: 'Robbeninsel', kind: 'harbour', note: 'end of the Long Bridge, time-trial loop' },
 };
 // [a, b, kind, winding (road length / straight line), via points km, name]. Coast edges follow the traced coast instead.
 export const EDGES = [
@@ -195,7 +195,7 @@ function wind(A, B, len, n, seed = 1) {
 
 // ---------------- roads ----------------
 function edgePath(e) {
-  if (e.kind === 'islet') { const [cx, cy, rx, ry] = ISLE, P = []; for (let a = 0; a <= 360; a += 3) { const t = (90 - a) * Math.PI / 180; P.push(M(cx + Math.cos(t) * (rx - 0.45) * (1 + 0.05 * Math.sin(a / 19)), cy + 0.45 * 0 + Math.sin(t) * (ry - 0.45))); }
+  if (e.kind === 'islet') { const [cx, cy, rx, ry] = ISLE, P = []; for (let a = 0; a <= 360; a += 3) { const t = (90 - a) * Math.PI / 180; P.push(M(cx + Math.cos(t) * rx * 0.955 * (1 + 0.012 * Math.sin(a / 19)), cy + Math.sin(t) * ry * 0.955)); } // close to the shore (Freddy 19.11.: the seals must be visible from the road)
     return resample(spline(P, 10)); } // starts and ends at the north shore (the bridge head)
   if (e.kind === 'bridge') { const C = [NODES[e.a], ...e.via.map(([x, y]) => ({ x, y })), NODES[e.b]].map(n => M(n.x, n.y)); return resample(spline(C, 10)); }
   if (e.kind === 'coast' || e.kind === 'cliff') return resample(spline(ringPath(e.a, e.b).filter((_, i, a) => i % 4 === 0 || i === a.length - 1).map(p => M(...p)), 10));
@@ -228,7 +228,7 @@ function profile(e, P) {
   const tz = raw.map((_, i) => { let s = 0, ws = 0; for (let k = -rad; k <= rad; k++) { const j = clamp(i + k, 0, n - 1), w = Math.exp(-(k * k) / (2 * sig * sig)); s += raw[j] * w; ws += w; } return s / ws; });
   const mix = { islet: 0.9, coast: 0.9, cliff: 0.9, valley: 0.7, pass: 0.6, summit: 0.5, hills: 0.75 }[e.kind];
   let z = tz.map((t, i) => { const lin = lerp(a.z, b.z, i / (n - 1)), f = Math.sin(Math.PI * i / (n - 1)); return lin * (1 - mix * f) + t * mix * f; });
-  z = z.map((v, i) => { const q = lakeR(...K(...P[i])); return Math.max(3, q < 1.9 ? lerp(LAKE.level + 6, v, smooth(1.35, 1.9, q)) : v); }); // along the lake: 6 m above the water on an open bank, so you look onto it
+  z = z.map((v, i) => { const q = lakeR(...K(...P[i])); return Math.max(3, q < 1.9 ? lerp(LAKE.level + 4, v, smooth(1.35, 1.9, q)) : v); }); // along the lake: 4 m above the water on an open bank, so you look onto it
   if (Math.abs(b.z - a.z) > 200) { // a real climb: never a dip on the way up (the trainer would go easy mid-pass)
     const up = b.z > a.z; for (let i = 1; i < n; i++) z[i] = up ? Math.max(z[i], z[i - 1]) : Math.min(z[i], z[i - 1]);
     const lo = z[0], hi = z[n - 1]; z = z.map((v, i) => lerp(a.z, b.z, (v - lo) / ((hi - lo) || 1)) * 0.85 + lerp(a.z, b.z, i / (n - 1)) * 0.15); }
