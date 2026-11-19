@@ -636,7 +636,7 @@ export class WorldScene {
     // the castle stands on a levelled terrace of the real ground (Freddy 19.11.: it floated; Mac check: a plinth read as a board)
     for (const s of segs) { const c = s.top === 'castle' && this._castleSpot(s); if (!c) continue;
       const hs = []; for (let k = 0; k < 16; k++) { const a = k / 16 * Math.PI * 2; hs.push(this.field.height(c.x + Math.cos(a) * 19, c.z + Math.sin(a) * 19)); }
-      this.field.pads.push({ x: c.x, z: c.z, y: hs.reduce((u, v) => u + v, 0) / hs.length, ri: 22, ro: 48, keep: true }); }
+      this.field.pads.push({ x: c.x, z: c.z, y: hs.reduce((u, v) => u + v, 0) / hs.length, ri: 44, ro: 95, keep: true }); }
   }
   _castleSpot(s) { const f = this.field, d = s.to + 70, p = f.at(d), l = Math.hypot(p.tx, p.tz), x = p.x - p.tz / l * 34, z = p.z + p.tx / l * 34;
     const rr = f.road(x, z); return rr && rr.d >= 22 ? { x, z } : null; }
@@ -1036,7 +1036,8 @@ export class WorldScene {
           const n = 3 + Math.floor(r() * 5);
           for (let k = 0; k < n; k++) { const e = seals[Math.floor(r() * seals.length)], o = Math.max(ROAD_W + 5, c.ow - 1.5 - r() * 6), dd = c.d + (k - n / 2) * (2.4 + r() * 1.8), q = spot(dd, c.sea * o);
             if (f.height(q.x, q.z) < 0.6) continue; // on the rocks at the waterline, never in the water
-            place(e, dd, -o, { face: r() * 6.28, gap: 1.5, radK: 0.35, anim: r() < 0.8 ? 'Liegen' : 'Robben', flat: false, overlap: true }); }
+            const so = place(e, dd, -o, { face: r() * 6.28, gap: 1.5, radK: 0.35, anim: r() < 0.8 ? 'Liegen' : 'Robben', flat: false, overlap: true });
+            if (so) { so.updateMatrixWorld(true); const bb = new THREE.Box3().setFromObject(so), sz = bb.getSize(new THREE.Vector3()); console.info(`RIDEFRAME Robbe d=${Math.round(dd)} ${o.toFixed(1)} m neben der Straße, y=${so.position.y.toFixed(2)}, Größe ${sz.x.toFixed(1)}×${sz.y.toFixed(1)}×${sz.z.toFixed(1)} m, Boden-Unterkante ${bb.min.y.toFixed(2)}`); } }
         }
       }
       // ---- island, Freddy 19.11.: vineyards on the Vineyard Coast and the East Saddle (rows on the land side, cypresses, a wine estate) ----
@@ -1394,7 +1395,7 @@ export class WorldScene {
       const p = f.at(d), l = Math.hypot(p.tx, p.tz), x = p.x - p.tz / l * off * side, z = p.z + p.tx / l * off * side;
       const rr = f.road(x, z); if (!rr || rr.d < (s.top === 'castle' ? 22 : 9)) continue;
       const o = house(s.top); let y = f.height(x, z) - 0.15;
-      if (s.top === 'castle') y = f.height(x, z) - 0.3; // on its terrace (pad set up with the terrain)
+      if (s.top === 'castle') y = f.height(x, z) - 0.8; // on its terrace (pad set up with the terrain)
       o.position.set(x, y, z); o.rotation.y = Math.atan2(p.tx, p.tz);
       this.scene.add(o); o.traverse(c => { if (c.userData.flag) this.animated.push(c); });
     }

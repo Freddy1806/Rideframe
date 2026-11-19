@@ -204,7 +204,8 @@ export function placeWaterfalls(world, A, taken = []) {
     rows.push({ x, z, y: y0, w: w0 + 0.5, st: 0.12, fade: 1 });
     for (let k = 0; k < 40; k++) {
       const h0 = H(x, z), gx = (H(x + 3, z) - h0) / 3, gz = (H(x, z + 3) - h0) / 3, sl = Math.hypot(gx, gz);
-      if (k > 2 && sl > 0.02) { dx = lerp(dx, -gx / sl, 0.45); dz = lerp(dz, -gz / sl, 0.45); const l = Math.hypot(dx, dz) || 1; dx /= l; dz /= l; }
+      if (k > 2 && sl > 0.02) { dx = lerp(dx, -gx / sl, 0.3); dz = lerp(dz, -gz / sl, 0.3); let l = Math.hypot(dx, dz) || 1; dx /= l; dz /= l;
+        const d0x = -side * -q.tz, d0z = -side * q.tx, dd = dx * d0x + dz * d0z; if (dd < 0.6) { dx += d0x * (0.6 - dd); dz += d0z * (0.6 - dd); l = Math.hypot(dx, dz) || 1; dx /= l; dz /= l; } } // keeps heading away from the road: no knots or figure-eights (Mac check 19.11.)
       x += dx * 2.5; z += dz * 2.5; const h = H(x, z), rd = f.road(x, z);
       if (rd && rd.d < ROAD_W + 2.5 && k > 3) break;
       const last = h < 0.2 || k === 39; rows.push({ x, z, y: Math.max(0.05, Math.min(rows[rows.length - 1].y + 0.05, h + 0.1)), w: w0 + 0.5 + Math.min(1.2, k * 0.04), st: 0.1 + Math.min(0.5, sl * 0.8), fade: last ? 0 : 1 });
@@ -462,7 +463,9 @@ export function placeWaterfalls(world, A, taken = []) {
       for (let k = 0; k < 40 && H(x, z) - lipY < 70; k++) { const h0 = H(x, z), gx = (H(x + 4, z) - h0) / 4, gz = (H(x, z + 4) - h0) / 4, sl = Math.hypot(gx, gz);
         let ux = sl > 0.03 ? gx / sl : nx, uz = sl > 0.03 ? gz / sl : nz; if (k < 4 || sl <= 0.03) { const m = k < 4 ? k / 4 : 0; ux = lerp(nx, ux, m); uz = lerp(nz, uz, m); }
         const dn = ux * nx + uz * nz; if (dn < 0.35) { ux += nx * (0.35 - dn); uz += nz * (0.35 - dn); const l = Math.hypot(ux, uz) || 1; ux /= l; uz /= l; } // always away from the road, never across it
-        x += ux * 5; z += uz * 5; const rq = f.road(x, z); if (rq && rq.d < ROAD_W + 8) break; src.push([x, H(x, z), z]); if (sl <= 0.03 && k > 8) break; }
+        x += ux * 5; z += uz * 5; const rq = f.road(x, z); if (rq && rq.d < ROAD_W + 5 && k > 2) break; src.push([x, H(x, z), z]); if (sl <= 0.03 && k > 8) break; }
+      if (src.length < 10) { src.length = 2; x = bx; z = bz; for (let k = 0; k < 10; k++) { x += nx * 5; z += nz * 5; const rq = f.road(x, z); if (rq && rq.d < ROAD_W + 5) break; src.push([x, H(x, z), z]); } } // slope blocked: straight back
+      console.info(`RIDEFRAME Wasserfall-Zulauf ${kind} d=${Math.round(s.d)}: ${src.length} Punkte, ${Math.round(src[src.length - 1][1] - lipY)} m über der Kante`);
       for (let it = 0; it < 4; it++) for (let i = 2; i < src.length - 1; i++) { src[i][0] = (src[i - 1][0] + src[i][0] * 2 + src[i + 1][0]) / 4; src[i][2] = (src[i - 1][2] + src[i][2] * 2 + src[i + 1][2]) / 4; src[i][1] = H(src[i][0], src[i][2]); }
       const S = src.reverse(), m = S.length;
       const wm = new THREE.Mesh(drapeStrip(S, i => 1.1 + 1.6 * i / (m - 1), 0.25, H, r() * 10, 3), wMat); wm.renderOrder = 2; add(wm, true); F.objs.push(wm);
