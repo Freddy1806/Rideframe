@@ -9,7 +9,7 @@ import { nav } from './nav.js';
 
 const el = document.getElementById('stat');
 let D = null, by = 'time';
-const mc = m => `--mc:${MODES[m].color};--mcl:${MODES[m].light}`;
+const mc = m => document.documentElement.dataset.modecolors === '1' ? `--mc:${MODES[m].color};--mcl:${MODES[m].light}` : '--mc:var(--accent);--mcl:var(--accent)';
 const paceT = s => `${Math.floor(s / 60)}:${String(Math.round(s % 60)).padStart(2, '0')}`;
 const hrs = s => s >= 36000 ? fmtNum(s / 3600, 0) + ' h' : fmtNum(s / 3600, 1) + ' h';
 

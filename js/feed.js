@@ -35,7 +35,7 @@ export function lineOf(a) {
 }
 const day = t => new Date(t).toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short' });
 const keyOf = a => (a.kraft ? 'k:' : 'r:') + a.id;
-const mc = m => `--mc:${MODES[m].color};--mcl:${MODES[m].light}`;
+const mc = m => document.documentElement.dataset.modecolors === '1' ? `--mc:${MODES[m].color};--mcl:${MODES[m].light}` : '--mc:var(--accent);--mcl:var(--accent)';
 export const hm = s => `${Math.floor(s / 3600)}:${String(Math.floor(s % 3600 / 60)).padStart(2, '0')} h`;
 
 /** one activity row: icon in the mode colour, name, sport line, load points and day on the right */

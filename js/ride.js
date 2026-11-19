@@ -748,7 +748,8 @@ export class RideSession {
   }
   _eagleTick(dt) {
     const e = this.eg; if (!e || !this.eagle || this.state.settings.eagle === false) return;
-    if (e.state === 'play') { if (this.eagle.tick(dt) === 'end') e.state = 'done'; return; }
+    const ev = this.player?.events; if (ev) ev.hush = e.state === 'play'; // nobody calls out while the eagle speaks
+    if (e.state === 'play') { if (this.eagle.tick(dt) === 'end') { e.state = 'done'; if (ev) ev.hush = false; } return; }
     if (e.free) { if (e.state === 'wait' && (e.wk ? this.workout && !this.wDone && this._wClock() : this.elapsed) >= e.at && !othersBusy(this.wiz, this.ch)) { e.state = 'play'; this.eagle.start(); } return; }
     const stepI = this.wDone ? Infinity : this.wNow?.i ?? -1, win = this.workout && !this.wDone ? this._hardWin() : null;
     const g = eagleGate(e, { win, stepI, busy: othersBusy(this.wiz, this.ch), wizIv: this._wizIv ?? -1 });
