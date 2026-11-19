@@ -439,7 +439,10 @@ export class AvatarPreview {
   set(look) { if (this.obj) this.scene.remove(this.obj); this.obj = makeRider(look); this.scene.add(this.obj); }
   _loop(now) {
     if (this.dead) return;
-    const W = this.c.clientWidth, Hh = this.c.clientHeight; if (W && (this.c.width !== W * this.r.getPixelRatio() | 0)) { this.r.setSize(W, Hh, false); this.cam.aspect = W / Hh; this.cam.updateProjectionMatrix(); }
+    const W = this.c.clientWidth, Hh = this.c.clientHeight; const pr = this.r.getPixelRatio(); if (W && Hh && (this.c.width !== (W * pr | 0) || this.c.height !== (Hh * pr | 0))) { // a flex canvas can change height alone
+      this.r.setSize(W, Hh, false); this.cam.aspect = W / Hh;
+      if (this.fitFov) this.cam.fov = Math.max(this.fitFov, 2 * Math.atan(Math.tan(this.fitFov * Math.PI / 360) / this.cam.aspect) * 180 / Math.PI); // a tall canvas keeps the horizontal angle
+      this.cam.updateProjectionMatrix(); }
     this.t += 1 / 60; if (this.obj) { this.obj.rotation.y = this.t * this.spin; this.obj.userData.pedal(this.t * 5); for (const w of this.obj.userData.wheels) w.rotation.x += 0.12; }
     this.r.render(this.scene, this.cam); requestAnimationFrame(this._loop);
   }

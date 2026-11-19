@@ -23,7 +23,7 @@ export async function shopModal({ onClose, focus } = {}) {
       <div class="shoplist" id="shList"></div></div></div>`;
   document.body.append(m);
   const q = s => m.querySelector(s);
-  import('./world/avatar.js').then(a => { if (!m.isConnected) return; prev = new a.AvatarPreview(q('#shCanvas')); prev.spin = 0.35; show(); }).catch(() => {});
+  import('./world/avatar.js').then(a => { if (!m.isConnected) return; prev = new a.AvatarPreview(q('#shCanvas')); prev.spin = 0.35; prev.fitFov = 32; prev.cam.position.set(2.7, 1.5, 2.5); prev.cam.lookAt(0, 0.92, 0); show(); }).catch(() => {});
 
   const trying = () => { const it = tryId && itemById(tryId); return it ? { ...look, [it.key]: it.value } : look; };
   const show = () => { prev?.set(trying()); const it = tryId && itemById(tryId);

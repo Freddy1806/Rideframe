@@ -12,7 +12,7 @@ export const CATALOG = [
   { id: 'star-jersey', name: 'Star and moon jersey', slot: 'outfit', key: 'outfit', value: 'sterne', price: 800, desc: 'Midnight blue with a golden moon and a sky full of stars.' },
   { id: 'wizard-cloak', name: 'Wizard cloak', slot: 'outfit', key: 'cape', value: 'zauber', price: 1200, desc: 'A long dark blue cape with a starry lining. Goes over any jersey.' },
   { id: 'eagle-jersey', name: 'Eagle jersey', slot: 'outfit', key: 'outfit', value: 'adler', price: 900, desc: 'Brown and white feathers from the shoulders down, like the eagle of the island.' },
-  { id: 'knight-armour', name: 'Knight armour', slot: 'outfit', key: 'outfit', value: 'ritter', price: 1000, desc: 'Steel plates on chest and shoulders under a red tabard with a golden lion.' },
+  { id: 'knight-armour', name: 'Knight armour', slot: 'outfit', key: 'outfit', value: 'ritter', price: 1000, desc: 'Steel plates on chest and shoulders under a red tabard with a golden cross.' },
   { id: 'wooden-bike', name: 'Wooden retro bike', slot: 'bike', key: 'bike', value: 'holz', price: 1500, desc: 'A frame of warm polished wood on cream tyres.' },
   { id: 'glow-wheels', name: 'Glowing wheels', slot: 'bike', key: 'wheels', value: 'glow', price: 1200, desc: 'Rims that glow in your colour. On any frame.' },
   { id: 'dragon-frame', name: 'Dragon frame', slot: 'bike', key: 'bike', value: 'drache', price: 4000, desc: 'Green scales all over and small spines along the top tube.' },
