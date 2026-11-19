@@ -50,7 +50,7 @@ export function applyTheme(S = {}, mode = null) {
   last = [S, mode];
   const light = S.theme === 'light' || (S.theme === 'auto' && mq.matches);
   const r = document.documentElement; r.dataset.theme = light ? 'light' : 'dark';
-  const own = S.modeColors !== false && mode && MODES[mode], a = ACCENTS[S.accent] || ACCENTS.orange;
+  const own = S.modeColors === true && mode && MODES[mode], a = ACCENTS[S.accent] || ACCENTS.orange;
   r.style.setProperty('--accent', own ? (light ? own.light : own.color) : a[light ? 1 : 0]);
   r.style.setProperty('--accent-ink', light ? '#ffffff' : '#0b0b0b');
   document.querySelector('meta[name="theme-color"]')?.setAttribute('content', light ? '#f4f3ef' : '#0b0b0b');

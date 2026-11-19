@@ -18,6 +18,21 @@ const S = { riderKg: 75, bikeKg: 8.5, ftp: 250, accent: 'orange', shiftMode: 're
 const P = { tiles: ['cad', 'hr', 'time', 'dist', 'speed', 'avg', 'np', 'kj', 'lapTime', 'lapAvg', 'max', 'tss'], smooth: 3, autoPause: true, erg: 200, grade: 0, mode: 'erg', workout: '' };
 
 const trainer = new Trainer(), hrStrap = new HeartRate();
+// screens to swipe through, like on a Wahoo (owner 19.11.): each has one big value and its own fields; pages[0].tiles is P.tiles
+const PAGES0 = () => [{ big: 'pow', tiles: P.tiles }, { big: 'cad', tiles: ['pow', 'hr', 'time', 'dist'] }, { big: 'hr', tiles: ['pow', 'cad', 'time', 'kj'] }, { big: 'dist', tiles: ['speed', 'avgSpeed', 'time', 'wall', 'pow', 'cad'] }];
+function fixPages() {
+  const okK = k => typeof k === 'string' && k.length < 20;
+  if (!Array.isArray(P.pages) || !P.pages.length) P.pages = PAGES0();
+  P.pages = P.pages.filter(g => g && Array.isArray(g.tiles)).slice(0, 6).map(g => { const tiles = g.tiles.filter(okK).slice(0, 12); return { big: okK(g.big) ? g.big : 'pow', tiles, show: zoomFit(Number.isFinite(+g.show) ? +g.show : tiles.length, tiles.length) }; });
+  if (!P.pages.length) P.pages = PAGES0();
+  P.tiles = P.pages[0].tiles; P.page = Math.max(0, Math.min(P.pages.length - 1, P.page | 0));
+}
+// zoom like on a Wahoo: the fields are a list in order of importance; zooming in shows fewer of them, bigger
+const ZOOM = [0, 1, 2, 3, 4, 6, 9, 12];
+const zoomFit = (n, max) => ZOOM.filter(z => z <= max).reduce((a, z) => Math.abs(z - n) <= Math.abs(a - n) ? z : a, 0);
+function zoom(d) { const g = pg(), zs = ZOOM.filter(z => z <= g.tiles.length), i = zs.indexOf(zoomFit(g.show, g.tiles.length)), to = zs[Math.max(0, Math.min(zs.length - 1, i + d))]; if (to === g.show) return; g.show = to; saveSettings(); render(); }
+const pg = () => P.pages[P.page] || P.pages[0];
+const goPage = d => { const n = P.pages.length, to = (P.page + d + n) % n; if (to === P.page) return; P.page = to; saveSettings(); render(); };
 const R = { state: 'ready', moving: 0, wall: 0, d: 0, v: 0, kj: 0, samples: [], pw: [], laps: [], lap: null, max: 0, hrMax: 0, wT: 0, wDone: false, intensity: 100, wAdj: 0, adjAcc: 0, adjT: 0, lastSec: 0, idle: 0, roll30: [], np4: 0, npN: 0 };
 const live = { power: 0, cad: 0, hr: 0, buf: [] };
 let wake = null, demoW = 0, G = gearSet({}); // G: virtual gears (list, fixed real gear, current index)
@@ -26,7 +41,7 @@ let wake = null, demoW = 0, G = gearSet({}); // G: virtual gears (list, fixed re
 async function loadSettings() {
   const saved = await db.kvGet('settings').catch(() => null);
   if (saved) Object.assign(S, saved);
-  Object.assign(P, S.pure || {});
+  Object.assign(P, S.pure || {}); fixPages();
   setMyWorkouts(S.myWorkouts); G = gearSet(S);
   await import('./myworkouts-store.js').then(m => m.loadPersonal()).catch(() => {}); // personal workouts selectable here too (js/myworkouts-store.js)
   { const w = params.get('workout'); if (w != null) { P.mode = 'work'; if (workoutById(w)) P.workout = w; else if (!workoutById(P.workout)) P.workout = allWorkouts()[0]?.id || ''; } } // from the phone app's "My workouts" (handy.html): straight into this workout
@@ -51,6 +66,7 @@ const zoneOf = w => ZONES.find(z => w / ftp() * 100 < z[0]);
 const noData = () => !trainer.connected && !DEMO && !R.pw.length; // nothing connected, nothing recorded: '–' instead of a fake 0
 const nd = f => () => noData() ? '–' : f();
 const M = {
+  pow: { l: 'Power', u: 'W', v: nd(() => Math.round(shown())) },
   cad: { l: 'Cadence', u: 'rpm', v: nd(() => Math.round(live.cad)) },
   hr: { l: 'Heart rate', u: 'bpm', v: () => live.hr || '–' },
   time: { l: 'Time', u: '', v: () => fmtTime(R.moving) },
@@ -205,13 +221,18 @@ function render() {
     <button class="pgear" id="pSetBtn" title="Settings" aria-label="Settings">${icon('gear', 'gico')}</button>
   </header>
   ${!bleOk && !DEMO ? `<div class="pnote">${BT_HELP}</div>` : ''}
-  <section class="pbig" id="pBig">
-    <div class="label">Power ${P.smooth > 1 ? `· ${P.smooth} s` : ''}</div>
-    <div class="pbigv"><b id="pPow">–</b><small>W</small></div>
+  <div class="ppages" id="pPages">
+  <section class="pbig${pg().big === 'pow' ? '' : ' alt'}" id="pBig">
+    <div class="label" id="pBigL">${pg().big === 'pow' ? `Power ${P.smooth > 1 ? `· ${P.smooth} s` : ''}` : esc(M[pg().big]?.l || '')}</div>
+    <div class="pbigv"><b id="pPow">–</b><small>${pg().big === 'pow' ? 'W' : M[pg().big]?.u || ''}</small></div>
     <div class="pbigs"><span id="pTarget"></span><span id="pZone"></span></div>
     <div class="pzbar"><i id="pZbar"></i></div>
   </section>
-  <section class="ptiles">${P.tiles.map((k, i) => `<button class="ptile" data-t="${i}"><span class="label">${M[k]?.l || k}</span><b data-k="${k}">–</b><small>${M[k]?.u || ''}</small></button>`).join('')}</section>
+  <section class="ptiles n${pg().show}">${pg().tiles.slice(0, pg().show).map((k, i) => `<button class="ptile" data-t="${i}"><span class="label">${M[k]?.l || k}</span><b data-k="${k}">–</b><small>${M[k]?.u || ''}</small></button>`).join('')}</section>
+  <nav class="pdots" id="pDots" aria-label="Screens"><button class="pzoom" data-z="-1" aria-label="Fewer, bigger fields" ${pg().show <= 0 ? 'disabled' : ''}>−</button>
+    <span class="pdotrow">${P.pages.map((_, i) => `<button class="pdot ${i === P.page ? 'on' : ''}" data-pg="${i}" aria-label="Screen ${i + 1}"></button>`).join('')}</span>
+    <button class="pzoom" data-z="1" aria-label="More fields" ${pg().show >= pg().tiles.length ? 'disabled' : ''}>+</button><button class="pzoom pedit" id="pEdit" aria-label="Edit screens">Edit</button></nav>
+  </div>
   <section class="pmode">
     <div class="pseg">${[['erg', 'ERG'], ['grade', 'Grade'], ['work', 'Workout']].map(([k, n]) => `<button class="${P.mode === k ? 'on' : ''}" data-m="${k}">${n}</button>`).join('')}</div>
     ${control()}
@@ -253,16 +274,24 @@ function wire() {
     S.myWorkouts = list; setMyWorkouts(list); P.workout = res.del ? allWorkouts()[0]?.id || '' : res.id; R.wT = 0; R.wDone = false; await saveSettings(); render(); applyTrainer(); };
   const wa = $('#pWAdapt'); if (wa) wa.onclick = () => wed(); const wn = $('#pWNew'); if (wn) wn.onclick = () => wed('new');
   const ws = $('#pWork'); if (ws) ws.onchange = () => { P.workout = ws.value; R.wT = 0; R.wDone = false; saveSettings(); render(); applyTrainer(); };
-  el.querySelectorAll('[data-t]').forEach(b => b.onclick = () => tileSheet(+b.dataset.t));
+  el.querySelectorAll('[data-t]').forEach(b => b.onclick = () => { if (Date.now() - swiped > 400) tileSheet(+b.dataset.t); });
+  el.querySelectorAll('[data-pg]').forEach(b => b.onclick = () => goPage(+b.dataset.pg - P.page));
+  el.querySelectorAll('[data-z]').forEach(b => b.onclick = () => zoom(+b.dataset.z)); { const e = $('#pEdit'); if (e) e.onclick = () => bigSheet(); }
+  const pp = $('#pPages'); if (pp) { let x0 = null, y0 = 0; // swipe left / right: next / previous screen
+    pp.addEventListener('touchstart', e => { x0 = e.touches[0].clientX; y0 = e.touches[0].clientY; }, { passive: true });
+    pp.addEventListener('touchend', e => { if (x0 == null) return; const dx = e.changedTouches[0].clientX - x0, dy = e.changedTouches[0].clientY - y0; x0 = null; if (Math.abs(dx) > 55 && Math.abs(dx) > 1.6 * Math.abs(dy)) { swiped = Date.now(); goPage(dx < 0 ? 1 : -1); } }, { passive: true }); }
+  $('#pBig').onclick = () => { if (Date.now() - swiped > 400 && R.state !== 'run') bigSheet(); }; // while riding only the Edit key opens the editor
   const on = (id, f) => { const x = $(id); if (x) x.onclick = f; };
   on('#pStart', start); on('#pPause', pause); on('#pLap', lap); on('#pEnd', endSheet);
 }
 
+let swiped = 0;
 function paint() {
   if (R.state === 'done' || !$('#pPow')) return;
   const w = shown(), z = zoneOf(w), t = targetW();
-  $('#pPow').textContent = noData() ? '–' : Math.round(w); $('#pPow').classList.toggle('nd', noData());
-  $('#pTarget').textContent = t != null ? `Target ${t} W` : P.mode === 'grade' ? `Grade ${fmtNum(P.grade, 1)} %` : '';
+  const bigK = pg().big, bigV = bigK === 'pow' ? (noData() ? '–' : Math.round(w)) : M[bigK]?.v() ?? '–';
+  if ($('#pPow').textContent !== String(bigV)) $('#pPow').textContent = bigV; $('#pPow').classList.toggle('nd', bigV === '–');
+  $('#pTarget').textContent = (bigK === 'pow' || noData() ? '' : `${Math.round(w)} W · `) + (t != null ? `Target ${t} W` : P.mode === 'grade' ? `Grade ${fmtNum(P.grade, 1)} %` : ''); // power stays in sight on every screen
   $('#pZone').textContent = noData() ? '' : `${z[1]} · ${Math.round(w / ftp() * 100)} % FTP`;
   $('#pZbar').style.cssText = `width:${Math.min(100, w / ftp() / 1.5 * 100)}%;background:${z[2]}`;
   $('#pBig').style.setProperty('--z', z[2]);
@@ -298,7 +327,36 @@ function numberSheet() {
 }
 function tileSheet(i) {
   const s = sheet(`<div class="label">Field ${i + 1}: choose value</div><div class="ppick">${Object.entries(M).map(([k, m]) => `<button data-k2="${k}" class="${P.tiles[i] === k ? 'on' : ''}">${m.l}</button>`).join('')}</div>`);
-  s.querySelectorAll('[data-k2]').forEach(b => b.onclick = () => { P.tiles[i] = b.dataset.k2; saveSettings(); s.remove(); render(); });
+  s.querySelectorAll('[data-k2]').forEach(b => b.onclick = () => { pg().tiles[i] = b.dataset.k2; saveSettings(); s.remove(); render(); });
+}
+/** the screen editor: the big value, the fields in their order (first = stays longest when you zoom in), move, add and remove
+ *  fields and screens. Everything a Wahoo's page setup does, but on the device itself. */
+function bigSheet(pickFor = null) {
+  const g = pg(), n = P.pages.length, name = k => M[k]?.l || k;
+  const save = () => { g.show = Math.min(g.show, g.tiles.length); fixPages(); saveSettings(); render(); };
+  const picker = (title, cur, cb) => { const s2 = sheet(`<div class="label">${title}</div><div class="ppick">${Object.entries(M).map(([k, m]) => `<button data-kp="${k}" class="${cur === k ? 'on' : ''}">${m.l}</button>`).join('')}</div>`);
+    s2.querySelectorAll('[data-kp]').forEach(b => b.onclick = () => { s2.remove(); cb(b.dataset.kp); }); };
+  const s = sheet(`<div class="pedhead"><button class="btn ghost ksmall" id="edL" ${P.page <= 0 ? 'disabled' : ''} aria-label="Move this screen left">◀</button><div class="label">Screen ${P.page + 1} of ${n}</div><button class="btn ghost ksmall" id="edR" ${P.page >= n - 1 ? 'disabled' : ''} aria-label="Move this screen right">▶</button></div>
+    <button class="pedrow big" id="edBig"><small>Big value</small><b>${esc(name(g.big))}</b><i>Change</i></button>
+    <div class="label" style="margin:12px 0 6px">Fields · in order of importance · ${g.show} of ${g.tiles.length} shown</div>
+    <div class="pedlist">${g.tiles.map((k, i) => `<div class="pedrow${i >= g.show ? ' hid' : ''}" data-i="${i}"><small>${i + 1}</small><button class="pedname" data-ch="${i}">${esc(name(k))}</button>
+      <button data-up="${i}" ${i ? '' : 'disabled'} aria-label="Move up">↑</button><button data-dn="${i}" ${i < g.tiles.length - 1 ? '' : 'disabled'} aria-label="Move down">↓</button><button data-rm="${i}" aria-label="Remove">✕</button></div>`).join('')}</div>
+    <div class="pfoot"><button class="btn ghost" id="edAdd" ${g.tiles.length >= 12 ? 'disabled' : ''}>+ Field</button><button class="btn ghost" id="bgAdd" ${n >= 6 ? 'disabled' : ''}>+ Screen</button><button class="btn ghost" id="bgDel" ${n <= 1 ? 'disabled' : ''}>Remove screen</button></div>
+    <p class="phint">Swipe left or right on the numbers to change screens. − and + next to the dots zoom: fewer fields, bigger numbers. Fields further down hide first.</p>
+    <div class="pfoot"><button class="btn" id="edOk">Done</button></div>`);
+  const again = () => { save(); s.remove(); bigSheet(); };
+  const swap = (i, j) => { [g.tiles[i], g.tiles[j]] = [g.tiles[j], g.tiles[i]]; again(); };
+  s.querySelectorAll('[data-up]').forEach(b => b.onclick = () => swap(+b.dataset.up, +b.dataset.up - 1));
+  s.querySelectorAll('[data-dn]').forEach(b => b.onclick = () => swap(+b.dataset.dn, +b.dataset.dn + 1));
+  s.querySelectorAll('[data-rm]').forEach(b => b.onclick = () => { g.tiles.splice(+b.dataset.rm, 1); again(); });
+  s.querySelectorAll('[data-ch]').forEach(b => b.onclick = () => picker(`Field ${+b.dataset.ch + 1}`, g.tiles[+b.dataset.ch], k => { g.tiles[+b.dataset.ch] = k; again(); }));
+  $('#edBig', s).onclick = () => picker('Big value', g.big, k => { g.big = k; again(); });
+  $('#edAdd', s).onclick = () => picker('New field', null, k => { g.tiles.push(k); g.show = zoomFit(12, g.tiles.length); again(); });
+  const move = d => { const i = P.page, j = i + d; [P.pages[i], P.pages[j]] = [P.pages[j], P.pages[i]]; P.page = j; again(); };
+  $('#edL', s).onclick = () => move(-1); $('#edR', s).onclick = () => move(1);
+  $('#bgAdd', s).onclick = () => { P.pages.splice(P.page + 1, 0, { big: 'cad', tiles: ['pow', 'hr', 'time', 'dist'], show: 4 }); P.page++; again(); };
+  $('#bgDel', s).onclick = () => { P.pages.splice(P.page, 1); P.page = Math.max(0, P.page - 1); again(); };
+  $('#edOk', s).onclick = () => { save(); s.remove(); };
 }
 function settingsSheet() {
   const s = sheet(`<div class="label">Settings</div>
@@ -309,10 +367,10 @@ function settingsSheet() {
     <label class="prow">Virtual gears<input id="sVg" type="checkbox" class="toggle" ${VG() ? 'checked' : ''}></label>
     <label class="prow pwide" id="sRgRow" ${VG() ? '' : 'hidden'}>Gear on the bike<select id="sRg">${bikeGears().map(([v, l]) => `<option value="${v}" ${v === curGear() ? 'selected' : ''}>${l}</option>`).join('')}</select></label>
     <p class="phint">One sprocket (Zwift Cog: big ring × ${COG_TEETH}) or a bike left in one gear: − / + or a Zwift Click shift like real gears. Grade mode only, ERG holds the watts.</p>
-    <button class="btn ghost small" id="sReset" style="margin-top:6px">Reset fields</button>
+    <button class="btn ghost small" id="sReset" style="margin-top:6px">Reset screens and fields</button>
     <div class="pfoot"><button class="btn" id="sOk">Done</button></div>`);
   $('#sVg', s).onchange = e => { $('#sRgRow', s).hidden = !e.target.checked; };
-  $('#sReset', s).onclick = () => { P.tiles = ['cad', 'hr', 'time', 'dist', 'speed', 'avg', 'np', 'kj', 'lapTime', 'lapAvg', 'max', 'tss']; };
+  $('#sReset', s).onclick = () => { P.tiles = ['cad', 'hr', 'time', 'dist', 'speed', 'avg', 'np', 'kj', 'lapTime', 'lapAvg', 'max', 'tss']; P.pages = null; P.page = 0; fixPages(); };
   $('#sOk', s).onclick = () => {
     S.ftp = Math.max(50, Math.min(700, +$('#sFtp', s).value || S.ftp)); S.riderKg = Math.max(30, Math.min(200, parseFloat($('#sKg', s).value.replace(',', '.')) || S.riderKg));
     P.smooth = +$('#sSm', s).value; P.autoPause = $('#sAp', s).checked;
@@ -417,9 +475,15 @@ trainer.addEventListener('status', () => { if (R.state !== 'done') render(); sen
 hrStrap.addEventListener('hr', e => { live.hr = e.detail; });
 hrStrap.addEventListener('change', () => { if (!hrStrap.connected) live.hr = 0; sensDraw?.(); });
 
-let last = performance.now(), bufAt = 0;
+let last = performance.now(), lastWall = Date.now(), bufAt = 0;
 setInterval(() => {
-  const now = performance.now(), dt = Math.min(1, (now - last) / 1000); last = now;
+  const now = performance.now(), wallNow = Date.now(), gap = (wallNow - lastWall) / 1000, dt = Math.min(1, (now - last) / 1000); last = now; lastWall = wallNow;
+  // in the background (another app, screen locked) the browser slows or stops this timer: the ride goes on, so the time is
+  // caught up from the clock (owner 19.11.: "dass die Zeit weiterläuft"), second by second with the watts last seen; after
+  // 10 minutes without a sign of life only the elapsed time counts on
+  if (gap > 2.5 && R.state === 'run') { const n = Math.min(4 * 3600, Math.floor(gap - dt)), held = live.power, cad = live.cad;
+    for (let i = 0; i < n; i++) { if (i >= 600) { R.wall += n - i; break; } live.power = held; live.cad = cad; tick(1); }
+    if (n > 5) flash(`Back: ${fmtTime(n)} in the background counted`); }
   if (trainer.connected && trainer.lastData && now - trainer.lastData > 3000) { live.power = 0; live.cad = 0; }
   tick(dt);
   if (now - bufAt >= 1000) { bufAt = now; live.buf.push(live.power); if (live.buf.length > 10) live.buf.shift(); }
@@ -431,6 +495,7 @@ document.addEventListener('keydown', e => {
   if (e.target.tagName === 'INPUT' || $('.psheet')) return;
   if (e.code === 'Space') { e.preventDefault(); R.state === 'run' ? pause() : R.state !== 'done' && start(); }
   else if (e.key === 'l' || e.key === 'L') lap();
+  else if (e.key === 'ArrowLeft' || e.key === 'ArrowRight') { e.preventDefault(); goPage(e.key === 'ArrowRight' ? 1 : -1); } // laptop: the screens you swipe on the phone
   else if ((e.key === 'ArrowUp' || e.key === 'ArrowDown') && P.mode === 'work') { e.preventDefault(); tune((e.key === 'ArrowUp' ? 1 : -1) * (e.shiftKey ? 1 : 5)); } // workout: interval watts, Shift 1 W
   else if (e.key === 'ArrowUp' || e.key === 'ArrowDown') el.querySelector(`[data-d="${e.key === 'ArrowUp' ? (P.mode === 'erg' ? 5 : 0.5) : (P.mode === 'erg' ? -5 : -0.5)}"]`)?.click();
   else if ('qQ,-'.includes(e.key) || e.key === 'PageDown') { e.preventDefault(); shift(-1); } // as in the 3D ride; PageUp/Down: presenters and media remotes

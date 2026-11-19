@@ -174,3 +174,57 @@ body.handy, body.kraft, body.outdoor { height: auto; min-height: 100dvh; overflo
 /* the trainer pill gives way (its name gets "…") so Sensors and the settings button always fit, down to 320 px */
 #pTr { flex: 0 1 auto; min-width: 0; }
 @media (max-width: 400px) { body.pure .ptop .pbrand { display: none; } } /* Trainer + Sensors + settings: the word "Indoor" only where it fits whole */
+
+/* screens to swipe (owner 19.11.): dots under the fields, fewer fields = bigger numbers */
+.ppages { display: contents; } .pbig, .ptiles { touch-action: pan-y; }
+.pdots { display: flex; justify-content: center; gap: 4px; flex: none; }
+.pdots { align-items: center; gap: 8px; } .pdotrow { display: flex; flex: 1; justify-content: center; gap: 2px; }
+.pdot { width: 34px; height: 34px; display: grid; place-items: center; background: none; border: 0; padding: 0; }
+.pdot::before { content: ""; width: 8px; height: 8px; border-radius: 50%; background: var(--line-2, #ffffff33); transition: width .15s, background .15s; }
+.pdot.on::before { width: 20px; border-radius: 4px; background: var(--accent); }
+.pbig.alt .pbigs span:first-child { font-weight: 800; }
+.ptiles.n0 { display: none; }
+.ptiles.n2 { grid-template-columns: repeat(2, minmax(0, 1fr)); } .ptiles.n4 { grid-template-columns: repeat(2, minmax(0, 1fr)); } .ptiles.n6 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.ptiles.n2 .ptile b, .ptiles.n4 .ptile b { font-size: clamp(28px, 11vw, 64px); } .ptiles.n6 .ptile b { font-size: clamp(24px, 9vw, 52px); }
+@media (orientation: landscape) { #pure { grid-template-rows: 46px 1fr auto auto auto; } .pdots { grid-column: 1 / -1; grid-row: 4; } .pfoot { grid-row: 5; } }
+@media (orientation: landscape) and (min-height: 561px) { #pure { grid-template-rows: 56px 1fr auto auto auto; } }
+.pzoom { min-width: 44px; height: 34px; border-radius: 8px; border: 1px solid var(--line); background: var(--ink-2); color: inherit; font-weight: 900; font-size: 18px; padding: 0 10px; }
+.pzoom:disabled { opacity: .3; } .pzoom.pedit { font-size: 11px; letter-spacing: .08em; text-transform: uppercase; }
+.ptiles.n1 { grid-template-columns: 1fr; } .ptiles.n3 { grid-template-columns: 1fr; }
+.ptiles.n1 .ptile b { font-size: clamp(48px, 22vw, 120px); } .ptiles.n3 .ptile b { font-size: clamp(30px, 12vw, 70px); }
+.pedhead { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-bottom: 10px; }
+.pedlist { display: flex; flex-direction: column; gap: 6px; max-height: 38vh; overflow-y: auto; }
+.pedrow { display: flex; align-items: center; gap: 6px; background: var(--ink-2); border: 1px solid var(--line); border-radius: 8px; padding: 4px 6px 4px 10px; color: inherit; }
+.pedrow.hid { opacity: .5; } .pedrow small { width: 18px; color: var(--muted); font-weight: 800; }
+.pedrow button { min-width: 40px; height: 40px; border-radius: 6px; border: 1px solid var(--line); background: none; color: inherit; font-size: 16px; }
+.pedrow .pedname { flex: 1; text-align: left; border: 0; font-weight: 800; font-size: 15px; padding: 0 4px; }
+.pedrow.big { width: 100%; padding: 10px 12px; } .pedrow.big small { width: auto; } .pedrow.big b { flex: 1; text-align: left; font-size: 17px; } .pedrow.big i { font-style: normal; color: var(--accent); font-weight: 800; font-size: 13px; }
+/* zoomed in (1–6 fields): the number fills its field, label on top, unit right beside the number: readable from the saddle */
+.ptiles:is(.n1, .n2, .n3, .n4, .n6) .ptile { grid-template-columns: auto auto; justify-content: start; column-gap: 6px; padding: 10px 16px; }
+.ptiles:is(.n1, .n2, .n3, .n4, .n6) .ptile .label { font-size: 11px; letter-spacing: .12em; }
+.ptiles:is(.n1, .n2, .n3, .n4, .n6) .ptile small { font-size: 15px; }
+.ptiles.n1 .ptile b { font-size: clamp(60px, 30cqw, 190px); }
+.ptiles.n3 .ptile b { font-size: clamp(44px, 19cqw, 120px); }
+.ptiles.n2 .ptile b, .ptiles.n4 .ptile b { font-size: clamp(34px, 30cqw, 110px); }
+.ptiles.n6 .ptile b { font-size: clamp(28px, 25cqw, 84px); }
+
+/* final sizes (19.11., checked against a Wahoo page): unit sits next to its number, numbers grow with the tile */
+@media (min-width: 341px) { #pure .ptile { grid-template-columns: auto auto; justify-content: start; column-gap: 5px; } }
+#pure .ptiles.n1 .ptile b { font-size: clamp(60px, 30cqw, 190px); }
+#pure .ptiles.n3 .ptile b { font-size: clamp(44px, 19cqw, 120px); }
+#pure .ptiles:is(.n2, .n4) .ptile b { font-size: clamp(34px, 28cqw, 110px); }
+#pure .ptiles.n6 .ptile b { font-size: clamp(28px, 25cqw, 84px); }
+@media (orientation: landscape) and (min-height: 561px) {
+  #pure .ptile { padding: 12px 18px; row-gap: 6px; }
+  #pure .ptile .label { font-size: clamp(11px, 1.5vh, 16px); letter-spacing: .12em; }
+  #pure .ptile small { font-size: clamp(12px, 1.7vh, 20px); }
+  #pure .ptiles:is(.n9, .n12) .ptile b { font-size: clamp(30px, 19cqw, 9vh); }
+  #pure .ptiles.n6 .ptile b { font-size: clamp(34px, 19cqw, 12vh); }
+  #pure .ptiles:is(.n2, .n4) .ptile b { font-size: clamp(40px, 22cqw, 16vh); }
+  #pure .ptiles.n3 .ptile b { font-size: clamp(44px, 16cqw, 14vh); }
+  #pure .ptiles.n1 .ptile b { font-size: clamp(60px, 26cqw, 30vh); }
+  .pseg button { height: clamp(40px, 6vh, 64px); font-size: clamp(12px, 1.6vh, 17px); }
+  .pctl button { height: clamp(52px, 7.5vh, 84px); font-size: clamp(17px, 2.3vh, 26px); }
+  .pctl .pval b { font-size: clamp(26px, 3.6vh, 42px); }
+  .pfoot button { font-size: clamp(14px, 1.9vh, 20px); }
+}
