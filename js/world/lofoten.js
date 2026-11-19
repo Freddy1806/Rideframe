@@ -1634,7 +1634,7 @@ export class WorldScene {
     // the shower announces itself: from ~3 km before, the sky ahead closes up and darkens, so you see it coming
     const pre = this.rainPlan.reduce((m, s) => Math.max(m, smooth(s.a - 3000, s.a - 700, d) * smooth(s.b + 500, s.b, d)), 0);
     const cover = lerp(cover0, 0.95, Math.max(rain, pre * 0.85)), veil = Math.max(smooth(0.3, 0.95, 0.5 + 0.5 * Math.sin(d / 6100 + 2.6)) * (0.4 + 0.6 * cover0), rain * 0.95, pre * 0.55);
-    const s = sunAt(u, this.sunDir, this.track.__sunset === true); this.sunY = s.y; const dusk = this.dusk = Math.max(0, Math.min(1, (0.035 - s.y) / 0.122)); const low = 1 - Math.max(0, Math.min(1, (s.y - 0.035) / (0.113 - 0.035)));
+    const s = this.track.__sunset === true && this.track.dem?.file === 'insel.bin' ? sunCycle(d, this.sunDir) : sunAt(u, this.sunDir, this.track.__sunset === true); /* island: the sun sets and rises again on the other side */ this.sunY = s.y; const dusk = this.dusk = Math.max(0, Math.min(1, (0.035 - s.y) / 0.122)); const low = 1 - Math.max(0, Math.min(1, (s.y - 0.035) / (0.113 - 0.035)));
     const su = this.sky.material.uniforms;
     su.sunPosition.value.copy(s); su.uCover.value = cover; su.uVeil.value = veil; su.uLow.value = low; su.uDusk.value = dusk;
     // direct light: warm, a bit warmer as the sun sinks, dimmer behind the veil; never orange enough to rust the rock
@@ -1904,6 +1904,13 @@ function mergeGeos(list) { // keeps every attribute all parts share (terrain: co
 function sunAt(u, out = new THREE.Vector3(), sunset = false) {
   // sunset (Freddy 13.11.): from 8° the sun reaches the horizon at half the route and sinks to -5° (dusk) at the finish
   const k = u * u * (3 - 2 * u), el = THREE.MathUtils.degToRad(sunset ? (u <= 0.5 ? 8 - 16 * u : -10 * (u - 0.5)) : 6.5 - 4.5 * k), az = THREE.MathUtils.degToRad(36 - 12 * u);
+  return out.set(-Math.cos(el) * Math.sin(az), Math.sin(el), -Math.cos(el) * Math.cos(az));
+}
+// the open-world island (Freddy 19.11.: "sobald sie untergegangen ist, muss sie wieder aufgehen, auf der anderen Seite"): a day every
+// 36 km, never a long night. From 8° the sun sinks to -6° (a short blue hour), turns round below the horizon and rises in the opposite sky
+function sunCycle(d, out = new THREE.Vector3()) {
+  const P = 36000, p = ((d / P) % 1 + 1) % 1, el = THREE.MathUtils.degToRad(8 - 14 * (0.5 - 0.5 * Math.cos(2 * Math.PI * p)));
+  const cyc = Math.floor(d / P + 0.5), az = THREE.MathUtils.degToRad(36 - 30 * (p < 0.5 ? p : p - 1) + 180 * (cyc % 2)); // switches sides at the darkest point
   return out.set(-Math.cos(el) * Math.sin(az), Math.sin(el), -Math.cos(el) * Math.cos(az));
 }
 // light colours (linear) for a high (6.5°) and a low (2°) sun; sky fill clear / overcast; haze clear / overcast
