@@ -1004,3 +1004,19 @@ img.face.big{width:96px;height:96px}
 .shotpop.on { opacity: 1; transform: none; }
 .shotpop img { display: block; width: 100%; border-radius: 6px; }
 .shotpop small { display: block; padding: 5px 4px 1px; font-size: 12px; font-weight: 700; }
+
+/* the bottom bar takes less of the picture (owner 19.11.: "ein bisschen schmaler") */
+.hud-bottom { padding: 12px 22px 10px; bottom: 16px; }
+.metric .v { font-size: 38px; margin-top: 5px; }
+.metric .v small { font-size: 13px; }
+.metric.power .v { font-size: 60px; }
+.metric.power .v small { font-size: 17px; }
+.metric .sub { margin-top: 5px; font-size: 11px; }
+.hud-profile { margin-top: 10px; height: 60px; }
+.ride.world3d .hud-bottom { padding: 8px 18px 6px; bottom: 10px; }
+.ride.world3d .metric .v { font-size: 28px; margin-top: 3px; }
+.ride.world3d .metric.power .v { font-size: 44px; }
+.ride.world3d .metric .sub { margin-top: 3px; }
+.ride.world3d .hud-profile { margin-top: 6px; height: 56px; }
+.ride.wk .metric .v { font-size: 22px; margin-top: 2px; }
+.ride.wk .metric .v small { font-size: 11px; }

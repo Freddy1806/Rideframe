@@ -428,7 +428,7 @@ export class RideSession {
   _shotPop(url) {
     if (!url || !this.el) return this._flash('No photo');
     let p = this.q('#hShot'); if (!p) { p = document.createElement('div'); p.id = 'hShot'; p.className = 'shotpop glass'; p.innerHTML = '<img alt=""><small>Photo saved</small>'; this.el.append(p); }
-    p.querySelector('img').src = url; p.classList.add('on'); clearTimeout(this._shotT); this._shotT = setTimeout(() => p.classList.remove('on'), 2600);
+    p.querySelector('img').src = url; p.classList.add('on'); clearTimeout(this._shotT); this._shotT = setTimeout(() => p.classList.remove('on'), 3000);
   }
   _padShift(d) { if (!this.virtual && !this.berg) this.toggleShift(); this.shift(d); }
 
