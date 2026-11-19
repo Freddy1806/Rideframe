@@ -1034,17 +1034,17 @@ export class WorldScene {
         cand.sort((x, y) => x.ow - y.ow); const used = [], slabs = [];
         for (const c of cand) { if (used.some(u => Math.abs(u - c.d) < 220)) continue; used.push(c.d);
           // walk back from the water onto the first low, dry rock: they lie right at the waterline, not up in the meadow (Mac check 5)
-          let oc = 0; for (let o = c.ow; o > ROAD_W + 4; o -= 0.5) { const q = spot(c.d, c.sea * o), h = f.height(q.x, q.z); if (h > 0.5 && h < 3.2) { oc = o; break; } if (h >= 3.2) break; }
-          if (!oc) continue;
-          const n = 3 + Math.floor(r() * 4), cq = spot(c.d, c.sea * oc); (f.bare ||= []).push([cq.x, cq.z, 9 * 9]); // a bare rock shore, no tall grass hiding them
+          // on a bare rock shelf between road and water, 9-13 m from the road: from 18-29 m they vanished behind the bank (Mac check 7)
+          const oc = Math.min(13, Math.max(ROAD_W + 5, c.ow - 4));
+          const n = 3 + Math.floor(r() * 4), cq = spot(c.d, c.sea * oc); (f.bare ||= []).push([cq.x, cq.z, 12 * 12]); // a bare rock shore, no tall grass hiding them
           for (let k = 0; k < n; k++) { const e = seals[Math.floor(r() * seals.length)], dd = c.d + (k - n / 2) * (2.6 + r() * 1.6), o = oc - 0.5 + (r() - 0.5) * 2.5, q = spot(dd, c.sea * o);
             const h = f.height(q.x, q.z); if (h < 0.5) continue; // never in the water
             slabs.push([q.x, h, q.z, 2.6 + r() * 1.4, r() * 3]);
             const so = place(e, dd, -o, { face: r() * 6.28, gap: 1.2, radK: 0.35, anim: 'Liegen', flat: false, overlap: true });
-            if (so) { so.scale.multiplyScalar(1.3); so.position.y = Math.max(so.position.y, h + 0.12); so.updateMatrixWorld(true); const bb = new THREE.Box3().setFromObject(so), sz = bb.getSize(new THREE.Vector3()); console.info(`RIDEFRAME Robbe d=${Math.round(dd)} ${o.toFixed(1)} m neben der Straße, y=${so.position.y.toFixed(2)}, Größe ${sz.x.toFixed(1)}×${sz.y.toFixed(1)}×${sz.z.toFixed(1)} m`); } }
+            if (so) { so.scale.multiplyScalar(1.45); so.position.y = Math.max(so.position.y, h + 0.12); so.updateMatrixWorld(true); const bb = new THREE.Box3().setFromObject(so), sz = bb.getSize(new THREE.Vector3()); console.info(`RIDEFRAME Robbe d=${Math.round(dd)} ${o.toFixed(1)} m neben der Straße, y=${so.position.y.toFixed(2)}, Größe ${sz.x.toFixed(1)}×${sz.y.toFixed(1)}×${sz.z.toFixed(1)} m`); } }
         }
         if (slabs.length) { const sm = stone().clone(); sm.wrapS = sm.wrapT = THREE.RepeatWrapping; sm.repeat.set(0.6, 0.6); // flat grey rock slabs they lie on
-          const gs = slabs.map(([x, y, z, w, a]) => { const g = new THREE.IcosahedronGeometry(w * 0.6, 1); g.scale(1, 0.22, 0.75); g.rotateY(a); g.translate(x, y - 0.05, z); // low rounded rock, not a column return g.index ? g.toNonIndexed() : g; });
+          const gs = slabs.map(([x, y, z, w, a]) => { const g = new THREE.IcosahedronGeometry(w * 0.6, 1); g.scale(1, 0.22, 0.75); g.rotateY(a); g.translate(x, y + 0.05, z); return g.index ? g.toNonIndexed() : g; }); // low rounded rocks, not columns
           const m = new THREE.Mesh(mergeGeometries(gs), new THREE.MeshStandardMaterial({ color: 0xa29d94, roughness: 0.95, map: sm })); m.receiveShadow = m.castShadow = true; this.scene.add(m); }
       }
       // ---- island, Freddy 19.11.: vineyards on the Vineyard Coast and the East Saddle (rows on the land side, cypresses, a wine estate) ----

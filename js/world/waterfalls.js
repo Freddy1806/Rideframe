@@ -29,6 +29,9 @@ export function placeWaterfalls(world, A, taken = []) {
   };
   f.pads = pads;
   const H = (x, z) => f.height(x, z);
+  // a brook lies in a gully: the coarse terrain triangles bridge over the hollow, so a ribbon at the true height vanished under them
+  // (Mac check 7). Lift it to the surrounding surface where that is higher.
+  const Hc = (x, z) => Math.max(H(x, z), (H(x + 5, z) + H(x - 5, z) + H(x, z + 5) + H(x, z - 5)) / 4, (H(x + 10, z) + H(x - 10, z) + H(x, z + 10) + H(x, z - 10)) / 4 - 0.3);
   const inT = d => !!(f.covered || f.tunnel)?.[Math.max(0, Math.round(d / DS))]; // nothing to see from inside a tunnel or gallery
   const free = (x, z, rad) => taken.every(c => Math.hypot(c[0] - x, c[1] - z) > c[2] + rad);
   const landSide = d => -((segs.find(s => d >= s.from && d < s.to) || {}).seaSide || -1);
@@ -319,7 +322,7 @@ export function placeWaterfalls(world, A, taken = []) {
       if (src.length > 5) {
         for (let it = 0; it < 4; it++) for (let i = 1; i < src.length - 1; i++) { src[i][0] = (src[i - 1][0] + src[i][0] * 2 + src[i + 1][0]) / 4; src[i][2] = (src[i - 1][2] + src[i][2] * 2 + src[i + 1][2]) / 4; }
         const S = src.reverse().map(q => [q[0], H(q[0], q[2]), q[2]]), m = S.length, w1 = Math.max(1.6, o.wf * 0.55);
-        parts.push(ribbon(S.map((q, i) => ({ x: q[0], z: q[2], y: H(q[0], q[2]) + 0.14, w: 0.9 + (w1 - 0.9) * i / (m - 1), st: 0.15, fade: i === 0 ? 0 : 1 })), r() * 10));
+        parts.push(ribbon(S.map((q, i) => ({ x: q[0], z: q[2], y: Hc(q[0], q[2]) + 0.3, w: 0.9 + (w1 - 0.9) * i / (m - 1), st: 0.15, fade: i === 0 ? 0 : 1 })), r() * 10));
         const hd = S[0], sb = []; for (let k = 0; k < 5; k++) { const an = r() * 6.28, rr = 1.6 + r() * 2.2, sz = 0.9 + r() * 1.4, bx = hd[0] + Math.cos(an) * rr, bz = hd[2] + Math.sin(an) * rr; // the spring: water out between boulders
           sb.push(blockGeo(r, sz * 1.3, sz, sz, bx, H(bx, bz) - 0.4, bz, r() * 3)); }
         const sm = new THREE.Mesh(mergeGeometries(sb), rockMat); sm.castShadow = sm.receiveShadow = true; add(sm); F.objs.push(sm);
@@ -471,8 +474,9 @@ export function placeWaterfalls(world, A, taken = []) {
       const S = src.reverse(), m = S.length;
       // the same clearly visible brook ribbon as the outflow (the draped strip read as nothing from above, Mac check 5)
       const rowsF = S.map((q, i) => { const A = S[Math.max(0, i - 1)], B = S[Math.min(m - 1, i + 1)], sl = Math.abs(B[1] - A[1]) / (Math.hypot(B[0] - A[0], B[2] - A[2]) || 1);
-        return { x: q[0], z: q[2], y: i === m - 1 ? lipY - 0.2 : H(q[0], q[2]) + 0.14, w: 1.2 + 1.3 * i / (m - 1), st: 0.12 + Math.min(0.6, sl * 0.9), fade: i === 0 ? 0 : 1 }; });
+        return { x: q[0], z: q[2], y: i === m - 1 ? lipY - 0.2 : Hc(q[0], q[2]) + 0.3, w: 1.2 + 1.3 * i / (m - 1), st: 0.12 + Math.min(0.6, sl * 0.9), fade: i === 0 ? 0 : 1 }; });
       const wm = new THREE.Mesh(ribbon(rowsF, r() * 10), wMat); wm.renderOrder = 2; add(wm); F.objs.push(wm);
+      F.feedMid = [S[m >> 1][0], S[m >> 1][2]]; F.feedHead = [S[0][0], S[0][2]]; // for checks: where the feeder runs
       const hd = S[0], sb = []; for (let k = 0; k < 6; k++) { const an = r() * 6.28, rr = 1.8 + r() * 2.4, q = 0.9 + r() * 1.5, qx = hd[0] + Math.cos(an) * rr, qz = hd[2] + Math.sin(an) * rr;
         sb.push(blockGeo(r, q * 1.3, q, q, qx, H(qx, qz) - 0.4, qz, r() * 3)); }
       const sm = new THREE.Mesh(mergeGeometries(sb), rockMat); sm.castShadow = sm.receiveShadow = true; add(sm); F.objs.push(sm);
