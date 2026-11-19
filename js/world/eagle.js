@@ -26,7 +26,7 @@ import { EAGLE, pickEagleModel, synthMouth, follow, eagleFrame } from '../eagleg
 const JAW_OPEN = 0.45, D = 0.9; // D: the head's distance from the camera (m) when it looks at you; the scale follows from the framing
 // the clock (s from the cry): flies in, alongside looking ahead, turns its head to you, holds, speaks from T.line for the
 // line's own length, a smug beat, then off (head forward, flaps, away)
-const T = { in0: 1.0, in1: 3.0, turn0: 4.8, turn1: 6.6, line: EAGLE.pre, smug: 0.7, away: EAGLE.post - 0.7 };
+const T = { in0: 1.0, in1: 3.0, turn0: 3.1, turn1: 4.4, line: EAGLE.pre, smug: 0.7, away: EAGLE.post - 0.7 }; // owner 19.11.: it arrives and turns its head at once
 const sm = (a, b, x) => { const u = Math.max(0, Math.min(1, (x - a) / (b - a))); return u * u * (3 - 2 * u); };
 const _v = new THREE.Vector3(), _w = new THREE.Vector3(), _q = new THREE.Quaternion(), _q2 = new THREE.Quaternion(), _m = new THREE.Matrix4();
 const _X = new THREE.Vector3(1, 0, 0), _Y = new THREE.Vector3(0, 1, 0);
@@ -69,6 +69,15 @@ export class Eagle {
     src.start(); (this.srcs ||= []).push(src); return src;
   }
   _cry(vol = 0.9, pan = 0.7) { this._play(this.cryBuf, vol, pan); }
+  /** a soft rush of air as it arrives and as it leaves (owner 19.11.: "den Whoosh leiser"): filtered noise, 1.6 s swell */
+  _whoosh(vol = 0.09, pan = 0.5) {
+    const S = this.S; if (!S?.on || S.paused || !S._ctx() || !S.buf?.brown) return;
+    const c = S.ctx, o = this._out(0, pan); if (!o) return;
+    const src = c.createBufferSource(); src.buffer = S.buf.brown; src.loop = true;
+    const f = c.createBiquadFilter(); f.type = 'bandpass'; f.frequency.value = 700; f.Q.value = 0.7; const now = c.currentTime;
+    o.g.gain.setValueAtTime(0, now); o.g.gain.linearRampToValueAtTime(vol, now + 0.7); o.g.gain.linearRampToValueAtTime(0, now + 1.6);
+    src.connect(f).connect(o.g); src.start(); src.stop(now + 1.7); (this.srcs ||= []).push(src);
+  }
   _line() {
     const S = this.S, live = !!(this.lineBuf && S?.on && S.voicesOn !== false && !S.paused && S.ctx?.state === 'running');
     this.L = this.lineBuf ? this.lineBuf.duration : EAGLE.line; this.an = null;
@@ -233,7 +242,7 @@ export class Eagle {
   // ---------------- the scene ----------------
   start() {
     if (this.state === 'play') return;
-    this._build(); this.state = 'play'; this.t = 0; this.L = EAGLE.line; this.lineOn = false; this.synth = true; this._prev = null; this._far = false;
+    this._build(); this.state = 'play'; this.t = 0; this.L = EAGLE.line; this.lineOn = false; this.synth = true; this._prev = null; this._far = false; this._inW = false;
     this._logged = false; this._off = null; this._offLogged = false; this._solved = null; this.fly = null; this.s = 1;
     this._solve(); this.rig.root.visible = false;
     this._cry(0.9, 0.75); // first only the cry, from behind on the right
@@ -254,6 +263,7 @@ export class Eagle {
     if (!this.lineOn && t >= T.line) { this.lineOn = true; this.lineT = t; this._line(); }
     let look = 0, nod = 0, tilt = 0, mouth = 0, blink = 0;
     if (t < T.in0) { R.root.visible = false; return null; }
+    if (!this._inW) { this._inW = true; this._whoosh(0.09, 0.7); }
     R.root.visible = true;
     const bob = Math.sin(t * 1.5) * 0.008 * s, roll = Math.sin(t * 0.9 + 0.6) * 0.045, pitch = Math.sin(t * 1.5 + 1.2) * 0.015; // gliding: a gentle bob and roll
     const glide = 0.08 + 0.05 * Math.sin(t * 1.5), beat = k => Math.sin(t * Math.PI * 2 * 2.4) * 0.8 * k + 0.12 * k;
@@ -284,7 +294,7 @@ export class Eagle {
       R.root.quaternion.copy(this._flyQ(roll, pitch)).slerp(vel.lengthSq() > 1e-10 ? yawQ(Math.atan2(vel.x, vel.z) - (R.fwdYaw || 0), -lat * 0.7, -Math.atan2(vel.y, Math.hypot(vel.x, vel.z)) * 0.5) : this._flyQ(), sm(0.45, 0.9, v));
       this._prev = R.root.position.clone();
       const k = sm(0.25, 0.55, v) * (1 - sm(3.0, 3.8, v)); flap = glide + beat(k); this._clipWeights(k);
-      if (!this._far && v > 2.6) { this._far = true; this._cry(0.3, 0); } // one more call from far ahead
+      if (!this._far && v > 0.5) { this._far = true; this._cry(0.75, 0.45); this._whoosh(0.09, 0.3); } // it cries once more as it flies off (owner 19.11.)
       if (v >= T.away || z < -220) { this.stop(); this.state = 'done'; console.info('[eagle] gone'); return 'end'; }
     }
     this._pose(look, nod, tilt, mouth, blink, flap, dt);

@@ -24,7 +24,7 @@ import { testResult } from './stats.js';
 import { Wizard, WIZ } from './wizard.js';
 import { intervalRecords } from './ivhistory.js';
 import { hardWindow, wizardGate, challengeGate, summonGap, wzOf, friendCalls, friendsLine } from './ivgate.js';
-import { planEagle, eagleGate, moveEagle, othersBusy } from './eaglegate.js';
+import { planEagleAny, eagleGate, moveEagle, othersBusy } from './eaglegate.js';
 import { Music, Coach } from './music.js';
 import { MIC_SVG, SPK_SVG, voiceStatus } from './voice.js';
 import { hudPrefs, applyHud, hudControlsHTML, wireHudControls, HUD_ORDER, HUD_PRESETS } from './hudprefs.js';
@@ -722,14 +722,14 @@ export class RideSession {
     // a free ride alone (owner 19.11.: the wizard in the first 30 minutes, "der Adler kann dann danach kommen, in den nächsten 30 Minuten"):
     // once, by the clock, between minute 30 and 55; ?eagleat=seconds for tests
     const qa = new URLSearchParams(location.search).get('eagleat');
-    this.eg = now ? { state: 'wait', now: true, iv: -1 } : this.workout ? planEagle(this.workout, { force: q != null, ftp: this.ftp })
+    this.eg = now ? { state: 'wait', now: true, iv: -1 } : this.workout ? planEagleAny(this.workout, { force: q != null }) // a workout: at any moment of it (owner 19.11.), by the workout clock
       : this.group ? null : { state: 'wait', free: true, iv: -1, at: qa != null ? +qa : q != null ? 3 : 1800 + Math.random() * 1500 }; if (!this.eg) return;
     import('./world/eagle.js').then(m => { if (!this._closed && this.player?.camera) this.eagle = new m.Eagle(this.player); }).catch(e => console.warn('eagle', e));
   }
   _eagleTick(dt) {
     const e = this.eg; if (!e || !this.eagle || this.state.settings.eagle === false) return;
     if (e.state === 'play') { if (this.eagle.tick(dt) === 'end') e.state = 'done'; return; }
-    if (e.free) { if (e.state === 'wait' && this.elapsed >= e.at && !othersBusy(this.wiz, this.ch) && !this.workout) { e.state = 'play'; this.eagle.start(); } return; }
+    if (e.free) { if (e.state === 'wait' && (e.wk ? this.workout && !this.wDone && this._wClock() : this.elapsed) >= e.at && !othersBusy(this.wiz, this.ch)) { e.state = 'play'; this.eagle.start(); } return; }
     const stepI = this.wDone ? Infinity : this.wNow?.i ?? -1, win = this.workout && !this.wDone ? this._hardWin() : null;
     const g = eagleGate(e, { win, stepI, busy: othersBusy(this.wiz, this.ch), wizIv: this._wizIv ?? -1 });
     if (g === 'go') { e.state = 'play'; this.eagle.start(); } else if (g === 'move') this.eg = moveEagle(this.workout, e, { stepI, ftp: this.ftp });

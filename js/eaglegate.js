@@ -11,7 +11,7 @@ import { hardWindow } from './ivgate.js';
 
 /** scene length (s) before / after the line, the line's fallback length, what an interval must still have left to start it,
  *  the lead (never in its first seconds) and the shortest interval he comes in (30 s efforts never get him) */
-export const EAGLE = { pre: 7.0, post: 6.2, line: 3.9, need: 19, lead: 5, minIv: 45 }; // pre: cry, fly in, look ahead, the slow head turn, a beat
+export const EAGLE = { pre: 5.0, post: 6.2, line: 3.9, need: 19, lead: 5, minIv: 45 }; // pre: cry, fly in, look ahead, the slow head turn, a beat
 export const sceneLen = (lineS = EAGLE.line) => EAGLE.pre + lineS + EAGLE.post;
 
 /** the hard intervals the eagle may use: [{ i, start, dur }] (the same test as the wizard's, so rests / openers never count) */
@@ -34,6 +34,17 @@ export function planEagle(workout, { rng = Math.random, force = false, after = -
   const x = slots[Math.floor(rng() * slots.length) % slots.length];
   const lo = EAGLE.need, hi = x.dur - EAGLE.lead; // a random moment, never in the first seconds and always with time left
   return { state: 'wait', iv: x.i, leftAt: Math.round(lo + rng() * (hi - lo)) };
+}
+
+/** owner 19.11. ("der kann nicht nur beim Intervall kommen sondern immer eigentlich"): in a workout he now comes once at
+ *  any moment by the workout clock (warm-up, rests, cool-down too), between 15 % and 85 % of it and with the scene's time
+ *  left; null when the workout is too short. force (?eagle): 3 s in. The interval rules above stay for reference/tests. */
+export function planEagleAny(workout, { rng = Math.random, force = false } = {}) {
+  const T = (workout?.steps || []).reduce((a, st) => a + (st.dur || 0), 0);
+  if (T < 4 * sceneLen()) return null;
+  if (force) return { state: 'wait', free: true, wk: true, iv: -1, at: 3, force: true };
+  const lo = 0.15 * T, hi = Math.min(0.85 * T, T - sceneLen() - 5);
+  return { state: 'wait', free: true, wk: true, iv: -1, at: Math.round(lo + rng() * (hi - lo)) };
 }
 
 /** is the wizard (or a dare) on now? z: the Wizard (js/wizard.js; in a workout a finite `at` while waiting = called), ch: Challenges */

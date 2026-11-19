@@ -33,7 +33,7 @@ test('slots: only the hard intervals (no warm-up, openers, spin, rests, cool-dow
   assert.equal(eagleSlots(SS, FTP).length, 3, 'sweet spot: the 90 % warm-up minute never counts');
   assert.equal(eagleSlots(SPR, FTP).length, 0, '30/30: too short for him, no eagle');
   assert.equal(planEagle(SPR), null); assert.equal(planEagle(null), null);
-  assert.ok(sceneLen() <= EAGLE.need && sceneLen() >= 16 && sceneLen() <= 18, 'the scene takes about 17 s (fly in, look ahead, the slow turn, the line, off), the gate asks for 19');
+  assert.ok(sceneLen() <= EAGLE.need && sceneLen() >= 14 && sceneLen() <= 18, 'the scene takes about 15 s (fly in, the head turn at once, the line, off), the gate asks for 19');
   assert.ok(EAGLE.minIv > 30 && EAGLE.minIv >= EAGLE.need + EAGLE.lead, 'a 30 s interval never gets him, whatever the gate');
 });
 
@@ -131,4 +131,14 @@ test('framing: the head looking at you in the right part, a little above the hor
     assert.ok(Math.abs(f.width * a - 0.25 * 16 / 9) < 1e-9, 'the same angular size on every aspect');
     assert.ok(f.bank > 0 && f.bank < 0.4, 'banked a little away from you: the near wing over the sky');
   }
+});
+
+test('workout: at any moment (owner 19.11.), once, 15-85 % of the clock, time left for the scene', async () => {
+  const { planEagleAny } = await import('../js/eaglegate.js');
+  const T = W.steps.reduce((a, x) => a + x.dur, 0); let lo = Infinity, hi = 0;
+  for (let k = 0; k < 2000; k++) { const e = planEagleAny(W); assert.ok(e.free && e.wk && e.state === 'wait'); lo = Math.min(lo, e.at); hi = Math.max(hi, e.at); }
+  assert.ok(lo >= 0.15 * T - 1 && hi <= 0.85 * T + 1 && hi <= T - sceneLen(), `${lo}..${hi} of ${T}`);
+  assert.ok(hi - lo > 0.6 * T, 'spread over the whole workout, not only the hard intervals');
+  assert.ok(planEagleAny(SPR), '30/30 gets him now too'); assert.equal(planEagleAny(null), null);
+  assert.equal(planEagleAny({ steps: [{ dur: 30 }] }), null); assert.equal(planEagleAny(W, { force: true }).at, 3);
 });
