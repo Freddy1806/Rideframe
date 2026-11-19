@@ -98,3 +98,4 @@ button.wcrow { width: 100%; text-align: left; color: inherit; }
 #frSheet .frrow .btn { height: 36px; white-space: nowrap; }
 #handy .lvinvite { border-radius: 14px; margin-bottom: 10px; }
 .frstack .frface .frdot { z-index: 2; } /* the dot stays on top of the next face */
+.hmyw { display: flex; flex-direction: column; gap: 8px; } .hmyw .ksec { margin-bottom: 0; }

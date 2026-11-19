@@ -10,7 +10,7 @@ import { loadActs, rowHtml, wireRows } from './feed.js';
 import { nav } from './nav.js';
 
 const el = document.getElementById('handy'), $ = (s, r = document) => r.querySelector(s);
-let S = {}, acc = null, rides = [], kraft = [], installEvt = null, D = null;
+let myW = [], S = {}, acc = null, rides = [], kraft = [], installEvt = null, D = null;
 window.addEventListener('beforeinstallprompt', e => { e.preventDefault(); installEvt = e; render(); });
 
 async function load() {
@@ -18,6 +18,8 @@ async function load() {
   applyTheme(S, null);
   D = await loadActs(); rides = D.acts.filter(a => !a.kraft); kraft = D.acts.filter(a => a.kraft); // one loader for all sports (feed.js)
   try { acc = (await import('./account.js')).account(); } catch {}
+  try { const W = await import('./workouts.js'); W.setMyWorkouts(S.myWorkouts); await (await import('./myworkouts-store.js')).loadPersonal(); // your own workouts on the start page (owner 19.11.: "easy und leicht finden")
+    myW = W.allWorkouts().filter(w => w.mine || w.personal).map(w => ({ id: w.id, name: w.name, min: Math.round(W.workoutDuration(w) / 60) })); } catch { myW = []; }
   if (acc && !load.prefs) { load.prefs = true; import('./live.js').then(l => l.getPrefs()).then(p => { S.liveShow = p.show; S.liveAuto = p.auto; }).catch(() => {}); } // the account's switches, so a later save keeps them
 }
 
@@ -32,6 +34,8 @@ function render() {
     <section class="hweek"><div class="hwhead"><span class="label">This week</span><span class="wdl">▲▼ vs last week</span></div><div class="kstats">
       ${weekStat(nb(R2.cur), nb(R2.prev), 'Rides')}${weekStat(nr(R2.cur), nr(R2.prev), 'Runs')}${weekStat(km(R2.cur), km(R2.prev), 'km')}${weekStat(K2.cur.length, K2.prev.length, 'Strength')}</div></section>
     <nav class="hmodes">${['ride', 'run', 'trainer', 'world', 'kraft'].map(card).join('')}</nav>
+    <section class="hmyw"><h3 class="ksec">My workouts</h3>${myW.slice(0, 4).map(w => `<a class="hrow hlink" href="pure.html?workout=${encodeURIComponent(w.id)}" style="--mc:${MODES.trainer.color};--mcl:${MODES.trainer.light}"><div><b>${esc(w.name)}</b><small>${w.min} min · indoor trainer</small></div><i>›</i></a>`).join('')}
+      <a class="hall" href="pure.html?workout=">${myW.length > 4 ? `All ${myW.length} and the standard workouts ›` : myW.length ? 'All workouts · build a new one ›' : 'Build your own workout or pick a standard one ›'}</a></section>
     <a class="hrow hlink hremote" href="remote.html?auto" id="hRemote"><div><b>Remote</b><small>Control RIDEFRAME on your laptop with this phone</small></div><i>›</i></a>
     ${D.acts.length ? `<section class="hrecent"><h3 class="ksec">Recent</h3>${D.acts.slice(0, 3).map(a => rowHtml(a, D.P)).join('')}<a class="hall" href="aktivitaeten.html">All activities ›</a></section>` : ''}`;
   wireRows(el, D, async () => { await load(); render(); });

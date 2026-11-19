@@ -29,6 +29,7 @@ async function loadSettings() {
   Object.assign(P, S.pure || {});
   setMyWorkouts(S.myWorkouts); G = gearSet(S);
   await import('./myworkouts-store.js').then(m => m.loadPersonal()).catch(() => {}); // personal workouts selectable here too (js/myworkouts-store.js)
+  { const w = params.get('workout'); if (w != null) { P.mode = 'work'; if (workoutById(w)) P.workout = w; else if (!workoutById(P.workout)) P.workout = allWorkouts()[0]?.id || ''; } } // from the phone app's "My workouts" (handy.html): straight into this workout
   applyTheme(S, 'trainer');
 }
 async function saveSettings() {
@@ -185,7 +186,8 @@ function control() {
   if (P.mode === 'grade') return `<div class="pctl tight"><button data-d="-1">−1</button><button data-d="-0.5">−½</button><button class="pval" id="pSet"><b>${fmtNum(P.grade, 1)}</b><small>%</small></button><button data-d="0.5">+½</button><button data-d="1">+1</button></div>
     ${`<div class="pgears"><button data-sh="-1" aria-label="Easier gear">−</button><div class="pgv" id="pGear"><b>${gearName(G.gears[G.gi])}</b><small>Gear ${G.gi + 1}/${G.gears.length}</small></div><button data-sh="1" aria-label="Harder gear">+</button></div>`}`;
   const w = work();
-  return `<div class="pwork"><select id="pWork">${allWorkouts().map(x => `<option value="${x.id}" ${x.id === P.workout ? 'selected' : ''}>${x.mine ? '★ ' : ''}${esc(x.name)} · ${Math.round(workoutDuration(x) / 60)} min</option>`).join('')}</select>
+  return `<div class="pwork"><select id="pWork" aria-label="Workout">${(() => { const all = allWorkouts(), opt = x => `<option value="${x.id}" ${x.id === P.workout ? 'selected' : ''}>${esc(x.name)} · ${Math.round(workoutDuration(x) / 60)} min</option>`, my = all.filter(x => x.mine || x.personal); // your own first, under their own heading (owner 19.11.: easy to find)
+      return (my.length ? `<optgroup label="My workouts">${my.map(opt).join('')}</optgroup>` : '') + `<optgroup label="Standard workouts">${all.filter(x => !x.mine && !x.personal).map(opt).join('')}</optgroup>`; })()}</select>
     <div class="pctl small"><button data-i="-5" aria-label="Intensity −5 %">−5 %</button><span class="pint" id="pInt"><small>Intensity</small><b>${R.intensity} %</b></span><button data-i="5" aria-label="Intensity +5 %">+5 %</button></div>
     <div class="pctl small"><button data-wa="-5" aria-label="Intervals −5 W">−5 W</button><span class="pint${R.wAdj ? ' adj' : ''}" id="pAdj"><small>Intervals</small><b>${fmtAdj(R.wAdj)}</b></span><button data-wa="5" aria-label="Intervals +5 W">+5 W</button></div>
     ${R.state === 'ready' ? `<div class="pwed"><button class="btn ghost ksmall" id="pWAdapt">Adjust</button><button class="btn ghost ksmall" id="pWNew">+ Build new</button></div>` : ''}</div>
