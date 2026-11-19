@@ -101,6 +101,23 @@ export function placeWaterfalls(world, A, taken = []) {
       const top = k === 0 || k === K - 1 ? Math.floor(n * (0.1 + r() * 0.2)) : 0; // the outer strands start lower
       parts.push(drapeStrip(Pk.slice(top), i => wk * (1.35 - 0.55 * spread(i + top)) * (0.8 + 0.4 * (i + top) / n), 0.6 + k * 0.03, H, r() * 10, 3));
     }
+    // source (Freddy 19.11.: the water has to come from somewhere): a meltwater stream up the gully above the lip,
+    // fed by a snow-and-ice tongue, or by a small tarn where the head of the gully is flat enough
+    { const src = [[P[0][0], P[0][1], P[0][2]]]; let x = P[0][0], z = P[0][2], gain = 0;
+      for (let k = 0; k < 45 && gain < 140; k++) { const h0 = H(x, z), gx = (H(x + 5, z) - h0) / 5, gz = (H(x, z + 5) - h0) / 5, sl = Math.hypot(gx, gz);
+        if (sl < 0.04) break; x += gx / sl * 6; z += gz / sl * 6; const h = H(x, z); gain = h - P[0][1]; src.push([x, h, z]); }
+      if (src.length > 6) {
+        for (let it = 0; it < 6; it++) for (let i = 1; i < src.length - 1; i++) { src[i][0] = (src[i - 1][0] + src[i][0] * 2 + src[i + 1][0]) / 4; src[i][2] = (src[i - 1][2] + src[i][2] * 2 + src[i + 1][2]) / 4; }
+        const S = src.reverse().map(q => [q[0], H(q[0], q[2]), q[2]]), m = S.length;
+        parts.push(drapeStrip(S, i => 3 + 9 * Math.pow(i / (m - 1), 1.5), 0.3, H, r() * 10, 3)); // narrow at the head, as wide as the fall at the lip
+        const hd = S[0]; let hi2 = -1e9, lo2 = 1e9; for (let k = 0; k < 8; k++) { const h = H(hd[0] + Math.cos(k * 0.785) * 16, hd[2] + Math.sin(k * 0.785) * 16); hi2 = Math.max(hi2, h); lo2 = Math.min(lo2, h); }
+        if (hi2 - lo2 < 7) parts.push(pool((a, c) => [hd[0] + a, hd[2] + c], 0, 0, 18, 0, 0, hi2 + 0.3));
+        else { const ice = S.slice(0, Math.max(3, Math.floor(m * 0.3))), up = []; let ux = hd[0], uz = hd[2]; // ice tongue: from the head further up the slope
+          for (let k = 0; k < 14; k++) { const h0 = H(ux, uz), gx = (H(ux + 5, uz) - h0) / 5, gz = (H(ux, uz + 5) - h0) / 5, sl = Math.hypot(gx, gz) || 1; ux += gx / sl * 7; uz += gz / sl * 7; up.push([ux, H(ux, uz), uz]); }
+          const T = [...up.reverse(), ...ice], tn = T.length;
+          const ig = drapeStrip(T, i => 34 * Math.sin(Math.PI * Math.min(1, (i + 1) / tn)) + 6, 0.5, H, 0, 0);
+          const im = new THREE.Mesh(ig, iceMat()); im.receiveShadow = true; add(im, true); F.objs.push(im); }
+      } }
     // foot: pool if the ground allows, then a river down the valley (never to the road)
     const e = P[n - 1], ey = H(e[0], e[2]);
     let hi = -1e9, lo = 1e9; for (let k = 0; k < 8; k++) { const h = H(e[0] + Math.cos(k * 0.785) * 9, e[2] + Math.sin(k * 0.785) * 9); hi = Math.max(hi, h); lo = Math.min(lo, h); }
@@ -223,6 +240,9 @@ export function placeWaterfalls(world, A, taken = []) {
     let poolY = -1e9; for (let k = 0; k < 9; k++) { const an = k / 8 * 6.283, rr = k === 8 ? 0 : R; const [x, z] = W(Math.cos(an) * rr, Math.sin(an) * rr); poolY = Math.max(poolY, H(x, z)); }
     poolY += 0.12;
     const Hl = o.mill ? Math.max(o.Hl, 2 * rw + 1.2) : o.Hl, lipY = poolY + Hl;
+    // the water has to come from somewhere (Freddy 19.11.): behind the lip the hillside rises to it, a brook runs down
+    // to the lip from a spring pool ~35 m back. The pad lifts the ground there before the step and the tiles are built
+    const feed = !o.mill; if (feed) for (const [a, b] of [[-11, 28], [0, 31], [11, 28]]) { const [px, pz] = W(a, R + 0.5 + b); pads.push({ x: px, z: pz, y: lipY + 1.2, ri: 8, ro: 22 }); } // a ridge, not a cone
     const half = o.mill ? aw + 2.2 : o.cliff ? 9 + r() * 4 : Math.max(o.wf / 2 + 2.5, 4 + r() * 3); // flat part of the step
     const bk = o.cliff ? 2.2 : 1; // block scale
     const outA = o.mill ? -1 : 1; // outflow along the road, away from the mill house
@@ -283,12 +303,14 @@ export function placeWaterfalls(world, A, taken = []) {
     const parts = [], v0 = 1.5, T = Math.sqrt(2 * Hl / G);
     const sheet = (a0, wf, b0, y0, y1, seed, spill = false) => { // free-falling sheet from (a0, b0, y0) down to y1
       const rowsW = [], tt = Math.sqrt(2 * Math.max(0.3, y0 - y1) / G);
-      if (!spill) for (const b of [5, 3.2, 1.8, 0.8, 0.2]) { const [x, z] = W(a0, b0 + b); rowsW.push({ x, z, y: Math.max(H(x, z), lipY + b * 0.06) + 0.1, w: wf * 0.8, st: 0.12 + (5 - b) * 0.06, fade: b > 4 ? 0 : 1 }); }
+      if (!spill) for (const b of feed ? [36, 30, 24, 18, 13, 9, 6.5, 5, 3.2, 1.8, 0.8, 0.2] : [5, 3.2, 1.8, 0.8, 0.2]) { const wob = feed && b > 6 ? Math.sin(b * 0.33 + seed) * Math.min(3, b * 0.1) : 0, [x, z] = W(a0 + wob, b0 + b);
+        rowsW.push({ x, z, y: Math.max(H(x, z), lipY + b * 0.06) + 0.1, w: wf * (feed ? lerp(0.8, 0.35, smooth(5, 34, b)) : 0.8), st: 0.12 + Math.max(0, 5 - b) * 0.06, fade: b === 36 || (!feed && b > 4) ? 0 : 1 }); }
       for (let k = 0; k <= 12; k++) { const u = k / 12, tk = u * tt, [x, z] = W(a0, b0 - (spill ? 0.6 : v0) * tk);
         rowsW.push({ x, z, y: y0 - 0.5 * G * tk * tk, w: wf * (1 + u * 0.4), st: 1, fade: 1 }); }
       parts.push(ribbon(rowsW, seed));
     };
     sheet(0, o.wf, bL - 0.05, lipY + 0.12, poolY + 0.02, r() * 10);
+    if (feed) { const [sx, sz] = W(0, bL + 37.5); parts.push(pool(W, 0, bL + 37.5, 3.6, 0, bL + 36, H(sx, sz) + 0.15, [tx, tz], [nx, nz])); } // the spring
     const impB = bL - v0 * T;
     parts.push(pool(W, 0, 0, R, 0, impB, poolY, [tx, tz], [nx, nz]));
     if (brookOk && brookBridge(F, s.s, brookE[0], brookE[1], 1.3)) { // pool rim -> brook start
@@ -732,3 +754,6 @@ function charMat(m) { if (!m) return m; let c = charred.get(m); if (c) return c;
   c.onBeforeCompile = sh => { sh.uniforms.uHell = HELL;
     sh.fragmentShader = 'uniform float uHell;\n' + sh.fragmentShader.replace('#include <color_fragment>', '#include <color_fragment>\n  diffuseColor.rgb = mix( diffuseColor.rgb, diffuseColor.rgb * vec3( .32, .2, .16 ), uHell );'); };
   c.customProgramCacheKey = () => 'charfall'; charred.set(m, c); return c; }
+
+let _ice = null; // snow-and-ice tongue at the head of a waterfall's stream: matt snow with a faint blue-green glaze
+function iceMat() { return _ice ||= new THREE.MeshStandardMaterial({ color: 0xe6eef2, roughness: 0.42, metalness: 0, emissive: 0x0d1a22, emissiveIntensity: 0.25, polygonOffset: true, polygonOffsetFactor: -2 }); }
