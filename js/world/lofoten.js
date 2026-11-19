@@ -238,7 +238,7 @@ export class WorldScene {
     this.c = canvas; this.track = track;
     this.currentTime = 0; this.playbackRate = 1; this.paused = true; this.duration = track.time[track.time.length - 1];
     this.field = new Field(track, DEM);
-    if (track?.dem?.file === 'insel.bin') { this.field.snowLine = 1330; this.field.rockLine = 1050; } // island: green alpine pass, snow only in rills near the castle summit
+    // island: same icy look as the Lofoten above ~520 m (Freddy 19.11.: "vereist, verschneit, übelst geil"); field.snowLine/rockLine can lift it per world
     const renderer = this.renderer = new THREE.WebGLRenderer({ canvas, antialias: true, powerPreference: 'high-performance', preserveDrawingBuffer: !!track.__shot });
     renderer.setPixelRatio(Math.min(devicePixelRatio || 1, 1.25)); // Retina at 2x costs 4x the pixels; 1.25 is still sharp at riding distance
     renderer.toneMapping = THREE.ACESFilmicToneMapping; renderer.toneMappingExposure = 1.0;
