@@ -83,7 +83,7 @@ let fails = 0; const ok = (c, m) => { console.log(`${c ? '✓' : '✗'} ${m}`); 
     const first = D.locator('#mwFitLine .mwfitr').first(), toId = await first.getAttribute('data-route'); await first.click(); await D.waitForTimeout(400);
     ok((await D.textContent('h1')).replace(/\s/g, '') === sugg[0].replace(/\s/g, '') && await D.getAttribute('#mwFitLine', 'data-fit') !== 'short', `a suggested route opens and the workout fits there (${sugg[0]})`);
     await D.click('#back'); await D.waitForSelector('.card[data-id="demo"]');
-    ok(/Too short for Endurance 90/.test(await D.textContent('.card[data-id="demo"]')) && await D.locator(`.card[data-id="${toId}"] .fitshort`).count() === 0, 'library: with the 90 min workout chosen Passo Demo is marked too short, the suggested route is not');
+    ok(!/Too short/.test(await D.textContent('.card[data-id="demo"]')) && await D.locator('.card .fitshort').count() === 0, 'library: the cards carry no "too short" mark (it shows on the route page only)');
     if (SHOTS) { await D.locator('.card[data-id="demo"]').scrollIntoViewIfNeeded(); await D.screenshot({ path: `${SHOTS}/routefit_library_1280.png` }); }
     await D.click('.card[data-id="demo"]'); await D.waitForSelector('#workSel'); await D.selectOption('#workSel', ''); await D.waitForTimeout(200);
     ok(await D.locator('#mwFitLine').count() === 0, 'free ride: no fit line');

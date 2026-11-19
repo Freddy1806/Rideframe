@@ -74,7 +74,7 @@ const wait = ms => new Promise(r => setTimeout(r, ms));
 
     // settings: Virtual gears off by default, switch persists (same settings object as the 3D ride: shiftMode)
     await p.click('[data-m="grade"]');
-    ok('no gear row while virtual gears are off', !(await p.$('#pGear')));
+    ok('gear row is there in Grade mode even before virtual gears are on (the first shift switches them on)', !!(await p.$('#pGear')));
     await p.click('#pSetBtn');
     ok('settings: Virtual gears off by default', !(await p.isChecked('#sVg')));
     await p.check('#sVg'); await p.selectOption('#sRg', '50x14');

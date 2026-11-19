@@ -15,14 +15,14 @@ import { gameVersion } from './uebridge.js';
 import { fovOf, FOV_MIN, FOV_MAX } from './fov.js';
 import { fmtTime, fmtKm, fmtNum, esc, bestAvg } from './util.js';
 import { openControllerTest } from './controller.js';
-import { initRemote, openRemote } from './remotepad.js';
+import { initRemote, openRemote, miniRemote } from './remotepad.js';
 import { click } from './zwiftclick.js';
 import { stravaButton } from './stravaup.js';
 import { routeFns } from './tcx.js';
 import { hudPrefs, hudControlsHTML, wireHudControls } from './hudprefs.js';
 import { allWorkouts, setMyWorkouts, workoutById, workoutDuration, workoutSVG } from './workouts.js';
 import { loadShared, sharedFor, shareRide, importShared, groupModal } from './share.js';
-import { workoutOptions, wireRoutePick, fitBadge } from './myworkouts-ui.js';
+import { workoutOptions, wireRoutePick } from './myworkouts-ui.js';
 import { loadPersonal } from './myworkouts-store.js';
 
 const $ = s => document.querySelector(s);
@@ -172,7 +172,8 @@ function library() {
         <h1 class="display" style="margin-top:14px">Your<br>routes</h1>
         <div class="meta">${routes.length} ${routes.length === 1 ? 'route' : 'routes'} · ${fmtKm(routes.reduce((s, r) => s + r.track.length, 0))} km · ${fmtNum(routes.reduce((s, r) => s + r.track.gain, 0))} m climbing</div>
       </div>
-      <div class="libacts"><button class="btn ghost" id="wishBtnLib" hidden>Wish list</button><button class="btn ghost" id="lookBtnLib">My rider</button><button class="btn ghost" id="groupBtnLib">Ride together</button><button class="btn" id="uploadBtn">＋ Upload route</button></div>
+      <div class="libside"><div id="rmMiniBox"></div>
+      <div class="libacts"><button class="btn ghost" id="wishBtnLib" hidden>Wish list</button><button class="btn ghost" id="lookBtnLib">My rider</button><button class="btn ghost" id="groupBtnLib">Ride together</button><button class="btn" id="uploadBtn">＋ Upload route</button></div></div>
     </div>
     <div id="board" hidden></div>
     ${myWorkoutsRow()}
@@ -186,6 +187,7 @@ function library() {
     </div>
   </section>`;
   $('#uploadBtn').onclick = $('#addCard').onclick = () => $('#fileInput').click();
+  miniRemote($('#rmMiniBox')); // phone remote: the QR code is simply there (js/remotepad.js)
   $('#groupBtnLib').onclick = () => groupModal({ startRide });
   $('#lookBtnLib').onclick = () => import('./avatar-ui.js').then(x => x.avatarModal());
   accountsAvailable().then(ok => { const b = $('#wishBtnLib'); if (!ok || !b) return; b.hidden = false; b.onclick = () => import('./wishes.js').then(x => x.wishModal(state, accountChanged)); }); /* wish list: only where RIDEFRAME is hosted with accounts */
@@ -294,7 +296,6 @@ function card(r) {
   return `<div class="card" data-id="${r.id}" tabindex="0" role="button">
     <div class="thumb" style="background-image:url('${r.thumb || ''}')">
       ${best ? `<span class="badge">PB ${fmtTime(best.duration)}</span>` : ''}
-      ${fitBadge(r, workoutById(state.settings.workout), state.settings)}
       <span class="go"><svg width="18" height="18" viewBox="0 0 24 24"><path d="M7 4l12 8-12 8z" fill="currentColor"/></svg></span>
       ${profileSVG(t)}
     </div>

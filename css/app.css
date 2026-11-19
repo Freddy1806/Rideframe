@@ -233,7 +233,7 @@ h2.section { font-size: 28px; font-weight: 900; font-stretch: 118%; text-transfo
 
 /* gears + intervals */
 .gearchip { min-width: 150px; transition: box-shadow .2s; }
-.gearchip.flash { box-shadow: 0 0 0 2px var(--accent) inset; }
+.gearchip.shifted { box-shadow: 0 0 0 2px var(--accent) inset; }
 .gearbar { display: flex; gap: 3px; margin-top: 8px; }
 .gearbar:empty { display: none; }
 .gearbar i { flex: 1; height: 5px; border-radius: 2px; background: rgba(244,244,239,.18); }
@@ -622,6 +622,7 @@ img.face.big{width:96px;height:96px}
 @media (max-width: 900px) { .dgrid { grid-template-columns: 1fr; } }
 
 /* library head: the action buttons as an even 2 x 2 block, not ragged rows (design pass 12.11.) */
+.libside { display: flex; flex-direction: column; align-items: flex-end; min-width: 0; }
 .libacts { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; min-width: min(100%, 580px); }
 .libacts .btn { width: 100%; justify-content: center; white-space: nowrap; }
 .libacts .btn[hidden] { display: none; }
@@ -993,3 +994,29 @@ img.face.big{width:96px;height:96px}
   .ivhist .record { padding: 14px; }
   .ivhist .record .v { font-size: 32px; margin-top: 10px; }
 }
+
+/* controller legend in the ride's top bar and the photo that pops up at the left edge (owner 18.11.) */
+.padlegend { display: grid; grid-template-columns: auto auto; gap: 3px 14px; align-content: center; padding: 8px 14px; border-radius: 8px; font-size: 12px; line-height: 1.3; color: rgba(244,244,239,.82); white-space: nowrap; }
+.padlegend[hidden] { display: none; }
+.padlegend kbd { display: inline-block; min-width: 20px; margin-right: 6px; padding: 0 5px; border-radius: 4px; background: rgba(244,244,239,.14); color: var(--paper); font: 700 11px/18px inherit; text-align: center; }
+@media (max-width: 1250px) { .padlegend { display: none; } }
+.shotpop { position: absolute; left: 28px; top: 42%; width: 220px; padding: 6px; border-radius: 10px; opacity: 0; transform: translateX(-16px); transition: opacity .25s, transform .25s; pointer-events: none; z-index: 20; }
+.shotpop.on { opacity: 1; transform: none; }
+.shotpop img { display: block; width: 100%; border-radius: 6px; }
+.shotpop small { display: block; padding: 5px 4px 1px; font-size: 12px; font-weight: 700; }
+
+/* the bottom bar takes less of the picture (owner 19.11.: "ein bisschen schmaler") */
+.hud-bottom { padding: 12px 22px 10px; bottom: 16px; }
+.metric .v { font-size: 38px; margin-top: 5px; }
+.metric .v small { font-size: 13px; }
+.metric.power .v { font-size: 60px; }
+.metric.power .v small { font-size: 17px; }
+.metric .sub { margin-top: 5px; font-size: 11px; }
+.hud-profile { margin-top: 10px; height: 60px; }
+.ride.world3d .hud-bottom { padding: 8px 18px 6px; bottom: 10px; }
+.ride.world3d .metric .v { font-size: 28px; margin-top: 3px; }
+.ride.world3d .metric.power .v { font-size: 44px; }
+.ride.world3d .metric .sub { margin-top: 3px; }
+.ride.world3d .hud-profile { margin-top: 6px; height: 56px; }
+.ride.wk .metric .v { font-size: 22px; margin-top: 2px; }
+.ride.wk .metric .v small { font-size: 11px; }

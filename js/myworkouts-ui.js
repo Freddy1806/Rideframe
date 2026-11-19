@@ -224,11 +224,7 @@ export function wireRoutePick(root, { route, state, saveSettings, rerender, rout
   };
 }
 
-/** library card: a small mark when the preselected workout does not fit this route (laps from the settings) */
-export function fitBadge(route, w, settings) {
-  const f = w ? fitRoute(route.track, w, settings, { laps: settings.laps || 1 }) : null;
-  return f?.verdict === 'short' ? `<span class="badge fitshort" title="${esc(w.name)} needs ${mins(f.workoutSec)}, this route ends after about ${mins(f.routeSec)}${f.laps > 1 ? ` (${f.laps} laps)` : ''}">Too short for ${esc(cut(w.name, 22))}</span>` : '';
-}
+// no mark on the library cards (owner 18.11.: "too short" belongs on the route page, where you pick the workout, not on the card)
 
 /* ---------------- profile ---------------- */
 /** "My workouts" with the FTP, in the profile; ctx = { ftp: () => W, setFtp: async W => {} } */

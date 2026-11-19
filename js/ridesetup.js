@@ -12,7 +12,7 @@ import { allWorkouts, workoutDuration, workoutSVG } from './workouts.js';
 if (typeof document !== 'undefined' && !document.querySelector('link[data-rs]')) { const l = document.createElement('link'); l.rel = 'stylesheet'; l.href = 'css/ridesetup.css'; l.dataset.rs = '1'; document.head.append(l); }
 
 export const MODES = [
-  ['erg', 'ERG', 'The trainer holds the workout watts'],
+  ['erg', 'ERG', 'The trainer holds the watts'],
   ['sim', 'With gradient', 'The trainer follows the road'],
   ['flat', 'Just ride', 'No gradient: flat road feel'],
 ];
@@ -29,7 +29,7 @@ export const SHIFTS = [['virtual', 'Virtual', 'Electronic gears: Q / E, L / R'],
 
 /** which mode runs: ERG only with a workout (without one the ERG setting has nothing to hold) */
 export const sourceOf = r => r.state?.trainer?.pmOnly ? 'pm' : 'trainer';
-export const modeOf = r => sourceOf(r) === 'pm' ? 'pm' : r.workout && r.erg ? 'erg' : r.flatRide ? 'flat' : 'sim';
+export const modeOf = r => sourceOf(r) === 'pm' ? 'pm' : (r.workout && r.erg) || (!r.workout && r.berg && r._holdW) ? 'erg' : r.flatRide ? 'flat' : 'sim';
 export const shiftOf = r => r.virtual ? 'virtual' : 'real';
 /** the workout list: your own first (personal ★, then the Training-tab ones), then the standard ones; minutes rounded */
 export function workoutChoices(list = allWorkouts()) {
@@ -46,7 +46,9 @@ export function modeChange(m, hasWorkout, pm = false) {
 
 /* ---------------- applied to a running ride (js/ride.js RideSession) ---------------- */
 export function setMode(r, m) {
+  if (m === 'erg' && !r.workout && sourceOf(r) !== 'pm' && r.holdWatts) return r.holdWatts(); // no workout: hold watts, set with the pad (L / R, D-pad ↑ ↓)
   const c = modeChange(m, !!r.workout, sourceOf(r) === 'pm'); if (!c) return false;
+  if (!r.workout && r.berg && r._holdW && r._setShift) r._setShift(r.state.settings.shiftMode === 'virtual' ? 'virtual' : 'real'); // leaving hold watts
   const t = r.state.trainer, wasErg = r.workout && r.erg;
   r.erg = c.erg; r.flatRide = c.flat;
   if (r.workout) r.state.settings.erg = r.erg; // the route page's ERG switch is the same setting
@@ -106,8 +108,8 @@ export function openSetup(r, focus = 0) {
       <button class="btn rsgo" id="oBack">Ride on ▸</button>
       <div class="rsg" role="group" aria-label="Power source"><div class="rsl">Power source</div><div class="rsrow">${SOURCES.map(([id, n, h]) => `<button type="button" data-src="${id}" ${press(src === id)} title="${esc(h)}"><b>${n}</b><small>${h}</small></button>`).join('')}</div>
         <div class="rsnote" id="rsNote">${esc(SOURCE_NOTE[src])} ${t.connected ? `<span class="rsdev">✓ ${esc(t.device?.name || (pm ? 'Power meter' : 'Trainer'))}${pm ? ' · watts only' : ''}</span>` : `<button type="button" class="btn ghost small" id="rsConn">Connect ${pm ? 'power meter' : 'trainer'}</button>`}</div></div>
-      <div class="rsg" role="group" aria-label="Mode"><div class="rsl">Mode${pm ? ' <span class="rscur">off: the trainer is not controlled</span>' : ''}</div><div class="rsrow">${MODES.map(([id, n, h]) => { const off = pm || (id === 'erg' && !r.workout);
-        return `<button type="button" data-mode="${id}" ${press(mode === id, off ? ' disabled' : '')} title="${esc(h)}"><b>${n}</b><small>${pm ? (id === 'erg' ? 'Power meter only: targets shown' : 'Power meter only') : off ? 'Pick a workout first' : h}</small></button>`; }).join('')}</div></div>
+      <div class="rsg" role="group" aria-label="Mode"><div class="rsl">Mode${pm ? ' <span class="rscur">off: the trainer is not controlled</span>' : ''}</div><div class="rsrow">${MODES.map(([id, n, h]) => { const off = pm, hold = id === 'erg' && !r.workout;
+        return `<button type="button" data-mode="${id}" ${press(mode === id, off ? ' disabled' : '')} title="${esc(h)}"><b>${n}</b><small>${pm ? (id === 'erg' ? 'Power meter only: targets shown' : 'Power meter only') : hold ? (mode === 'erg' ? `Holds ${r._holdW} W · pad L / R ±5 W, L2 / R2 ±1 W` : 'Holds your watts · L / R ±5 W, L2 / R2 ±1 W') : h}</small></button>`; }).join('')}</div></div>
       <div class="rsg" role="group" aria-label="Shifting"><div class="rsl">Shifting</div><div class="rsrow">${SHIFTS.map(([id, n, h]) => { const off = pm && id === 'virtual';
         return `<button type="button" data-shift="${id}" ${press(shift === id && !r.berg, off ? ' disabled' : '')} title="${esc(h)}"><b>${n}</b><small>${off ? 'Needs trainer control' : h}</small></button>`; }).join('')}</div></div>
       <div class="rsg" role="group" aria-label="Workout"><div class="rsl">Workout${r.workout ? ` <span class="rscur">now: ${esc(r.workout.name)}${r.wDone ? ' · done' : ''}</span>` : ''}</div>
