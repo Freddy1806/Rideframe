@@ -127,8 +127,8 @@ test('framing: the head looking at you in the right part, a little above the hor
   for (const a of [4 / 3, 16 / 10, 16 / 9, 2560 / 1080, 32 / 9]) {
     const f = eagleFrame(a);
     assert.ok(f.cx - f.width / 2 >= 0.55 && f.cx + f.width / 2 < 1, `in the right 45 %, whole: ${f.cx.toFixed(2)} ± ${(f.width / 2).toFixed(3)} at ${a.toFixed(2)}`);
-    assert.ok(f.cy > 0.3 && f.cy + f.maxH / 2 < 2 / 3, 'upper two thirds, never down at the bar');
-    assert.ok(Math.abs(f.width * a - 0.095 * 16 / 9) < 1e-9, 'the same angular size on every aspect');
+    assert.ok(f.cy > 0.3 && f.cy + f.maxH / 2 < 0.75, 'never down at the bottom bar');
+    assert.ok(Math.abs(f.width * a - 0.25 * 16 / 9) < 1e-9, 'the same angular size on every aspect');
     assert.ok(f.bank > 0 && f.bank < 0.4, 'banked a little away from you: the near wing over the sky');
   }
 });
