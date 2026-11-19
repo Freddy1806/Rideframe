@@ -16,7 +16,7 @@ const base = (type, start, moving, elapsed) => { const g = groupOf(type);
 
 /** one Strava SummaryActivity -> a ride record (source 'strava', no samples: streams are not downloaded in v1) */
 export function fromStrava(s) {
-  const id = String(s.id), type = String(s.sport_type || s.type || 'Workout').replace(/[^A-Za-z]/g, '') || 'Workout', el = Math.max(0, Math.round(+s.elapsed_time || 0)), mv = Math.round(+s.moving_time || el);
+  const id = String(s.id_str ?? s.id), type = String(s.sport_type || s.type || 'Workout').replace(/[^A-Za-z]/g, '') || 'Workout', el = Math.max(0, Math.round(+s.elapsed_time || 0)), mv = Math.round(+s.moving_time || el);
   const r = { id: 'st' + id, ...base(type, Date.parse(s.start_date) || 0, mv, el), source: 'strava', stravaId: id, strava: 'https://www.strava.com/activities/' + id,
     workout: String(s.name || labelOf(type)).slice(0, 200), outdoor: !s.trainer, distance: Math.round(+s.distance || 0), gain: Math.round(+s.total_elevation_gain || 0) };
   const n = (k, v) => { if (+v > 0) r[k] = Math.round(+v); };

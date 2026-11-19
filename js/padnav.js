@@ -60,10 +60,27 @@ export function stickDir(x, y, prev) {
   if (Math.max(ax, ay) < on) return null;
   return ax >= ay ? (x > 0 ? 'right' : 'left') : (y > 0 ? 'down' : 'up');
 }
+/** a number field one step up (d = 1) or down (d = −1), kept within min / max; an empty field starts from `start` (else min, else 0).
+ *  No snapping to the step grid: 118 % + 5 = 123 %, as typed values stay what they are. */
+export function stepValue(value, d, { step, min, max, start } = {}) {
+  const st = Number.isFinite(+step) && +step > 0 ? +step : 1, lo = Number.isFinite(min) ? min : -Infinity, hi = Number.isFinite(max) ? max : Infinity;
+  const v0 = value === '' || value == null || !Number.isFinite(+value) ? (Number.isFinite(start) ? start : Number.isFinite(min) ? min : 0) : +value;
+  return Math.max(lo, Math.min(hi, Math.round((v0 + d * st) * 1e6) / 1e6));
+}
 // ---------------- the browser part ----------------
 const FOCUSABLE = 'button, a[href], input:not([type=hidden]), select, textarea, summary, [role=button], [role=tab], [tabindex]:not([tabindex="-1"]), .card[data-id], tr[data-key]';
 const TEXTY = el => (el.tagName === 'INPUT' && !/^(checkbox|radio|range|button|submit|reset|color|file)$/i.test(el.type)) || el.tagName === 'TEXTAREA' || el.isContentEditable;
 const OVERLAYS = '.modal, .ride .finish';
+const NUMBER = el => el?.tagName === 'INPUT' && el.type === 'number';
+const numAttr = (el, a) => el.getAttribute(a) === null || el.getAttribute(a) === '' ? NaN : +el.getAttribute(a);
+/** a number field changed by the pad: one step, the page hears input + change like from typing */
+function stepNum(el, d) {
+  const v = stepValue(el.value, d, { step: numAttr(el, 'step'), min: numAttr(el, 'min'), max: numAttr(el, 'max'), start: el.dataset.start === undefined ? NaN : +el.dataset.start });
+  if (String(v) === el.value) return;
+  el.value = String(v); el.dispatchEvent(new Event('input', { bubbles: true })); el.dispatchEvent(new Event('change', { bubbles: true }));
+}
+const HINT = 'D-pad move · A select · B back', HINT_NUM = '↑ → more · ↓ ← less · L / R one step · A or B done';
+function hintFor() { const h = document.getElementById('pnHint'); if (h) h.textContent = editing && NUMBER(cur) ? HINT_NUM : HINT; }
 
 let cur = null, editing = false, active = false, viaPad = false;
 const memory = new WeakMap(); // overlay (or document) -> the element focused there last, so closing a window returns to it
@@ -110,7 +127,7 @@ function setCur(el, { scroll = true } = {}) {
   if (cur && cur !== el) cur.classList.remove('pn-focus', 'pn-edit');
   if (cur !== el) editing = false;
   cur = el; if (!el) return;
-  curSig = sig(el); el.classList.add('pn-focus'); el.classList.toggle('pn-edit', editing);
+  curSig = sig(el); el.classList.add('pn-focus'); el.classList.toggle('pn-edit', editing); hintFor();
   memory.set(scope(), el);
   if (TEXTY(el)) { if (document.activeElement && document.activeElement !== el && document.activeElement !== document.body) document.activeElement.blur(); }
   else el.focus?.({ preventScroll: true });
@@ -139,6 +156,7 @@ function move(dir, wasActive = active) {
   const was = wasActive && cur && cur.isConnected;
   const el = ensure(); if (!el) return;
   if (!was) return; // the first press only shows where the focus is
+  if (editing && NUMBER(el)) { stepNum(el, dir === 'up' || dir === 'right' ? 1 : -1); return; } // a number field being changed: held = repeat
   if (editing && el.tagName === 'SELECT') { // a list field being changed: ↑ ↓ (and ← →) step through its values
     const n = el.options.length, i = el.selectedIndex + (dir === 'up' || dir === 'left' ? -1 : 1);
     if (i >= 0 && i < n && !el.options[i].disabled) { el.selectedIndex = i; el.dispatchEvent(new Event('input', { bubbles: true })); el.dispatchEvent(new Event('change', { bubbles: true })); }
@@ -156,7 +174,7 @@ function move(dir, wasActive = active) {
 function select(wasActive = active) {
   const was = wasActive && cur && cur.isConnected;
   const el = ensure(); if (!el || !was) return;
-  if (el.tagName === 'SELECT') { editing = !editing; editSig = editing ? sig(el) : null; el.classList.toggle('pn-edit', editing); return; }
+  if (el.tagName === 'SELECT' || NUMBER(el)) { editing = !editing; editSig = editing ? sig(el) : null; el.classList.toggle('pn-edit', editing); hintFor(); return; } // a number: A, then ↑ ↓ ← → change it, A or B done
   if (TEXTY(el)) { el.focus(); el.select?.(); return; } // typing stays on the keyboard; B leaves the field
   if (el.tagName === 'INPUT' && el.type === 'range') return; // ← → change it
   el.click();
@@ -164,7 +182,7 @@ function select(wasActive = active) {
 const CLOSE_RX = /^\s*(cancel|close|back|later|not now|no|✕|×|‹|←.*)\s*$/i, DONE_RX = /^\s*(done|ok|got it)\s*$/i;
 function back() {
   const el = cur && cur.isConnected ? cur : null;
-  if (el && editing) { editing = false; el.classList.remove('pn-edit'); return true; }
+  if (el && editing) { editing = false; el.classList.remove('pn-edit'); hintFor(); return true; }
   const ae = document.activeElement; if (ae && TEXTY(ae)) { ae.blur(); if (ae.isConnected) setCur(ae, { scroll: false }); return true; }
   const root = scope();
   if (root !== document.body) { // a window: its own close / cancel / back button, else its "Done", else a click beside the box
@@ -179,7 +197,8 @@ function back() {
   if (tab && tab.dataset.view !== 'library') { document.querySelector('.topbar .tab[data-view="library"]')?.click(); return true; }
   return false; // the main menu: B does nothing
 }
-function bumper(d) { // L / R: tabs of the window (rider designer) or of the app
+function bumper(d) { // L / R: tabs of the window (rider designer) or of the app; on a number field one step down / up
+  if (cur && cur.isConnected && NUMBER(cur) && visible(cur)) { stepNum(cur, d); return; }
   const root = scope();
   const tabs = root === document.body ? [...document.querySelectorAll('.topbar .tab')] : [...root.querySelectorAll('[role=tab], .avtab')];
   const vis = tabs.filter(visible); if (vis.length < 2) return;
@@ -232,7 +251,7 @@ function init() {
       color: rgba(244,244,239,.72); background: rgba(11,11,11,.72); border: 1px solid rgba(244,244,239,.14); padding: 7px 12px; border-radius: 99px; white-space: nowrap; display: none; }
     html.pn-pad:not(.pn-ride) #pnHint { display: block; }`;
   document.head.append(st);
-  const hint = document.createElement('div'); hint.id = 'pnHint'; hint.setAttribute('aria-hidden', 'true'); hint.textContent = 'D-pad move · A select · B back'; document.body.append(hint);
+  const hint = document.createElement('div'); hint.id = 'pnHint'; hint.setAttribute('aria-hidden', 'true'); hint.textContent = HINT; document.body.append(hint);
   let mx = null, my = null;
   addEventListener('mousemove', e => { if (mx != null && (Math.abs(e.clientX - mx) > 2 || Math.abs(e.clientY - my) > 2)) activate(false, false); mx = e.clientX; my = e.clientY; }, { passive: true });
   addEventListener('mousedown', () => activate(false, false), true);

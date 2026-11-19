@@ -9,6 +9,7 @@ import { fmtTime, fmtKm, fmtNum, esc, bestAvg } from './util.js';
 import { bestClimb, distAtTime } from './climbghost.js';
 import { stravaButton } from './stravaup.js';
 import { padButtons, activePad } from './controller.js';
+import { pickInDir } from './padnav.js';
 import { remoteLabel, remoteCode } from './remotepad.js';
 import { click } from './zwiftclick.js';
 import { routeFns } from './tcx.js';
@@ -94,7 +95,7 @@ const WB_VIEWS = ['big', 'compact', 'focus'], WB_NAMES = { big: 'big', compact: 
 export class RideSession {
   constructor({ route, ghost, state, onExit, autopilot = false, at = 0, group = null, ghostName = '', workout = null, catchUp = false, elapsed0 = 0 }) {
     Object.assign(this, { route, ghost, state, onExit, autopilot, group, ghostName, workout }); this._wId = workout?.id;
-    this.erg = state.settings.erg !== false; this.ftp = state.settings.ftp || 200;
+    this.erg = state.settings.erg !== false && !state.trainer.pmOnly; this.ftp = state.settings.ftp || 200;
     this.wAdj = 0; this.wAdjE = 0; this._adjAcc = 0; this._adjT = 0; this._stepAdj = []; // live watt offset on the hard intervals (_wTune): per rider, never sent to the group
     this.track = route.track;
     this.params = defaultParams(state.settings);
@@ -115,6 +116,7 @@ export class RideSession {
     db.ridesFor(this.route.id).then(rs => { this.segBest = segmentBests(rs); this.segLast = segmentLast(rs); }).catch(() => {});
     import('./account.js').then(a => a.loadSegBoard(this.route.id)).then(b => { this.segBoard = b; }).catch(() => {}); // the others' times on this route
     this._wDef = workout; // kept when the workout is ended early: its intervals still go to Strava
+    this._wT0 = 0; this.flatRide = false; // workout chosen mid-ride (js/ridesetup.js): it runs from that second; "just ride": the trainer gets no gradient
     this.lapMarks = []; // climbs count as laps in the Strava file (start and top of each climb)
     const st = state.settings;
     this.gears = gearsFrom(st); this.virtual = st.shiftMode === 'virtual'; this.auto = this.virtual && !!st.autoShift; this.berg = !this.virtual && !!st.bergWatt; this.realGear = parseGear(st.realGear);
@@ -177,8 +179,9 @@ export class RideSession {
     this.q = s => el.querySelector(s);
     this._wireWorkoutStop();
     el.querySelector('#hGearChip')?.addEventListener('click', () => this.toggleShift());
-    if (!this._closed) this._clickOff = click.on('shift', d => { if (!this.paused && !this.finished) this._padShift(d); }); // Zwift Click (connected in Settings): + / − like the pad's L/R
+    if (!this._closed) this._clickOff = click.on('shift', d => { if (this.paused || this.finished) return; if (this.workout && !this.wDone && this.source === 'trainer') this._wTune(d); else if (this.berg) this._holdTune(d * 5); else this._padShift(d); }); // Zwift Click (connected in Settings): + / − like the pad's L/R: target ±1 W in a workout, gears otherwise
     el.querySelector('#hPause')?.addEventListener('click', () => this.paused ? this._resume() : this._pause());
+    el.querySelector('#hSetup')?.addEventListener('click', e => { e.currentTarget.blur(); this._setup(); });
     el.querySelector('#hCam')?.addEventListener('click', () => this._cycleView());
     el.querySelector('#hBar')?.addEventListener('click', () => this._toggleBar());
     el.querySelector('#hWide')?.addEventListener('click', () => this._lens(-1, true));
@@ -197,6 +200,7 @@ export class RideSession {
     this._initStory();
     if (!this.group) this.player?.events?.surprises?.startArch?.(this.d + 14); // ride off under the START arch
     this.running = true; this.last = performance.now();
+    this._startPresence();
     this._updateHUD(true);
     if (!this.autopilot) await this._countdown();
     this.last = performance.now();
@@ -209,14 +213,12 @@ export class RideSession {
       <div class="hud-top">
         <div class="hud-route glass"><div class="wordmark"><svg class="mark" viewBox="0 0 32 32"><rect width="32" height="32" rx="6" fill="var(--accent)"/><path d="M6 24 L14 12 L19 18 L23 10 L27 24 Z" fill="#0b0b0b"/></svg>RIDEFRAME</div><span class="sep"></span><span class="name">${esc(this.route.name)}</span></div>
         <div class="hud-right">
+          <div class="padlegend glass" id="hPadLegend" hidden></div>
           ${ghostChip}
-          <div class="chip glass gearchip" data-hud="gear" id="hGearChip" title="Click (or G): on the bike → virtual → auto → climb watts" style="cursor:pointer"><div class="label" id="hGearL">${this.berg ? 'Climb watts' : this.auto ? 'Auto' : this.virtual ? 'Virtual gear' : 'Gear'}</div><div class="v num" id="hGear">–</div><div class="gearbar" id="hGearBar">${this.virtual ? this.gears.map(() => '<i></i>').join('') : ''}</div></div>
+          <div class="chip glass gearchip" data-hud="gear" id="hGearChip" title="Click (or G): on the bike → virtual → auto → ERG" style="cursor:pointer"><div class="label" id="hGearL">${this.berg ? 'ERG' : this.auto ? 'Auto' : this.virtual ? 'Virtual gear' : 'Gear'}</div><div class="v num" id="hGear">–</div><div class="gearbar" id="hGearBar">${this.virtual ? this.gears.map(() => '<i></i>').join('') : ''}</div></div>
           <div class="chip glass" data-hud="time"><div class="label">Time</div><div class="v num" id="hTime">0:00</div></div>
-          ${this.track.world ? '<button class="chip glass camchip" data-hud="buttons" id="hCam" title="Switch camera (V)"><div class="label">Camera</div><div class="v">⟲</div></button><button class="chip glass camchip" data-hud="buttons" id="hBar" title="Handlebars on/off (H)"><div class="label">Bars</div><div class="v">⊓</div></button><button class="chip glass camchip" id="hWide" title="Wide angle ([ and ])"><div class="label">View</div><div class="v">↔</div></button>' : ''}
-          ${this.group ? `<button class="chip glass camchip voicechip" id="hVoice" title="Voice chat on: you hear each other"><div class="label">Voice</div><div class="v">${MIC_SVG}</div></button>` : ''}
-          <button class="chip glass camchip" data-hud="buttons" id="hMusic" title="Music on/off (M), next track (N)"><div class="label">Music</div><div class="v">♫</div></button>
+          <button class="chip glass camchip" data-hud="buttons" id="hSetup" title="Workout, mode and shifting (O)"><div class="label">Workout</div><div class="v">☰</div></button>
           <button class="chip glass camchip" id="hPause" title="Pause / finish (space)"><div class="label">Pause</div><div class="v">❚❚</div></button>
-          <button class="chip glass camchip" id="hHudBtn" title="Choose display (I)"><div class="label">Display</div><div class="v">◧</div></button>
         </div>
       </div>
       ${this.workout ? this._workoutBarHTML() : ''}
@@ -248,7 +250,7 @@ export class RideSession {
     return g >= 0 ? g * s.difficulty / 100 : g * s.downhill / 100;
   }
   _trainerGrade() {
-    let g = this._roadGrade();
+    let g = this.flatRide ? 0 : this._roadGrade();
     if (this.wiz?.state === 'hell') return this._wizGrade(g); // the wizard's hell: the road feels steeper
     const dk = 1 - (this._dragK ?? 1); if (Math.abs(dk) > 0.005) g -= 0.5 * this.params.rho * this.params.cda * dk * this.v * this.v / (this.params.mass * 9.81) * 100; // the trainer eases off in the slipstream / aero tuck (and gets harder standing)
     if (!this.virtual) return g;
@@ -258,28 +260,50 @@ export class RideSession {
   }
   /** cycle the shifting mid-ride (click on the gear chip or G): real bike -> virtual (Q/E) -> automatic -> Berg-Watt -> real */
   toggleShift() {
-    const st = this.state.settings, t = this.state.trainer;
+    if (this.state.trainer.pmOnly) return this._flash('Power meter only: shift on the bike (virtual gears need trainer control)', 2500);
     const mode = this.berg ? 'berg' : this.auto ? 'auto' : this.virtual ? 'virtual' : 'real';
     const next = { real: 'virtual', virtual: 'auto', auto: 'berg', berg: 'real' }[mode];
-    if (mode === 'berg') t.setPower(null); // back to the grade
+    if (next === 'berg') this.holdWatts(); else this._setShift(next); // ERG in a free ride: holds a wattage you set (owner 18.11.: no separate climb-watts mode, call it ERG)
+  }
+  /** one shifting mode: 'real' | 'virtual' | 'auto' | 'berg' (the G cycle above, the ride setup in js/ridesetup.js) */
+  _setShift(next) {
+    const st = this.state.settings, t = this.state.trainer;
+    if (this.berg && next !== 'berg') { t.setPower(null); this._holdW = 0; } // back to the grade; a held wattage ends with the mode
     this.virtual = next === 'virtual' || next === 'auto'; this.auto = next === 'auto'; this.berg = next === 'berg';
     st.shiftMode = this.virtual ? 'virtual' : 'real'; st.autoShift = this.auto; st.bergWatt = this.berg;
     this.gear = this.virtual ? this.gears[this.gi] : null;
-    const q = this.q; q('#hGearL').textContent = this.berg ? 'Climb watts' : this.auto ? 'Auto' : this.virtual ? 'Virtual gear' : 'Gear';
+    const q = this.q; q('#hGearL').textContent = this.berg ? 'ERG' : this.auto ? 'Auto' : this.virtual ? 'Virtual gear' : 'Gear';
     q('#hGearBar').innerHTML = this.virtual ? this.gears.map(() => '<i></i>').join('') : '';
     if (t.connected && !this.berg) t.setGrade(this._trainerGrade(), true);
     this._flash({ real: 'Shift on the real bike', virtual: 'Virtual shifting · Q/E', auto: `Auto · shifts for ${st.cadence || 90} rpm`,
-      berg: 'Climb watts · trainer holds the watts of the gradient, cadence is free' }[next]);
+      berg: 'ERG · the trainer holds your watts, cadence is free' }[next]);
     import('./app.js').then(m => m.saveSettings());
   }
   /** Berg-Watt: target power from the grade (relative to FTP); the trainer holds it in ERG, cadence is up to you */
   _bergTarget() {
+    if (this._holdW) return this._bergW = this._holdW; // the rider set a wattage (_holdTune): hold exactly that, whatever the road does
     const now = performance.now(); if (this._bergW && now - (this._bergAt || 0) < 1000) return this._bergW; // once per second is plenty for BLE
     this._bergAt = now; const g = this._roadGrade() + (this.wiz?.state === 'hell' ? 2 : 0), ftp = this.ftp || 200;
     const k = g >= 0 ? 0.62 + 0.055 * g : 0.62 + 0.09 * g; // flat ~62 % FTP, 6 % ~95 %, downhill easing off
     const w = Math.round(ftp * Math.max(0.3, Math.min(1.25, k)) / 5) * 5;
     this._bergW = this._bergW ? this._bergW + Math.sign(w - this._bergW) * Math.min(Math.abs(w - this._bergW), 10) : w; // max 10 W per second, no jumps
     return this._bergW;
+  }
+  /** hold watts in a free ride (owner 18.11.: "wo er die Watt hält … über Controller erhöhen und niedrigen"): in climb watts the
+   *  pad, Zwift Click and keys set the wattage; from the first press the trainer holds that number until the mode changes */
+  _holdTune(d) {
+    if (!this.berg || (this.workout && this.erg)) return false;
+    this._holdW = Math.max(30, Math.min(900, Math.round((this._holdW || this._bergW || this._bergTarget()) + d)));
+    this._bergW = this._holdW; this.state.trainer.setPower(this._holdW);
+    const q = this.q; if (q && q('#hGear')) { q('#hGear').textContent = this._holdW + ' W'; q('#hGearL').textContent = 'ERG · target'; }
+    this._flash(`ERG ${this._holdW} W`, 1200); return true;
+  }
+  /** hold watts from the ride setup's ERG button without a workout: start at what you ride now (or 60 % FTP) */
+  holdWatts() {
+    if (this.state.trainer.pmOnly) return false;
+    if (!this.berg) this._setShift('berg');
+    const now = this.power > 40 ? this.power : (this.ftp || 200) * 0.6;
+    this._holdW = Math.max(30, Math.round(now / 5) * 5); return this._holdTune(0);
   }
   /** automatic virtual shifting: keeps you near your favourite cadence; Q/E override it for 15 s */
   _autoShift(dt) {
@@ -369,37 +393,47 @@ export class RideSession {
     const pad = activePad(); if (!pad) return; // a real pad or the phone remote (js/remotepad.js)
     const b = padButtons(pad), was = this.padPrev || [];
     this.padPrev = b;
-    if (!this.padSeen) { this.padSeen = true; this._flash(`🎮 Controller ready · Start = pause${this.workout ? ' · D-pad ↑↓ / L R: target ±1 W, L2 R2: ±5 W' : ' · L/R = shift'}`); }
+    if (!this.padSeen) { this.padSeen = true; this._flash('🎮 Controller ready · Start = pause'); }
     const hit = i => b[i] && !was[i];
+    if (this._ask && (hit(0) || hit(1))) { this._ask.answer(hit(0)); return; } // "Freddy wants to join you": A = accept, B = not now
     if ((hit(9) || hit(16)) && !this.finished) { this.paused ? this._resume() : this._pause(); return; } // Start or Home: pause menu
     if (this.paused && !this.finished) { // menu navigation like on a console (finished from the pause menu: paused stays true, the end screen is not a menu here)
-      if (hit(12) || hit(14)) this._padFocus((this._padI || 0) - 1);
-      if (hit(13) || hit(15)) this._padFocus((this._padI || 0) + 1);
+      for (const [i, dir] of [[12, 'up'], [13, 'down'], [14, 'left'], [15, 'right']]) if (hit(i)) this._padMove(dir);
       if (hit(0)) this.q('#pauseOverlay')?.querySelectorAll('.padmenu button')[this._padI || 0]?.click();
-      if (hit(1)) this.q('#oBack') ? this.q('#oBack').click() : this._resume();
+      if (hit(1)) this.q('#oBack, #invBack') ? this.q('#oBack, #invBack').click() : this._resume();
       return;
     }
     if (this.finished) return;
-    const sh = d => this._padShift(d);
-    const tune = this.workout && !this.wDone; // in a workout (owner 17.11.): D-pad ↑ ↓ and L / R the target ±1 W, L2 / R2 ±5 W (gears mean nothing in ERG)
-    if (tune && (hit(4) || hit(5))) { this._wTune(hit(5) ? 1 : -1); return; }
-    if (tune && (hit(6) || hit(7))) { this._wTune(hit(7) ? 5 : -5); return; }
-    if (hit(4) || (!tune && hit(13))) sh(-1);
-    if (hit(5) || (!tune && hit(12))) sh(1);
-    if (tune && hit(12)) this._wTune(1);
-    if (tune && hit(13)) this._wTune(-1);
+    // one job per button and per mode (owner 18.11.): ERG (workout or free ride) L / R ±5 W, L2 / R2 ±1 W · gears: L / R shift.
+    // The D-pad's ↑ ↓ do the same as R / L; nothing else sits on it. A accepts, B display, X photo, Y camera, Select shifting mode.
+    const up = hit(5) || hit(12), dn = hit(4) || hit(13), fine = hit(7) ? 1 : hit(6) ? -1 : 0;
+    const m = this._padMode();
+    if (m === 'work') { const d = up ? 5 : dn ? -5 : fine; if (d) this._wTune(d); }
+    else if (m === 'erg') { const d = up ? 5 : dn ? -5 : fine; if (d) this._holdTune(d); }
+    else if (up || dn) this._padShift(up ? 1 : -1);
     if (hit(0)) { this._chKey = true; if (this.ch?.active?.state === 'offer') this._flash('Accepted!'); }
     if (hit(1)) this._cycleHud();
-    if (hit(2) && this.player?.snapshot) { this._takePhoto(); this._flash('📸 Foto'); }
+    if (hit(2) && this.player?.snapshot && !this._shooting) this._takePhoto().then(url => this._shotPop(url));
     if (hit(3)) this._cycleView();
-    if (hit(6) || hit(7)) this._lens(hit(7) ? 1 : -1);
     if (hit(8)) this.toggleShift();
-    if (hit(10) || hit(14)) this._toggleMusic();
-    if (hit(11) || hit(15)) { this.music?.skip(); setTimeout(() => this._flash('♫ ' + (this.music?.title() || '')), 300); }
   }
-
-
-  /** a pad (or Zwift Click) means virtual shifting: switch over on first use */
+  /** what the pad's L / R do right now: 'work' (workout target), 'erg' (free-ride ERG watts) or 'gear' */
+  _padMode() { return this.workout && !this.wDone ? 'work' : this.berg ? 'erg' : 'gear'; }
+  /** the controller legend in the top bar: which button does what in this mode; only once a pad was used */
+  _padLegend() {
+    const el = this.q('#hPadLegend'); if (!el || !this.padSeen) return;
+    const m = this._padMode(), key = m + (this.virtual ? 'v' : 'r');
+    if (el.dataset.k === key) return; el.dataset.k = key; el.hidden = false;
+    const rows = [...(m === 'gear' ? [['L R', this.virtual ? 'Gear − / +' : 'Virtual gears']] : [['L R', '−5 / +5 W'], ['L2 R2', '−1 / +1 W']]),
+      ['Y', 'Camera'], ['X', 'Photo'], ['B', 'Display'], ['Start', 'Pause']];
+    el.innerHTML = rows.map(([k, t]) => `<span><kbd>${k}</kbd>${t}</span>`).join('');
+  }
+  /** the photo just taken, shown small at the left edge for a moment (owner 18.11.) */
+  _shotPop(url) {
+    if (!url || !this.el) return this._flash('No photo');
+    let p = this.q('#hShot'); if (!p) { p = document.createElement('div'); p.id = 'hShot'; p.className = 'shotpop glass'; p.innerHTML = '<img alt=""><small>Photo saved</small>'; this.el.append(p); }
+    p.querySelector('img').src = url; p.classList.add('on'); clearTimeout(this._shotT); this._shotT = setTimeout(() => p.classList.remove('on'), 3000);
+  }
   _padShift(d) { if (!this.virtual && !this.berg) this.toggleShift(); this.shift(d); }
 
   _syncVideo() {
@@ -472,14 +506,15 @@ export class RideSession {
       : cadOff < -8 ? '▼ shift easier' : cadOff > 8 ? '▲ shift harder' : '';
     q('#hHr').textContent = hint || (tc ? `target ${tc} rpm` : '–');
     q('#hHr').classList.toggle('hint-on', !!hint);
+    this._padLegend();
     const t = this.state.trainer;
     if (this.virtual) {
       q('#hGear').textContent = gearName(this.gear);
       q('#hGearL').textContent = `${this.auto ? 'Auto' : 'Virtual gear'} ${this.gi + 1}/${this.gears.length}`;
       q('#hGearBar').querySelectorAll('i').forEach((el, i) => el.className = i <= this.gi ? 'on' : '');
-      q('.gearchip').classList.toggle('flash', performance.now() - (this.shiftFlash || 0) < 350);
+      q('.gearchip').classList.toggle('shifted', performance.now() - (this.shiftFlash || 0) < 350);
     } else {
-      if (this.berg) { q('#hGear').textContent = (this._bergW || this._bergTarget()) + ' W'; q('#hGearL').textContent = 'Climb watts · target'; }
+      if (this.berg) { q('#hGear').textContent = (this._bergW || this._bergTarget()) + ' W'; q('#hGearL').textContent = 'ERG · target'; }
       else { const g = estimateGear(this.gears, t.data?.speed, this.cadence, this.wheel * 1000); q('#hGear').textContent = g ? gearName(g) : '–'; }
     }
     q('#hDist').textContent = fmtNum((this.lapOff + this.d) / 1000, 2);
@@ -489,7 +524,7 @@ export class RideSession {
     q('#hGrade2').textContent = fmtNum(g, 1);
     q('#hTime').textContent = fmtTime(this.elapsed);
     const tag = q('#hGradeTag'); tag.className = 'grade-tag ' + (g > 0.5 ? 'up' : g < -0.5 ? 'down' : 'flat');
-    if (this.source) q('#hTrainer').textContent = this.source === 'trainer' ? `Trainer ${fmtNum(this._trainerGrade(), 1)} %` : 'No trainer · ↑ ↓ watts';
+    if (this.source) q('#hTrainer').textContent = this.source === 'trainer' ? (this.state.trainer.pmOnly ? 'Power meter · trainer free' : `Trainer ${fmtNum(this._trainerGrade(), 1)} %`) : 'No trainer · ↑ ↓ watts';
     // climb info
     const cur = this.climbs.find(c => this.d >= c.from && this.d < c.to);
     const next = this.climbs.find(c => c.from > this.d);
@@ -525,6 +560,7 @@ export class RideSession {
     drawHudProfile(this.profile, this.track, this.d, ghostD);
     if (this.minimap?.ok && (!this._mapT || performance.now() - this._mapT > 150)) { // ~7 per second is plenty for a map
       this._mapT = performance.now();
+      { const top = this.q('.hud-top'), mm = this.q('.minimap'); if (top && mm) { const y = Math.round(top.offsetTop + top.offsetHeight + 12) + 'px'; if (mm.style.top !== y) mm.style.top = y; } } // never under the chips (owner 18.11.)
       const hex = n => typeof n === 'number' ? '#' + n.toString(16).padStart(6, '0') : null;
       this.minimap.draw(this.d, (this._mapRiders || []).map(r => ({ d: r.d, color: hex(r.color ?? this.player?.riders?.list?.get(r.id)?.color) || (r.ghost ? '#9aa3ad' : '#2f7fd8') })));
     }
@@ -535,7 +571,7 @@ export class RideSession {
    *  easier (wAdjE: warm-up, rests, cool-down); free blocks have none. */
   _wTune(d) {
     if (!this.workout || this.wDone) return;
-    const w = workoutState(this.workout, this.elapsed, this.ftp); if (w.done || !w.step || w.step.free) return this._flash('Free block: ride as you like');
+    const w = workoutState(this.workout, this._wClock(), this.ftp); if (w.done || !w.step || w.step.free) return this._flash('Free block: ride as you like');
     const k = isHard(w.step) ? 'wAdj' : 'wAdjE'; this[k] = tuneAdj(this[k], d);
     this._wT = 0; this._workout(0); this._workoutHUD(this.power); // HUD, chart and ERG follow right away
     this._flash(`Target ${this.wNow.plateau} W (${fmtAdj(this[k])} ${k === 'wAdj' ? 'on the intervals' : 'on the easy parts'})`);
@@ -544,7 +580,7 @@ export class RideSession {
   _workout(dt = 0.016) {
     if (!this.workout) return this._ergSpan(false);
     // targets with the rider's offsets (_wTune: hard intervals, easy parts) and, in ERG, ramps instead of a wall into / out of hard intervals
-    const w = this.wNow = workoutState(this.workout, this.elapsed, this.ftp, { hardAdj: this.wAdj, easyAdj: this.wAdjE, ramp: this.erg });
+    const w = this.wNow = workoutState(this.workout, this._wClock(), this.ftp, { hardAdj: this.wAdj, easyAdj: this.wAdjE, ramp: this.erg });
     if (!w.done && isHard(w.step) && dt > 0) { this._adjAcc += this.wAdj * dt; this._adjT += dt; const sa = this._stepAdj[w.i] ||= [0, 0]; sa[0] += this.wAdj * dt; sa[1] += dt; } // time-weighted, for the saved ride
     if (this.erg) this.state.trainer.setPower(w.done || w.step?.free ? null : w.target); // a test block is ridden freely
     if (dt > 0) this._ergSpan(this.erg && !w.done && !w.step?.free);
@@ -552,9 +588,11 @@ export class RideSession {
   }
 
   /** the hard interval running now (pct >= 88, 1 min or longer) with the rider's tuned target, or null (ivgate.js) */
-  _hardWin() { return hardWindow(this.workout, this.elapsed, this.ftp, { hard: this.wAdj, easy: this.wAdjE }); }
+  _hardWin() { return hardWindow(this.workout, this._wClock(), this.ftp, { hard: this.wAdj, easy: this.wAdjE }); }
   /** ERG control on / off over the ride (seconds): only a marker (owner 17.11.: the climb, best times, segments and the export
    *  stay as on any ride, speed comes from the power on the route's grade); in ERG no shifting advice and no auto shifting */
+  /** seconds into the workout: from the ride start, or from the second it was chosen in the ride (js/ridesetup.js) */
+  _wClock() { return this.elapsed - (this._wT0 || 0); }
   _ergSpan(on) {
     if (on === !!this._ergOn) return;
     const sp = this._ergSpans ||= [], t = Math.round(this.elapsed);
@@ -627,6 +665,11 @@ export class RideSession {
       // group ride (Freddy 12.11.): the wizard always comes, at the same spot for everyone (dice seeded with the group code);
       // each rider takes the trial with his own watts, so one may fly while the other rides through hell
       const grp = this.group ? seeded(this.group.code + this.route.id + this.lap) : null;
+      if (!grp && !qs.has('wizard')) { // alone: every ride, once, by the clock: called between minute 8 and 23, so his trial is done by minute 30 (owner 19.11.)
+        if (this._wizMet || qs.has('nowizard')) return;
+        this._wizArm ??= qs.has('wizardat') ? +qs.get('wizardat') : 480 + Math.random() * 900;
+        this.wiz = new Wizard({ length: this.track.length, startD: this.d, ftp: this.ftp, timed: this._wizArm });
+      } else
       this.wiz = new Wizard({ length: this.track.length, startD: grp ? 0 : this.d, ftp: this.ftp, force: qs.has('wizard'), chance: qs.has('nowizard') ? 0 : grp ? 1 : 0.35, rng: grp || Math.random,
         avoid: d => spots.some(a => d > a - 1400 && d < a + 2900) }); // never on top of a dare and its race
       if (this.wiz.state === 'off' || (grp && this.d > this.wiz.at - 600)) { this.wiz = null; return; } // a late joiner already past his spot
@@ -645,6 +688,7 @@ export class RideSession {
     if (z.exitH && this.d > z.exitH.d - 12) { sp0?.poof?.(z.exitH); z.exitH = null; } // he sends you on (up) and is gone in a puff
     if (z.state === 'hell' && !z.exitH && !z.exitDone && z.t >= WIZ.hell - 25) { z.exitDone = true; z.exitH = sp0?.wizard?.(this.d + Math.max(90, this.v * 25 + 15)); } // he waits where hell ends
     if (this.ch?.active && (z.state === 'wait' || z.state === 'ann')) return; // a race is on: the wizard waits his turn
+    if (z.timed && z.state === 'wait' && !Number.isFinite(z.at) && this.elapsed >= z.armAt && this.track.length - this.d > 2500 && !this.eagle?.busy) { z.summon(this.d, summonGap(this.v)); this._wizMet = true; } // his minute has come and the lap has room for the trial
     const sp = this.player?.events?.surprises, P = this.player, fx = this.q('#hWizFx');
     const win = z.wk ? (this.wDone ? null : this._hardWin()) : null, g = z.wk ? wizardGate(z, win, { elapsed: this.elapsed, v: this.v, hold: WIZ.hold }) : null;
     if (g === 'summon' && !this.eagle?.busy) { z.summon(this.d, summonGap(this.v)); this._wizIv = win.i; } // workout: inside a hard interval with time for his trial (never while the eagle speaks)
@@ -802,14 +846,18 @@ export class RideSession {
     else {
       const free = !!w.step.free, hard = w.hard, rest = !hard && !free && !w.ramp && /rest|easy|recover/i.test(w.step.label || '');
       const sp = this._sensors().pw; // no power source: "–", no verdict
-      const z = free || w.ramp || sp !== 'ok' ? '' : pShow < w.lo ? 'lo' : pShow > w.hi ? 'hi' : 'ok';
+      const zRaw = free || w.ramp || sp !== 'ok' ? '' : pShow < w.lo ? 'lo' : pShow > w.hi ? 'hi' : 'ok';
+      // ERG: the trainer holds the watts, so being off is never the rider's mistake. No red verdict; only after 12 s off a calm note
+      const now = performance.now(); if (!this._ergOn || !zRaw || zRaw === 'ok') this._ergOffAt = 0; else if (!this._ergOffAt) this._ergOffAt = now;
+      const ergOff = this._ergOn && this._ergOffAt && now - this._ergOffAt > 12000;
+      const z = this._ergOn && zRaw ? 'ok' : zRaw;
       q('#hWStep').textContent = w.step.label || 'Block';
       q('#hWOf').textContent = hard ? `${/^opener/i.test(w.series) ? 'opener' : 'interval'} ${w.hardNo} of ${w.hardCount}` : w.ramp === 'in' ? 'ramp up' : w.ramp === 'out' ? 'ramp down' : w.ramp === 'step' ? `ramp to ${w.rampTo} W` : '';
       q('#hWT').textContent = w.target;
       q('#hWP').textContent = sp === 'ok' ? pShow : '–'; q('#hWRc').hidden = sp !== 'lost';
       q('#hWLeft').textContent = q('#hWTime').textContent = fmtTime(Math.ceil(w.left));
       arc.setAttribute('stroke-dasharray', `${(C * Math.max(0, Math.min(1, w.left / w.step.dur))).toFixed(1)} ${C.toFixed(1)}`);
-      q('#hWState').textContent = sp !== 'ok' ? (sp === 'lost' ? 'connection lost' : 'no connection') : free ? 'free' : w.ramp === 'in' ? 'ramp up' : w.ramp === 'out' ? 'ramp down' : w.ramp === 'step' ? 'ramp' : rest || !z ? 'easy' : z === 'ok' ? 'in zone' : z === 'lo' ? `${w.target - pShow} W too low` : `${pShow - w.target} W too high`;
+      q('#hWState').textContent = sp !== 'ok' ? (sp === 'lost' ? 'connection lost' : 'no connection') : free ? 'free' : w.ramp === 'in' ? 'ramp up' : w.ramp === 'out' ? 'ramp down' : w.ramp === 'step' ? 'ramp' : rest || !z ? 'easy' : ergOff ? `trainer ${Math.abs(pShow - w.target)} W off` : z === 'ok' ? (this._ergOn && zRaw !== 'ok' ? 'trainer settling' : 'in zone') : z === 'lo' ? `${w.target - pShow} W too low` : `${pShow - w.target} W too high`;
       wp.classList.toggle('off', sp !== 'ok');
       if (hard && z && z !== 'ok') { wp.classList.add('z-' + z); pw?.classList.add('z-' + z); } else if (hard) pw?.classList.add('z-ok');
       // the zone band: ±5 % around the target in the middle of a track from 80 to 120 %; the marker is your power
@@ -823,7 +871,7 @@ export class RideSession {
       if (soon) { q('#hWCueN').textContent = w.countdown; q('#hWCueW').textContent = `${w.nextName} · ${w.nextTarget} W`; }
     }
     if (w.i !== this._barI) { if (this._barI !== undefined && !w.done) this._flash(`${w.step.label || 'Block'} · ${w.target} W`); this._barI = w.i; }
-    if (!this._wT || this.elapsed - this._wT > 1) { this._wT = this.elapsed; q('#hWChart').innerHTML = timelineSVG(w, this.elapsed, this.workout); }
+    if (!this._wT || this.elapsed - this._wT > 1) { this._wT = this.elapsed; q('#hWChart').innerHTML = timelineSVG(w, this._wClock(), this.workout); }
     const h = bar.offsetHeight; if (h !== this._wbh) { this._wbh = h; this.el.style.setProperty('--wbh', h + 'px'); } // the other HUD parts sit above it
   }
 
@@ -840,8 +888,10 @@ export class RideSession {
     while (performance.now() - this._shotArm < 1200) await new Promise(r => setTimeout(r, 100));
     try {
       const d = this.d, cv = await Promise.race([this.player.snapshot(), new Promise((_, no) => setTimeout(() => no(new Error('timeout')), 3000))]);
-      (this.photos ||= []).push({ d, y: this.player.field?.pose(d).y || 0, url: cv.toDataURL('image/jpeg', 0.88) });
+      const url = cv.toDataURL('image/jpeg', 0.88);
+      (this.photos ||= []).push({ d, y: this.player.field?.pose(d).y || 0, url });
       if (this.photos.length > 6) this.photos.splice(this.photos.reduce((m, p, i, a) => p.y < a[m].y ? i : m, 0), 1);
+      return url;
     } catch {} finally { this._shotArm = 0; this._shooting = false; this.player._shot = null; }
   }
   /** the ride's best photo stays on this device, so the share image can be made later from Fahrten & Rekorde (Freddy 12.11.) */
@@ -882,7 +932,7 @@ export class RideSession {
       const gl = this.q?.('#hGroup .glist');
       if (gl) gl.innerHTML = os.length ? os.sort((a, b) => b.d - a.d).slice(0, 5).map(r => {
         const gap = r.d - this.d, txt = r.done ? 'finished' : (gap >= 0 ? '+' : '−') + (Math.abs(gap) >= 1000 ? fmtKm(Math.abs(gap)) + ' km' : Math.round(Math.abs(gap)) + ' m');
-        return `<div class="grow ${gap >= 0 ? 'behind' : 'ahead'}${vc?.isSpeaking(r.pid) ? ' speaking' : ''}" data-rid="${esc(r.id)}" title="Click: jump to ${esc(r.name)} (does not count as distance)"><span>${vc?.isSpeaking(r.pid) ? `<i class="spk">${SPK_SVG}</i>` : ''}${esc(r.name)}</span><b class="num">${txt}</b><i class="num">${r.w} W</i></div>`;
+        return `<div class="grow ${gap >= 0 ? 'behind' : 'ahead'}${vc?.isSpeaking(r.pid) ? ' speaking' : ''}" data-rid="${esc(r.id)}" title="Click: jump to ${esc(r.name)} (does not count as distance)"><span>${vc?.isSpeaking(r.pid) ? `<i class="spk">${SPK_SVG}</i>` : ''}${esc(r.name)}</span><b class="num">${txt}</b><i class="num">${r.w} W · <span class="ghr">${r.hr > 0 ? r.hr : '–'}</span> bpm</i></div>`; // heart rate next to the watts, – without a strap
       }).join('') : '<div class="grow"><span>Nobody here yet</span></div>';
     }
     if (list.length || this._hadRiders) { this.player?.setRiders?.(list); this._hadRiders = list.length > 0; }
@@ -896,11 +946,14 @@ export class RideSession {
   _wireVoice() {
     const vb = this.q('#hVoice');
     const v = () => (this.group.voice?.on ? this.group.voice : null);
-    vb.addEventListener('click', async () => {
+    /** voice on, then mute / unmute: the pause menu's Options (the chip left the top bar, owner 18.11.) */
+    this._voiceTap = async () => {
       const x = v();
       if (!x) { const n = await import('./share.js').then(m => m.voiceToggle(this.group)); if (n) this._flash(n.hasMic ? (n.ptt ? 'Voice chat on · hold T to talk' : 'Voice chat on · T = mute') : 'Voice chat on · listening only'); }
       else if (!x.ptt && x.hasMic) { x.toggleMute(); this._flash(x.muted ? 'Mic muted' : 'Mic on'); }
-    });
+    };
+    if (!vb) return;
+    vb.addEventListener('click', this._voiceTap);
     const hold = on => e => { const x = v(); if (x?.ptt) { e.preventDefault(); x.talk(on); } };
     vb.addEventListener('pointerdown', hold(true)); for (const ev of ['pointerup', 'pointerleave', 'pointercancel']) vb.addEventListener(ev, hold(false));
     this._voiceUI = () => {
@@ -945,6 +998,7 @@ export class RideSession {
     if (e.key === 'ArrowUp' || e.key === 'ArrowDown') this.keyPower = true; /* watts from the keyboard: fine for trying things out, never a saved ride (Freddy 12.11.) */
     if (e.key === 'ArrowUp') { this.manualPower = Math.min(1500, this.manualPower + (e.shiftKey ? 50 : 10)); e.preventDefault(); }
     else if (e.key === 'ArrowDown') { this.manualPower = Math.max(0, this.manualPower - (e.shiftKey ? 50 : 10)); e.preventDefault(); }
+    else if ((e.key === 'w' || e.key === 'W' || e.key === 's' || e.key === 'S') && this.berg && !(this.workout && !this.wDone)) this._holdTune((e.key.toLowerCase() === 'w' ? 1 : -1) * (e.shiftKey ? 1 : 5)); /* hold watts: W / S like in a workout */
     else if (e.key === 'w' || e.key === 'W') this._wTune(e.shiftKey ? 1 : 5); /* workout target up / down: 5 W, with Shift 1 W */
     else if (e.key === 's' || e.key === 'S') this._wTune(e.shiftKey ? -1 : -5);
     else if (e.key === 'g' || e.key === 'G') this.toggleShift();
@@ -959,6 +1013,7 @@ export class RideSession {
     else if (e.key === 'h') this._toggleBar();
     else if (e.key === 'm') this._toggleMusic();
     else if (e.key === 'i') this._cycleHud();
+    else if ((e.key === 'o' || e.key === 'O') && !this.finished) this._setup(); // workout, mode and shifting (js/ridesetup.js)
     else if ((e.key === 'l' || e.key === 'L') && this.workout) this._cycleWbView();
     else if (e.key === 'n') { this.music?.skip(); setTimeout(() => this._flash('♫ ' + (this.music?.title() || '')), 300); }
   }
@@ -1014,9 +1069,9 @@ export class RideSession {
     s.musicVol = m.on ? 0 : (s.musicVolOn || 0.45); if (m.on) s.musicVolOn = m.vol;
     m.setVolume(s.musicVol); this._flash(m.on ? '♫ ' + m.title() : 'Music off'); import('./app.js').then(x => x.saveSettings());
   }
-  _flash(text) {
+  _flash(text, ms = 1600) {
     let f = this.q('#hFlash'); if (!f) { f = document.createElement('div'); f.id = 'hFlash'; f.className = 'flash glass'; this.el.append(f); }
-    f.textContent = text; f.classList.add('on'); clearTimeout(this._flashT); this._flashT = setTimeout(() => f.classList.remove('on'), 1600);
+    f.textContent = text; f.classList.add('on'); clearTimeout(this._flashT); this._flashT = setTimeout(() => f.classList.remove('on'), ms);
   }
 
   _pause() {
@@ -1025,31 +1080,34 @@ export class RideSession {
     this.q('#pauseOverlay')?.remove();
     const o = document.createElement('div'); o.className = 'paused'; o.id = 'pauseOverlay';
     o.innerHTML = `<div class="box"><div class="label">${fmtKm(this.d)} km · ${fmtTime(this.elapsed)}</div><h2 class="display">Pause</h2>
-      <div class="row-actions padmenu"><button class="btn" id="pResume">Resume</button><button class="btn ghost" id="pOpts">Options</button><button class="btn ghost" id="pSave">Finish &amp; save</button><button class="btn ghost" id="pDiscard">Discard</button>${this.group?.voice?.on ? '<button class="btn ghost" id="pVoice">Voice chat off</button>' : ''}${this.group ? this.group.others().filter(r => r.riding || r.d > 0).slice(0, 4).map((r, i) => `<button class="btn ghost" data-jump="${i}">⇢ Jump to ${esc(r.name)}</button>`).join('') : this.autopilot ? '' : '<button class="btn ghost" id="pGroup">Open group</button>'}</div>
+      <div class="row-actions padmenu"><button class="btn" id="pResume">Resume</button><button class="btn ghost" id="pOpts">Options</button><button class="btn ghost" id="pSetup">Workout &amp; mode</button><button class="btn ghost" id="pSave">Finish &amp; save</button><button class="btn ghost" id="pDiscard">Discard</button>${this.group?.voice?.on ? '<button class="btn ghost" id="pVoice">Voice chat off</button>' : ''}${this.group ? this.group.others().filter(r => r.riding || r.d > 0).slice(0, 4).map((r, i) => `<button class="btn ghost" data-jump="${i}">⇢ Jump to ${esc(r.name)}</button>`).join('') : this.autopilot ? '' : '<button class="btn ghost" id="pGroup">Open group</button>'}${this.presence?.on ? '<button class="btn ghost" id="pInvite">Invite friends</button>' : ''}</div>
       <div class="hint pad-hint" style="margin-top:12px;opacity:.7">🎮 D-pad to choose · A ok · B back</div></div>`;
     this.el.append(o);
     o.querySelector('#pResume').onclick = () => this._resume();
     o.querySelector('#pOpts').onclick = () => this._options();
+    o.querySelector('#pSetup').onclick = () => this._setup();
     o.querySelector('#pSave').onclick = () => this._end(true);
     o.querySelector('#pDiscard').onclick = () => this._end(false);
     o.querySelector('#pVoice')?.addEventListener('click', e => { this.group.voice?.stop(); this.group.voice = null; e.target.remove(); this._flash('Voice chat off'); });
     const os = this.group ? this.group.others().filter(r => r.riding || r.d > 0).slice(0, 4) : [];
     o.querySelectorAll('[data-jump]').forEach(b => b.onclick = () => { const r = os[+b.dataset.jump]; if (r) { this._resume(); this._jump(r); } });
     o.querySelector('#pGroup')?.addEventListener('click', () => this._openGroup());
+    o.querySelector('#pInvite')?.addEventListener('click', () => this._inviteMenu());
     this._padFocus(0);
   }
   /** in-ride options (game-style, all reachable with the controller): each button shows its current state and toggles it */
   _options() {
     const o = this.q('#pauseOverlay'); if (!o) return;
-    const s = this.state.settings, mode = this.berg ? 'climb watts' : this.auto ? 'auto' : this.virtual ? 'virtual' : 'on the bike';
+    const s = this.state.settings, mode = this.berg ? 'ERG' : this.auto ? 'auto' : this.virtual ? 'virtual' : 'on the bike';
     const items = [
-      ['oShift', `Schaltung: ${mode}`, () => this.toggleShift()],
+      ['oShift', `Shifting: ${mode}`, () => this.toggleShift()],
       ['oView', `View: ${['Rider view', 'Chase', 'Look back'][s.view3d || 0]}`, () => this._cycleView()],
       ['oHud', 'Switch display', () => this._cycleHud()],
       ...(this.workout ? [['oWView', `Interval display: ${WB_NAMES[this._wbView()]}`, () => this._cycleWbView()]] : []),
       ['oBar', `Bars: ${s.cockpit === false ? 'off' : 'on'}`, () => this._toggleBar()],
       ['oMusic', `Music: ${this.music?.on ? 'on' : 'off'}`, () => this._toggleMusic()],
       ['oEagle', `Eagle of Destiny: ${s.eagle === false ? 'off' : 'on'}`, () => this._toggleEagle()],
+      ...(this.group && this._voiceTap ? [['oVoice', `Voice chat: ${!this.group.voice?.on ? 'off' : this.group.voice.muted ? 'muted' : 'on'}`, () => this._voiceTap()]] : []),
       ['oNext', 'Next song', () => this.music?.skip()],
       ['oWide', 'Wider view', () => this._lens(-1)], ['oNarrow', 'Narrower view', () => this._lens(1)],
       ['oRemote', remoteLabel(), () => remoteCode()], // phone remote: the code to enter on the phone (js/remotepad.js)
@@ -1057,35 +1115,110 @@ export class RideSession {
     ];
     o.querySelector('.box').innerHTML = `<div class="label">Pause</div><h2 class="display">Options</h2>
       <div class="row-actions padmenu" style="flex-wrap:wrap">${items.map(([id, t]) => `<button class="btn ghost" id="${id}">${t}</button>`).join('')}<button class="btn" id="oBack">Back</button></div>
-      <div class="hint pad-hint" style="margin-top:12px;opacity:.7">🎮 D-pad to choose · A change · B back${this.workout && !this.wDone ? '<br>While riding the workout: 🎮 D-pad up / down or L / R: target ±1 W · L2 / R2: ±5 W · keys W / S ±5 W (Shift 1 W), arrows ±1 W with a trainer · − / + on the bar<br>Hard intervals and easy parts keep their own offset' : ''}</div>`;
+      <div class="hint pad-hint" style="margin-top:12px;opacity:.7">🎮 D-pad to choose · A change · B back${this.workout && !this.wDone ? '<br>While riding the workout: 🎮 L / R or D-pad up / down: target ±5 W · L2 / R2: ±1 W · keys W / S ±5 W (Shift 1 W), arrows ±1 W with a trainer · − / + on the bar<br>Hard intervals and easy parts keep their own offset' : ''}</div>`;
     items.forEach(([id, , fn], i) => o.querySelector('#' + id).onclick = () => { fn(); setTimeout(() => { this._options(); this._padFocus(i); }, 60); });
     o.querySelector('#oBack').onclick = () => this._pause();
     this._padFocus(0);
+  }
+  /** D-pad in the pause menus goes where it points (the finder of the app menus, js/padnav.js); nothing in that direction:
+   *  ← ↑ step back, → ↓ step on, so every button stays reachable in a single row or column */
+  _padMove(dir) {
+    const bs = [...(this.q('#pauseOverlay')?.querySelectorAll('.padmenu button') || [])]; if (!bs.length) return;
+    const rc = bs.map(b => { const r = b.getBoundingClientRect(); return { left: r.left, top: r.top, right: r.right, bottom: r.bottom }; });
+    const i = this._padI || 0, n = pickInDir(rc[i], rc, dir);
+    this._padFocus(n >= 0 ? n : i + (dir === 'up' || dir === 'left' ? -1 : 1));
   }
   _padFocus(i) { // highlight one menu button for controller navigation
     const bs = [...(this.q('#pauseOverlay')?.querySelectorAll('.padmenu button') || [])]; if (!bs.length) return;
     this._padI = (i + bs.length) % bs.length;
     bs.forEach((b, k) => { b.style.outline = k === this._padI ? '3px solid var(--accent, #ff5a1f)' : ''; b.style.outlineOffset = '3px'; });
-    bs[this._padI].focus?.({ preventScroll: true });
+    bs[this._padI].focus?.({ preventScroll: true }); bs[this._padI].scrollIntoView?.({ block: 'nearest' }); // long menus (ride setup) scroll along
+  }
+  /** workout, mode (ERG / gradient / just ride) and shifting, chosen in the ride: js/ridesetup.js, in the pause overlay */
+  _setup() {
+    if (this.finished || this._atGoal) return; if (!this.paused) this._pause();
+    import('./ridesetup.js').then(m => { if (this.paused && !this.finished) m.openSetup(this); }).catch(e => this._flash('Setup failed: ' + (e.message || e)));
   }
   _resume() { if (this._atGoal) return this._again(); this.music?.resume(); this.paused = false; this.q('#pauseOverlay')?.remove(); this.last = performance.now(); }
 
   /** pause menu "Gruppe öffnen" (Freddy 15.11.): this solo ride becomes a group ride, friends join with the code and start next to you */
   async _openGroup() {
     const box = this.q('#pauseOverlay .box'); if (box) box.innerHTML = '<div class="label">Group</div><h2 class="display">Opening …</h2>';
-    let g; try { g = await (await import('./share.js')).hostFromRide(this.route.id); }
+    let g; try { g = await this._hostGroup(); }
     catch (e) { this._flash('Group failed: ' + (e.message || e)); return this._pause(); }
-    this.group = g; this.laps = Math.max(this.laps, this.lap); // from now on a group ride: everyone rides the same d (no more planned extra laps)
-    const right = this.q('.hud-right'), gear = this.q('#hGearChip');
-    if (right && !this.q('#hGroup')) { gear.insertAdjacentHTML('beforebegin', `<div class="chip glass groupchip" id="hGroup"><div class="label">Group <button class="gcode" id="hGCode" title="Code for friends: click to copy the invite link">${esc(g.code)}</button></div><div class="glist">waiting …</div></div>`);
-      this.q('#hMusic')?.insertAdjacentHTML('beforebegin', `<button class="chip glass camchip voicechip" id="hVoice" title="Voice chat on: you hear each other"><div class="label">Voice</div><div class="v">${MIC_SVG}</div></button>`);
-      this._wireVoice(); this._wireGroupChip(); }
     if (box) { box.innerHTML = `<div class="label">Group open</div><h2 class="display" style="letter-spacing:.12em">${esc(g.code)}</h2>
       <p style="margin:6px 0 14px;opacity:.85">Friends tap “Ride together” in RIDEFRAME and enter the code, or open the link. They start right next to you.</p>
       <div class="row-actions padmenu"><button class="btn" id="pgOn">Ride on</button><button class="btn ghost" id="pgLink">Copy link</button></div>`;
       box.querySelector('#pgOn').onclick = () => this._resume();
       box.querySelector('#pgLink').onclick = e => navigator.clipboard?.writeText(g.link).then(() => { e.target.textContent = 'Link copied ✓'; }, () => { e.target.textContent = g.link; });
       this._padFocus(0); }
+  }
+  /** the solo ride becomes a group ride (hostFromRide), the ride itself goes on: from the pause menu and, without pausing,
+   *  in the background when a friend taps Join in "Riding now" (js/live.js). Two requests at once open one group. */
+  _hostGroup() {
+    if (this.group?.open) return Promise.resolve(this.group);
+    return this._hosting ||= (async () => {
+      const g = await (await import('./share.js')).hostFromRide(this.route.id);
+      if (this._closed) return g;
+      this.group = g; this.laps = Math.max(this.laps, this.lap); // from now on a group ride: everyone rides the same d (no more planned extra laps)
+      const right = this.q('.hud-right'), gear = this.q('#hGearChip');
+      if (right && !this.q('#hGroup')) { gear.insertAdjacentHTML('beforebegin', `<div class="chip glass groupchip" id="hGroup"><div class="label">Group <button class="gcode" id="hGCode" title="Code for friends: click to copy the invite link">${esc(g.code)}</button></div><div class="glist">waiting …</div></div>`);
+        this._wireVoice(); this._wireGroupChip(); }
+      this.presence?.beat(); // the code goes to "Riding now" right away
+      return g;
+    })().finally(() => { this._hosting = null; });
+  }
+  /** "Riding now" (js/live.js): signed-in riders show up for their friends while they ride; never in the autopilot / screenshot ride */
+  _startPresence() {
+    if (this.autopilot || this.presence) return;
+    import('./live.js').then(m => { if (this._closed || this.finished) return;
+      this.presence = new m.Presence({ info: () => ({ routeId: this.route.id, routeName: this.route.name, d: this.d, len: this.track.length, code: this.group?.open ? this.group.code : null }),
+        alive: () => !this._closed && !this.finished && this.state.settings.liveShow !== false, onRequest: r => this._joinRequest(r) });
+      if (!this.presence.start()) this.presence = null; }).catch(() => {});
+  }
+  /** a friend tapped Join: with "Friends can join me without asking" (default) the group opens in the background, else a small
+   *  question in the HUD (Accept / Not now, pad A / B). One question at a time; the friend waits at most 45 s. */
+  _joinRequest(r) {
+    this._askQ = (this._askQ || Promise.resolve()).then(async () => {
+      const p = this.presence; if (!p) return;
+      if (this.finished || this._closed) return p.answer(r.id, false);
+      if (!r.auto && !(await this._askJoin(r.from))) return p.answer(r.id, false);
+      try { await this._hostGroup(); } catch (e) { this._flash('Group failed: ' + (e.message || e), 3000); return p.answer(r.id, false); }
+      p.answer(r.id, true); this._flash(`${r.from} is joining you`, 3500);
+    }).catch(() => {});
+  }
+  _askJoin(name) {
+    return new Promise(done => {
+      const c = document.createElement('div'); c.className = 'joinask glass'; c.id = 'hJoinAsk';
+      c.innerHTML = `<div class="label">Riding now</div><div class="jqt"><b>${esc(name)}</b> wants to join you</div>
+        <div class="jqbtns"><button class="btn small" id="jqYes">Accept</button><button class="btn ghost small" id="jqNo">Not now</button></div><div class="jqpad">🎮 A accept · B not now</div>`;
+      this.el.append(c);
+      const answer = ok => { if (!this._ask) return; this._ask = null; clearTimeout(t); c.classList.add('out'); setTimeout(() => c.remove(), 250); done(ok); };
+      const t = setTimeout(() => answer(false), 40e3); // the friend gives up after 45 s anyway
+      this._ask = { answer };
+      c.querySelector('#jqYes').onclick = () => answer(true); c.querySelector('#jqNo').onclick = () => answer(false);
+    });
+  }
+  /** pause menu "Invite friends" (owner 17.11. (2)): the friends online right now (green dot), one button each (pad: D-pad + A);
+   *  the group opens by itself if this is still a solo ride, the friend sees "Max invites you to ride · Join" */
+  async _inviteMenu() {
+    const box = this.q('#pauseOverlay .box'); if (!box) return;
+    box.innerHTML = '<div class="label">Invite friends</div><h2 class="display">Online now</h2><p class="dim">Loading …</p>';
+    const live = await import('./live.js'), F = await live.friendsNow(); if (!box.isConnected) return;
+    const inGroup = new Set((this.group?.others() || []).map(r => r.name)), fs = (F?.friends || []).filter(f => f.state !== 'offline' && !inGroup.has(f.name));
+    box.innerHTML = `<div class="label">Invite friends</div><h2 class="display">Online now</h2>
+      ${fs.length ? '<p style="margin:6px 0 4px;opacity:.85">They see your invite on their library or phone and start right next to you.</p>' : '<p style="margin:6px 0 4px;opacity:.85">Nobody else is online right now. Friends with a green dot show up here.</p>'}
+      <div class="row-actions padmenu invlist">${fs.map((f, i) => `<button class="btn ghost" data-fi="${i}"><i class="frdot ${f.state}"></i>Invite ${esc(f.name)}${f.state === 'riding' ? ' · riding' : ''}</button>`).join('')}<button class="btn" id="invBack">Back</button></div>
+      <div class="hint pad-hint" style="margin-top:12px;opacity:.7">🎮 D-pad to choose · A invite · B back</div>`;
+    box.querySelector('#invBack').onclick = () => this._pause();
+    box.querySelectorAll('[data-fi]').forEach(b => b.onclick = async () => {
+      const f = fs[+b.dataset.fi]; if (!f || b.disabled) return; b.disabled = true; b.textContent = `Inviting ${f.name} …`;
+      try { await this._hostGroup(); await this.presence?.beat();
+        try { await live.inviteFriend(f.key); } catch (e) { if (e.status !== 409) throw e; await new Promise(r => setTimeout(r, 700)); await this.presence?.beat(); await live.inviteFriend(f.key); }
+        b.textContent = `${f.name} invited ✓`; }
+      catch (e) { b.disabled = false; b.textContent = `Invite ${f.name} · ${e.message || 'failed'}`; }
+    });
+    this._padFocus(0);
   }
   /** the group chip: the code copies the link, a click on a rider jumps to him */
   _wireGroupChip() {
@@ -1212,14 +1345,14 @@ export class RideSession {
   }
   /** the hard parts with time and average watts (Freddy 12.11.: into the Strava description): workout intervals, else the climbs */
   _intervals() {
-    const out = this._wDef ? intervalRecords({ workout: this._wDef, samples: this.samples, elapsed: this.elapsed, ftp: this.ftp, stepAdj: this._stepAdj, kg: this.state.settings.riderKg })
+    const out = this._wDef ? intervalRecords({ workout: this._wDef, t0: this._wT0 || 0, samples: this.samples, elapsed: this.elapsed, ftp: this.ftp, stepAdj: this._stepAdj, kg: this.state.settings.riderKg })
       : this.segDone.filter(s => s.kind === 'climb').map(s => ({ name: s.name, t: Math.round(s.t), w: s.w })); // ivhistory.js: ridden avg / max W, HR, cadence; the plan only as context
     return out.length ? out : undefined;
   }
   /** lap marks for the Strava file: climbs and route laps, plus start and end of every hard workout interval */
   _marks() {
     const m = [...(this.lapMarks || [])], w = this._wDef;
-    if (w) { let s = 0; for (const st of w.steps) { if (st.pct >= 88 && s < this.elapsed) m.push(Math.round(s), Math.round(Math.min(s + st.dur, this.elapsed))); s += st.dur; } }
+    if (w) { let s = this._wT0 || 0; for (const st of w.steps) { if (st.pct >= 88 && s < this.elapsed) m.push(Math.round(s), Math.round(Math.min(s + st.dur, this.elapsed))); s += st.dur; } }
     return m.length ? m : undefined;
   }
   _ridden() { return this.lapOff + this.d - this._lapBase; } // metres ridden in this session, over all laps
@@ -1254,6 +1387,7 @@ export class RideSession {
   }
 
   _summary(rec, prev, note) {
+    this.presence?.stop(); this._ask?.answer(false); // the ride is over: off the "Riding now" list
     const pb = prev && (!prev.length || rec.duration < prev[0].duration);
     const rank = prev ? prev.filter(r => r.duration < rec.duration).length + 1 : 0;
     const delta = prev?.length ? rec.duration - prev[0].duration : 0;
@@ -1316,7 +1450,7 @@ export class RideSession {
   }
 
   _close(saved) {
-    this._closed = true; this.pose?.stop(); this._clickOff?.();
+    this._closed = true; this.pose?.stop(); this._clickOff?.(); this.presence?.stop(); this._ask?.answer(false);
     this.running = false; this.ue?.close(); this.state.trainer.setPower?.(null); this.music?.destroy();
     if (this.group?.voice) { this.group.voice.stop(); this.group.voice = null; } // ride over: microphone off, indicator off
     if (this._voiceUI) window.removeEventListener('rf-voicechange', this._voiceUI);

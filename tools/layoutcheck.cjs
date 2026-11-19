@@ -47,7 +47,27 @@ const routeRide = (a1, off = 0, name = 'Lofoten Küste über Reine und Hamnøy z
   await p.waitForTimeout(400);
   await p.evaluate(async () => { const { db } = await import('/js/db.js'); const st = (await db.kvGet('settings')) || {}; if (st.outdoor) delete st.outdoor.route; await db.kvSet('settings', st); });
 };
+// "Riding now" and the friends with a green dot (js/live.js): riding / online / offline friends with long names, an invite (answers of /api/live/* faked)
+const liveFake = (sel = '.live.on .lvcard', act = null) => async p => {
+  const now = Date.now(), ride = (id, routeId, routeName, d, len, mins, code) => ({ id, routeId, routeName, d, len, since: now - mins * 60e3, group: !!code, code, ask: false });
+  const riders = [{ name: 'Konstantin Langenberg', ...ride('a1b2c3d4e5f6', 'coast', 'Lofoten Küste über Reine und Hamnøy zurück mit langem Namen', 12400, 37000, 83, null) }, { name: 'Maximilian Oberhuber', ...ride('f6e5d4c3b2a1', 'demo', 'Passo Demo', 812, 12400, 4, 'kq7mz') }];
+  const friends = [...riders.map(({ name, ...r }) => ({ key: name.toLowerCase(), name, look: null, state: 'riding', lastSeen: now, ride: r })),
+    ...['Anna-Lena Wiesenthal', 'Bo'].map(name => ({ key: name.toLowerCase(), name, look: null, state: 'online', lastSeen: now, ride: null })),
+    ...['Bartholomäus Kirchberger', 'Dora', 'Christophorus Wendelin', 'Eva', 'Friedrich der Große XIV', 'Gustav', 'Henrietta Adalbertine', 'Ida', 'Jo'].map((name, i) => ({ key: name.toLowerCase(), name, look: null, state: 'offline', lastSeen: i === 1 ? null : now - (i + 1) * 97 * 60e3, ride: null }))];
+  const invites = [{ id: '0a1b2c3d4e5f', from: 'Maximilian Oberhuber', code: 'kq7mz', routeId: 'coast', routeName: 'Lofoten Küste über Reine und Hamnøy zurück mit langem Namen', at: now }];
+  const answer = u => /prefs$/.test(u) ? { show: true, auto: true } : /friends$/.test(u) ? { friends, invites, now, every: 30 } : /online$/.test(u) ? { ok: true, every: 30, invites } : { riders: riders.map(({ name, ...r }) => ({ name, look: null, me: false, canJoin: true, ...r })), now, every: 20 };
+  await p.route('**/api/account/**', r => r.fulfill({ status: 200, contentType: 'application/json', body: '{}' })); // signed in (the fake login stays)
+  await p.route(/\/api\/live(\/[a-z]+)?$/, r => r.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(answer(r.request().url())) }));
+  await p.route(/\/api\/account\/kraft/, r => r.fulfill({ status: 200, contentType: 'application/json', body: '{"ids":[]}' })); // the strength sync must not sign the fake login out
+  await p.evaluate(n => localStorage.setItem('rf_account', JSON.stringify({ token: 'x', name: n })), NAME); // the first load (unfaked) signed the fake login out
+  await p.reload(); await p.waitForSelector(sel, { timeout: 15000 }); await p.waitForTimeout(600);
+  if (act) { await p.evaluate(s => document.querySelector(s).click(), act); await p.waitForTimeout(500); } // the strip redraws with the beat; a plain click is enough here
+};
 const SCREENS = [
+  ['handy-fahren-gerade', '/handy.html', liveFake()],
+  ['app-strecken-live-handy', '/?desktop&noprofile', liveFake()],
+  ['handy-freunde', '/handy.html', liveFake('#hFriends', '#hFriends')],
+  ['app-freunde-handy', '/?desktop&noprofile', liveFake('#frAll', '#frAll')],
   ['handy', '/handy.html', null],
   ['handy-login', '/handy.html', async p => { await p.evaluate(() => localStorage.removeItem('rf_account')); await p.reload(); await p.waitForTimeout(500); await p.click('#hAcc'); }],
   ['handy-registrieren', '/handy.html', async p => { await p.evaluate(() => localStorage.removeItem('rf_account')); await p.reload(); await p.waitForTimeout(500); await p.click('#hAcc'); await p.click('#aSwitch'); }],
@@ -136,12 +156,26 @@ const SCREENS = [
   ['profil', '/profil.html', null],
   ['remote', '/remote.html', null], // phone remote (js/remote.js): the code screen
   ['profil-daten', '/profil.html', p => p.click('#fSet')],
+  // personal workouts (js/myworkouts-ui.js): the profile section with a long name, its editor, the route page editor on the phone
+  ['profil-workouts', '/profil.html', async p => { await p.evaluate(() => localStorage.setItem('rf_myworkouts', JSON.stringify([{ id: 'pw_layout1', name: 'Schwelle lang über den Pass mit Freddy x', base: 'thr2x20', routeId: 'fluss', routeName: 'River Valley mit sehr langem Namen', updated: 1,
+    steps: [{ min: 10, pct: 55, label: 'Einfahren lang benannt' }, ...Array.from({ length: 6 }, (_, i) => ({ min: 7.5, pct: i % 2 ? 55 : 104, label: i % 2 ? 'Pause' : 'Schwelle ' + (i / 2 + 1) })), { min: 0.25, pct: 200, label: 'Sprint', free: true }] }]))); await p.reload(); await p.waitForSelector('.mwitem'); await p.locator('#mwProf').scrollIntoViewIfNeeded(); await p.fill('#mwB20', '312'); }],
+  ['profil-workout-editor', '/profil.html', async p => { await p.evaluate(() => localStorage.setItem('rf_myworkouts', JSON.stringify([{ id: 'pw_layout1', name: 'Schwelle lang über den Pass mit Freddy x', base: null, routeId: 'fluss', routeName: 'River Valley mit sehr langem Namen', updated: 1,
+    steps: [{ min: 10, pct: 55, label: 'Einfahren lang benannt' }, { min: 117.75, pct: 104, label: 'Schwelle über alles' }, { min: 0.25, pct: 200, label: 'Sprint', free: true }] }]))); await p.reload(); await p.waitForSelector('[data-ed]'); await p.click('[data-ed]'); await p.waitForSelector('.mwbox'); }],
 ];
 const DESK = [ // the main app with its top bar (account pill, tabs) on tablet, laptop and TV widths
   ['app-strecken', '/?desktop&noprofile', null],
+  ['app-strecken-live', '/?desktop&noprofile', liveFake()],
+  ['app-freunde', '/?desktop&noprofile', liveFake('#frAll', '#frAll')],
+  ['app-strecke-live', '/?desktop&noprofile&view=detail&id=coast', liveFake('.livehint')],
   ['app-training', '/?desktop&noprofile&view=training', null],
   ['app-fahrten', '/?desktop&noprofile&view=history', null],
   ['app-einstellungen', '/?desktop&noprofile&view=settings', null],
+  ['app-strecke-workout', '/?desktop&noprofile&view=detail&id=fluss', async p => { await p.selectOption('#workSel', 'z2_90'); await p.locator('#wCustom').scrollIntoViewIfNeeded(); }],
+  // does the workout fit the route (js/routefit.js): the "too short" line with its buttons, and the library marks
+  ['app-strecke-zukurz', '/?desktop&noprofile&demo&view=detail&id=demo', async p => { await p.selectOption('#lapSel', '1'); await p.selectOption('#workSel', 'z2_90'); await p.waitForSelector('#mwFitLine'); await p.locator('#mwFitLine').scrollIntoViewIfNeeded(); }],
+  ['app-strecken-zukurz', '/?desktop&noprofile&demo&view=detail&id=demo', async p => { await p.selectOption('#lapSel', '1'); await p.selectOption('#workSel', 'z2_90'); await p.evaluate(() => document.querySelectorAll('.modal').forEach(m => m.remove())); await p.click('#back'); await p.waitForSelector('.card .fitshort'); }],
+  ['app-workout-editor', '/?desktop&noprofile&view=detail&id=fluss', async p => { await p.evaluate(() => document.querySelectorAll('.modal').forEach(m => m.remove())); // the faked login asks for an email first
+    await p.selectOption('#workSel', 'over_under'); await p.click('#wCustom'); await p.waitForSelector('.mwbox'); }],
 ];
 // Safari on the iPhone sets capitals with letter-spacing a little wider than Chrome: the second pass widens every
 // letter by 0.03 em, so text that only just fits in Chrome is reported too

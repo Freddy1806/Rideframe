@@ -55,6 +55,7 @@ function render() {
       ${row('Max HR', P.hrMax ? `${P.hrMax}` : '–', S.hrMax ? 'entered' : P.hrMax ? 'highest measured' : 'no HR strap yet')}
       <p class="hint">Estimates from your own data, not a lab test. The more hard sessions, the more accurate.</p></section>
 
+    <div id="mwProf"></div>
     <a class="hrow hlink slink" href="statistik.html" style="--mc:var(--accent);--mcl:var(--accent)">${icon('chart', 'rico')}<div><b>Bests, totals, weeks</b><small>All your numbers on the Stats page</small></div><i>›</i></a>
     <div class="pfoot col" style="margin-top:8px"><button class="btn ghost" id="fExport">Export all my data</button></div>`;
   $('#fPic').onclick = () => $('#fFile').click();
@@ -62,6 +63,7 @@ function render() {
   $('#fSet').onclick = dataSheet;
   const fb = $('#fFtp'); if (fb) fb.onclick = async () => { await save({ ftp: P.ftpEst.w }); render(); };
   $('#fExport').onclick = exportAll;
+  import('./myworkouts-ui.js').then(m => m.profileSection($('#mwProf'), { ftp: () => S.ftp, setFtp: async v => { await save({ ftp: v }); render(); } })).catch(() => {}); // personal workouts + FTP (js/myworkouts-ui.js)
 }
 /** fitness (line) and form (bars up/down) of the last 90 days */
 function pmChart(pm) {

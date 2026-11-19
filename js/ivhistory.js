@@ -31,9 +31,9 @@ export function kindOf(step, workout) {
 
 const mean = a => a.length ? a.reduce((x, y) => x + y, 0) / a.length : 0;
 /** the interval records of one ride. o: { workout, samples, elapsed, ftp, stepAdj: [[W·s, s] per step], kg } */
-export function intervalRecords({ workout, samples = [], elapsed = Infinity, ftp = 0, stepAdj = [], kg = 0 }) {
+export function intervalRecords({ workout, samples = [], elapsed = Infinity, ftp = 0, stepAdj = [], kg = 0, t0 = 0 }) { // t0: the ride second the workout started (chosen mid-ride)
   const out = []; if (!workout?.steps) return out;
-  let s = 0, n = 0;
+  let s = t0, n = 0;
   workout.steps.forEach((st, k) => {
     const a = s, b = Math.min(s + st.dur, elapsed); s += st.dur;
     if (st.pct < HARD_PCT || b - a < 5) return;

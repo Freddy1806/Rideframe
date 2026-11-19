@@ -10,6 +10,7 @@ import { stravaExport } from './tcx.js';
 import { applyTheme, icon } from './theme.js';
 import { gearSet, gearName, parseGear, parseRings, shiftGrade, CASSETTES, COG_TEETH } from './gears.js';
 import { click } from './zwiftclick.js';
+import { padButtons } from './controller.js';
 
 const $ = (s, r = document) => r.querySelector(s);
 const params = new URLSearchParams(location.search), DEMO = params.has('demo');
@@ -27,6 +28,7 @@ async function loadSettings() {
   if (saved) Object.assign(S, saved);
   Object.assign(P, S.pure || {});
   setMyWorkouts(S.myWorkouts); G = gearSet(S);
+  await import('./myworkouts-store.js').then(m => m.loadPersonal()).catch(() => {}); // personal workouts selectable here too (js/myworkouts-store.js)
   applyTheme(S, 'trainer');
 }
 async function saveSettings() {
@@ -108,7 +110,7 @@ function simGrade() {
 function shift(d, src) {
   if (P.mode === 'work') return tune(d * 5); // in a workout + / − (keys, Zwift Click) move the interval watts
   if (P.mode !== 'grade') return flash(`${P.mode === 'erg' ? 'ERG' : 'The workout'} holds the watts. Gears work in Grade mode.`, 2500);
-  if (!VG()) { if (src !== 'click') return flash('Virtual gears are off. Turn them on in Settings.', 2500); S.shiftMode = 'virtual'; saveSettings(); render(); }
+  if (!VG()) { S.shiftMode = 'virtual'; saveSettings(); render(); flash('Virtual gears on', 1500); } // the first shift from anywhere (screen, keys, pad, Click) switches them on
   G.gi = Math.max(0, Math.min(G.gears.length - 1, G.gi + d)); paintGear();
   if (trainer.connected) trainer.setGrade(simGrade(), true);
 }
@@ -180,8 +182,8 @@ window.addEventListener('beforeunload', e => { if (R.samples.length && R.state !
 
 function control() {
   if (P.mode === 'erg') return `<div class="pctl"><button data-d="-25">−25</button><button data-d="-5">−5</button><button class="pval" id="pSet"><b>${P.erg}</b><small>W</small></button><button data-d="5">+5</button><button data-d="25">+25</button></div>`;
-  if (P.mode === 'grade') return `<div class="pctl${VG() ? ' tight' : ''}"><button data-d="-1">−1</button><button data-d="-0.5">−½</button><button class="pval" id="pSet"><b>${fmtNum(P.grade, 1)}</b><small>%</small></button><button data-d="0.5">+½</button><button data-d="1">+1</button></div>
-    ${VG() ? `<div class="pgears"><button data-sh="-1" aria-label="Easier gear">−</button><div class="pgv" id="pGear"><b>${gearName(G.gears[G.gi])}</b><small>Gear ${G.gi + 1}/${G.gears.length}</small></div><button data-sh="1" aria-label="Harder gear">+</button></div>` : ''}`;
+  if (P.mode === 'grade') return `<div class="pctl tight"><button data-d="-1">−1</button><button data-d="-0.5">−½</button><button class="pval" id="pSet"><b>${fmtNum(P.grade, 1)}</b><small>%</small></button><button data-d="0.5">+½</button><button data-d="1">+1</button></div>
+    ${`<div class="pgears"><button data-sh="-1" aria-label="Easier gear">−</button><div class="pgv" id="pGear"><b>${gearName(G.gears[G.gi])}</b><small>Gear ${G.gi + 1}/${G.gears.length}</small></div><button data-sh="1" aria-label="Harder gear">+</button></div>`}`;
   const w = work();
   return `<div class="pwork"><select id="pWork">${allWorkouts().map(x => `<option value="${x.id}" ${x.id === P.workout ? 'selected' : ''}>${x.mine ? '★ ' : ''}${esc(x.name)} · ${Math.round(workoutDuration(x) / 60)} min</option>`).join('')}</select>
     <div class="pctl small"><button data-i="-5" aria-label="Intensity −5 %">−5 %</button><span class="pint" id="pInt"><small>Intensity</small><b>${R.intensity} %</b></span><button data-i="5" aria-label="Intensity +5 %">+5 %</button></div>
@@ -443,5 +445,24 @@ if (draft?.samples?.length && Date.now() - draft.savedAt < 12 * 3600e3) {
   $('#rGo', s).onclick = () => { const { savedAt, ...r } = draft; Object.assign(R, r, { state: 'pause' }); s.remove(); start(); };
   $('#rDrop', s).onclick = () => { dropDraft(); s.remove(); };
 } else { if (draft) dropDraft(); if (DEMO && params.has('run')) start(); if (location.hash === '#sensors') sensorsSheet(); } // handy.html settings → Devices
+// ---------------- gamepad (owner 18.11.: the pad must work here too, like in the 3D ride) ----------------
+// L / R and D-pad ↑ ↓: ERG ±5 W, Grade: L / R shift, D-pad ±0.5 %, workout target ±1 W · L2 / R2: ±25 W, ±1 %, ±5 W
+// A or Start: start / pause · B: lap · Select: next mode (ERG, Grade, Workout). Pair the pad in the computer's Bluetooth settings.
+let padWas = [], padSeen = false;
+function padTick() {
+  requestAnimationFrame(padTick);
+  const pad = navigator.getGamepads?.().find(Boolean); if (!pad) { padWas = []; return; }
+  const now = padButtons(pad).map(Boolean), was = padWas, hit = i => now[i] && !was[i]; padWas = now;
+  if (!was.length || $('.psheet') || !now.some((v, i) => v && !was[i])) return;
+  if (!padSeen) { padSeen = true; flash('Controller ready', 1500); }
+  const d = k => el.querySelector(`[data-d="${k}"]`)?.click(), up = hit(5) || hit(12), dn = hit(4) || hit(13), big = hit(7) ? 1 : hit(6) ? -1 : 0;
+  if (hit(0) || hit(9) || hit(16)) R.state === 'run' ? pause() : R.state !== 'done' && start();
+  else if (hit(1)) { if (R.state === 'run') lap(); }
+  else if (hit(8)) setMode({ erg: 'grade', grade: 'work', work: 'erg' }[P.mode] || 'erg');
+  else if (P.mode === 'work') { if (up || dn) tune(up ? 1 : -1); else if (big) tune(big * 5); }
+  else if (P.mode === 'erg') { if (up || dn) d(up ? 5 : -5); else if (big) d(big * 25); }
+  else if (P.mode === 'grade') { if (hit(4) || hit(5)) shift(hit(5) ? 1 : -1); else if (up || dn) d(up ? 0.5 : -0.5); else if (big) d(big); }
+}
+if (navigator.getGamepads) requestAnimationFrame(padTick);
 clickResume();
 if ('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js').catch(() => {});

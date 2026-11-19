@@ -147,20 +147,20 @@ function fakePad() { // a standard-mapping gamepad; window.__pad.press(i) holds 
 
     // ---- the controller: D-pad ↑ / ↓ tune the watts in a workout, L/R still shift ----
     await p.evaluate(() => { window.__pad.on = true; }); await p.waitForTimeout(200);
-    ok(/D-pad ↑↓ \/ L R: target ±1 W, L2 R2: ±5 W/.test((await H()).flash), 'pad hint on connect: "D-pad ↑↓ / L R: target ±1 W, L2 R2: ±5 W"', (await H()).flash);
+    ok(/Controller ready/.test((await H()).flash), 'pad hint on connect: "Controller ready"', (await H()).flash);
     const gA = (await H()).gi;
     await p.evaluate(() => window.__pad.press(12)); await p.evaluate(() => window.__pad.press(12));
-    const h6 = await H(); ok(h6.a === 17 && h6.gi === gA, 'pad D-pad ↑ twice: +17 W (1 W steps), gear unchanged', JSON.stringify(h6));
+    const h6 = await H(); ok(h6.a === 25 && h6.gi === gA, 'pad D-pad ↑ twice: +25 W (5 W steps), gear unchanged', JSON.stringify(h6));
     await p.evaluate(() => window.__pad.press(13));
-    const h7 = await H(); ok(h7.a === 16 && h7.gi === gA && h7.t === T(16), `pad D-pad ↓: +16 W (${T(16)} W), gear unchanged`, JSON.stringify(h7));
+    const h7 = await H(); ok(h7.a === 20 && h7.gi === gA && h7.t === T(20), `pad D-pad ↓: +20 W (${T(20)} W), gear unchanged`, JSON.stringify(h7));
     await p.evaluate(() => window.__pad.press(5)); await p.evaluate(() => window.__pad.press(4)); await p.evaluate(() => window.__pad.press(5)); const h8 = await H();
-    ok(h8.a === 17 && h8.gi === gA, 'pad R, L, R in a workout: ±1 W each (+17 W), no gear change', JSON.stringify({ gA, gi: h8.gi, a: h8.a }));
-    await p.evaluate(() => window.__pad.press(7)); await p.evaluate(() => window.__pad.press(7)); await p.evaluate(() => window.__pad.press(6)); const h9 = await H();
-    ok(h9.a === 22, 'pad R2 R2 L2: ±5 W each (+22 W)', JSON.stringify(h9));
+    ok(h8.a === 25 && h8.gi === gA, 'pad R, L, R in a workout: ±5 W each (+25 W), no gear change', JSON.stringify({ gA, gi: h8.gi, a: h8.a }));
+    await p.evaluate(() => window.__pad.press(6)); await p.evaluate(() => window.__pad.press(6)); await p.evaluate(() => window.__pad.press(6)); const h9 = await H();
+    ok(h9.a === 22, 'pad L2 three times: −1 W each (+22 W)', JSON.stringify(h9));
 
     await p.evaluate(() => { window.__ride.elapsed = __RS + 30; }); await p.waitForTimeout(250);
-    await p.evaluate(() => window.__pad.press(12));
-    ok(await p.evaluate(() => window.__ride.wAdjE === 10 && window.__ride.wAdj === 22), 'pad D-pad ↑ in the rest: easy parts +10 W, intervals untouched');
+    await p.evaluate(() => window.__pad.press(7));
+    ok(await p.evaluate(() => window.__ride.wAdjE === 10 && window.__ride.wAdj === 22), 'pad R2 in the rest: easy parts +10 W, intervals untouched');
     await p.evaluate(() => { window.__ride.elapsed = __A + 40; }); await p.waitForTimeout(250);
     // ---- back to +10 W and finish: options, saved record and summary ----
     await p.keyboard.press('s'); await p.keyboard.press('s'); await p.keyboard.press('Shift+S'); await p.keyboard.press('Shift+S'); await p.waitForTimeout(1200);
@@ -168,7 +168,7 @@ function fakePad() { // a standard-mapping gamepad; window.__pad.press(i) holds 
     await p.evaluate(() => window.__pad.press(9)); await p.waitForSelector('#pOpts');
     await p.click('#pOpts'); await p.waitForTimeout(200);
     const opt = await p.textContent('#pauseOverlay');
-    ok(/Target \+5 W \(intervals now \+10 W\)/.test(opt) && /Target −5 W/.test(opt) && /D-pad up \/ down or L \/ R: target ±1 W/.test(opt) && /W \/ S/.test(opt) && /Interval display: big/.test(opt), 'pause Options: target items, interval display and the key / pad help', opt);
+    ok(/Target \+5 W \(intervals now \+10 W\)/.test(opt) && /Target −5 W/.test(opt) && /L \/ R or D-pad up \/ down: target ±5 W/.test(opt) && /W \/ S/.test(opt) && /Interval display: big/.test(opt), 'pause Options: target items, interval display and the key / pad help', opt);
     await p.click('#oAdjDn'); await p.waitForTimeout(200); ok((await H()).a === 5, 'Options "Target −5 W" works (in an interval: the intervals)');
     await p.click('#oAdjUp'); await p.waitForTimeout(200); ok((await H()).a === 10, 'Options "Target +5 W" works');
     await p.click('#oBack'); await p.waitForSelector('#pSave'); await p.click('#pSave');
@@ -247,9 +247,15 @@ function fakePad() { // a standard-mapping gamepad; window.__pad.press(i) holds 
       const zs = async pw => { await q2.evaluate(pw => { window.__tp = pw; window.__ride.powerHist = []; }, pw); await q2.waitForTimeout(1500);
         return q2.evaluate(() => ({ st: document.querySelector('#hWState').textContent, cls: document.querySelector('#hWPow').className, zone: document.querySelector('#hWZone').className, p: +document.querySelector('#hWP').textContent })); };
       const zl = await zs(base - 40), zo = await zs(base + 15), zh = await zs(base + 60);
-      ok(/^\d+ W too low$/.test(zl.st) && /z-lo/.test(zl.cls) && /z-lo/.test(zl.zone), `${base - 40} W: "${zl.st}", marked too low`, JSON.stringify(zl));
+      // ERG: the trainer holds the watts, so no red verdict for the rider (owner 18.11.), only a calm "trainer settling", after 12 s "trainer N W off"
+      ok(zl.st === 'trainer settling' && !/z-/.test(zl.cls) && !/z-/.test(zl.zone), `ERG, ${base - 40} W: "${zl.st}", no red verdict`, JSON.stringify(zl));
       ok(zo.st === 'in zone' && !/z-/.test(zo.cls), `${base + 15} W: "in zone"`, JSON.stringify(zo));
-      ok(/^\d+ W too high$/.test(zh.st) && /z-hi/.test(zh.cls), `${base + 60} W: "${zh.st}", marked too high`, JSON.stringify(zh));
+      ok(zh.st === 'trainer settling' && !/z-/.test(zh.cls), `ERG, ${base + 60} W: "${zh.st}", no red verdict`, JSON.stringify(zh));
+      await q2.evaluate(() => { window.__ride._ergOffAt = performance.now() - 13000; }); await q2.waitForTimeout(700);
+      const zo2 = await q2.evaluate(() => ({ st: document.querySelector('#hWState').textContent, cls: document.querySelector('#hWPow').className }));
+      ok(/^trainer \d+ W off$/.test(zo2.st) && !/z-/.test(zo2.cls), `ERG, off for 12 s: "${zo2.st}", still not red`, JSON.stringify(zo2));
+      const ne = await q2.evaluate(async () => { const r = window.__ride, was = r._ergOn; r._ergOn = false; r._workoutHUD(r.power); const o = { st: document.querySelector('#hWState').textContent, cls: document.querySelector('#hWPow').className }; r._ergOn = was; return o; });
+      ok(/^\d+ W too high$/.test(ne.st) && /z-hi/.test(ne.cls), `without ERG the verdict stays: "${ne.st}"`, JSON.stringify(ne));
       await q2.evaluate(() => { window.__tp = 240; });
       await q2.keyboard.press('Shift+ArrowDown'); await q2.waitForTimeout(100);
       ok(await q2.evaluate(() => window.__ride.wAdj === -2 && !window.__ride.keyPower), 'Shift+↓ = −5 W');

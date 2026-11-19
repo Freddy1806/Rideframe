@@ -91,7 +91,7 @@ export class Group {
     if (!m || typeof m !== 'object') return;
     if (m.t === 'hello' || m.t === 'state') {
       const r = this._clean(m.r); if (!r || r.id === this.me.id) return;
-      c._rid ||= r.id; r.seen = performance.now(); this.riders.set(r.id, r);
+      c._rid ||= r.id; r.seen = performance.now(); this.riders.set(r.id, r); if (m.t === 'state' && (r.riding || r.d > 0)) (this._live ||= new Set()).add(r.id); // he is in the ride and sends twice a second
       if (this.host && r.d > 0) this.lastD.set(r.id, r.d);
       if (this.host && m.t === 'hello') { this._relayAll();
         // late joiner or rejoin: the host is already out there, so the newcomer starts at once, at his own last spot or next to the host
@@ -114,6 +114,10 @@ export class Group {
 
   _relayAll() {
     if (!this.host) return;
+    // a rider who left without a clean close (tab closed, Discard, reload under a new id) sends nothing any more: after 10 s he
+    // leaves the list, else everybody keeps seeing a ghost with his last watts; his next state brings him back (hidden tab)
+    const now = performance.now(); let gone = false; for (const [id, r] of this.riders) if (this._live?.has(id) && now - r.seen > 10000) { this.riders.delete(id); this._live.delete(id); gone = true; } // never someone still waiting in the lobby (no states yet)
+    if (gone) this.onChange?.(this);
     const list = [this.me, ...this.riders.values()].map(({ seen, ...r }) => r);
     for (const c of this.conns) if (c.open) c.send({ t: 'all', list });
   }

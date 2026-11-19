@@ -12,7 +12,8 @@ import net from 'node:net';
 
 const free = () => new Promise(r => { const s = net.createServer().listen(0, '127.0.0.1', () => { const p = s.address().port; s.close(() => r(p)); }); });
 const now = () => Math.floor(Date.now() / 1000);
-const fake = { log: [], tokenCalls: [], n: 250, fail429: 0, usage: '5,50', status: 200 };
+const fake = { log: [], tokenCalls: [], n: 250, fail429: 0, usage: '5,50', status: 200, big: false, put: [] };
+const BIG = '9223372036854775807'; // 2^63 - 1: JSON.parse turns it into 9223372036854775808
 const acts = () => [...Array(fake.n)].map((_, i) => ({ id: 5000 + i, name: 'Act ' + i, sport_type: i % 3 ? 'Run' : 'IceSkate', type: 'Run', start_date: new Date((now() - 300 * 86400 + i * 3600) * 1000).toISOString(),
   elapsed_time: 1800, moving_time: 1700, distance: 5000, total_elevation_gain: 10, athlete: { id: 1 }, start_latlng: [52.5, 13.4], map: { id: 'a', summary_polyline: 'abc', polyline: 'full' }, external_id: 'x' + i }));
 let F, srv, base, DATA;
@@ -20,12 +21,20 @@ let F, srv, base, DATA;
 before(async () => {
   F = createServer(async (req, res) => {
     const u = new URL(req.url, 'http://x'), chunks = []; for await (const c of req) chunks.push(c);
+    const raw = (code, t) => { res.writeHead(code, { 'Content-Type': 'application/json' }); res.end(t); };
     const json = (code, o, h = {}) => { res.writeHead(code, { 'Content-Type': 'application/json', ...h }); res.end(JSON.stringify(o)); };
     if (u.pathname === '/oauth/token') {
       const b = JSON.parse(Buffer.concat(chunks).toString() || '{}'); fake.tokenCalls.push({ grant: b.grant_type, refresh: b.refresh_token, code: b.code });
       if (b.grant_type === 'refresh_token') return json(200, { access_token: 'fresh-' + fake.tokenCalls.length, refresh_token: 'r-new', expires_at: now() + 21600 });
+      if (b.code === 'cbig') return raw(200, `{"access_token":"acc-big","refresh_token":"r","expires_at":${now() + 21600},"athlete":{"id":${BIG},"id_str":"${BIG}","firstname":"Big","lastname":"Id"}}`);
       return json(200, { access_token: 'acc-' + b.code, refresh_token: 'r', expires_at: now() + 21600, athlete: { id: 7, firstname: 'Test', lastname: 'Rider' } });
     }
+    // 64-bit ids (Strava, from 1 June 2027): raw JSON text, so the number really arrives too large for a double, next to its id_str
+    if (u.pathname === '/api/v3/athlete/activities' && fake.big) return raw(200, `[{"id":${BIG},"id_str":"${BIG}","name":"Big","sport_type":"Ride","start_date":"${new Date().toISOString()}","elapsed_time":60},{"id":5001,"name":"Old","sport_type":"Ride","start_date":"${new Date().toISOString()}","elapsed_time":60}]`);
+    const up = u.pathname.match(/^\/api\/v3\/uploads\/(\d+)$/);
+    if (up) return raw(200, up[1] === '1' ? `{"id":1,"status":"Your activity is ready.","activity_id":${BIG},"activity_id_str":"${BIG}"}` : `{"id":2,"status":"Your activity is ready.","activity_id":4242}`);
+    if (u.pathname === '/api/v3/activities' && req.method === 'POST') return raw(201, `{"id":${BIG},"id_str":"${BIG}"}`);
+    if (u.pathname.startsWith('/api/v3/activities/') && req.method === 'PUT') { fake.put.push(u.pathname); return json(200, {}); }
     if (u.pathname === '/api/v3/athlete/activities') {
       const q = Object.fromEntries(u.searchParams), auth = req.headers.authorization; fake.log.push({ ...q, auth });
       const h = { 'X-RateLimit-Limit': '100,1000', 'X-RateLimit-Usage': fake.usage };
@@ -70,7 +79,7 @@ test('first import: last 12 months, 100 per page until a short page, only the su
 test('after = the last import: only newer activities', async () => {
   fake.log = []; const cut = Date.parse(acts()[239].start_date) / 1000;
   const j = await (await get('/api/strava/activities?after=' + cut, 'kRead')).json();
-  assert.equal(fake.log[0].after, String(cut)); assert.equal(j.activities.length, 10); assert.equal(j.activities[0].id, 5240); assert.equal(j.done, true);
+  assert.equal(fake.log[0].after, String(cut)); assert.equal(j.activities.length, 10); assert.equal(j.activities[0].id, '5240', 'ids leave the server as strings'); assert.equal(j.done, true);
 });
 
 test('page cap: 10 pages per call, then "next" to go on from', async () => {
@@ -115,6 +124,22 @@ test('connect asks for activity:read_all (and again with force), the callback ke
   assert.equal((await (await get('/api/strava/status', k1)).json()).canImport, true);
   const k2 = await keyAfter('read,activity:write'); assert.ok(k2); // reading unticked: still connected for uploads, the import asks to reconnect
   assert.equal((await (await get('/api/strava/status', k2)).json()).canImport, false);
+});
+
+test('64-bit Strava ids: id_str is used for activities, the athlete, the upload status and new activities; old numeric ids stay strings', async () => {
+  fake.big = true; const j = await (await get('/api/strava/activities', 'kRead')).json(); fake.big = false;
+  assert.deepEqual(j.activities.map(a => a.id), [BIG, '5001']);
+  assert.notEqual(String(JSON.parse(`{"id":${BIG}}`).id), BIG, 'the plain number really loses digits');
+  fake.put = []; const s1 = await (await get('/api/strava/upload/1?indoor=1', 'kRead')).json();
+  assert.equal(s1.activity_id, BIG); assert.equal(s1.activity_id_str, BIG);
+  for (let i = 0; i < 20 && !fake.put.length; i++) await new Promise(r => setTimeout(r, 25));
+  assert.deepEqual(fake.put, ['/api/v3/activities/' + BIG], 'the indoor PUT goes to the exact id');
+  const s2 = await (await get('/api/strava/upload/2', 'kRead')).json(); assert.equal(s2.activity_id, '4242', 'no activity_id_str (today): the number as a string');
+  const a = await (await fetch(base + '/api/strava/activity', { method: 'POST', headers: { 'X-Strava-Key': 'kRead', 'Content-Type': 'application/json' }, body: JSON.stringify({ name: 'x', elapsed_time: 600, start_date_local: '2027-06-02T10:00:00' }) })).json();
+  assert.equal(a.id, BIG);
+  const st = new URL((await get('/api/strava/connect?claim=' + 'b'.repeat(32), '')).headers.get('location')).searchParams.get('state');
+  const h = await (await get(`/api/strava/callback?state=${st}&code=cbig&scope=read,activity:write,activity:read_all`, '')).text(), k = (h.match(/rf_strava_key',"([a-f0-9]+)"/) || [])[1];
+  assert.ok(k); assert.equal((await (await get('/api/strava/status', k)).json()).athlete.id, BIG, 'the athlete id is kept exactly');
 });
 
 test('close to Strava\'s 15-minute limit: stops before running into it (runs last, the limit is kept in memory)', async () => {

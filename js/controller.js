@@ -9,9 +9,9 @@ const CANDIDATES = [
   'a026ee01-0a7d-4ab3-97fa-f1500f9feb8b', 'a026e005-0a7d-4ab3-97fa-f1500f9feb8b',
 ];
 // what each gamepad button does during a ride (standard mapping; same numbers as js/ride.js _pollPad)
-export const PAD_MAP = [['L / R', 'Gear easier / harder · in a workout: target −1 / +1 W'], ['D-pad ↓ / ↑', 'Gear easier / harder · in a workout: target −1 / +1 W'], ['A', 'Accept challenge'], ['B', 'Switch display'],
-  ['X', 'Photo'], ['Y', 'Switch view'], ['L2 / R2', 'Field of view wider / narrower · in a workout: target −5 / +5 W'], ['Select (−)', 'Gear mode: real / virtual / auto / climb watts'],
-  ['Start (+) / Home', 'Pause menu (D-pad to choose, A ok, B back; options in there too)'], ['D-pad ←', 'Music on / off'], ['D-pad →', 'Next song']];
+export const PAD_MAP = [['L / R', 'Gears: easier / harder · ERG (workout or free ride): −5 / +5 W'], ['L2 / R2', 'ERG: −1 / +1 W'], ['D-pad ↓ / ↑', 'The same as L / R'],
+  ['A', 'Accept challenge'], ['B', 'Switch display'], ['X', 'Photo'], ['Y', 'Switch camera'], ['Select (−)', 'Shifting: on the bike / virtual / auto / ERG'],
+  ['Start (+) / Home', 'Pause menu (D-pad to choose, A ok, B back; camera, bars, view, music and voice are in Options)']];
 // the same pad outside the ride, in every menu and window (js/padnav.js)
 export const MENU_MAP = [['D-pad / left stick', 'Move between buttons, lists and fields'], ['A', 'Select (on a list field: A, then ↑ ↓ to change, A to confirm)'],
   ['B', 'Back: closes the window, otherwise one screen back'], ['D-pad ← → on a slider', 'Change the value'], ['L / R', 'Previous / next tab'],
@@ -65,7 +65,7 @@ export function activePad() {
   return { ...v, axes: real.axes, buttons: Array.from({ length: n }, (_, i) => { const on = !!a[i] || !!v.buttons[i]?.pressed; return { pressed: on, touched: on, value: on ? 1 : 0 }; }) };
 }
 const BTN = ['A', 'B', 'X', 'Y', 'L', 'R', 'L2 / ZL', 'R2 / ZR', 'Select (−)', 'Start (+)', 'L3', 'R3', 'D-pad ↑', 'D-pad ↓', 'D-pad ←', 'D-pad →', 'Home'];
-const ACT = ['Accept challenge / menu ok', 'Switch display / back', 'Photo', 'Switch view', 'Gear easier (workout: −1 W)', 'Gear harder (workout: +1 W)', 'Field of view wider (workout: −5 W)', 'Field of view narrower (workout: +5 W)', 'Gear mode', 'Pause menu', '', '', 'Gear harder (workout: +1 W)', 'Gear easier (workout: −1 W)', 'Music on/off', 'Next song', 'Pause menu'];
+const ACT = ['Accept challenge / menu ok', 'Switch display / back', 'Photo', 'Switch camera', 'Gear easier (ERG: −5 W)', 'Gear harder (ERG: +5 W)', 'ERG: −1 W', 'ERG: +1 W', 'Shifting mode', 'Pause menu', '', '', 'Gear harder (ERG: +5 W)', 'Gear easier (ERG: −5 W)', 'Menu left', 'Menu right', 'Pause menu'];
 const hex = dv => [...new Uint8Array(dv.buffer, dv.byteOffset, dv.byteLength)].map(b => b.toString(16).padStart(2, '0')).join(' ');
 
 export function openControllerTest() {

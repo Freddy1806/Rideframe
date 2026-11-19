@@ -74,11 +74,13 @@ const wait = ms => new Promise(r => setTimeout(r, ms));
 
     // settings: Virtual gears off by default, switch persists (same settings object as the 3D ride: shiftMode)
     await p.click('[data-m="grade"]');
-    ok('no gear row while virtual gears are off', !(await p.$('#pGear')));
+    ok('gear row is there in Grade mode even before virtual gears are on (the first shift switches them on)', !!(await p.$('#pGear')));
     await p.click('#pSetBtn');
     ok('settings: Virtual gears off by default', !(await p.isChecked('#sVg')));
     await p.check('#sVg'); await p.selectOption('#sRg', '50x14');
     await p.click('#sOk');
+    // Done saves asynchronously (IndexedDB read + write in js/pure.js saveSettings): wait until the stored settings carry the switch before reloading
+    await p.waitForFunction(async () => { const { db } = await import('/js/db.js'); const s = await db.kvGet('settings'); return s?.shiftMode === 'virtual' && s?.realGear === '50x14'; }, null, { timeout: 10000, polling: 50 });
     ok('gear row shows after switching on', !!(await gear()), JSON.stringify(await gear()));
     await p.reload(); await p.waitForSelector('#pSens');
     const st = await p.evaluate(async () => { const { db } = await import('/js/db.js'); const s = await db.kvGet('settings'); return { shiftMode: s.shiftMode, realGear: s.realGear, mode: s.pure?.mode }; });
