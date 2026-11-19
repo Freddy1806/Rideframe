@@ -1,4 +1,6 @@
 import { trainingView } from './training.js';
+import { markHome } from './util.js';
+markHome('desktop'); // the phone pages' back arrow returns here (js/util.js appHome)
 import { account, accountsAvailable, syncAccount, settingsChanged, accountModal } from './account.js';
 import { db, uid } from './db.js';
 import { readGoProGPS } from './gpmf.js';

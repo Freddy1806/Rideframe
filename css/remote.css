@@ -116,3 +116,19 @@ body.remote { --or: #ff5a1f; --glow: 0 0 22px rgba(255, 90, 31, .45); min-height
 @media (max-width: 359px) { .rrow span:nth-child(3) { grid-column: 1 / -1; flex-direction: row; align-items: baseline; gap: 8px; } } /* "Next" on its own line */
 /* 360-389 px with Safari's wider capitals: "RIDEFRAME REMOTE" stays whole, the header spacing gives a little instead */
 @media (min-width: 360px) and (max-width: 389px) { .rtop { gap: 6px; } .rback { padding-right: 4px; } .rbrand small { margin-left: 6px; letter-spacing: .1em; } .rpill { padding: 0 9px; gap: 6px; } }
+
+/* quick setup (owner 19.11.): the mode switch above the keys, seven commands in a tidy grid */
+.rmode { display: grid; grid-template-columns: repeat(3, 1fr); gap: 0; border: 1px solid var(--line-2); border-radius: 14px; overflow: hidden; background: var(--ink-3); }
+.rm { min-height: 56px; padding: 6px 4px; font-weight: 900 !important; font-stretch: 112% !important; font-size: 12px !important; text-transform: uppercase; letter-spacing: .05em; color: var(--muted); border-right: 1px solid var(--line-2); line-height: 1.15; }
+.rm:last-child { border-right: 0; }
+.rm.sel { background: var(--or); color: var(--ink); }
+.rm:active { background: rgba(255, 90, 31, .35); }
+.rbike { margin: 0; min-height: 72px; display: grid; place-items: center; text-align: center; font-size: 13px; color: var(--muted); border: 1px dashed var(--line-2); border-radius: 14px; padding: 8px 14px; }
+.rcmds { grid-template-columns: repeat(3, 1fr); }
+#rm .rcmds .rc[hidden] { display: none; }
+[hidden].rmode, [hidden].rwatts, [hidden].rgears, [hidden].rbike { display: none; }
+@media (max-height: 700px) { .rm { min-height: 48px; } .rbike { min-height: 56px; } }
+#rm[data-scr="ride"] .rk { height: clamp(84px, 15vh, 132px); } /* the free middle goes to the keys you hit while riding */
+#rm[data-scr="ride"] .rgears .rk { height: clamp(72px, 15vh, 132px); font-size: 17px !important; }
+#rm[data-scr="ride"] .rbike { min-height: clamp(72px, 15vh, 132px); }
+#rm .rcmds { grid-template-columns: repeat(4, 1fr); } #rm .rcmds .rc span { font-size: 10px; letter-spacing: .03em; } /* eight commands: two rows of four */

@@ -124,13 +124,13 @@ export class RideSession {
     this.gi = this.gears.reduce((b, g, i) => Math.abs(Math.log(g.ratio / this.realGear.ratio)) < Math.abs(Math.log(this.gears[b].ratio / this.realGear.ratio)) ? i : b, 0);
     this.gear = this.virtual ? this.gears[this.gi] : null;
     if (at && ghost?.samples?.length) this.elapsed = Math.max(0, (this.ghostTimeAt(this.d) || 0) - 14); // screenshots / resume
-    this._tick = this._tick.bind(this); this._key = this._key.bind(this);
+    this._tick = this._tick.bind(this); this._key = this._key.bind(this); this._remote = this._remote.bind(this);
     if (st.ueBridge || new URLSearchParams(location.search).has('ue')) { this.ue = new UEBridge(route.id, { ...this.track, step: STEP }); this.ue.weather = st.ueWeather || 'auto'; } // Unreal view (beta)
   }
 
   async start() {
     const el = this.el = document.createElement('div'); el.className = 'ride';
-    document.addEventListener('keydown', this._key); // early: watts set with ↑↓ while the world loads are kept
+    document.addEventListener('keydown', this._key); document.addEventListener('rf-remote', this._remote); // early: watts set with ↑↓ while the world loads are kept
     if (this.state.settings.poseCam) import('./posecam.js').then(async m => { if (this._closed) return; // posture by webcam
       this._poseMod = m; this.pose = new m.PoseCam(this.state.settings.poseCalib || null);
       try { await this.pose.start(); if (this._closed) this.pose.stop(); else this._flash?.('Camera: detecting your position'); }
@@ -372,6 +372,7 @@ export class RideSession {
       this._cgTick();
       this._wizTick(dt);
       this._eagleTick(dt);
+      this._mlJ = (this._mlJ || 0) + (this.power || 0) * dt; // work so far, for the manual laps' average watts
       if ((this._moodT = (this._moodT || 0) + dt) > 1) { this._moodT = 0; this._mood(); }
       if (this.berg && !(this.workout && this.erg)) this.state.trainer.setPower(this._bergTarget());
       else this.state.trainer.setGrade(this._trainerGrade());
@@ -434,6 +435,23 @@ export class RideSession {
     if (!url || !this.el) return this._flash('No photo');
     let p = this.q('#hShot'); if (!p) { p = document.createElement('div'); p.id = 'hShot'; p.className = 'shotpop glass'; p.innerHTML = '<img alt=""><small>Photo saved</small>'; this.el.append(p); }
     p.querySelector('img').src = url; p.classList.add('on'); clearTimeout(this._shotT); this._shotT = setTimeout(() => p.classList.remove('on'), 3000);
+  }
+  /** a lap by hand (owner 19.11.: the lap key on the phone remote, "die dann auch mit ausgewertet wird"): time, distance and
+   *  average watts since the last one; a lap mark in the Strava file and a row on the result screen */
+  _manRow() { const m = this._ml || { t: 0, d: 0, j: 0 }, t = this.elapsed - m.t; return { t: Math.round(t), d: Math.round(this._ridden() - m.d), w: t > 0 ? Math.round(((this._mlJ || 0) - m.j) / t) : 0 }; }
+  _manLap() {
+    const r = this._manRow(); if (r.t < 5) return this._flash('Lap too short');
+    (this.manLaps ||= []).push(r); this._ml = { t: this.elapsed, d: this._ridden(), j: this._mlJ || 0 }; this.lapMarks.push(Math.round(this.elapsed));
+    this._flash(`Lap ${this.manLaps.length}: ${fmtTime(r.t)} · ${fmtKm(r.d)} km · ${r.w} W`, 3000);
+  }
+  /** the phone remote's quick setup (owner 19.11.): ERG / shift on the bike / virtual gears with one tap, and a photo */
+  _remote(e) {
+    const n = e.detail?.name; if (!this.running || this.paused || this.finished) return;
+    if (n === 'lap') return this._manLap();
+    if (n === 'photo') { if (this.player?.snapshot && !this._shooting) this._takePhoto().then(url => this._shotPop(url)); return; }
+    if (this.workout && !this.wDone) return this._flash('In a workout the plan sets the mode');
+    if (this.state.trainer.pmOnly) return this._flash('Power meter only: shift on the bike (virtual gears need trainer control)', 2500);
+    if (n === 'mode:erg') { if (!this.berg) this.holdWatts(); } else if (n === 'mode:real' || n === 'mode:virtual') { const m = n.slice(5); if ((this.berg ? 'berg' : this.virtual ? 'virtual' : 'real') !== m) this._setShift(m); }
   }
   _padShift(d) { if (!this.virtual && !this.berg) this.toggleShift(); this.shift(d); }
 
@@ -1261,7 +1279,7 @@ export class RideSession {
     const pw = this.samples.map(s => s[2]);
     return {
       id: uid(), routeId: this.route.id, date: Date.now(), complete,
-      duration: Math.round(this.elapsed), distance: Math.round(this._ridden()), laps: this.laps > 1 ? this._lapRows() : undefined, segs: this.segDone.length ? this.segDone.map(({ id, t, w }) => ({ id, t, w })) : undefined, lapMarks: this._marks(), ivs: this._intervals(), gain: Math.round(this.gainAcc), startD: Math.round(this.startD), workout: this.workout?.name || this._wName || undefined, workoutId: this._wId || undefined, ...this._adjRec(), ...this._ergRec(),
+      duration: Math.round(this.elapsed), distance: Math.round(this._ridden()), laps: this.laps > 1 ? this._lapRows() : undefined, manLaps: this.manLaps?.length ? [...this.manLaps, this._manRow()] : undefined, segs: this.segDone.length ? this.segDone.map(({ id, t, w }) => ({ id, t, w })) : undefined, lapMarks: this._marks(), ivs: this._intervals(), gain: Math.round(this.gainAcc), startD: Math.round(this.startD), workout: this.workout?.name || this._wName || undefined, workoutId: this._wId || undefined, ...this._adjRec(), ...this._ergRec(),
       avgPower: pw.length ? Math.round(pw.reduce((a, b) => a + b, 0) / pw.length) : 0,
       maxPower: Math.max(0, ...pw), best5: bestAvg(pw, 300), best20: bestAvg(pw, 1200),
       samples: this.samples, jumps: this._jumps?.length ? this._jumps : undefined, challenges: this.ch?.stats.offered ? { ...this.ch.stats } : undefined, wizard: this.wiz?.was || (this.wiz?.state === 'hell' ? 'hell' : this.wiz?.state === 'fly' ? 'fly' : undefined),
@@ -1415,6 +1433,7 @@ export class RideSession {
       </div>
       ${this._segSummary()}
       <div id="fIvs"></div>
+      ${rec.manLaps ? `<div class="chsum manlaps" style="text-align:left"><div class="label" style="margin-bottom:6px">Your laps</div>${rec.manLaps.map((l, i) => `<div style="display:grid;grid-template-columns:28px 1fr 1fr 1fr;gap:8px;font-variant-numeric:tabular-nums"><span>${i + 1}</span><span>${fmtTime(l.t)}</span><span>${fmtKm(l.d)} km</span><b>${l.w} W</b></div>`).join('')}</div>` : ''}
       ${rec.erg ? '<div class="chsum">Workout (ERG) · the trainer held the target watts</div>' : ''}
       ${rec.wAdj || rec.wAdjAvg ? `<div class="chsum">Intervals ${fmtAdj(rec.wAdj)}${rec.wAdjAvg !== rec.wAdj ? ` · average ${fmtAdj(rec.wAdjAvg)}` : ''} ${rec.wAdjE ? ` · easy parts ${fmtAdj(rec.wAdjE)}` : ''} · targets tuned live</div>` : rec.wAdjE ? `<div class="chsum">Easy parts ${fmtAdj(rec.wAdjE)} · targets tuned live</div>` : ''}
       ${this._testHTML(rec)}
@@ -1464,7 +1483,7 @@ export class RideSession {
     this.running = false; this.ue?.close(); this.state.trainer.setPower?.(null); this.music?.destroy();
     if (this.group?.voice) { this.group.voice.stop(); this.group.voice = null; } // ride over: microphone off, indicator off
     if (this._voiceUI) window.removeEventListener('rf-voicechange', this._voiceUI);
-    document.removeEventListener('keydown', this._key);
+    document.removeEventListener('keydown', this._key); document.removeEventListener('rf-remote', this._remote);
     this.player.destroy?.();
     this.wake?.release?.();
     if (document.fullscreenElement) document.exitFullscreen?.();

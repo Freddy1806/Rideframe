@@ -2,7 +2,8 @@
 // Freddy 16.11.: one clear menu, every mode its own big card with colour and icon (ride outside, run, indoor trainer,
 // routes & 3D world, strength); the week at a glance; settings for light/dark and colours.
 import { db } from './db.js';
-import { esc, twoWeeks, weekStat } from './util.js';
+import { esc, twoWeeks, weekStat, markHome } from './util.js';
+markHome('handy');
 import { sportOf, isBike } from './fitness.js';
 import { MODES, ACCENTS, icon, applyTheme } from './theme.js';
 import { loadActs, rowHtml, wireRows } from './feed.js';

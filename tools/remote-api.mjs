@@ -30,7 +30,7 @@ export const LIMITS = {
   BUCKET: 40, REFILL: 20, // events a phone may send: a burst of 40, then 20 per second
   STATUS_PER_S: 10, QUEUE: 200, BODY: 600, STATUS_BODY: 2048,
 };
-const CMDS = new Set(['pause', 'music', 'next', 'view', 'hud', 'wbview']);
+const CMDS = new Set(['mode:erg', 'mode:real', 'mode:virtual', 'photo', 'lap', 'pause', 'music', 'next', 'view', 'hud', 'wbview']);
 const sess = new Map(); // id -> session
 const codes = new Map(); // code -> id
 const phones = new Map(); // tok -> { id, last, streams }

@@ -23,6 +23,8 @@ const ICON = {
   next: '<svg viewBox="0 0 24 24"><path d="M5 5v14l10-7z"/><rect x="16" y="5" width="3" height="14" rx="1"/></svg>',
   view: '<svg viewBox="0 0 24 24"><path d="M3 12s3.5-6 9-6 9 6 9 6-3.5 6-9 6-9-6-9-6z" fill="none" stroke="currentColor" stroke-width="2"/><circle cx="12" cy="12" r="3"/></svg>',
   hud: '<svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="16" rx="2" fill="none" stroke="currentColor" stroke-width="2"/><rect x="6" y="13" width="3" height="4"/><rect x="10.5" y="10" width="3" height="7"/><rect x="15" y="7" width="3" height="10"/></svg>',
+  photo: '<svg viewBox="0 0 24 24"><path d="M4 7h3.5l1.5-2h6l1.5 2H20a1 1 0 0 1 1 1v10a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V8a1 1 0 0 1 1-1z" fill="none" stroke="currentColor" stroke-width="2"/><circle cx="12" cy="13" r="3.6"/></svg>',
+  lap: '<svg viewBox="0 0 24 24"><path d="M6 3v18" stroke="currentColor" stroke-width="2.2" fill="none"/><path d="M7 4h11l-3 4 3 4H7z"/></svg>',
   bars: '<svg viewBox="0 0 24 24"><rect x="3" y="14" width="4" height="6"/><rect x="8" y="9" width="4" height="11"/><rect x="13" y="12" width="4" height="8"/><rect x="18" y="6" width="3" height="14"/></svg>',
 };
 const arrow = r => `<svg viewBox="0 0 24 24" style="transform:rotate(${r}deg)"><path d="M12 6l7 9H5z"/></svg>`;
@@ -48,16 +50,21 @@ function shell() {
       <div id="rCtx"></div>
     </div>
     <div class="rride" id="rRide" hidden>
+      <div class="rmode" id="rMode" role="group" aria-label="Mode">
+        <button class="rm" data-cmd="mode:erg" data-m="erg">ERG</button><button class="rm" data-cmd="mode:real" data-m="real">Shift on bike</button><button class="rm" data-cmd="mode:virtual" data-m="virtual">Virtual gears</button></div>
       <div class="rwatts" id="rWatts">
         <button class="rk" data-hold="${B.L}" aria-label="Target minus 5 watts">−5</button><button class="rk" data-hold="${B.L2}" aria-label="Target minus 1 watt">−1</button>
         <button class="rk" data-hold="${B.R2}" aria-label="Target plus 1 watt">+1</button><button class="rk" data-hold="${B.R}" aria-label="Target plus 5 watts">+5</button></div>
       <div class="rgears" id="rGears"><button class="rk" data-hold="${B.L}">Gear easier</button><button class="rk" data-hold="${B.R}">Gear harder</button></div>
+      <p class="rbike" id="rBike">You shift on your bike. The trainer follows the road.</p>
       <div class="rcmds">
         <button class="rc" data-cmd="pause">${ICON.pause}<span>Pause</span></button>
-        <button class="rc" data-cmd="music" id="rMusic">${ICON.music}<span>Music</span></button>
-        <button class="rc" data-cmd="next">${ICON.next}<span>Next song</span></button>
+        <button class="rc" data-cmd="lap">${ICON.lap}<span>Lap</span></button>
+        <button class="rc" data-cmd="photo">${ICON.photo}<span>Photo</span></button>
         <button class="rc" data-cmd="view">${ICON.view}<span>View</span></button>
         <button class="rc" data-cmd="hud">${ICON.hud}<span>Display</span></button>
+        <button class="rc" data-cmd="music" id="rMusic">${ICON.music}<span>Music</span></button>
+        <button class="rc" data-cmd="next">${ICON.next}<span>Next song</span></button>
         <button class="rc" data-cmd="wbview" id="rWb">${ICON.bars}<span>Intervals</span></button>
       </div>
     </div>
@@ -123,7 +130,9 @@ function render() {
   $('#rSrc').textContent = label ? `Connected to ${label}` : 'Connected';
   $('#rRide').hidden = !ride; $('#rNav').hidden = ride;
   $('#rResume').hidden = !paused;
-  $('#rWatts').hidden = !s.wo; $('#rGears').hidden = !!s.wo; $('#rWb').hidden = !s.wo;
+  const mode = s.wo ? 'work' : s.mode || 'real', watts = mode === 'work' || mode === 'erg'; // quick setup (owner 19.11.): the mode with one tap, the keys follow it
+  $('#rMode').hidden = !!s.wo; $('#rMode').querySelectorAll('.rm').forEach(b => { const on = b.dataset.m === mode; b.classList.toggle('sel', on); b.setAttribute('aria-pressed', on); });
+  $('#rWatts').hidden = !watts; $('#rGears').hidden = mode !== 'virtual'; $('#rBike').hidden = mode !== 'real'; $('#rWb').hidden = !s.wo;
   const mu = $('#rMusic'); mu.classList.toggle('off', s.music === false); mu.querySelector('span').textContent = s.music === false ? 'Music off' : 'Music';
   $('#rHint').textContent = paused ? 'D-pad · A ok · B back' : 'D-pad · A select · B back';
   const c = $('#rCtx'), age = Date.now() - stAt;
@@ -133,9 +142,10 @@ function render() {
       <div class="rtgt"><b class="num" id="rTgt">${n0(s.tgt)}</b><small>W target</small>${s.adj && s.adj !== '±0 W' ? `<em>${esc(s.adj)}</em>` : ''}</div>
       <div class="rrow"><span><small>Now</small><b class="num">${n0(s.pow)}<i> W</i></b></span><span><small>Left</small><b class="num">${n0(s.left)}</b></span><span><small>Next</small><b>${esc(s.next || '–')}</b></span></div>`;
   } else if (ride) {
-    c.innerHTML = `<div class="rstep"><b>Riding</b><span>free ride</span></div>
-      <div class="rtgt"><b class="num">${n0(s.pow)}</b><small>W</small></div>
-      <div class="rrow"><span><small>Speed</small><b class="num">${n0(s.spd)}<i> km/h</i></b></span><span><small>Music</small><b>${s.music === false ? 'off' : 'on'}</b></span></div>`;
+    const erg = s.mode === 'erg';
+    c.innerHTML = `<div class="rstep"><b>Riding</b><span>${erg ? 'ERG' : s.mode === 'virtual' ? 'virtual gears' : 'free ride'}</span></div>
+      <div class="rtgt"><b class="num" id="rTgt">${n0(erg ? s.tgt : s.pow)}</b><small>${erg ? 'W target' : 'W'}</small></div>
+      <div class="rrow">${erg ? `<span><small>Now</small><b class="num">${n0(s.pow)}<i> W</i></b></span>` : ''}<span><small>Speed</small><b class="num">${n0(s.spd)}<i> km/h</i></b></span>${s.mode === 'virtual' ? `<span><small>Gear</small><b class="num">${n0(s.gear)}</b></span>` : ''}</div>`;
   } else if (paused) {
     const items = Array.isArray(s.menu) ? s.menu : [];
     c.innerHTML = `<div class="rtitle display">${esc(s.title || 'Pause')}</div>${s.wo ? `<p class="rsub">${esc(s.step)} · ${n0(s.tgt)} W</p>` : ''}

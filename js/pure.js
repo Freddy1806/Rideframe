@@ -2,7 +2,7 @@
 // and read every number big, like a bike computer. Portrait first. Rides land in the same history (routeId 'pure').
 import { Trainer, HeartRate, BT_HELP } from './trainer.js';
 import { db, uid } from './db.js';
-import { fmtTime, fmtNum, esc, bestAvg } from './util.js';
+import { fmtTime, fmtNum, esc, bestAvg, appHome } from './util.js';
 import { allWorkouts, workoutById, workoutAt, workoutDuration, workoutSVG, setMyWorkouts, isHard, tunedTarget, tuneAdj, fmtAdj } from './workouts.js';
 import { defaultParams, step } from './physics.js';
 import { stravaStatus, stravaConnect, stravaUpload } from './stravaup.js';
@@ -197,7 +197,7 @@ function render() {
   const bt = !trainer.connected && !DEMO, bleOk = Trainer.supported();
   el.innerHTML = `
   <header class="ptop">
-    <a class="pback" href="handy.html" title="Back to app">‹</a><div class="pbrand"><b>RIDEFRAME </b><span>Indoor</span></div>
+    <a class="pback" href="${appHome()}" title="Back to app">‹</a><div class="pbrand"><b>RIDEFRAME </b><span>Indoor</span></div>
     <button class="ppill ${trainer.connected || DEMO ? 'on' : ''}" id="pTr"><i></i><span class="pname">${DEMO ? 'Demo' : trainer.connected ? esc(trainer.device?.name || 'Trainer') : 'Trainer'}</span></button>
     <button class="ppill ${sensOn() ? 'on' : ''}" id="pSens"><i></i>Sensors</button>
     <button class="pgear" id="pSetBtn" title="Settings" aria-label="Settings">${icon('gear', 'gico')}</button>
@@ -403,10 +403,10 @@ async function toStrava(btn, rec) {
   } catch (e) { alert(e.message || String(e)); }
 }
 function doneScreen(rec) {
-  el.innerHTML = `<header class="ptop"><a class="pback" href="handy.html">‹</a><div class="pbrand">RIDEFRAME <span>Indoor</span></div></header>
+  el.innerHTML = `<header class="ptop"><a class="pback" href="${appHome()}">‹</a><div class="pbrand">RIDEFRAME <span>Indoor</span></div></header>
     <section class="pdone"><div class="label">Saved</div><h1 class="display">${fmtTime(rec.duration)}</h1>
     <p>${fmtNum(rec.distance / 1000, 1)} km · avg ${rec.avgPower} W · NP ${rec.np} W · ${rec.kj} kJ</p>
-    <div class="pfoot col"><a class="btn" href="./pure.html${location.search}">New ride</a><a class="btn ghost" href="handy.html">Back to app</a></div></section>`;
+    <div class="pfoot col"><a class="btn" href="./pure.html${location.search}">New ride</a><a class="btn ghost" href="${appHome()}">Back to app</a></div></section>`;
 }
 
 // ---------------- data ----------------

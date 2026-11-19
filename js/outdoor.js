@@ -4,7 +4,7 @@
 // Browser limits: the phone screen must stay on (wake lock keeps it on); Bluetooth needs Chrome (Android) or Bluefy (iPhone).
 import { SensorHub, roleText } from './sensors.js';
 import { db, uid } from './db.js';
-import { fmtTime, fmtNum, esc, bestAvg, twoWeeks, weekStat } from './util.js';
+import { fmtTime, fmtNum, esc, bestAvg, twoWeeks, weekStat, appHome } from './util.js';
 import { SegTracker } from './segtrack.js';
 import { applyTheme, icon } from './theme.js';
 import { RouteNav, SegAhead, parseRoute, makeRoute, bearing, deltaTxt, xomSec, needSpeed } from './navroute.js';
@@ -198,7 +198,7 @@ const gpsTxt = () => live.gpsErr ? 'No GPS' : !live.fix ? 'GPS …' : live.acc >
 function render() {
   if (map) { map.remove(); map = null; line = null; dot = null; routeLayer = null; }
   if (view === 'list') return listView();
-  el.innerHTML = `<header class="ptop"><a class="pback" href="handy.html" title="Back to app">‹</a><div class="pbrand"><b>RIDEFRAME </b><span>${W.brand}</span></div>
+  el.innerHTML = `<header class="ptop"><a class="pback" href="${appHome()}" title="Back to app">‹</a><div class="pbrand"><b>RIDEFRAME </b><span>${W.brand}</span></div>
       <span class="ppill ${live.fix && live.acc <= 40 ? 'on' : ''}" id="oGps"><i></i>${gpsTxt()}</span>
       <button class="ppill ${nSens() ? 'on' : ''}" id="oSens"><i></i>Sensors${nSens() ? ' ' + nSens() : ''}</button>
       <button class="pgear" id="oSet" title="Settings" aria-label="Settings">${icon('gear', 'gico')}</button></header>
