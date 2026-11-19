@@ -1055,14 +1055,28 @@ export class WorldScene {
       if (t.dem?.file === 'insel.bin' && (s.edge === 'S-H' || s.edge === 'H-P3') && !s.village) {
         const rows = ['rebzeile_a', 'rebzeile_b'].map(n => byName(n)).filter(Boolean), cy = byName('zypresse'), wg = byName('weingut');
         let estates = 0;
-        // Mac 19.11.: from the saddle it read as meadow with cypresses (rows 30-80 m off): now the rows start at the verge and climb the slope
-        if (rows.length) for (let d = s.from + 120; d < s.to - 120; d += 150 + r() * 90) {
-          if (r() < 0.1) continue; const land = segAt(d).seaSide === 1 ? -1 : 1, nr = 8 + Math.floor(r() * 4), len = 3 + Math.floor(r() * 2), o0 = ROAD_W + 4.5 + r() * 1.5;
+        // Mac 19.11. (check 9): 19 fps among the vines (rebzeile GLB 12.5k triangles per 10 m) and long stretches without any vines
+        // (35 m blocks every 150-240 m). Now: long blocks with short gaps; only the two rows at the verge are the GLB, the rows
+        // up the slope are cheap instanced trellis pieces (canopy + post, 2.6 m each, on the ground under each piece)
+        const cheap = [];
+        for (let d = s.from + 80; d < s.to - 80;) {
+          const blk = 70 + r() * 80, land = segAt(d).seaSide === 1 ? -1 : 1, nr = 12 + Math.floor(r() * 8), o0 = ROAD_W + 4.5 + r() * 1.2;
           let stood = 0;
-          for (let k = 0; k < nr; k++) for (let j = 0; j < len; j++) stood += !!place(rows[(k + j) % rows.length], d + j * 10.6, land * (o0 + k * 2.4), { face: 'along', gap: 1, radK: 0.12, flat: false, overlap: true });
-          if (r() < 0.5) for (let k = 0; k < 10; k++) for (let j = 0; j < len; j++) place(rows[(k + j + 1) % rows.length], d + 5 + j * 10.6, land * (o0 + nr * 2.4 + 9 + k * 2.4), { face: 'along', gap: 1, radK: 0.12, flat: false, overlap: true }); // a second block further up the hill
-          if (stood && cy && r() < 0.7) for (let j = 0; j < 4; j++) place(cy, d - 22 - j * 9, land * (ROAD_W + 3.2), { face: r() * 6.28, gap: 1, radK: 0.4, flat: false }); // a cypress row by the road, just before the vines
-          if (stood && wg && estates < 2 && r() < 0.35) { estates += !!place(wg, d + len * 10.6 + 14, land * (ROAD_W + 12), { face: 'road', gap: 3, ground: 'centre' }); }
+          if (rows.length) for (let k = 0; k < 2; k++) for (let x = 0; x + 10.6 <= blk; x += 10.6) stood += !!place(rows[(k + Math.round(x)) % rows.length], d + x, land * (o0 + k * 2.4), { face: 'along', gap: 1, radK: 0.12, flat: false, overlap: true });
+          for (let k = 2; k < nr; k++) for (let x = 0; x < blk; x += 2.6) { const q = spot(d + x, (segAt(d + x).seaSide === 1 ? -1 : 1) * land * (o0 + k * 2.4)); // spot() takes the raw side, place() mirrors itself
+            const rd = f.road(q.x, q.z); if (!rd || rd.d < ROAD_W + 3 || (f.lakes.length && f.inLake(q.x, q.z, 1.5) !== null) || !free(q.x, q.z, 1.2)) continue;
+            const y = f.height(q.x, q.z); if (y < 0.6) continue; cheap.push([q.x, y, q.z, Math.atan2(q.tx, q.tz)]); stood++; }
+          if (stood && cy && r() < 0.6) for (let j = 0; j < 4; j++) place(cy, d - 22 - j * 9, land * (ROAD_W + 3.2), { face: r() * 6.28, gap: 1, radK: 0.4, flat: false }); // a cypress row by the road, just before the vines
+          if (stood && wg && estates < 2 && r() < 0.3) { estates += !!place(wg, d + blk + 14, land * (ROAD_W + 12), { face: 'road', gap: 3, ground: 'centre' }); }
+          d += blk + 25 + r() * 45; if (r() < 0.12) d += 120; // now and then a meadow or an orchard between the vineyards
+        }
+        if (cheap.length) {
+          const can = new THREE.BoxGeometry(2.55, 0.95, 0.55); can.translate(0, 1.15, 0); const post = new THREE.BoxGeometry(0.08, 1.7, 0.08); post.translate(1.25, 0.85, 0);
+          const leaf = new THREE.MeshStandardMaterial({ color: 0x55702c, roughness: 0.92 }), wood = new THREE.MeshStandardMaterial({ color: 0x6a5640, roughness: 0.9 });
+          const ic = new THREE.InstancedMesh(can, leaf, cheap.length), ip = new THREE.InstancedMesh(post, wood, cheap.length), m4 = new THREE.Matrix4(), qt = new THREE.Quaternion(), v = new THREE.Vector3(), sc = new THREE.Vector3(1, 1, 1), up = new THREE.Vector3(0, 1, 0), c0 = new THREE.Color();
+          cheap.forEach(([x, y, z, a], i) => { qt.setFromAxisAngle(up, a + Math.PI / 2); sc.set(1, 0.85 + r() * 0.3, 1); m4.compose(v.set(x, y - 0.15, z), qt, sc); ic.setMatrixAt(i, m4); ip.setMatrixAt(i, m4); ic.setColorAt(i, c0.setHSL(0.24 + r() * 0.05, 0.42, 0.24 + r() * 0.07)); });
+          ic.castShadow = true; ic.receiveShadow = ip.receiveShadow = true; ic.computeBoundingSphere(); ip.computeBoundingSphere(); this.scene.add(ic, ip); this.props.push(ic, ip);
+          console.log('[insel] Weinberg-Zeilen', s.name || s.edge, 'GLB nah + ' + cheap.length + ' leichte Stuecke');
         }
       }
       // ---- East Asian style (original): bamboo groves, lantern chains, monks training, pagodas on the tops ----
@@ -1909,9 +1923,10 @@ function sunAt(u, out = new THREE.Vector3(), sunset = false) {
   return out.set(-Math.cos(el) * Math.sin(az), Math.sin(el), -Math.cos(el) * Math.cos(az));
 }
 // the open-world island (Freddy 19.11.: "sobald sie untergegangen ist, muss sie wieder aufgehen, auf der anderen Seite"): a day every
-// 36 km, never a long night. From 8° the sun sinks to -6° (a short blue hour), turns round below the horizon and rises in the opposite sky
+// 36 km, never a long night. The sun stays high most of the day, sinks only in the last ~7 km to -3° (a short blue hour, Mac check 9:
+// the old cosine kept it dark for 8 km), turns round below the horizon and rises in the opposite sky
 function sunCycle(d, out = new THREE.Vector3()) {
-  const P = 36000, p = ((d / P) % 1 + 1) % 1, el = THREE.MathUtils.degToRad(8 - 14 * (0.5 - 0.5 * Math.cos(2 * Math.PI * p)));
+  const P = 36000, p = ((d / P) % 1 + 1) % 1, q = Math.min(1, Math.abs(p - 0.5) * P / 7000), sm = q * q * (3 - 2 * q), el = THREE.MathUtils.degToRad(-3 + 12 * sm);
   const cyc = Math.floor(d / P + 0.5), az = THREE.MathUtils.degToRad(36 - 30 * (p < 0.5 ? p : p - 1) + 180 * (cyc % 2)); // switches sides at the darkest point
   return out.set(-Math.cos(el) * Math.sin(az), Math.sin(el), -Math.cos(el) * Math.cos(az));
 }
