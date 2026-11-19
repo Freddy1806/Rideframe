@@ -90,6 +90,7 @@ export class Events {
     this._bands(cam);
     this._wolf(time, dt, cam);
     this._orcas(time, dt, cam, d);
+    this._bridgeOrcas(dt, d);
     this._shouts(time, cam);
     this._birds(time, dt, cam);
     this._carts(dt, d);
@@ -257,6 +258,36 @@ export class Events {
       }
     }
     for (const e of this.active) if (e.kind === 'orca') { e.t += dt; if (e.t > e.dur) e.dead = true; }
+  }
+
+  // ---- long bridges (island, Freddy 19.11.): one to three orcas leap right across the deck just in front of you ----
+  _bridgeOrcas(dt, d) {
+    const br = this.track.dem?.bridges, orcaE = this.A.list.find(x => x.file.includes('orca'));
+    if (br?.length && orcaE) {
+      this._brDone ||= new Set();
+      for (const [a, b] of br) for (const frac of b - a > 1500 ? [0.22, 0.62] : [0.5]) {
+        const at = a + (b - a) * frac;
+        if (this._brDone.has(at) || d < at - 75 || d > at - 35) continue;
+        this._brDone.add(at);
+        const p = this.f.at(at), l = Math.hypot(p.tx, p.tz) || 1, rx = -p.tz / l, rz = p.tx / l, side = Math.random() < 0.5 ? -1 : 1;
+        if (this.f.height(p.x + rx * 30, p.z + rz * 30) > -2 || this.f.height(p.x - rx * 30, p.z - rz * 30) > -2) continue; // open water on both sides
+        const n = 1 + Math.floor(Math.random() * 3), top = p.e + 4.5 + Math.random() * 2;
+        for (let k = 0; k < n; k++) {
+          const { obj, mixer } = this.A.make(orcaE, 'Schwimmen'); obj.traverse(c => { c.frustumCulled = false; }); obj.visible = false; obj.rotation.order = 'YXZ';
+          this.w.scene.add(obj);
+          this.active.push({ obj, mixer, kind: 'leap', t: -k * 0.5, T: 2.6 + top * 0.025, x: p.x + p.tx / l * (k * 8 - 4), z: p.z + p.tz / l * (k * 8 - 4), rx: rx * side, rz: rz * side, top });
+        }
+        const spot = { x: p.x, z: p.z };
+        setTimeout(() => this.sound.play3d('orca', this._where(spot, 260)), 300);
+        setTimeout(() => this.sound.play3d('wal', this._where(spot, 260, 0.8)), 1400);
+      }
+    }
+    for (const e of this.active) if (e.kind === 'leap') {
+      e.t += dt; const u = e.t / e.T; if (u < 0) continue; if (u > 1.05) { e.dead = true; continue; }
+      const lat = -34 + 68 * u, y = -2 + (e.top + 2) * 4 * u * (1 - u), vy = (e.top + 2) * 4 * (1 - 2 * u), vh = 68;
+      e.obj.visible = true; e.obj.position.set(e.x + e.rx * lat, y, e.z + e.rz * lat);
+      e.obj.rotation.y = Math.atan2(e.rx, e.rz); e.obj.rotation.x = -Math.atan2(vy, vh); // nose follows the arc: up out of the water, over the deck, down again
+    }
   }
 
   // ---- the bed under everything: wind with your speed, surf along the sea, birds over the meadows,

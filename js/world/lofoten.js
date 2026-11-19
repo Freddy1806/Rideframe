@@ -1264,22 +1264,35 @@ export class WorldScene {
   _bridges() {
     const f = this.field, list = this.track.dem?.bridges || []; if (!list.length) return;
     const mat = new THREE.MeshStandardMaterial({ color: 0x8a8781, roughness: 0.9 }), box = new THREE.BoxGeometry(1, 1, 1);
-    const parts = { slab: [], wall: [], pier: [], rail: [] }, m4 = new THREE.Matrix4(), q = new THREE.Quaternion(), up = new THREE.Vector3(0, 1, 0), P = new THREE.Vector3(), S = new THREE.Vector3();
+    const parts = { pier: [], rail: [] }, m4 = new THREE.Matrix4(), q = new THREE.Quaternion(), up = new THREE.Vector3(0, 1, 0), P = new THREE.Vector3(), S = new THREE.Vector3();
     for (const [a, b] of list) {
       for (let d = a - 10; d < b + 10; d += 5) {
         const p = f.at(d), l = Math.hypot(p.tx, p.tz) || 1, ang = Math.atan2(p.tx, p.tz), rx = -p.tz / l, rz = p.tx / l;
         const p2 = f.at(d + 5), grade = Math.atan2(p2.e - p.e, 5); q.setFromEuler(new THREE.Euler(-grade, ang, 0, 'YXZ'));
-        parts.slab.push(m4.compose(P.set(p.x, p.e - 0.55, p.z), q, S.set(ROAD_W * 2 + 1.6, 1.0, 5.2)).clone());
-        for (const s of [-1, 1]) { // low concrete parapet with a steel rail on top (~1.05 m)
-          parts.wall.push(m4.compose(P.set(p.x + rx * s * (ROAD_W + 0.6), p.e + 0.2, p.z + rz * s * (ROAD_W + 0.6)), q, S.set(0.32, 0.6, 5.2)).clone());
-          parts.rail.push(m4.compose(P.set(p.x + rx * s * (ROAD_W + 0.6), p.e + 1.0, p.z + rz * s * (ROAD_W + 0.6)), q, S.set(0.08, 0.08, 5.2)).clone()); }
+        for (const s of [-1, 1]) parts.rail.push(m4.compose(P.set(p.x + rx * s * (ROAD_W + 0.85), p.e + 1.15, p.z + rz * s * (ROAD_W + 0.85)), q, S.set(0.08, 0.08, 5.2)).clone()); // steel hand rail on the parapet
         if (Math.round((d - a) / 5) % 7 === 3 && d > a + 5 && d < b - 5) { const g = Math.min(-2, f.height(p.x + rx * 9, p.z + rz * 9)); // pier pair down to the bottom
           for (const s of [-1, 1]) parts.pier.push(m4.compose(P.set(p.x + rx * s * 2.2, (p.e - 1 + g) / 2, p.z + rz * s * 2.2), q.setFromAxisAngle(up, ang), S.set(1.6, p.e - 1 - g, 2.2)).clone()); }
       }
     }
+    // deck and parapets as one continuous swept section (boxes left slits on curves and a low wall you could look past, Freddy 19.11.):
+    // kerb strip, solid 1 m concrete parapet, 1.2 m deep slab edge, flat underside; every face has its own vertices for crisp edges
+    const W = ROAD_W, sec = [[-W, 0.03], [-W - 0.7, 0.05], [-W - 0.7, 0.9], [-W - 1.0, 0.9], [-W - 1.0, -1.25], [W + 1.0, -1.25], [W + 1.0, 0.9], [W + 0.7, 0.9], [W + 0.7, 0.05], [W, 0.03]];
+    const pos = [], uvs = [], idx = [];
+    for (const [a, b] of list) {
+      const n = Math.max(2, Math.ceil((b - a + 20) / 2.5)), rows = [];
+      for (let j = 0; j <= n; j++) { const d = a - 10 + (b - a + 20) * j / n, p = f.at(d), l = Math.hypot(p.tx, p.tz) || 1; rows.push([p.x, p.e, p.z, -p.tz / l, p.tx / l, d]); }
+      for (let k = 0; k < sec.length - 1; k++) {
+        const [u0, v0] = sec[k], [u1, v1] = sec[k + 1], base = pos.length / 3, w = Math.hypot(u1 - u0, v1 - v0);
+        for (const [x, e, z, rx, rz, d] of rows) { pos.push(x + rx * u0, e + v0, z + rz * u0, x + rx * u1, e + v1, z + rz * u1); uvs.push(d / 4, 0, d / 4, w / 4); }
+        for (let j = 0; j < n; j++) { const A = base + j * 2; idx.push(A, A + 2, A + 1, A + 1, A + 2, A + 3); }
+      }
+    }
+    const dg = new THREE.BufferGeometry(); dg.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3)); dg.setAttribute('uv', new THREE.Float32BufferAttribute(uvs, 2)); dg.setIndex(idx); dg.computeVertexNormals();
+    const deck = new THREE.Mesh(dg, new THREE.MeshStandardMaterial({ color: 0xbdb8ae, roughness: 0.92, map: concreteTex(true), side: THREE.DoubleSide }));
+    deck.castShadow = true; deck.receiveShadow = true; this.scene.add(deck);
     const steel = new THREE.MeshStandardMaterial({ color: 0x6d7378, roughness: 0.4, metalness: 0.6 });
     for (const k in parts) { const im = new THREE.InstancedMesh(box, k === 'rail' ? steel : mat, parts[k].length); parts[k].forEach((x, i) => im.setMatrixAt(i, x));
-      im.castShadow = k !== 'slab'; im.receiveShadow = true; im.computeBoundingSphere(); this.scene.add(im); }
+      im.castShadow = true; im.receiveShadow = true; im.computeBoundingSphere(); this.scene.add(im); }
     console.info('RIDEFRAME Brücken', list.length);
   }
   // real routes: rock tunnels (closed tube with lamps, concrete portals) and avalanche galleries (roof + hill wall, open pillars on the sea side)
@@ -1335,7 +1348,14 @@ export class WorldScene {
       const d = s.top === 'castle' ? s.to + 70 : s.to + 40, side = s.top === 'castle' ? 1 : -1, off = s.top === 'castle' ? 34 : 12;
       const p = f.at(d), l = Math.hypot(p.tx, p.tz), x = p.x - p.tz / l * off * side, z = p.z + p.tx / l * off * side;
       const rr = f.road(x, z); if (!rr || rr.d < (s.top === 'castle' ? 22 : 9)) continue;
-      const o = house(s.top); o.position.set(x, f.height(x, z) - 0.15, z); o.rotation.y = Math.atan2(p.tx, p.tz);
+      const o = house(s.top); let y = f.height(x, z) - 0.15;
+      if (s.top === 'castle') { // never hover on a slope (Freddy 19.11.): settle on the footprint's average and stand on a rock plinth down to the lowest corner
+        const hs = []; for (let k = 0; k < 16; k++) { const a = k / 16 * Math.PI * 2; hs.push(f.height(x + Math.cos(a) * 18, z + Math.sin(a) * 18)); }
+        const lo = Math.min(...hs), avg = hs.reduce((u, v) => u + v, 0) / hs.length; y = Math.min(y, avg - 0.3);
+        const drop = y - lo + 6, plinth = new THREE.Mesh(new THREE.CylinderGeometry(19, 24, drop, 18, 1), new THREE.MeshStandardMaterial({ color: 0x8a8274, roughness: .98, map: stone() }));
+        plinth.position.y = -drop / 2 + 0.2; plinth.castShadow = plinth.receiveShadow = true; o.add(plinth);
+      }
+      o.position.set(x, y, z); o.rotation.y = Math.atan2(p.tx, p.tz);
       this.scene.add(o); o.traverse(c => { if (c.userData.flag) this.animated.push(c); });
     }
   }

@@ -197,7 +197,7 @@ export class Field {
     const target = real === null ? Math.max(mtn, nearLand) : lerp(mtn, Math.max(mtn, nearLand), smooth(0, 30, real));
     if (this.real && real !== null) { // the DEM is the truth here: only a short flat shoulder blends into it, sea stays sea
       const ground = lerp(real <= 0.5 ? -4 - smooth(0, 40, out) * 12 : real + rough * smooth(20, 200, real), -16, smooth(0, 1200, this.demOut));
-      if (this.bridge?.[r.i]) return Math.min(ground, r.e - 3); // on a bridge: water (or the valley) right under the deck
+      if (this.bridge?.[r.i]) return Math.min(real <= 0.5 ? -16 : ground, r.e - 3); // over the sea: deep water right under the deck (the shallow road shelf showed as light bands beside the bridge, Freddy 19.11.) // on a bridge: water (or the valley) right under the deck
       if (this.tunnel?.[r.i]) return Math.max(ground, r.e + 9); // rock tunnel: the mountain stays closed above the tube
       const h = lerp(base + detail * smooth(0, 15, out), ground, smooth(3, 35, out));
       const hh = lerp(r.e - 0.25, h, flat);
