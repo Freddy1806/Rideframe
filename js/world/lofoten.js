@@ -1043,9 +1043,13 @@ export class WorldScene {
             const so = place(e, dd, -o, { face: r() * 6.28, gap: 1.2, radK: 0.35, anim: 'Liegen', flat: false, overlap: true });
             if (so) { so.scale.multiplyScalar(1.45); so.position.y = Math.max(so.position.y, h + 0.12); so.updateMatrixWorld(true); const bb = new THREE.Box3().setFromObject(so), sz = bb.getSize(new THREE.Vector3()); console.info(`RIDEFRAME Robbe d=${Math.round(dd)} ${o.toFixed(1)} m neben der Straße, y=${so.position.y.toFixed(2)}, Größe ${sz.x.toFixed(1)}×${sz.y.toFixed(1)}×${sz.z.toFixed(1)} m`); } }
         }
-        if (slabs.length) { const sm = stone().clone(); sm.wrapS = sm.wrapT = THREE.RepeatWrapping; sm.repeat.set(0.6, 0.6); // flat grey rock slabs they lie on
-          const gs = slabs.map(([x, y, z, w, a]) => { const g = new THREE.IcosahedronGeometry(w * 0.6, 1); g.scale(1, 0.22, 0.75); g.rotateY(a); g.translate(x, y + 0.05, z); return g.index ? g.toNonIndexed() : g; }); // low rounded rocks, not columns
-          const m = new THREE.Mesh(mergeGeometries(gs), new THREE.MeshStandardMaterial({ color: 0xa29d94, roughness: 0.95, map: sm })); m.receiveShadow = m.castShadow = true; this.scene.add(m); }
+        if (slabs.length) { const rk = rng(733); // shore rock in the terrain's own rock material (dark smooth pucks before, Mac check 8)
+          const gs = slabs.map(([x, y, z, w, a]) => { const g = new THREE.IcosahedronGeometry(w * 0.6, 2), pa = g.attributes.position;
+            for (let i = 0; i < pa.count; i++) { const k = 0.8 + rk() * 0.35; pa.setXYZ(i, pa.getX(i) * k, pa.getY(i) * k, pa.getZ(i) * k); }
+            g.scale(1, 0.3, 0.8); g.rotateY(a); g.translate(x, y + 0.1, z); const n = g.index ? g.toNonIndexed() : g; n.computeVertexNormals();
+            const c = n.attributes.position.count, spl = new Float32Array(c * 4), col = new Float32Array(c * 3).fill(0.9); for (let i = 0; i < c; i++) spl[i * 4 + 1] = 1;
+            n.setAttribute('splat', new THREE.BufferAttribute(spl, 4)); n.setAttribute('color', new THREE.BufferAttribute(col, 3)); n.deleteAttribute('uv'); return n; });
+          const m = new THREE.Mesh(mergeGeometries(gs), this.terrainMat); m.receiveShadow = m.castShadow = true; this.scene.add(m); }
       }
       // ---- island, Freddy 19.11.: vineyards on the Vineyard Coast and the East Saddle (rows on the land side, cypresses, a wine estate) ----
       if (t.dem?.file === 'insel.bin' && (s.edge === 'S-H' || s.edge === 'H-P3')) {
