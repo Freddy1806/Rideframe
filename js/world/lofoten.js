@@ -376,6 +376,8 @@ export class WorldScene {
     Object.assign(this.farMat, { polygonOffset: true, polygonOffsetFactor: 4, polygonOffsetUnits: 4 });
     this.tiles = new Map(); this.queue = []; this.roadChunks = new Map(); this.animated = [];
     this._placeLandmarks();
+    if (!this.cockpit && gloveMaterial(this.track.__look)) { const obj = makeCockpit(this.track.__look); // no cockpit model (cloud, ?fakeassets, no assets): built-in bars, so the shop gloves still show
+      this.camera.add(obj); this.scene.add(this.camera); this.cockpit = obj; this.cockpitMixer = null; this._placeCockpit(); }
     { const c = this.scene.children.find(o => o.userData.castle); if (c && !/^(leer|ruhig|natur)$/.test(this.track.__mode || '')) this.siege = new Siege(this, c, this.field.road(c.position.x, c.position.z).i * DS); } // the siege at the castle (siege.js)
     this.d = 0; this.camPos = null;
     this.instant = new URLSearchParams(location.search).has('shot');
@@ -1249,8 +1251,6 @@ export class WorldScene {
     if (ck) { const { obj, mixer } = A.make(ck, 'Treten'); obj.traverse(c => { c.castShadow = false; c.layers.set(1); c.frustumCulled = false; });
       gloveCockpit(obj, this.track.__look); /* shop gloves (Wizard points) on the hoods */
       this.camera.add(obj); this.scene.add(this.camera); this.cockpit = obj; this.cockpitMixer = mixer; this._placeCockpit(); }
-    else if (gloveMaterial(this.track.__look)) { const obj = makeCockpit(this.track.__look); // no cockpit model (cloud, ?fakeassets): built-in bars, so the shop gloves still show
-      this.camera.add(obj); this.scene.add(this.camera); this.cockpit = obj; this.cockpitMixer = null; this._placeCockpit(); }
     if (A !== ASSETS) { // world mode: drop the copies of switched-off models (placed only so everything else stands where it does in the full world)
       const off = o => o?.userData.off, gone = []; this.scene.traverse(o => { if (off(o)) gone.push(o); }); for (const o of gone) o.parent?.remove(o);
       this.props = this.props.filter(o => !off(o)); this.birds = this.birds.filter(o => !off(o)); this.whales = this.whales.filter(w => !off(w.obj));
