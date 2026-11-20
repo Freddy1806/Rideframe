@@ -13,3 +13,6 @@ assets/audio/
 vendor/mediapipe/wasm/
 vendor/mediapipe/*.task
 http:/
+
+# coach workouts: host-local data the assistant edits on the server (coach/README.md); rollouts must never overwrite it
+coach/workouts.json

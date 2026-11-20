@@ -35,7 +35,7 @@ export const shiftOf = r => r.virtual ? 'virtual' : 'real';
 export function workoutChoices(list = allWorkouts()) {
   const rank = w => w.personal ? 0 : w.mine ? 1 : 2;
   return list.map((w, i) => ({ w, i, r: rank(w) })).sort((a, b) => a.r - b.r || a.i - b.i)
-    .map(({ w }) => ({ id: w.id, name: w.name, min: Math.round(workoutDuration(w) / 60), own: !!(w.personal || w.mine), w }));
+    .map(({ w }) => ({ id: w.id, name: w.name, min: Math.round(workoutDuration(w) / 60), own: !!(w.personal || w.mine), coach: !!w.coach, w }));
 }
 /** what a tap changes, without touching the ride: { erg, flat } for a mode; null when it is not possible (ERG, no workout) */
 export function modeChange(m, hasWorkout, pm = false) {
@@ -114,7 +114,7 @@ export function openSetup(r, focus = 0) {
         return `<button type="button" data-shift="${id}" ${press(shift === id && !r.berg, off ? ' disabled' : '')} title="${esc(h)}"><b>${n}</b><small>${off ? 'Needs trainer control' : h}</small></button>`; }).join('')}</div></div>`}
       <div class="rsg" role="group" aria-label="Workout"><div class="rsl">Workout${r.workout ? ` <span class="rscur">now: ${esc(r.workout.name)}${r.wDone ? ' · done' : ''}</span>` : ''}</div>
         <div class="rsw"><button type="button" data-w="" ${press(!cur)}><b>No workout</b><small>Ride freely</small></button>${list.map(x => `<button type="button" data-w="${esc(x.id)}" ${press(cur === x.id)}>
-          <b>${x.own ? '★ ' : ''}${esc(x.name)}</b><small>${x.min} min${ftp ? ` · FTP ${ftp} W` : ''}</small><span class="rsmini">${workoutSVG(x.w, null, 18)}</span></button>`).join('')}</div></div>
+          <b>${x.own ? '★ ' : ''}${esc(x.name)}</b><small>${x.min} min${x.coach ? ' · Coach' : ''}${ftp ? ` · FTP ${ftp} W` : ''}</small><span class="rsmini">${workoutSVG(x.w, null, 18)}</span></button>`).join('')}</div></div>
     </div>
     <div class="hint pad-hint">🎮 D-pad to choose · A take it · B ride on &nbsp;·&nbsp; ⌨ Tab · Enter · O</div>`;
   const again = el => { const bs = [...box.querySelectorAll('.padmenu button')]; openSetup(r, Math.max(0, bs.indexOf(el))); };

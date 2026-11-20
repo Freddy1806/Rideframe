@@ -2,7 +2,7 @@
 // choice) and from the profile ("My workouts"), the grouped workout choice of the route page and the profile section
 // with the FTP. Every control is a real <button> / <input>, so the gamepad focus navigation reaches it.
 import { esc, fmtTime, fmtKm } from './util.js';
-import { WORKOUTS, MY, workoutById } from './workouts.js';
+import { catalog, MY, workoutById } from './workouts.js';
 import { TEMPLATES, bump, addSet, nextBlock, insertAt, toRide, LIM, newId, totalSec, avgPct, stepAvg, isWork, watts, scaleWork, repeatBlock, graphSVG, zoneOf, fromBuiltin, freeTemplate, orderFor, kindOf, defaultName, nameSuggestions } from './myworkouts.js';
 import { fitRoute, fittingRoutes, AFTER_PCT, FREE_PCT } from './routefit.js';
 import { loadPersonal, personalList, personalById, savePersonal, deletePersonal, localOnly, uploadLocal, storeMode } from './myworkouts-store.js';
@@ -183,10 +183,11 @@ const optText = (w, routeId) => `${esc(w.name)} · ${Math.round(w.steps.reduce((
 /** the options of the route page's workout choice: free ride, "My workouts" (made for this route first), the standard ones */
 export function workoutOptions(routeId) {
   const mine = orderFor(personalList(), routeId).map(p => workoutById(p.id)).filter(Boolean);
-  const own = [...mine, ...MY];
+  const own = [...mine, ...MY], cat = catalog(), co = cat.filter(w => w.coach), std = cat.filter(w => !w.coach); // coach workouts (js/coachworkouts.js) under their own heading
   return `<option value="">Free ride (route gradient)</option>
     ${own.length ? `<optgroup label="My workouts">${own.map(w => `<option value="${esc(w.id)}">${w.mine ? '★ ' : ''}${optText(w, routeId)}</option>`).join('')}</optgroup>` : ''}
-    <optgroup label="Standard workouts">${WORKOUTS.map(w => `<option value="${w.id}">${optText(w, routeId)}</option>`).join('')}</optgroup>`;
+    ${co.length ? `<optgroup label="Coach">${co.map(w => `<option value="${esc(w.id)}">${optText(w, routeId)}</option>`).join('')}</optgroup>` : ''}
+    <optgroup label="Standard workouts">${std.map(w => `<option value="${w.id}">${optText(w, routeId)}</option>`).join('')}</optgroup>`;
 }
 /** the line under the workout choice: does the workout fit this route (js/routefit.js)? fits / too short (more laps or
  *  another route, as buttons) / much longer (where the workout ends). routes = all routes for the suggestions. */

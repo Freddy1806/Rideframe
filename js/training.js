@@ -1,6 +1,6 @@
 // Training tab: all standard workouts, started with one click on the coast road, plus the workout helper
 // (5 questions -> the best workout for today).
-import { WORKOUTS, MY, buildMy, defFrom, setMyWorkouts, workoutById, workoutDuration, workoutSVG } from './workouts.js';
+import { WORKOUTS, catalog, MY, buildMy, defFrom, setMyWorkouts, workoutById, workoutDuration, workoutSVG } from './workouts.js';
 import { esc } from './util.js';
 
 // what each workout is good for: goal, how hard (1-5)
@@ -131,7 +131,7 @@ export function trainingView(main, ctx) {
   main.innerHTML = `
   <section class="view">
     <div class="view-head"><div><div class="label">Training</div><h1 class="display" style="margin-top:14px">Work&shy;outs</h1>
-      <div class="meta">${WORKOUTS.length} standard workouts${MY.length ? ` + ${MY.length} of your own` : ''} on the ${coast === 'kueste60' ? 'coast road' : 'Rocky Coast'} · target watts from your FTP (${ftp} W)</div></div>
+      <div class="meta">${catalog().length} standard workouts${MY.length ? ` + ${MY.length} of your own` : ''} on the ${coast === 'kueste60' ? 'coast road' : 'Rocky Coast'} · target watts from your FTP (${ftp} W)</div></div>
       <div style="display:flex;gap:10px;flex-wrap:wrap;justify-content:flex-end"><a class="btn ghost" href="pure.html" style="text-decoration:none" title="Just watts, numbers and workouts, no map">Pure mode ▸</a><a class="btn ghost" href="outdoor.html" style="text-decoration:none" title="Record real outdoor rides with your phone: GPS map, speed, climbing, heart rate, watts">Ride outdoors ▸</a><a class="btn ghost" href="kraft.html" style="text-decoration:none" title="Log strength workouts like in Strong: sets, weights, history, records">Strength ▸</a><button class="btn" id="helperBtn">Which workout fits today? ▸</button></div></div>
     <label style="display:flex;gap:8px;align-items:center;margin:0 0 18px" title="The trainer holds the target watts itself"><input type="checkbox" class="toggle" id="ergChk2" ${state.settings.erg !== false ? 'checked' : ''}> ERG (trainer holds the watts)</label>
     <div class="view-head" style="margin-top:6px"><div><h3 style="margin:0">My workouts</h3><div class="meta">Build your own blocks or adjust a standard workout (watts, length, laps)</div></div>
@@ -141,8 +141,8 @@ export function trainingView(main, ctx) {
       <div style="display:flex;gap:8px"><button class="btn small" data-go="${w.id}" style="white-space:nowrap">Start ▸</button><button class="btn ghost small" data-edit="${w.id}">Edit</button></div></div>`).join('')
       : '<p class="hint">No workouts of your own yet.</p>'}</div>
     <h3 style="margin:0 0 10px">Standard workouts</h3>
-    <div class="wgrid">${WORKOUTS.map(w => { const m = META[w.id] || {}; return `<div class="panel wcard">
-      <div class="label">${Math.round(workoutDuration(w) / 60)} min · ${HARD[m.hard] || ''}</div><h3>${esc(w.name)}</h3><p>${esc(w.what)}</p>${workoutSVG(w)}
+    <div class="wgrid">${catalog().map(w => { const m = META[w.id] || {}, tag = w.coach ? 'Coach' : HARD[m.hard] || ''; return `<div class="panel wcard${w.coach ? ' wcoach' : ''}" data-wid="${esc(w.id)}">
+      <div class="label">${Math.round(workoutDuration(w) / 60)} min${tag ? ` · ${tag}` : ''}</div><h3>${esc(w.name)}</h3><p>${esc(w.what)}</p>${workoutSVG(w)}
       <div style="display:flex;gap:8px"><button class="btn small" data-go="${w.id}" style="white-space:nowrap">Start ▸</button>${m.goal === 'test' ? '' : `<button class="btn ghost small" data-adapt="${w.id}">Adjust</button>`}</div></div>`; }).join('')}</div>
   </section>`;
   const start = id => { state.settings.workout = id; ctx.saveSettings(); ctx.startRide(coast); };

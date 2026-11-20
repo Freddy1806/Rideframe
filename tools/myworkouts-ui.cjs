@@ -201,8 +201,9 @@ let fails = 0; const ok = (c, m) => { console.log(`${c ? '✓' : '✗'} ${m}`); 
     const val = sel => G.inputValue(sel);
     await press('down'); // the first press shows the focus
     ok(await padTo('#workSel'), 'pad: reaches the workout choice');
-    await press('A'); for (let i = 0; i < 40 && /^(pw_|$)/.test(await val('#workSel')); i++) await press('down'); await press('B');
-    const pick = await val('#workSel'); ok(!/^(pw_|$)/.test(pick), `pad: a standard workout chosen with A and ↓ (${pick})`);
+    // past "My workouts" (pw_) and the "Coach" group (c_: 86 steps in watts, more than an own workout holds) to a standard one
+    await press('A'); for (let i = 0; i < 40 && /^(pw_|c_|$)/.test(await val('#workSel')); i++) await press('down'); await press('B');
+    const pick = await val('#workSel'); ok(!/^(pw_|c_|$)/.test(pick), `pad: a standard workout chosen with A and ↓ (${pick})`);
     ok(await padTo('#wCustom'), 'pad: reaches “Customise”'); await press('A'); await G.waitForSelector('.mwbox');
     const nm = await val('#mwName'); ok(/^River Valley .+ \d+$/.test(nm), `pad: the editor opens with a default name (${nm})`);
     const iv2 = await G.evaluate(() => [...document.querySelectorAll('.mwstep input[data-f="pct"]')].findIndex((x, i) => i >= 3 && +x.value >= 88)); // a work step after the repeated block (steps 1–2)
