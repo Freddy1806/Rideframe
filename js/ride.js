@@ -92,6 +92,13 @@ export function simulateRide(track, power, settings) {
 }
 
 const WB_VIEWS = ['big', 'compact', 'focus'], WB_NAMES = { big: 'big', compact: 'compact', focus: 'focus' };
+/** the live numbers in the interval window (owner 20.11.: "the same numbers as in normal riding, plus the time and the target
+ *  watts"): [key, label, unit, the normal HUD element it mirrors (null: avg power, kept by _updateHUD), the Display item (js/hudprefs.js)
+ *  that switches it]. Heart rate and cadence are always there in a workout, whatever the Display mode. */
+const WB_LIVE = [['hr', 'Heart rate', 'bpm', '#hBpm', 'hr'], ['cad', 'Cadence', 'rpm', '#hCad', 'cad'], ['speed', 'Speed', 'km/h', '#hSpd', 'speed'],
+  ['dist', 'Distance', 'km', '#hDist', 'dist'], ['time', 'Ride time', '', '#hTime', 'time'], ['avg', 'Avg power', 'W', null, 'power'],
+  ['wkg', 'W/kg', '', '#hWkg', 'wkg'], ['grade', 'Grade', '%', '#hGrade2', 'grade']];
+const WB_ALWAYS = ['hr', 'cad'];
 export class RideSession {
   constructor({ route, ghost, state, onExit, autopilot = false, at = 0, group = null, ghostName = '', workout = null, catchUp = false, elapsed0 = 0 }) {
     Object.assign(this, { route, ghost, state, onExit, autopilot, group, ghostName, workout }); this._wId = workout?.id;
@@ -278,8 +285,17 @@ export class RideSession {
     q('#hGearBar').innerHTML = this.virtual ? this.gears.map(() => '<i></i>').join('') : '';
     if (t.connected && !this.berg) t.setGrade(this._trainerGrade(), true);
     this._flash({ real: 'Shift on the real bike', virtual: 'Virtual shifting · Q/E', auto: `Auto · shifts for ${st.cadence || 90} rpm`,
-      berg: 'ERG · the trainer holds your watts, cadence is free' }[next]);
+      berg: this.workout && this.erg && !this.wDone ? 'ERG · the workout sets the watts' : 'ERG · the trainer holds your watts, cadence is free' }[next]);
     import('./app.js').then(m => m.saveSettings());
+  }
+  /** the ERG target the trainer is being told right now, the same decision as _tick / _workout make (owner 20.11.: the chip
+   *  said "ERG · target 165 W" in an ERG workout while the trainer held the workout's 122 W, a hill target left over from the
+   *  ERG mode saved in the settings): { w, by: 'workout' | 'hold' } or null when no ERG target is sent (grade, free block,
+   *  workout done, power meter only) */
+  _ergNow() {
+    if (this.state.trainer.pmOnly) return null;
+    if (this.workout && this.erg) { const w = this.wNow; return w && !w.done && w.step && !w.step.free && w.target != null ? { w: w.target, by: 'workout' } : null; }
+    return this.berg ? { w: this._bergW || this._bergTarget(), by: 'hold' } : null;
   }
   /** Berg-Watt: target power from the grade (relative to FTP); the trainer holds it in ERG, cadence is up to you */
   _bergTarget() {
@@ -516,7 +532,7 @@ export class RideSession {
   _updateHUD(force) {
     const q = this.q; if (!q) return;
     const g = gradeAt(this.track, this.d);
-    const avgP = this.powerHist.length ? Math.round(this.powerHist.reduce((a, b) => a + b, 0) / this.powerHist.length) : 0;
+    const avgP = this._avgP = this.powerHist.length ? Math.round(this.powerHist.reduce((a, b) => a + b, 0) / this.powerHist.length) : 0;
     const p3 = this.powerHist.slice(-3); const pShow = p3.length ? Math.round((p3.reduce((a, b) => a + b, 0) + this.power) / (p3.length + 1)) : this.power;
     const sn = this._sensors(); this._sensUI(sn);
     q('#hPow').textContent = sn.pw === 'ok' ? pShow : '–'; const wk = q('#hWkg'); if (wk) wk.textContent = sn.pw === 'ok' ? fmtNum(pShow / (this.state.settings.riderKg || 75), 1) : '–';
@@ -531,15 +547,17 @@ export class RideSession {
     q('#hHr').textContent = hint || (tc ? `target ${tc} rpm` : '–');
     q('#hHr').classList.toggle('hint-on', !!hint);
     this._padLegend();
-    const t = this.state.trainer;
-    if (this.virtual) {
+    const t = this.state.trainer, erg = this._ergNow();
+    q('#hGearBar').hidden = !!erg; // ERG: the trainer holds the watts in any gear
+    if (erg) { q('#hGear').textContent = erg.w + ' W'; q('#hGearL').textContent = erg.by === 'workout' ? 'ERG · workout' : 'ERG · target'; }
+    else if (this.virtual) {
       q('#hGear').textContent = gearName(this.gear);
       q('#hGearL').textContent = `${this.auto ? 'Auto' : 'Virtual gear'} ${this.gi + 1}/${this.gears.length}`;
       q('#hGearBar').querySelectorAll('i').forEach((el, i) => el.className = i <= this.gi ? 'on' : '');
       q('.gearchip').classList.toggle('shifted', performance.now() - (this.shiftFlash || 0) < 350);
     } else {
-      if (this.berg) { q('#hGear').textContent = (this._bergW || this._bergTarget()) + ' W'; q('#hGearL').textContent = 'ERG · target'; }
-      else { const g = estimateGear(this.gears, t.data?.speed, this.cadence, this.wheel * 1000); q('#hGear').textContent = g ? gearName(g) : '–'; }
+      if (/^ERG/.test(q('#hGearL').textContent)) q('#hGearL').textContent = 'Gear'; // no ERG target now (a free block, ERG just switched off, the workout done)
+      const g = estimateGear(this.gears, t.data?.speed, this.cadence, this.wheel * 1000); q('#hGear').textContent = g ? gearName(g) : '–';
     }
     q('#hDist').textContent = fmtNum((this.lapOff + this.d) / 1000, 2);
     q('#hBpm').textContent = sn.hr === 'ok' ? this.hr : '–'; // a connected strap that says 0 shows 0
@@ -844,6 +862,7 @@ export class RideSession {
           <div class="wb-nums"><span class="num wb-t"><span id="hWT">–</span><small>W</small></span><span class="num wb-p" id="hWPow"><span id="hWP">0</span><small>W · <em id="hWState">–</em></small><button class="sens-rc" id="hWRc" data-rc="tr" hidden>Reconnect</button></span>
             <span class="wadj" id="hWAdj"><button class="wab" data-wa="-5" title="Target −5 W (S · L2 · D-pad ↓ / L: 1 W)" aria-label="Target −5 W">−</button><button class="wab" data-wa="5" title="Target +5 W (W · R2 · D-pad ↑ / R: 1 W)" aria-label="Target +5 W">+</button></span></div>
           <div class="wzone" id="hWZone"><i class="band"></i><i class="mk" id="hWMk"></i></div>
+          <span class="wb-live" id="hWLive">${WB_LIVE.map(([k, l, u]) => `<span class="wl" data-wl="${k}"><i>${l}</i><b class="num"><span id="hWL-${k}">–</span>${u ? `<small>${u}</small>` : ''}</b></span>`).join('')}</span>
         </div>
         <div class="wb-next"><div class="lbl">Next</div><div class="n" id="hWNextN">–</div><div class="d" id="hWNext">–</div>
           <div class="wb-end"><span class="lbl" id="hWName">${esc(this.workout.name)}${this.erg ? ' · ERG' : ''}</span><button class="wstop" id="hWView" title="Interval display: big / compact / focus (L, or pause menu Options)">View</button><button class="wstop" id="hWStop" title="End workout early">End</button></div></div>
@@ -855,6 +874,24 @@ export class RideSession {
   /** three looks of the interval display (owner 17.11.), kept in the settings: big (design C, the default), compact (one
    *  slim full-width bar, design A) and focus (a card in the middle with the zone gauge, design B) */
   _wbView() { const v = this.state.settings.wbView; return WB_VIEWS.includes(v) ? v : 'big'; }
+  /** the Display mode (key I, pad B, js/hudprefs.js) also decides the interval window's live numbers: the same items as the normal
+   *  HUD, heart rate and cadence always; "Landscape only" also drops the timeline. Compact and focus show heart rate and cadence (css). */
+  _wbLive() {
+    const bar = this.q?.('#hWork'); if (!bar) return;
+    const p = hudPrefs(this.state.settings); bar.dataset.preset = p.preset;
+    for (const [k, , , , item] of WB_LIVE) { const c = bar.querySelector(`[data-wl="${k}"]`); if (c) c.hidden = !WB_ALWAYS.includes(k) && !p.show[item]; }
+    bar.dataset.clean = Object.values(p.show).some(Boolean) ? '' : '1'; // (a data attribute: _workoutHUD rewrites the class list)
+  }
+  /** the live numbers: copied from the normal HUD that _updateHUD just filled (one place computes them), "–" stays "–" */
+  _wbLiveFill(sn) {
+    const q = this.q;
+    for (const [k, , , sel] of WB_LIVE) {
+      const el = q('#hWL-' + k); if (!el || el.parentElement.parentElement.hidden) continue;
+      const v = sel ? q(sel)?.textContent ?? '–' : sn.pw === 'ok' || this._avgP ? String(this._avgP || 0) : '–';
+      if (el.textContent !== v) el.textContent = v;
+      el.parentElement.parentElement.classList.toggle('off', (k === 'hr' && sn.hr !== 'ok') || (k === 'cad' && sn.cad !== 'ok'));
+    }
+  }
   _cycleWbView() {
     const v = WB_VIEWS[(WB_VIEWS.indexOf(this._wbView()) + 1) % WB_VIEWS.length]; this.state.settings.wbView = v;
     const bar = this.q('#hWork'); if (bar) { WB_VIEWS.forEach(x => bar.classList.toggle('v-' + x, x === v)); this._wT = 0; this._wbh = 0; this._workoutHUD(this.power); }
@@ -863,6 +900,8 @@ export class RideSession {
 
   _workoutHUD(pShow) {
     const w = this.wNow, q = this.q, bar = q('#hWork'); if (!this.workout || !w || !bar) return;
+    if (!bar.dataset.preset) this._wbLive(); // a new bar (ride start, a workout picked mid-ride)
+    this._wbLiveFill(this._sensors());
     const ca = !w.done && w.step && !w.step.free ? (w.hard ? this.wAdj : this.wAdjE) : 0; // the offset on what runs now (intervals or easy parts)
     q('#hWAdjV').textContent = fmtAdj(ca); q('#hWAdj').classList.toggle('adj', !!ca); bar.classList.toggle('adj', !!ca);
     const pw = q('.metric.power'), wp = q('#hWPow'); pw?.classList.remove('z-lo', 'z-ok', 'z-hi'); wp.classList.remove('z-lo', 'z-hi');
@@ -1073,7 +1112,7 @@ export class RideSession {
     this._flash(`Field of view ${s.fov}°`); import('./app.js').then(m => m.saveSettings());
   }
   _setHud(h) {
-    this.state.settings.hud = h; applyHud(this.el, hudPrefs(this.state.settings));
+    this.state.settings.hud = h; applyHud(this.el, hudPrefs(this.state.settings)); this._wbLive();
     import('./app.js').then(m => m.saveSettings());
     const box = this.el.querySelector('.hudpanel'); if (box) box.querySelector('.hudbody').innerHTML = hudControlsHTML(hudPrefs(this.state.settings));
   }
