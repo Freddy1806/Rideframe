@@ -820,10 +820,10 @@ async function reopenDevices() {
  *  ride record as a finish would write it), Discard (asked twice). Escape keeps the draft for the next start. */
 async function offerResume(dft) {
   const { ask } = await import('./myworkouts-ui.js');
-  const route = !dft.leg && routeById(dft.routeId), w = dft.workout || dft.wDef;
+  const route = dft.leg ? !!dft.ow : routeById(dft.routeId), w = dft.workout || dft.wDef; // open world: the road it was on
   const a = await ask({ title: 'Unfinished ride', text: `${dft.routeName || 'Ride'} · ${fmtKm(draftRidden(dft))} km · ${fmtTime(dft.elapsed || 0)}${w ? ' · ' + w.name : ''}. ${route ? 'Continue where it stopped (paused, so you can connect first), or keep it as it is.' : 'This route cannot be continued here; keep the ride as it is.'}`,
     buttons: [...(route ? [{ label: 'Continue', value: 'go', cls: 'primary' }] : []), { label: 'Save as it is', value: 'save', cls: route ? 'ghost' : 'primary' }, { label: 'Discard', value: 'drop' }] });
-  if (a === 'go') { reopenDevices(); return startRide(dft.routeId, { resume: dft }); }
+  if (a === 'go') { reopenDevices(); return dft.leg ? startOpenWorld(dft.ow.a, dft.ow.b, 0, { resume: dft }) : startRide(dft.routeId, { resume: dft }); }
   if (a === 'save') {
     try { const rec = RideSession.draftRecord(dft, state); await db.put('rides', rec); await db.kvDel(DRAFT_KEY); import('./account.js').then(m => m.pushRide(rec)).catch(() => {});
       await reload(); toast(`Ride saved · ${fmtKm(rec.distance)} km · ${fmtTime(rec.duration)}`, 4000); go('history'); }
@@ -947,10 +947,10 @@ async function guessPlace(track) {
 // ---------------- ride ----------------
 let session = null;
 /** the open world on the island (Freddy 20.11.): ride from junction a towards b, turn wherever you like (js/openworld.js) */
-async function startOpenWorld(a, b, at = 0) {
+async function startOpenWorld(a, b, at = 0, opts = {}) {
   const ow = await import('./openworld.js'), map = await ow.islandMap(), l = ow.legsFrom(map, a).find(x => x.b === b) || ow.legsFrom(map, a)[0]; if (!l) return;
   const r = await ow.legRoute(l, map); if (!r) return toast('The island did not load.', 4000);
-  BUILTIN.insel_frei = () => r; builtins.insel_frei = r; return startRide('insel_frei', at > 0 ? { at } : {});
+  BUILTIN.insel_frei = () => r; builtins.insel_frei = r; return startRide('insel_frei', { ...opts, ...(at > 0 ? { at } : {}) });
 }
 async function startRide(id, opts = {}) {
   const route = routeById(id); if (!route) return;

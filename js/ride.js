@@ -241,7 +241,7 @@ export class RideSession {
     this._onGo = e => { if (!this._draftOk()) return; this._saveDraft(); if (e.type === 'beforeunload') { e.preventDefault(); e.returnValue = ''; } }; // "leave the page?" while a ride runs
     document.addEventListener('visibilitychange', this._onHide); window.addEventListener('pagehide', this._onGo); window.addEventListener('beforeunload', this._onGo);
   }
-  _draftOk() { return this._draftWired && !this._draftDone && !this.finished && !this._closed && !this.keyPower && !this.route.leg && this.samples.length > 0 && this.elapsed > 30; }
+  _draftOk() { return this._draftWired && !this._draftDone && !this.finished && !this._closed && !this.keyPower && !this.ow?.busy && this.samples.length > 0 && this.elapsed > 30; }
   _saveDraft() {
     if (!this._draftOk()) return;
     if (this._draftBusy) { this._draftAgain = true; return; } // one write at a time, the newest state follows

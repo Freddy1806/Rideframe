@@ -18,7 +18,8 @@ export function draftOn() {
 /** the checkpoint of a ride (r: a RideSession or anything with its fields) */
 export function draftOf(r, now = Date.now()) {
   const o = { v: 1, savedAt: now, routeId: r.route.id, routeName: r.route.name || '', group: !!r.group, leg: !!r.route.leg,
-    workout: r.workout || null, wDef: r._wDef || null, samples: r.samples, resumed: r.resumed || 0 };
+    workout: r.workout || null, wDef: r._wDef || null, samples: r.samples, resumed: r.resumed || 0,
+    ow: r.route.leg ? { a: r.route.leg.a, b: r.route.leg.b } : null, dOff: r.track?.__dOff || 0 }; // open world: the road (junction to junction) and the sun's offset
   for (const k of KEYS) if (r[k] !== undefined) o[k] = r[k];
   return o;
 }
@@ -30,6 +31,7 @@ export function restoreDraft(r, dft) {
   r.workout = dft.workout || null; r._wDef = dft.wDef || dft.workout || null;
   const end = Math.round(dft.elapsed || 0); // an ERG span that was open when the page went: it ends there
   if (r._ergSpans) r._ergSpans = r._ergSpans.map(([a, b]) => [a, b ?? end]); r._ergOn = false;
+  if (dft.dOff && r.track) r.track.__dOff = dft.dOff; // open world: the sun stands where it stood
   r._draftT = dft.elapsed || 0; r.resumed = (dft.resumed || 0) + 1;
   return r;
 }
