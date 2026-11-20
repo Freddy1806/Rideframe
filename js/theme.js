@@ -1,11 +1,12 @@
 // Look of the phone app (Freddy 16.11.): every mode has its own colour and icon, so you always know where you are,
 // plus light / dark / like the system. Used by handy, outdoor (ride + run), kraft and pure.
-// Settings (kv 'settings'): theme 'auto' | 'dark' | 'light', modeColors true (own colour per mode) or false (one accent for all).
+// Settings (kv 'settings'): theme 'auto' | 'dark' | 'light', oneColor true = one accent for all; otherwise every mode has its own colour (Freddy 20.11.: colours back,
+// orange stays the main colour and the colour of the virtual routes; the older modeColors setting is no longer read).
 export const MODES = {
-  ride: { name: 'Ride outdoors', short: 'Ride', href: 'outdoor.html', color: '#ff5a1f', light: '#e04a12' },
+  ride: { name: 'Ride outdoors', short: 'Ride', href: 'outdoor.html', color: '#c6f432', light: '#5f8a00' },
   run: { name: 'Run', short: 'Run', href: 'outdoor.html?sport=run', color: '#2fd3e0', light: '#0a8f9c' },
   trainer: { name: 'Indoor trainer', short: 'Indoor', href: 'pure.html', color: '#8b6cff', light: '#6446e8' },
-  world: { name: 'Virtual routes', short: 'Virtual', href: './?desktop', color: '#c6f432', light: '#5f8a00' },
+  world: { name: 'Virtual routes', short: 'Virtual', href: './?desktop', color: '#ff5a1f', light: '#e04a12' },
   kraft: { name: 'Strength', short: 'Strength', href: 'kraft.html', color: '#ff4f9a', light: '#d62c78' },
   // the other sports (imported from Strava, a file or entered by hand, js/sports.js): no recording page of their own
   walk: { name: 'Walk & hike', short: 'Walk', color: '#e2a33b', light: '#9a6400' },
@@ -50,8 +51,8 @@ export function applyTheme(S = {}, mode = null) {
   last = [S, mode];
   const light = S.theme === 'light' || (S.theme === 'auto' && mq.matches);
   const r = document.documentElement; r.dataset.theme = light ? 'light' : 'dark';
-  const own = S.modeColors === true && mode && MODES[mode], a = ACCENTS[S.accent] || ACCENTS.orange;
-  document.documentElement.dataset.modecolors = S.modeColors === true ? '1' : '0';
+  const own = S.oneColor !== true && (mode ? MODES[mode] : { color: ACCENTS.orange[0], light: ACCENTS.orange[1] }), a = ACCENTS[S.accent] || ACCENTS.orange; // own colours: the home screen is orange
+  document.documentElement.dataset.modecolors = S.oneColor !== true ? '1' : '0';
   r.style.setProperty('--accent', own ? (light ? own.light : own.color) : a[light ? 1 : 0]);
   r.style.setProperty('--accent-ink', light ? '#ffffff' : '#0b0b0b');
   document.querySelector('meta[name="theme-color"]')?.setAttribute('content', light ? '#f4f3ef' : '#0b0b0b');

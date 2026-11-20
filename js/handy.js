@@ -25,7 +25,7 @@ async function load() {
 
 function render() {
   const R2 = twoWeeks(rides), K2 = twoWeeks(kraft), nb = l => l.filter(isBike).length, nr = l => l.filter(r => sportOf(r) === 'run').length, km = l => Math.round(l.reduce((a, r) => a + r.distance, 0) / 1000);
-  const mcs = m => S.modeColors === true ? `--mc:${MODES[m].color};--mcl:${MODES[m].light}` : '--mc:var(--accent);--mcl:var(--accent)';
+  const mcs = m => S.oneColor !== true ? `--mc:${MODES[m].color};--mcl:${MODES[m].light}` : '--mc:var(--accent);--mcl:var(--accent)';
   const card = m => `<a class="hmode" href="${MODES[m].href}" style="${mcs(m)}">${icon(m, 'hico')}<b>${MODES[m].name}</b><i>›</i></a>`;
   el.innerHTML = `<header class="ptop"><div class="pbrand" style="font-size:22px">RIDE<span>FRAME</span></div>
       <button class="ppill ${acc ? 'on' : ''}" id="hAcc"><i></i><span class="pname">${acc ? esc(acc.name) : 'Sign in'}</span></button>
@@ -82,7 +82,7 @@ function friendsSheet(live, F, copy) {
   s.querySelectorAll('.frcopy').forEach(b => b.onclick = () => { const f = F.friends.find(x => x.ride?.id === b.dataset.sid); if (f) copy(b, live.joinLink(live.asRider(f))); });
   $('#frOk', s).onclick = () => s.remove(); s.onclick = e => { if (e.target === s) s.remove(); };
 }
-async function save() { const st = (await db.kvGet('settings').catch(() => null)) || {}; Object.assign(st, { theme: S.theme, modeColors: S.modeColors, accent: S.accent, autoStrava: S.autoStrava, stravaImport: S.stravaImport, kraftRest: S.kraftRest, liveShow: S.liveShow, liveAuto: S.liveAuto }); await db.kvSet('settings', st).catch(() => {});
+async function save() { const st = (await db.kvGet('settings').catch(() => null)) || {}; Object.assign(st, { theme: S.theme, oneColor: S.oneColor, accent: S.accent, autoStrava: S.autoStrava, stravaImport: S.stravaImport, kraftRest: S.kraftRest, liveShow: S.liveShow, liveAuto: S.liveAuto }); await db.kvSet('settings', st).catch(() => {});
   import('./account.js').then(a => a.settingsChanged?.(st)).catch(() => {}); } // to the account too: the watch reads the rest time from there
 function settings() {
   const s = document.createElement('div'); s.className = 'psheet'; document.body.append(s);
@@ -90,8 +90,8 @@ function settings() {
     s.innerHTML = `<div class="psheetin"><div class="label">Settings</div>
       <h3 class="ksec">Appearance</h3><div class="pseg" id="tSeg">${[['auto', 'Auto'], ['dark', 'Dark'], ['light', 'Light']].map(([k, l]) => `<button data-th="${k}" class="${(S.theme || 'dark') === k ? 'on' : ''}">${l}</button>`).join('')}</div>
       <h3 class="ksec">Colours</h3>
-      <label class="prow">Own colour per mode<input id="tMc" type="checkbox" class="toggle" ${S.modeColors === true ? 'checked' : ''}></label>
-      <div class="hsw" ${S.modeColors === true ? 'hidden' : ''}>${Object.entries(ACCENTS).map(([k, c]) => `<button data-ac="${k}" class="${(S.accent || 'orange') === k ? 'on' : ''}" style="background:${c[0]}" aria-label="${k}"></button>`).join('')}</div>
+      <label class="prow">Own colour per mode<input id="tMc" type="checkbox" class="toggle" ${S.oneColor !== true ? 'checked' : ''}></label>
+      <div class="hsw" ${S.oneColor !== true ? 'hidden' : ''}>${Object.entries(ACCENTS).map(([k, c]) => `<button data-ac="${k}" class="${(S.accent || 'orange') === k ? 'on' : ''}" style="background:${c[0]}" aria-label="${k}"></button>`).join('')}</div>
       <h3 class="ksec">Strava</h3>
       <label class="prow">Upload automatically after saving<input id="tSt" type="checkbox" class="toggle" ${S.autoStrava ? 'checked' : ''}></label>
       <div class="prow" id="tStrava"><span>Strava account</span><button class="btn ghost ksmall" id="tConn">Connect</button></div>
@@ -129,7 +129,7 @@ function settings() {
     if (acc && !draw.synced) { draw.synced = true; import('./live.js').then(l => l.getPrefs()).then(p => { const same = (S.liveShow !== false) === p.show && (S.liveAuto !== false) === p.auto; S.liveShow = p.show; S.liveAuto = p.auto; if (!same && s.isConnected) draw(); }).catch(() => {}); }
     s.querySelectorAll('[data-rest]').forEach(b => b.onclick = () => { S.kraftRest = +b.dataset.rest; save(); draw(); });
     s.querySelectorAll('[data-th]').forEach(b => b.onclick = () => { S.theme = b.dataset.th; applyTheme(S, null); save(); draw(); });
-    $('#tMc', s).onchange = e => { S.modeColors = e.target.checked; save(); draw(); render(); };
+    $('#tMc', s).onchange = e => { S.oneColor = !e.target.checked; save(); draw(); render(); };
     s.querySelectorAll('[data-ac]').forEach(b => b.onclick = () => { S.accent = b.dataset.ac; applyTheme(S, null); save(); draw(); render(); });
     import('./watchpair.js').then(m => m.watchRow($('#tWatch', s), async () => { s.remove(); const a = await import('./account.js'); await a.accountModal({ settings: S }, async () => { await load(); render(); }); })).catch(() => {});
     import('./watchcfg.js').then(m => m.cfgRow($('#tWcfg', s))).catch(() => {}); // Watch screens & workouts (signed in only)

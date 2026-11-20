@@ -102,7 +102,8 @@ function scope() {
   return ov.reduce((top, o) => (z(o) >= z(top) ? o : top)); // equal z: the later one in the page is on top
 }
 function candidates(root) {
-  const out = [...root.querySelectorAll(FOCUSABLE)].filter(el => visible(el) && !el.closest('.ride:not(:has(.finish))'));
+  const inMap = !!cur?.matches?.('.ihnode, #ihMore'); // the places on the island map: only from the button next to them or from another place, else the map swallows every ↑ ↓
+  const out = [...root.querySelectorAll(FOCUSABLE)].filter(el => visible(el) && !el.closest('.ride:not(:has(.finish))') && (inMap || !el.matches('.ihnode')));
   return out.filter(el => !out.some(o => o !== el && o.contains(el) && !(o.matches('.card, tr[data-key]')))); // a button inside a clickable card stays its own stop
 }
 /** first sensible element of the screen: in a window its first control, on a page the first control below the tab bar */
@@ -111,7 +112,7 @@ function first(root) {
   if (root !== document.body) return c.find(el => !TEXTY(el)) || c[0];
   const main = document.querySelector('#main');
   const inMain = c.filter(el => main?.contains(el)), view = inMain.filter(el => { const r = el.getBoundingClientRect(); return r.top >= 0 && r.bottom <= innerHeight; });
-  return view[0] || inMain[0] || c[0];
+  return view.find(el => el.hasAttribute('data-pnfirst')) || view[0] || inMain[0] || c[0]; // a page may name its main button (the island banner: not a place on the map)
 }
 /** an address for an element that survives a redraw of the same screen (settings redraw themselves on many changes) */
 function sig(el) {
@@ -121,7 +122,7 @@ function sig(el) {
   if (!da && !host) return null;
   return (host && host !== document.body ? '#' + CSS.escape(host.id) + ' ' : '') + el.tagName.toLowerCase() + (da ? `[${da.name}="${CSS.escape(da.value)}"]` : '');
 }
-let curSig = null, editSig = null;
+let curSig = null, editSig = null, trail = null;
 
 function setCur(el, { scroll = true } = {}) {
   if (cur && cur !== el) cur.classList.remove('pn-focus', 'pn-edit');
@@ -168,8 +169,10 @@ function move(dir, wasActive = active) {
     return;
   }
   const c = candidates(scope()), rect = e => { const r = e.getBoundingClientRect(); return { left: r.left, top: r.top, right: r.right, bottom: r.bottom }; };
+  const OPP = { up: 'down', down: 'up', left: 'right', right: 'left' };
+  if (trail && trail.to === el && trail.dir === OPP[dir] && c.includes(trail.from)) { const t = trail.from; trail = { from: el, to: t, dir }; setCur(t); return; } // straight back: where you came from, not the nearest
   const rs = c.map(rect), me = rect(el), i = pickInDir(me, rs, dir);
-  if (i >= 0) setCur(c[i]);
+  if (i >= 0) { trail = { from: el, to: c[i], dir }; setCur(c[i]); }
 }
 function select(wasActive = active) {
   const was = wasActive && cur && cur.isConnected;
