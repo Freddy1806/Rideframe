@@ -1149,3 +1149,6 @@ img.face.big{width:96px;height:96px}
   .hrp-tbl .ivx { display: none; }
 }
 .ivcard .hrp { background: none; border: 0; padding: 0; }
+
+/* ERG target not taken by the trainer (js/ride.js _updateHUD) */
+#hGearL.warn { color: #ff5a4d; font-weight: 700; }

@@ -67,6 +67,7 @@ export class Trainer extends EventTarget {
   async _setupSteps(at) {
     const server = await this.device.gatt.connect();
     at('Reading the trainer');
+    this.ctlRefused = null;
     if (this.pmOnly) return this._listenOnly(server);
     let ftms = null;
     try { ftms = await server.getPrimaryService(FTMS); } catch {}
@@ -98,6 +99,7 @@ export class Trainer extends EventTarget {
     this.lastGrade = null;
     if (this.sim) try { await this.setSim(this.sim); } catch {}
     this.emit('status', 'connected');
+    if (this.erg != null) { this.ergSent = null; if (!this._pwBusy) this._sendPower(); } // after a reconnect the trainer has forgotten the ERG target: send it again at once
   }
 
   /** power meter only: the watts (and cadence) from the Cycling Power Service, or a trainer's own data; no control point is
@@ -126,7 +128,20 @@ export class Trainer extends EventTarget {
       : this.cp?.writeValue(new Uint8Array(bytes))).catch(err => console.warn('trainer write', err));
     return this.queue;
   }
-  _onCPResponse(dv) { if (dv.getUint8(0) === 0x80 && dv.getUint8(2) !== 0x01) console.warn('FTMS op', dv.getUint8(1), 'result', dv.getUint8(2)); }
+  /** the trainer's answer to a control point command. A refused ERG target (0x05) or a refused "request control" (0x00) used
+   *  to be a console line only, so the app showed 340 W while the trainer stayed where it was (Freddy 20.11.). Now: ask for
+   *  control again and send the target once more (at most every 3 s), and tell the ride ('control' event) so it can say so. */
+  _onCPResponse(dv) {
+    if (dv.byteLength < 3 || dv.getUint8(0) !== 0x80) return;
+    const op = dv.getUint8(1), res = dv.getUint8(2);
+    if (res === 0x01) { if (op === 0x05 && this.ctlRefused) { this.ctlRefused = null; this.emit('control', { ok: true }); } return; }
+    console.warn('FTMS op', op, 'result', res);
+    if (op !== 0x05 && op !== 0x00) return;
+    const first = !this.ctlRefused; this.ctlRefused = { op, res, at: performance.now() };
+    if (first) this.emit('control', { ok: false, op, res });
+    if (op === 0x05 && this.erg != null && performance.now() - (this._ctlRetry || -1e9) > 3000) { this._ctlRetry = performance.now();
+      this._write([0x00]); this._write([0x07]); this.ergSent = null; if (this._pwBusy) this._pwNext = true; else this._sendPower(); }
+  }
 
   _onIBD(dv) {
     const flags = dv.getUint16(0, true); let o = 2;

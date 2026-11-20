@@ -29,3 +29,11 @@ test('30 / 15 and sprints: no ramp, the target jumps at the second the effort st
 });
 test('long intervals keep their ramp in', () => { const w = workoutById('vo2_5x3'); let s = 0, i = w.steps.findIndex(x => /VO2max 1\//.test(x.label)); for (let k = 0; k < i; k++) s += w.steps[k].dur;
   const a = workoutState(w, s - 5, 280, { ramp: true }), b = workoutState(w, s - 20, 280, { ramp: true }); assert.equal(a.ramp, 'in'); assert.ok(a.target > b.target); });
+test('a refused ERG target: control is requested again, the target is resent, and the ride is told once', async () => {
+  const t = new Trainer(), raw = [], ev = []; t.device = { gatt: { connected: true } }; t.mode = 'ftms';
+  t.cp = { writeValueWithResponse: b => { raw.push([...b]); return wait(5); } }; t.addEventListener('control', e => ev.push(e.detail.ok));
+  const resp = (op, res) => t._onCPResponse(new DataView(new Uint8Array([0x80, op, res]).buffer));
+  t.setPower(340); await wait(20); resp(0x05, 0x05); resp(0x05, 0x05); await wait(40);
+  assert.deepEqual(raw, [[5, 84, 1], [0], [7], [5, 84, 1]]); assert.deepEqual(ev, [false]); assert.ok(t.ctlRefused);
+  resp(0x05, 0x01); assert.equal(t.ctlRefused, null); assert.deepEqual(ev, [false, true]);
+});

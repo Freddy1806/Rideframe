@@ -551,7 +551,13 @@ export class RideSession {
     this._padLegend();
     const t = this.state.trainer, erg = this._ergNow();
     q('#hGearBar').hidden = !!erg; // ERG: the trainer holds the watts in any gear
-    if (erg) { q('#hGear').textContent = erg.w + ' W'; q('#hGearL').textContent = erg.by === 'workout' ? 'ERG · workout' : 'ERG · target'; }
+    // the trainer does not take the target (another app holds the control, or the browser got no control point): say so
+    // instead of showing a wattage the trainer never got (Freddy 20.11.)
+    const noCtl = erg && t.connected && (t.ctlRefused ? 'refused' : !t.cp ? 'none' : '');
+    if (noCtl && !this._noCtlTold) { this._noCtlTold = true; this._flash(noCtl === 'refused' ? 'The trainer refuses the ERG target: close other apps that control it (Wahoo, Zwift, watch)' : 'No trainer control: this connection only reads the watts. Reconnect the trainer', 6000); }
+    if (!noCtl) this._noCtlTold = false;
+    q('#hGearL').classList.toggle('warn', !!noCtl);
+    if (erg) { q('#hGear').textContent = erg.w + ' W'; q('#hGearL').textContent = noCtl ? 'ERG · trainer not following' : erg.by === 'workout' ? 'ERG · workout' : 'ERG · target'; }
     else if (this.virtual) {
       q('#hGear').textContent = gearName(this.gear);
       q('#hGearL').textContent = `${this.auto ? 'Auto' : 'Virtual gear'} ${this.gi + 1}/${this.gears.length}`;
