@@ -396,6 +396,7 @@ export class RideSession {
 
   _pollPad() { // any Bluetooth gamepad (e.g. 8BitDo Micro on the bars) drives the whole ride; mapping in PAD_MAP (controller.js shows it)
     const pad = activePad(); if (!pad) return; // a real pad or the phone remote (js/remotepad.js)
+    if (document.querySelector('.rideset')) { this.padPrev = padButtons(pad); return; } // the settings sheet over the ride: js/padnav.js drives it
     const b = padButtons(pad), was = this.padPrev || [];
     this.padPrev = b;
     if (!this.padSeen) { this.padSeen = true; this._flash('🎮 Controller ready · Start = pause'); }
@@ -1018,6 +1019,7 @@ export class RideSession {
     return this._pk;
   }
   _key(e) {
+    if (document.querySelector('.rideset')) return; // the settings sheet over the ride takes the keys
     if ((e.key === 'ArrowLeft' || e.key === 'ArrowRight') && this.ow?.open && !this.paused) { e.preventDefault(); this.ow.choose(e.key === 'ArrowLeft' ? -1 : 1); return; } // open world: pick the road at the junction
     if (e.key.startsWith('Arrow') && this._trainerLive()) return this._arrowWithTrainer(e);
     if (!this.running && !e.key.startsWith('Arrow')) return; // still loading / counting down: only the power keys
@@ -1106,12 +1108,14 @@ export class RideSession {
     this.q('#pauseOverlay')?.remove();
     const o = document.createElement('div'); o.className = 'paused'; o.id = 'pauseOverlay';
     o.innerHTML = `<div class="box"><div class="label">${fmtKm(this.d)} km · ${fmtTime(this.elapsed)}</div><h2 class="display">Pause</h2>
-      <div class="row-actions padmenu"><button class="btn" id="pResume">Resume</button><button class="btn ghost" id="pOpts">Options</button><button class="btn ghost" id="pSetup">Workout &amp; mode</button><button class="btn ghost" id="pSave">Finish &amp; save</button><button class="btn ghost" id="pDiscard">Discard</button>${this.group?.voice?.on ? '<button class="btn ghost" id="pVoice">Voice chat off</button>' : ''}${this.group ? this.group.others().filter(r => r.riding || r.d > 0).slice(0, 4).map((r, i) => `<button class="btn ghost" data-jump="${i}">⇢ Jump to ${esc(r.name)}</button>`).join('') : this.autopilot ? '' : '<button class="btn ghost" id="pGroup">Open group</button>'}${this.presence?.on ? '<button class="btn ghost" id="pInvite">Invite friends</button>' : ''}</div>
+      <div class="row-actions padmenu"><button class="btn" id="pResume">Resume</button><button class="btn ghost" id="pOpts">Options</button><button class="btn ghost" id="pSetup">Workout &amp; mode</button><button class="btn ghost" id="pSet">Settings</button>${this.state.trainer.connected ? '' : '<button class="btn ghost" id="pConn">Connect trainer</button>'}<button class="btn ghost" id="pSave">Finish &amp; save</button><button class="btn ghost" id="pDiscard">Discard</button>${this.group?.voice?.on ? '<button class="btn ghost" id="pVoice">Voice chat off</button>' : ''}${this.group ? this.group.others().filter(r => r.riding || r.d > 0).slice(0, 4).map((r, i) => `<button class="btn ghost" data-jump="${i}">⇢ Jump to ${esc(r.name)}</button>`).join('') : this.autopilot ? '' : '<button class="btn ghost" id="pGroup">Open group</button>'}${this.presence?.on ? '<button class="btn ghost" id="pInvite">Invite friends</button>' : ''}</div>
       <div class="hint pad-hint" style="margin-top:12px;opacity:.7">🎮 D-pad to choose · A ok · B back</div></div>`;
     this.el.append(o);
     o.querySelector('#pResume').onclick = () => this._resume();
     o.querySelector('#pOpts').onclick = () => this._options();
     o.querySelector('#pSetup').onclick = () => this._setup();
+    o.querySelector('#pSet').onclick = () => this._settings();
+    o.querySelector('#pConn')?.addEventListener('click', () => this._connTrainer());
     o.querySelector('#pSave').onclick = () => this._end(true);
     o.querySelector('#pDiscard').onclick = () => this._end(false);
     o.querySelector('#pVoice')?.addEventListener('click', e => { this.group.voice?.stop(); this.group.voice = null; e.target.remove(); this._flash('Voice chat off'); });
@@ -1120,6 +1124,40 @@ export class RideSession {
     o.querySelector('#pGroup')?.addEventListener('click', () => this._openGroup());
     o.querySelector('#pInvite')?.addEventListener('click', () => this._inviteMenu());
     this._padFocus(0);
+  }
+  /** Freddy 20.11.: everything the main menu can do also in the ride: the whole Settings page over the paused ride */
+  _settings() {
+    import('./app.js').then(m => m.openRideSettings(() => this._settingsBack())).catch(e => this._flash('Settings did not open: ' + (e?.message || e)));
+  }
+  /** back from the settings sheet: the ride takes what changed (camera, field of view, bars, display, trainer, pause menu) */
+  _settingsBack() {
+    if (this._closed) return;
+    const s = this.state.settings, P = this.player;
+    P?.setFov?.(fovOf(s)); P?.setView?.(s.view3d || 0); P?.setCockpit?.(s.cockpit !== false);
+    applyHud(this.el, hudPrefs(s));
+    if (s.ftp && s.ftp !== this.ftp) { this.ftp = s.ftp; if (this.workout) { this._wT = 0; this._workout(0); } } // a new FTP: the workout's watts follow at once
+    this._trainerUp();
+    const pad = activePad(); this.padPrev = pad ? padButtons(pad) : null; // the B that closed the sheet must not also resume the ride
+    if (this.paused && !this.finished) this._pause();
+  }
+  /** a trainer connected in the ride (pause menu, settings, workout & mode): its physics, and ERG gets its target at once */
+  _trainerUp() {
+    const t = this.state.trainer; if (!t.connected) return;
+    t.setSim?.({ riderKg: this.state.settings.riderKg, bikeKg: this.state.settings.bikeKg, crr: 0.004, cw: 0.51 })?.catch?.(() => {});
+    if (this.workout && this.erg) this._workout(0); else if (this.berg) t.setPower?.(this._bergTarget());
+  }
+  async _connTrainer() {
+    const b = this.q('#pConn'); if (b) { b.disabled = true; b.textContent = 'Connecting …'; }
+    try { const m = await import('./app.js'); await m.connectTrainer(); } catch (e) { this._flash('Connection failed: ' + (e?.message || e), 4000); }
+    if (this.state.trainer.connected) { this._trainerUp(); this._flash('✓ ' + (this.state.trainer.device?.name || 'Trainer') + ' connected'); }
+    if (this.paused && !this.finished) this._pause();
+  }
+  /** laps also in the ride (like on the route page): 1 → 2 → 3 → 4 → 5 → 10 → 1, never below the lap you are on */
+  _cycleLaps() {
+    const L = [1, 2, 3, 4, 5, 10], ok = L.filter(n => n >= this.lap), i = ok.indexOf(this.laps);
+    this.laps = ok[(i + 1) % ok.length] ?? ok[0]; this.state.settings.laps = this.laps; import('./app.js').then(m => m.saveSettings());
+    const q = this.q('#hDistSub'); if (q) q.textContent = this._distSub();
+    this._flash(this.laps === 1 ? 'One lap' : `${this.laps} laps · ${fmtKm(this.track.length * this.laps)} km`);
   }
   /** in-ride options (game-style, all reachable with the controller): each button shows its current state and toggles it */
   _options() {
@@ -1131,6 +1169,7 @@ export class RideSession {
       ['oHud', 'Switch display', () => this._cycleHud()],
       ...(this.workout ? [['oWView', `Interval display: ${WB_NAMES[this._wbView()]}`, () => this._cycleWbView()]] : []),
       ['oBar', `Bars: ${s.cockpit === false ? 'off' : 'on'}`, () => this._toggleBar()],
+      ...(!this.group && !this.ow && !this.autopilot ? [['oLaps', `Laps: ${this.laps}${this.laps > 1 ? ` (now lap ${this.lap})` : ''}`, () => this._cycleLaps()]] : []),
       ['oMusic', `Music: ${this.music?.on ? 'on' : 'off'}`, () => this._toggleMusic()],
       ['oEagle', `Eagle of Destiny: ${s.eagle === false ? 'off' : 'on'}`, () => this._toggleEagle()],
       ...(this.group && this._voiceTap ? [['oVoice', `Voice chat: ${!this.group.voice?.on ? 'off' : this.group.voice.muted ? 'muted' : 'on'}`, () => this._voiceTap()]] : []),

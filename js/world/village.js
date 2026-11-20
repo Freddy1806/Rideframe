@@ -71,6 +71,21 @@ function smoke(strong) {
   return g;
 }
 
+/** the top of a house's chimney in world space: the highest vertices of the model, if they sit close together (a chimney,
+ *  not a long ridge). null: no chimney (thatched roof, or the model is not there yet) -> that house does not smoke. */
+const _v = new THREE.Vector3();
+export function chimneyTop(obj) {
+  obj.updateMatrixWorld(true); let top = -Infinity; const pts = [];
+  obj.traverse(m => { const p = m.isMesh && m.geometry?.attributes?.position; if (!p) return;
+    for (let i = 0; i < p.count; i++) { _v.fromBufferAttribute(p, i).applyMatrix4(m.matrixWorld); pts.push(_v.x, _v.y, _v.z); if (_v.y > top) top = _v.y; } });
+  if (!pts.length) return null;
+  let sx = 0, sz = 0, n = 0, x0 = Infinity, x1 = -Infinity, z0 = Infinity, z1 = -Infinity;
+  for (let i = 0; i < pts.length; i += 3) if (pts[i + 1] > top - 0.3) { const x = pts[i], z = pts[i + 2]; sx += x; sz += z; n++; x0 = Math.min(x0, x); x1 = Math.max(x1, x); z0 = Math.min(z0, z); z1 = Math.max(z1, z); }
+  return Math.hypot(x1 - x0, z1 - z0) < 2.2 ? { x: sx / n, y: top, z: sz / n } : null;
+}
+/** Freddy 20.11.: not every house smokes, about every 5th to 10th, picked by its place (the same every ride, the village layout untouched) */
+const smokes = (m, strong) => { const h = Math.sin(m * 12.9898 + 4.1414) * 43758.5453; return (h - Math.floor(h)) < (strong ? 0.6 : 0.16); };
+
 /**
  * Build the village into the world. ctx: { place, byName, make, mirror, spot, f, scene, props, anim, len }; v: { km, hm, leader }.
  * Positions are metres before the finish (end = track length). Returns a summary for the HUD/result screen.
@@ -85,9 +100,10 @@ export function buildVillage(ctx, v = {}) {
   const missed = [];
   const put = (e, m, off, o = {}) => { if (!e) return null; const obj = place(e, at(m), off, o);
     if (obj) { built.push(e.file); obj.userData.village = { m, file: e.file }; } else missed.push(e.file.split('/').pop() + '@' + m); return obj; };
-  const house = (e, m, off, o = {}, strong = false) => { // a lived-in building: smoke from the roof (thatched farmhouses had no chimney, it seeps out at the ridge)
-    const obj = put(e, m, off, o); if (!obj) return obj;
-    const sm = smoke(strong); sm.position.set(obj.position.x, obj.position.y + e.size[1] * (o.scale || 1) * 0.95, obj.position.z);
+  const house = (e, m, off, o = {}, strong = false) => { // a lived-in building: some of them smoke, always out of the chimney (Freddy 20.11.)
+    const obj = put(e, m, off, o); if (!obj || !smokes(m, strong)) return obj;
+    const c = chimneyTop(obj); if (!c) return obj; // no chimney on this model: no smoke rather than smoke out of the middle of the roof
+    const sm = smoke(strong); sm.position.set(c.x, c.y + 0.2, c.z);
     sm.userData.live = true; scene.add(sm); props.push(sm); sm.children.forEach(c => anim.push(c)); return obj; };
   const loose = (obj, m, off, y = 0, face = 0) => { // a procedural piece, set straight onto the ground beside the road
     if (ctx.mirror?.(at(m))) off = -off; // sea on the right: the whole layout mirrors, like place()
