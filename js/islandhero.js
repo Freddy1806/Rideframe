@@ -43,7 +43,7 @@ export async function islandHero(el, opts) {
     </div>
     <div class="ihtext">
       <div class="label"><span class="ihnew">New</span>Open world</div>
-      <h1 class="display">The<br>island</h1>
+      <h1 class="display">The <br>island</h1>
       <div class="meta">${tours.length} routes · ${fmtNum(roadKm, 0)} km of roads · passes, castle, 5 km bridge</div>
       <div class="ihnow" aria-live="polite"></div>
       <div class="ihacts"><button class="btn" type="button" id="ihRide">Ride the island ▸</button><button type="button" class="ihmore" id="ihMore">Routes &amp; workouts<i>↓</i></button></div>

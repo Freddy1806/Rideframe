@@ -84,3 +84,15 @@
 .ihnode.pass span { opacity: 0; transition: opacity .2s; }
 .ihnode.pass:hover span, .ihnode.pass.sel span { opacity: 1; }
 .ihnode.up { flex-direction: column-reverse; gap: 3px; transform: translate(-50%, calc(-100% + 7px)); }
+
+/* phone (Mac check: 76 % of the screen): a smaller map and a compact text, so "Your routes" shows below */
+@media (max-width: 760px) {
+  .ihmap { height: min(32vh, 290px) !important; width: auto !important; justify-self: center; margin-top: 10px; border-radius: 6px; }
+  .ihero { background: radial-gradient(90% 70% at 50% 30%, #275c73, #0c1014 75%); }
+  .ihtext { padding: 6px 16px 14px; }
+  .ihtext .display { font-size: 34px; margin: 6px 0 6px; }
+  .ihtext .display br { display: none; }
+  .ihtext .meta { font-size: 13px; }
+  .ihnow { margin: 8px 0 10px; font-size: 13px; }
+  .ihero { margin-bottom: 18px; }
+}
