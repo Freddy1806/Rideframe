@@ -85,7 +85,7 @@ function hintFor() { const h = document.getElementById('pnHint'); if (h) h.textC
 let cur = null, editing = false, active = false, viaPad = false;
 const memory = new WeakMap(); // overlay (or document) -> the element focused there last, so closing a window returns to it
 
-function rideRunning() { const r = document.querySelector('.ride'); return !!r && !r.querySelector('.finish'); }
+function rideRunning() { const r = document.querySelector('.ride'); return !!r && !r.querySelector('.finish') && !document.querySelector('.rideset'); } // the settings sheet over the ride (app.js openRideSettings) is a menu again
 function visible(el) {
   if (!el.isConnected || el.closest('[hidden]') || el.disabled || el.getAttribute('aria-disabled') === 'true') return false;
   const r = el.getBoundingClientRect(); if (r.width < 2 || r.height < 2) return false;

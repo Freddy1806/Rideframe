@@ -79,7 +79,7 @@ async function boot() {
   document.querySelectorAll('.tab').forEach(t => t.addEventListener('click', () => go(t.dataset.view)));
   $('#trainerPill').addEventListener('click', connectTrainer);
   $('#hrPill').addEventListener('click', connectHR);
-  state.trainer.addEventListener('status', updateTrainerPill);
+  state.trainer.addEventListener('status', () => { updateTrainerPill(); const e = document.querySelector('#trState'), b = document.querySelector('#trBtn'); if (e) e.textContent = trState(); if (b) b.textContent = state.trainer.connected ? 'Disconnect' : 'Connect'; });
   $('#fileInput').addEventListener('change', e => { importFiles([...e.target.files]); e.target.value = ''; });
   document.addEventListener('dragover', e => { e.preventDefault(); document.querySelector('.add-card')?.classList.add('drag'); });
   document.addEventListener('dragleave', e => { if (!e.relatedTarget) document.querySelector('.add-card')?.classList.remove('drag'); });
@@ -568,12 +568,36 @@ function intervalPlan(t) {
 }
 
 // ---------------- settings ----------------
+let setRoot = null; // the settings rendered somewhere else than the page: the in-ride settings sheet (openRideSettings)
+const trState = () => { const t = state.trainer; return t.connected ? `✓ ${esc(t.device?.name || 'Trainer')} connected${t.mode === 'pm' ? ' · power meter only' : ''}` : 'Not connected. Bluetooth (Chrome or Edge).'; };
+/** Freddy 20.11. ("alles, was ich im Hauptmenü machen kann, auch während ich spiele"): the whole Settings page as a sheet over
+ *  the ride, the same panels and switches. onClose: the ride takes the changes (view, FOV, bars, display, trainer). */
+export function openRideSettings(onClose) {
+  if (document.querySelector('.rideset')) return;
+  if (state.view === 'settings') main.innerHTML = ''; // the ids must be unique: the page behind would answer first
+  const m = document.createElement('div'); m.className = 'modal rideset';
+  m.innerHTML = `<div class="box rsetbox"><div class="rsethead"><div><div class="label">Pause · Settings</div><h2 class="display">Settings</h2></div><button class="btn" id="rsetBack" type="button">Back</button></div><div class="rsetbody view"></div></div>`;
+  document.body.append(m); setRoot = m.querySelector('.rsetbody'); settings();
+  const close = () => { setRoot = null; m.remove(); document.removeEventListener('keydown', esc_, true); if (state.view === 'settings') settings(); onClose?.(); };
+  const esc_ = e => { if (e.key === 'Escape' && !document.querySelector('.modal:not(.rideset)') && !(document.activeElement && /INPUT|SELECT|TEXTAREA/.test(document.activeElement.tagName))) { e.preventDefault(); e.stopImmediatePropagation(); close(); } };
+  document.addEventListener('keydown', esc_, true);
+  m.querySelector('#rsetBack').onclick = close;
+  m.addEventListener('click', e => { if (e.target === m) close(); });
+  setTimeout(() => m.querySelector('#rsetBack')?.focus(), 30);
+}
+/** connect the trainer from the ride's pause menu (same as the KICKR pill) */
+export { connectTrainer };
 function settings() {
-  const s = state.settings;
-  main.innerHTML = `
+  const s = state.settings, root = setRoot || main;
+  root.innerHTML = `
   <section class="view">
-    <div class="view-head"><div><div class="label">Setup</div><h1 class="display" style="margin-top:14px">Settings</h1></div></div>
+    ${setRoot ? '' : '<div class="view-head"><div><div class="label">Setup</div><h1 class="display" style="margin-top:14px">Settings</h1></div></div>'}
     <div class="settings">
+      ${setRoot ? `<div class="panel"><h3>Account &amp; more</h3>
+        <div class="field"><div>Account<div class="hint">${account() ? 'Signed in as ' + esc(account().name) : 'Not signed in'}</div></div><button class="btn ghost small" id="rsAcc">${account() ? 'Account' : 'Sign in'}</button></div>
+        <div class="field"><div>Wizard points shop</div><button class="btn ghost small" id="rsShop">Shop</button></div>
+        <div class="field" id="rsWishRow" hidden><div>Wish list</div><button class="btn ghost small" id="rsWish">Wish list</button></div>
+      </div>` : ''}
       <div class="panel"><h3>Rider</h3>
         <label class="field"><div>Body weight<div class="hint">Important for realistic climbing speed.</div></div>${stepper('riderKg', s.riderKg, { step: 0.5, min: 30, max: 200, unit: 'kg' })}</label>
         <label class="field"><div>Bike weight</div>${stepper('bikeKg', s.bikeKg, { step: 0.1, min: 4, max: 30, unit: 'kg' })}</label>
@@ -590,6 +614,7 @@ function settings() {
         <div class="field"><div>Gears<div class="hint">${gearsFrom(s).map(g => g.f + '×' + g.r).join(' · ')}</div></div></div>
       </div>
       <div class="panel"><h3>Trainer</h3>
+        <div class="field"><div>Smart trainer / power meter<div class="hint" id="trState">${trState()}</div></div><button class="btn ghost small" id="trBtn">${state.trainer.connected ? 'Disconnect' : 'Connect'}</button></div>
         <label class="field"><div>Gradient realism <b id="diffV">${s.difficulty}%</b><div class="hint">100 % = real gradient. 50 % = climbs feel half as steep.</div></div><input type="range" id="difficulty" min="0" max="100" step="5" value="${s.difficulty}"></label>
         <label class="field"><div>Descents <b id="downV">${s.downhill}%</b><div class="hint">How much the trainer eases off downhill.</div></div><input type="range" id="downhill" min="0" max="100" step="5" value="${s.downhill}"></label>
         <div class="field"><div>Test controller<div class="hint">E.g. Di2 extra buttons (D-FLY), Zwift Click, gamepad. Shows what the buttons send. A gamepad also drives all menus: D-pad move · A select · B back · L / R tabs (keyboard: arrows, Enter, Escape).</div></div><button class="btn ghost small" id="ctBtn">Test</button></div>
@@ -652,7 +677,7 @@ function settings() {
   </section>`;
   gameVersion().then(v => { const e = $('#gameVer'); if (e) e.textContent = v; });
   const num = (id, key) => $('#' + id).addEventListener('change', e => { s[key] = +e.target.value; saveSettings(); });
-  const stp = (id, key, fb) => wireStepper(main, id, v => { s[key] = v; saveSettings(); }, fb);
+  const stp = (id, key, fb) => wireStepper(root, id, v => { s[key] = v; saveSettings(); }, fb);
   stp('riderKg', 'riderKg', 75); stp('bikeKg', 'bikeKg', 8.5); stp('ftp', 'ftp', 250); stp('cadence', 'cadence', 90); stp('wheel', 'wheel', 2105);
   wireHudControls($('#hudBox'), () => s, h => { s.hud = h; saveSettings(); $('#hudBox').innerHTML = hudControlsHTML(hudPrefs(s)); });
   $('#lookBtn').onclick = () => import('./avatar-ui.js').then(x => x.avatarModal());
@@ -696,9 +721,9 @@ function settings() {
     $('#poseCam').onchange = e => { s.poseCam = e.target.checked; saveSettings(); }; }
   $('#ueBridge').onchange = e => { s.ueBridge = e.target.checked; saveSettings(); };
   $('#fov').oninput = e => { s.fov = +e.target.value; s.lensMm = 0; $('#fovV').textContent = s.fov + '°'; saveSettings(); };
-  wireSeg(main, 'ueWeather', v => { s.ueWeather = v; saveSettings(); });
-  wireSeg(main, 'view3d', v => { s.view3d = +v; saveSettings(); });
-  wireSeg(main, 'shiftMode', v => { s.shiftMode = v; saveSettings(); settings(); });
+  wireSeg(root, 'ueWeather', v => { s.ueWeather = v; saveSettings(); });
+  wireSeg(root, 'view3d', v => { s.view3d = +v; saveSettings(); });
+  wireSeg(root, 'shiftMode', v => { s.shiftMode = v; saveSettings(); settings(); });
   $('#cassette').onchange = e => { s.cassette = e.target.value; saveSettings(); settings(); };
   const valid = { chainrings: v => parseRings(v), realGear: v => { const m = String(v).match(/^\s*(\d+)\s*[x×/\- ]\s*(\d+)\s*$/); return !!m && +m[1] >= 20 && +m[1] <= 60 && +m[2] >= 9 && +m[2] <= 40; } };
   const txt = (id) => $('#' + id).addEventListener('change', e => {
@@ -711,7 +736,13 @@ function settings() {
   $('#voiceVol').oninput = e => { s.voiceVol = +e.target.value; $('#voiceVolV').textContent = s.voiceVol + '%'; saveSettings(); import('./share.js').then(m => m.currentGroup()?.voice?.setVolume(s.voiceVol / 100)); };
   $('#muteVideo').onchange = e => { s.muteVideo = e.target.checked; saveSettings(); };
   $('#improveEle').onchange = e => { s.improveEle = e.target.checked; saveSettings(); };
-  main.querySelectorAll('.swatch').forEach(b => b.onclick = () => { s.accent = b.dataset.acc; applyAccent(); saveSettings(); settings(); });
+  root.querySelectorAll('.swatch').forEach(b => b.onclick = () => { s.accent = b.dataset.acc; applyAccent(); saveSettings(); settings(); });
+  if (setRoot) { // in the ride: what the top bar and the library side offer
+    $('#rsAcc').onclick = () => accountModal(state, async () => { await accountChanged(); if (setRoot) settings(); });
+    $('#rsShop').onclick = () => import('./shop-ui.js').then(x => x.shopModal({}));
+    accountsAvailable().then(ok => { const r = $('#rsWishRow'); if (!ok || !r) return; r.hidden = false; $('#rsWish').onclick = () => import('./wishes.js').then(x => x.wishModal(state, accountChanged)); });
+  }
+  $('#trBtn').onclick = async () => { await connectTrainer(); if (document.querySelector('#trBtn')) settings(); };
   $('#hrBtn').onclick = () => connectHR(false); $('#hrAll').onclick = () => connectHR(true);
   $('#ctBtn').onclick = openControllerTest;
   $('#rmBtn').onclick = openRemote;

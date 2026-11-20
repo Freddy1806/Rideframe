@@ -29,6 +29,7 @@ const BTN = { A: 0, B: 1, L: 4, R: 5, START: 9, up: 12, down: 13, left: 14, righ
     await p.goto(BASE + '/?desktop&noprofile&demo'); await p.waitForSelector('.card[data-id]'); await p.waitForTimeout(600);
     const press = async (k, hold = 70) => { const i = BTN[k]; await p.evaluate(i => { const x = window.__pad.buttons[i]; x.pressed = true; x.value = 1; }, i); await p.waitForTimeout(hold);
       await p.evaluate(i => { const x = window.__pad.buttons[i]; x.pressed = false; x.value = 0; }, i); await p.waitForTimeout(110); };
+    const padTo = async sel => { for (let k = 0; k < 24 && !/3px/.test((await p.evaluate(s => document.querySelector(s)?.style.outline, sel)) || ''); k++) await press(['right', 'right', 'down', 'right', 'up'][k % 5]); }; // walk the ride's pause menu to one button
     const cur = () => p.evaluate(() => { const c = window.__padnav?.cur; if (!c || !c.isConnected) return null; const r = c.getBoundingClientRect();
       return { id: c.id, tag: c.tagName, type: c.type || '', cls: c.className, view: c.dataset.view || '', did: c.dataset.id || '', text: c.textContent.trim().slice(0, 30), x: r.left + r.width / 2, y: r.top + r.height / 2,
         topbar: !!c.closest('.topbar'), modal: !!c.closest('.modal'), ride: !!c.closest('.ride'), ring: getComputedStyle(c).outlineColor, ringW: getComputedStyle(c).outlineWidth }; });
@@ -128,14 +129,23 @@ const BTN = { A: 0, B: 1, L: 4, R: 5, START: 9, up: 12, down: 13, left: 14, righ
     const after = await cur(); ok((after?.id || null) === (before?.id || null) && !after?.ride, 'D-pad and arrow keys in the ride do not move the menu focus');
     await press('START'); await p.waitForTimeout(200); ok(await p.locator('#pauseOverlay #pResume').isVisible(), 'Start opens the ride\'s pause menu (unchanged)');
     await press('down'); const out = await p.evaluate(() => [...document.querySelectorAll('#pauseOverlay .padmenu button')].map(x => x.style.outline));
-    ok(/3px/.test(out[1] || '') && !/3px/.test(out[0] || ''), 'D-pad ↓ in the pause menu moves the ride\'s own highlight');
+    ok(out.some((o, i) => i > 0 && /3px/.test(o)) && !/3px/.test(out[0] || ''), 'D-pad ↓ in the pause menu moves the ride\'s own highlight');
+    await padTo('#pOpts'); // the menu wraps into rows since Settings / Connect trainer
     ok(!(await p.locator('.ride .pn-focus').count()), 'no padnav focus inside the ride');
     await shot('07_ride_pause_menu');
     await press('A'); await p.waitForTimeout(150); ok(await p.locator('#oBack').isVisible(), 'A opens Options (ride mapping)');
     await press('B'); await p.waitForTimeout(150); ok(await p.locator('#pResume').isVisible(), 'B goes back to the pause menu (ride mapping)');
+    await padTo('#pSet'); await press('A'); await p.waitForSelector('.rideset #trBtn', { timeout: 15000 }).catch(() => {});
+    ok(await p.locator('.rideset #trBtn').isVisible(), 'pause menu → Settings: the whole settings page over the ride, with Connect trainer');
+    await press('down'); await press('down'); await p.waitForTimeout(150);
+    ok(await p.locator('.rideset .pn-focus').count() === 1, 'the pad drives the settings sheet like the main menu');
+    await shot('07b_ride_settings');
+    for (let k = 0; k < 3 && await p.locator('.rideset').count(); k++) { await press('B'); await p.waitForTimeout(200); }
+    ok(!(await p.locator('.rideset').count()) && await p.locator('#pResume').isVisible(), 'B closes the settings, back in the pause menu');
     await press('B'); await p.waitForTimeout(150); ok(!(await p.locator('#pauseOverlay').count()), 'B resumes the ride (ride mapping)');
     await press('START'); await p.waitForTimeout(200);
-    await press('down'); await press('down'); await press('down'); await press('A'); await p.waitForTimeout(600); // Discard
+    await padTo('#pDiscard');
+    await press('A'); await p.waitForTimeout(600);
     ok(!(await p.locator('.ride').count()) && await p.locator('#main #rideBtn').count() === 1, 'Discard by pad: back on the route page');
     await press('down'); const back = await cur(); ok(!!back && !back.ride, `after the ride the pad drives the menus again (${back?.text})`);
 
