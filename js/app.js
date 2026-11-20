@@ -86,6 +86,7 @@ async function boot() {
   updateTrainerPill();
   const v = params.get('view');
   if (v === 'detail') go('detail', params.get('id') || 'demo');
+  else if (v === 'ride' && params.get('open')) { const [a, b] = params.get('open').split('-'); startOpenWorld(a, b); }
   else if (v === 'ride') startRide(params.get('id') || 'demo', { autopilot: params.has('auto'), at: +params.get('at') || 0 });
   else go(v || 'library');
   if (hasAcc) startOnline();
@@ -136,7 +137,7 @@ function applyAccent() {
   document.documentElement.style.setProperty('--accent', ACCENTS[state.settings.accent] || ACCENTS.orange);
 }
 
-export function allRoutes() { return [...state.routes, ...Object.keys(BUILTIN).filter(id => id !== 'demo' || new URLSearchParams(location.search).has('demo')).map(getBuiltin)]; } /* Passo Demo hidden from the list (Freddy 12.11.); it stays as an internal fallback (routeById, ?view=ride default, ?demo shows it) */
+export function allRoutes() { return [...state.routes, ...Object.keys(BUILTIN).filter(id => id !== 'insel_frei' && (id !== 'demo' || new URLSearchParams(location.search).has('demo'))).map(getBuiltin)]; } /* Passo Demo hidden from the list (Freddy 12.11.); it stays as an internal fallback (routeById, ?view=ride default, ?demo shows it) */
 const routeName = id => id === 'pure' ? 'Pure (phone)' : id === 'outdoor' ? 'Outdoors' : routeById(id)?.name;
 export function routeById(id) { return BUILTIN[id] ? getBuiltin(id) : state.routes.find(r => r.id === id); }
 export function ridesFor(id) { return state.rides.filter(r => r.routeId === id); }
@@ -208,7 +209,7 @@ function library() {
 async function showIsland() {
   const el = $('#islandHero'); if (!el || new URLSearchParams(location.search).has('noinsel') || !routeById('insel_runde')) return;
   const [{ islandHero }, live, prof] = await Promise.all([import('./islandhero.js'), import('./live.js'), import('./profiles.js').catch(() => null)]);
-  islandHero(el, { routeById, startRide, liveJoin, signedIn: () => !!account(),
+  islandHero(el, { routeById, startRide, startOpenWorld, liveJoin, signedIn: () => !!account(),
     friendsNow: async () => { const F = await live.friendsNow(); return F?.friends ? F.friends.filter(f => f.state === 'riding' && f.ride).map(live.asRider) : null; },
     face: r => live.avatar(r, prof?.faceImg), fillFaces: el => prof?.fillFaces(el) });
 }
@@ -844,6 +845,12 @@ async function guessPlace(track) {
 
 // ---------------- ride ----------------
 let session = null;
+/** the open world on the island (Freddy 20.11.): ride from junction a towards b, turn wherever you like (js/openworld.js) */
+async function startOpenWorld(a, b, at = 0) {
+  const ow = await import('./openworld.js'), map = await ow.islandMap(), l = ow.legsFrom(map, a).find(x => x.b === b) || ow.legsFrom(map, a)[0]; if (!l) return;
+  const r = await ow.legRoute(l, map); if (!r) return toast('The island did not load.', 4000);
+  BUILTIN.insel_frei = () => r; builtins.insel_frei = r; return startRide('insel_frei', at > 0 ? { at } : {});
+}
 async function startRide(id, opts = {}) {
   const route = routeById(id); if (!route) return;
   const rides = ridesFor(id);

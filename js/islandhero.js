@@ -13,6 +13,10 @@ const kmTxt = m => fmtNum(m / 1000, m < 10000 ? 1 : 0);
 
 /** where a rider is: the point at km d of an island tour (null when the tour is not on the island) */
 export function riderPoint(map, routeId, d) {
+  const lg = /^insel_frei:(\w+)-(\w+)$/.exec(routeId || ''); // open world: a road between two junctions
+  if (lg) { const e = map.edges.find(x => (x.a === lg[1] && x.b === lg[2]) || (x.b === lg[1] && x.a === lg[2])); if (!e) return null;
+    const P = e.a === lg[1] ? e.P : [...e.P].reverse(), f = Math.max(0, Math.min(1, d / e.len)) * (P.length - 1), i = Math.floor(f), j = Math.min(P.length - 1, i + 1), u = f - i;
+    return [P[i][0] + (P[j][0] - P[i][0]) * u, P[i][1] + (P[j][1] - P[i][1]) * u]; }
   const t = map?.tours?.[routeId]; if (!t) return null;
   const f = Math.max(0, Math.min(t.P.length - 1, d / t.step)), i = Math.floor(f), j = Math.min(t.P.length - 1, i + 1), u = f - i;
   return [t.P[i][0] + (t.P[j][0] - t.P[i][0]) * u, t.P[i][1] + (t.P[j][1] - t.P[i][1]) * u];
@@ -56,18 +60,22 @@ export async function islandHero(el, opts) {
     pop.style.width = w + 'px'; pop.style.left = Math.max(16, Math.min(r.width - w - 16, at[0] - w / 2)) + 'px';
     pop.style.top = Math.max(16, Math.min(r.height - pop.offsetHeight - 16, at[1] + 18)) + 'px';
     pop.querySelector('.ihx').onclick = close;
+    pop.querySelectorAll('[data-ow]').forEach(b => b.onclick = () => { close(); const [a, c] = b.dataset.ow.split('-'); opts.startOpenWorld(a, c); });
     pop.querySelectorAll('[data-go]').forEach(b => b.onclick = () => { close(); opts.startRide(b.dataset.go, +b.dataset.at ? { at: +b.dataset.at } : {}); });
   };
   const local = ev => { const r = root.getBoundingClientRect(); return [ev.clientX - r.left, ev.clientY - r.top]; };
+  const legsHere = k => map.edges.flatMap(e => e.a === k ? [{ b: e.b, edge: e }] : e.b === k && e.a !== k ? [{ b: e.a, edge: e }] : []);
   const tourRow = (id, t, at, label) => `<button type="button" class="ihtour" data-go="${id}" data-at="${at}"><b>${esc(t.name.replace(/^Island:\s*/, ''))}</b><span>${label}</span></button>`;
 
   root.querySelector('#ihRide').onclick = ev => show(`<div class="label">Ride the island</div>
+    ${opts.startOpenWorld ? `<button type="button" class="ihtour ihfree" data-ow="H-L"><b>Open world from Harbour Town</b><span>turn where you like</span></button><p class="hint">Or a fixed tour:</p>` : ''}
     ${tours.map(([id, t]) => tourRow(id, t, 0, `${kmTxt(t.len)} km · ${esc(opts.routeById(id)?.track ? fmtNum(opts.routeById(id).track.gain, 0) + ' m climbing' : '')}`)).join('')}`, local(ev));
   root.querySelectorAll('.ihnode').forEach(b => b.onclick = ev => {
     ev.stopPropagation(); close(); b.classList.add('sel'); const k = b.dataset.n, n = map.nodes[k];
     const here = tours.map(([id, t]) => { const v = t.nodes.find(x => x.id === k); return v ? [id, t, v.at] : null; }).filter(Boolean);
     show(`<div class="label">${esc(n.kind)} · ${fmtNum(n.z, 0)} m</div><h3>${esc(n.name)}</h3>
-      ${here.length ? `<p class="hint">Start here:</p>${here.map(([id, t, at]) => tourRow(id, t, at, at ? `from km ${kmTxt(at)}` : 'start of the tour')).join('')}` : '<p class="hint">No tour passes here yet.</p>'}`, local(ev));
+      ${opts.startOpenWorld ? `<p class="hint">Ride freely, turn wherever you like:</p>${legsHere(k).map(o => `<button type="button" class="ihtour" data-ow="${k}-${o.b}"><b>towards ${esc(map.nodes[o.b].name)}</b><span>${esc(o.edge.name)}</span></button>`).join('')}` : ''}
+      ${here.length ? `<p class="hint">Or a tour from here:</p>${here.map(([id, t, at]) => tourRow(id, t, at, at ? `from km ${kmTxt(at)}` : 'start of the tour')).join('')}` : ''}`, local(ev));
   });
   root.querySelectorAll('.ihr').forEach(p => p.addEventListener('click', ev => {
     close(); const e = map.edges.find(x => x.id === p.dataset.e); p.classList.add('sel');
@@ -81,7 +89,7 @@ export async function islandHero(el, opts) {
     if (!root.isConnected) return stop();
     if (document.hidden) return;
     if (!opts.signedIn()) { now.innerHTML = '<span class="hint">Sign in to see who is on the island right now.</span>'; layer.innerHTML = ''; return; }
-    const rs = (await opts.friendsNow()) || [], on = rs.filter(r => map.tours[r.routeId]);
+    const rs = (await opts.friendsNow()) || [], on = rs.filter(r => map.tours[r.routeId] || /^insel_frei:/.test(r.routeId || ''));
     now.innerHTML = on.length ? `<i class="lvdot" aria-hidden="true"></i><b>${on.length}</b> riding on the island now${rs.length > on.length ? ` · ${rs.length - on.length} elsewhere` : ''}` : '<span class="hint">Nobody on the island right now. Be the first.</span>';
     const keep = new Set();
     for (const r of on) {
@@ -92,7 +100,8 @@ export async function islandHero(el, opts) {
       d.style.left = l + '%'; d.style.top = t + '%';
       d.querySelector('.ihname').innerHTML = `<b>${esc(r.name)}</b> km ${kmTxt(r.d)}`;
       d.title = `${r.name} · ${r.routeName} · click to join`;
-      d.onclick = ev => { ev.stopPropagation(); opts.liveJoin(r); };
+      const lg = /^insel_frei:(\w+)-(\w+)$/.exec(r.routeId || '');
+      d.onclick = ev => { ev.stopPropagation(); if (lg && opts.startOpenWorld) opts.startOpenWorld(lg[1], lg[2], r.d); else opts.liveJoin(r); }; // open world: you start right where they are
     }
     layer.querySelectorAll('.ihrider').forEach(d => { if (!keep.has(d.dataset.sid)) d.remove(); });
   };

@@ -178,9 +178,10 @@ export class RideSession {
     this.profile = el.querySelector('#hudProfile');
     { const mc = el.querySelector('#hMap'); this.minimap = new MiniMap(mc, this.track, this.player?.field?.pose ? d => this.player.field.pose(d) : null); if (!this.minimap.ok) mc.parentElement.remove(); }
     this.q = s => el.querySelector(s);
+    if (this.route.leg && this.player?.field) { const { OpenWorld, islandMap } = await import('./openworld.js'); this.ow = new OpenWorld(this, await islandMap(), this.route.leg); const ds = el.querySelector('#hDistSub'); if (ds) ds.textContent = this._distSub(); } // open world on the island
     this._wireWorkoutStop();
     el.querySelector('#hGearChip')?.addEventListener('click', () => this.toggleShift());
-    if (!this._closed) this._clickOff = click.on('shift', d => { if (this.paused || this.finished) return; if (this.workout && !this.wDone && this.source === 'trainer') this._wTune(d); else if (this.berg) this._holdTune(d * 5); else this._padShift(d); }); // Zwift Click (connected in Settings): + / − like the pad's L/R: target ±1 W in a workout, gears otherwise
+    if (!this._closed) this._clickOff = click.on('shift', d => { if (this.paused || this.finished) return; if (this.ow?.open) return this.ow.choose(d > 0 ? 1 : -1); /* open world: while the junction strip shows, Click picks the road */ if (this.workout && !this.wDone && this.source === 'trainer') this._wTune(d); else if (this.berg) this._holdTune(d * 5); else this._padShift(d); }); // Zwift Click (connected in Settings): + / − like the pad's L/R: target ±1 W in a workout, gears otherwise
     el.querySelector('#hPause')?.addEventListener('click', () => this.paused ? this._resume() : this._pause());
     el.querySelector('#hSetup')?.addEventListener('click', e => { e.currentTarget.blur(); this._setup(); });
     el.querySelector('#hCam')?.addEventListener('click', () => this._cycleView());
@@ -383,8 +384,9 @@ export class RideSession {
         this.samples.push([this.lastSample, Math.round(this._ridden()), Math.round(this.power), Math.round(this.v * 36) / 10, Math.round(this.cadence), this.hr]);
         this.powerHist.push(this.power);
       }
-      this._keepPlace();
-      if (this.d >= this.track.length) { if (this.lap < this.laps) this._nextLap(); else if (this.autopilot) this._finish(); else this._goalAsk(); }
+      if (!this.ow) this._keepPlace(); else this.ow.tick();
+      if (this.d >= this.track.length && this.ow) { if (!this.ow.busy) this._swapLeg(); else this.lapOff += this.v * dt; } // open world: the next road (time and km go on while it loads)
+      else if (this.d >= this.track.length) { if (this.lap < this.laps) this._nextLap(); else if (this.autopilot) this._finish(); else this._goalAsk(); }
     }
     if (now - (this.lastHud || 0) > 100) { this.lastHud = now; this._updateHUD(); }
     if (this.ue) this._ueLive();
@@ -407,6 +409,7 @@ export class RideSession {
       return;
     }
     if (this.finished) return;
+    if (this.ow?.open && (hit(14) || hit(15))) { this.ow.choose(hit(14) ? -1 : 1); return; } // open world: D-pad left / right picks the road
     // one job per button and per mode (owner 18.11.): ERG (workout or free ride) L / R ±5 W, L2 / R2 ±1 W · gears: L / R shift.
     // The D-pad's ↑ ↓ do the same as R / L; nothing else sits on it. A accepts, B display, X photo, Y camera, Select shifting mode.
     const up = hit(5) || hit(12), dn = hit(4) || hit(13), fine = hit(7) ? 1 : hit(6) ? -1 : 0;
@@ -449,6 +452,7 @@ export class RideSession {
   _remote(e) {
     const n = e.detail?.name; if (!this.running || this.paused || this.finished) return;
     if (n === 'lap') return this._manLap();
+    if (n === 'turn:left' || n === 'turn:right') { if (!this.ow?.choose(n === 'turn:left' ? -1 : 1)) this._flash(this.ow ? 'The next junction is not in sight yet' : 'Turning works in the open world on the island'); return; }
     if (n === 'photo') { if (this.player?.snapshot && !this._shooting) this._takePhoto().then(url => this._shotPop(url)); return; }
     if (this.workout && !this.wDone) return this._flash('In a workout the plan sets the mode');
     if (this.state.trainer.pmOnly) return this._flash('Power meter only: shift on the bike (virtual gears need trainer control)', 2500);
@@ -518,7 +522,7 @@ export class RideSession {
     q('#hPow').textContent = sn.pw === 'ok' ? pShow : '–'; const wk = q('#hWkg'); if (wk) wk.textContent = sn.pw === 'ok' ? fmtNum(pShow / (this.state.settings.riderKg || 75), 1) : '–';
     q('#hPowSub').textContent = `avg ${avgP} W · ${fmtNum(pShow / this.state.settings.riderKg, 1)} W/kg`;
     q('#hSpd').textContent = fmtNum(this.v * 3.6, 1);
-    q('#hSpdSub').textContent = this.track.world ? `${fmtNum(Math.max(0, this.track.length * (this.laps - this.lap + 1) - this.d) / 1000, 1)} km to go` : this.v < 0.3 ? 'Video paused' : `Video ×${fmtNum(this.rate || 1, 2)}`;
+    q('#hSpdSub').textContent = this.ow ? `${fmtNum(Math.max(0, this.track.length - this.d) / 1000, 1)} km to the junction` : this.track.world ? `${fmtNum(Math.max(0, this.track.length * (this.laps - this.lap + 1) - this.d) / 1000, 1)} km to go` : this.v < 0.3 ? 'Video paused' : `Video ×${fmtNum(this.rate || 1, 2)}`;
     q('#hCad').textContent = sn.cad === 'ok' ? this.cadence : '–';
     const tc = this.state.settings.cadence, cadOff = tc && this.cadence > 20 && sn.cad === 'ok' ? this.cadence - tc : 0;
     // ERG (owner 17.11.): the trainer sets the resistance, gears mean nothing: no shifting advice, at most "spin faster"
@@ -1014,6 +1018,7 @@ export class RideSession {
     return this._pk;
   }
   _key(e) {
+    if ((e.key === 'ArrowLeft' || e.key === 'ArrowRight') && this.ow?.open && !this.paused) { e.preventDefault(); this.ow.choose(e.key === 'ArrowLeft' ? -1 : 1); return; } // open world: pick the road at the junction
     if (e.key.startsWith('Arrow') && this._trainerLive()) return this._arrowWithTrainer(e);
     if (!this.running && !e.key.startsWith('Arrow')) return; // still loading / counting down: only the power keys
     if (e.key === 'ArrowUp' || e.key === 'ArrowDown') this.keyPower = true; /* watts from the keyboard: fine for trying things out, never a saved ride (Freddy 12.11.) */
@@ -1193,7 +1198,7 @@ export class RideSession {
   _startPresence() {
     if (this.autopilot || this.presence) return;
     import('./live.js').then(m => { if (this._closed || this.finished) return;
-      this.presence = new m.Presence({ info: () => ({ routeId: this.route.id, routeName: this.route.name, d: this.d, len: this.track.length, code: this.group?.open ? this.group.code : null }),
+      this.presence = new m.Presence({ info: () => ({ routeId: this.ow ? `insel_frei:${this.ow.leg.a}-${this.ow.leg.b}` : this.route.id, routeName: this.ow ? `Island: open world · ${this.route.place || ''}` : this.route.name, d: this.d, len: this.track.length, code: this.group?.open ? this.group.code : null }),
         alive: () => !this._closed && !this.finished && this.state.settings.liveShow !== false, onRequest: r => this._joinRequest(r) });
       if (!this.presence.start()) this.presence = null; }).catch(() => {});
   }
@@ -1296,7 +1301,7 @@ export class RideSession {
   /** open world (Freddy 19.11.): where you are on an island route is kept every 20 s, so closing the app mid-ride lets you go on
    *  from there next time (app.js startRide asks). Solo rides only; reaching the finish clears it. */
   _keepPlace(clear = false) {
-    if (this.group || this.autopilot || !/^insel/.test(this.route.id)) return;
+    if (this.group || this.autopilot || this.ow || !/^insel/.test(this.route.id)) return;
     if (!clear && this.elapsed - (this._placeT || 0) < 20) return; this._placeT = this.elapsed;
     const s = this.state.settings, all = s.resume ||= {};
     if (clear || this.d > this.track.length - 400) delete all[this.route.id]; else all[this.route.id] = { d: Math.round(this.d), t: Math.round(this.elapsed), at: Date.now() };
@@ -1385,8 +1390,32 @@ export class RideSession {
     if (w) { let s = this._wT0 || 0; for (const st of w.steps) { if (st.pct >= 88 && s < this.elapsed) m.push(Math.round(s), Math.round(Math.min(s + st.dur, this.elapsed))); s += st.dur; } }
     return m.length ? m : undefined;
   }
+  /** open world: at the junction the next leg loads behind a short fade; km and time go on (Freddy 20.11.) */
+  async _swapLeg() {
+    const ow = this.ow, l = ow.next(); ow.busy = true;
+    const fade = document.createElement('div'); fade.className = 'owfade'; fade.innerHTML = `<div><div class="label">Open world</div><h2 class="display">${esc(ow.map.nodes[l.b]?.name || '')}</h2><p>${esc(l.edge.name)} · ${fmtNum(l.edge.len / 1000, 0)} km</p></div>`;
+    this.el.append(fade); requestAnimationFrame(() => fade.classList.add('in'));
+    try {
+      const { legRoute } = await import('./openworld.js'), r = await legRoute(l, ow.map); if (!r) throw new Error('leg ' + l.a + '-' + l.b);
+      const old = this.track, t = r.track; for (const k of ['__village', '__sunset', '__mode', '__look']) t[k] = old[k];
+      t.__dOff = (old.__dOff || 0) + old.length; // the sun goes on over the whole ride
+      const { WorldScene, prepareWorld } = await import('./world/lofoten.js'); await prepareWorld(t);
+      const c0 = this.el.querySelector('canvas.scene'), c = document.createElement('canvas'); c.className = 'scene'; c0.after(c);
+      const P = new WorldScene(c, t);
+      P.currentTime = 0; P.setFov ? P.setFov(fovOf(this.state.settings)) : null; P.setView?.(this.state.settings.view3d || 0); P.setCockpit?.(this.state.settings.cockpit !== false); P._placeCockpit?.();
+      if (P.ready) await Promise.race([P.ready, new Promise(res => setTimeout(res, 60000))]);
+      const was = this.player; this.player = P; window.__world = P; P._rideOn = true; was.destroy?.(); c0.remove();
+      this.lapOff = this._ridden(); // everything so far, with the metres ridden while it loaded
+      this.track = t; this.route = { ...this.route, track: t, leg: l, place: r.place };
+      this.d = 0; this._lapBase = 0; this.lastEle = eleAt(t, 0);
+      const mc = this.el.querySelector('#hMap'); if (mc && this.minimap) this.minimap = new MiniMap(mc, t, P.field?.pose ? d => P.field.pose(d) : null);
+      if (this.eagle && this.eg?.state === 'wait') import('./world/eagle.js').then(m => { if (!this._closed) this.eagle = new m.Eagle(this.player); }).catch(() => {});
+      ow.done(l);
+    } catch (e) { console.warn('open world', e); this._flash?.('The next road did not load. You ride on here.'); ow.done(ow.leg); this.d = 0; }
+    ow.busy = false; fade.classList.remove('in'); setTimeout(() => fade.remove(), 900);
+  }
   _ridden() { return this.lapOff + this.d - this._lapBase; } // metres ridden in this session, over all laps
-  _distSub() { return this.laps > 1 ? `Lap ${this.lap}/${this.laps} · of ${fmtKm(this.track.length * this.laps - this.startD)} km` : `of ${fmtKm(this.track.length)} km`; }
+  _distSub() { if (this.ow) return 'open world'; return this.laps > 1 ? `Lap ${this.lap}/${this.laps} · of ${fmtKm(this.track.length * this.laps - this.startD)} km` : `of ${fmtKm(this.track.length)} km`; }
   _lapRows() { return [...this.lapList, { t: Math.round(this.elapsed - this._lapT0), d: Math.round(this.d - this._lapBase) }]; }
   /** finish line reached with laps to go: a short fade, then back to the start line (the routes are point to point) */
   _nextLap() {

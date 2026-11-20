@@ -354,6 +354,13 @@ if (import.meta.url === `file://${process.argv[1]}`) {
       edges: edges.map(e => ({ id: e.id, a: e.a, b: e.b, kind: e.kind, land: e.land || LAND[e.kind], name: e.name, de: e.de, len: e.len, gain: Math.round(e.gain), loss: Math.round(e.loss), maxGrade: r(e.maxG), P: e.P.map(p => p.map(r)), ele: e.ele.map(r) })) }));
     for (const [id, T] of Object.entries(TOURS)) { const j = tourJSON(T, edges); fs.writeFileSync(new URL(id + '.json', OUT), JSON.stringify(j));
       let g = 0; for (let i = 1; i < j.ele.length; i++) g += Math.max(0, j.ele[i] - j.ele[i - 1]); console.log(`${id}: ${(j.route.length * STEP / 1000).toFixed(1)} km, +${Math.round(g)} m`); }
+    // open world (Freddy 20.11.: "with the arrow keys, the controller or the app decide where you turn"): one leg per road and
+    // direction, junction to junction; the ride (js/ride.js _turnTick) loads the next leg when you reach the junction
+    fs.mkdirSync(new URL('legs/', OUT), { recursive: true }); let lb = 0;
+    for (const e of edges) for (const [a, b] of e.a === e.b ? [[e.a, e.b]] : [[e.a, e.b], [e.b, e.a]]) {
+      const j = tourJSON({ name: e.name, via: [a, b], what: 'open world' }, edges), s = JSON.stringify(j); lb += s.length;
+      fs.writeFileSync(new URL(`legs/${a}-${b}.json`, OUT), s); }
+    console.log(`legs: ${(lb / 1e6).toFixed(1)} MB`);
     console.log(`written in ${((Date.now() - t0) / 1000).toFixed(1)} s`);
   }
 }

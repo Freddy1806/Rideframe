@@ -52,3 +52,20 @@
   .ihnode span { display: none; }
 }
 @media (prefers-reduced-motion: reduce) { .ihdrift, .ihflow, .ihrider .lvface, .ihlive { animation: none !important; } .ihr { stroke-dashoffset: 0; animation: none !important; } }
+
+/* open world in the ride (js/openworld.js): the junction strip and the fade while the next road loads */
+.owturn { position: absolute; left: 50%; top: 84px; transform: translateX(-50%); z-index: 40; background: rgba(10, 10, 10, .86); border: 1px solid #333; border-radius: 6px; padding: 12px 14px 14px; max-width: min(92vw, 860px); backdrop-filter: blur(6px); animation: owin .4s ease-out; }
+@keyframes owin { from { opacity: 0; transform: translate(-50%, -10px); } }
+.owhead { display: flex; justify-content: space-between; gap: 18px; margin-bottom: 10px; }
+.owkeys { color: #aaa; font-size: 12px; letter-spacing: .06em; text-transform: uppercase; }
+.owopts { display: flex; gap: 8px; flex-wrap: wrap; }
+.owopt { display: grid; grid-template-columns: auto 1fr; grid-template-rows: auto auto; column-gap: 10px; align-items: center; text-align: left; background: #1a1a1a; border: 2px solid #2c2c2c; color: #fff; padding: 9px 14px 9px 10px; border-radius: 5px; cursor: pointer; font: inherit; min-width: 170px; }
+.owopt .owarr { grid-row: span 2; font-size: 26px; line-height: 1; }
+.owopt b { font-size: 15px; } .owopt span:last-child { color: #aaa; font-size: 12px; }
+.owopt.on { border-color: var(--accent); background: color-mix(in srgb, var(--accent) 18%, #141414); }
+.owopt.on .owarr { color: var(--accent); }
+.owfade { position: absolute; inset: 0; z-index: 60; display: grid; place-items: center; text-align: center; background: #0b0b0b; opacity: 0; transition: opacity .8s; pointer-events: none; }
+.owfade.in { opacity: 1; }
+.owfade .display { font-size: clamp(40px, 6vw, 84px); margin: 10px 0; }
+.owfade p { color: #bbb; }
+.ihtour.ihfree { border-color: var(--accent); }

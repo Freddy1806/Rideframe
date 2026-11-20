@@ -1654,7 +1654,7 @@ export class WorldScene {
     // the shower announces itself: from ~3 km before, the sky ahead closes up and darkens, so you see it coming
     const pre = this.rainPlan.reduce((m, s) => Math.max(m, smooth(s.a - 3000, s.a - 700, d) * smooth(s.b + 500, s.b, d)), 0);
     const cover = lerp(cover0, 0.95, Math.max(rain, pre * 0.85)), veil = Math.max(smooth(0.3, 0.95, 0.5 + 0.5 * Math.sin(d / 6100 + 2.6)) * (0.4 + 0.6 * cover0), rain * 0.95, pre * 0.55);
-    const s = this.track.__sunset === true && this.track.dem?.file === 'insel.bin' ? sunCycle(d, this.sunDir) : sunAt(u, this.sunDir, this.track.__sunset === true); /* island: the sun sets and rises again on the other side */ this.sunY = s.y; const dusk = this.dusk = Math.max(0, Math.min(1, (0.035 - s.y) / 0.122)); const low = 1 - Math.max(0, Math.min(1, (s.y - 0.035) / (0.113 - 0.035)));
+    const s = this.track.__sunset === true && this.track.dem?.file === 'insel.bin' ? sunCycle(d + (this.track.__dOff || 0), this.sunDir) : sunAt(u, this.sunDir, this.track.__sunset === true); /* island: the sun sets and rises again on the other side */ this.sunY = s.y; const dusk = this.dusk = Math.max(0, Math.min(1, (0.035 - s.y) / 0.122)); const low = 1 - Math.max(0, Math.min(1, (s.y - 0.035) / (0.113 - 0.035)));
     const su = this.sky.material.uniforms;
     su.sunPosition.value.copy(s); su.uCover.value = cover; su.uVeil.value = veil; su.uLow.value = low; su.uDusk.value = dusk;
     // direct light: warm, a bit warmer as the sun sinks, dimmer behind the veil; never orange enough to rust the rock
