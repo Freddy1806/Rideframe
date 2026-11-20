@@ -107,7 +107,7 @@ export class RideSession {
     this.startD = this.d; // a ride started mid-route counts its own distance and never sets a best time
     // laps (Freddy 12.11.): at the finish the route starts over until all laps are done; never in a group ride (all ride the same d)
     if (/[?&]laptest/.test(location.search)) window.__ride = this; // test handle
-    this.laps = group || autopilot ? 1 : Math.max(1, Math.min(20, +state.settings.laps || 1)); this.lap = 1; this.lapOff = 0; this._lapBase = this.d; this._lapT0 = 0; this.lapList = [];
+    this.laps = group || autopilot || route.leg ? 1 : Math.max(1, Math.min(20, +state.settings.laps || 1)); this.lap = 1; this.lapOff = 0; this._lapBase = this.d; this._lapT0 = 0; this.lapList = [];
     this.manualPower = autopilot ? 240 : 0; this.power = 0; this.cadence = 0; this.hr = 0;
     this.powerHist = []; this.samples = []; this.lastSample = 0; this.gainAcc = 0; this.lastEle = eleAt(this.track, this.d);
     this.running = false; this.paused = false; this.finished = false;

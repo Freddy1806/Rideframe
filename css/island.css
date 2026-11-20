@@ -1,6 +1,6 @@
 /* the open-world island on the start page (js/islandhero.js) */
-.ihero { position: relative; display: grid; background: linear-gradient(90deg, #0c1014 0%, #10202b 28%, #275c73 60%); grid-template-columns: minmax(280px, 1fr) 1.75fr; align-items: center; margin: 0 0 56px; border: 1px solid var(--line, #262626); border-radius: 6px; overflow: hidden; }
-.ihmap { position: relative; width: 100%; overflow: hidden; cursor: default; grid-column: 2; grid-row: 1; -webkit-mask-image: linear-gradient(90deg, transparent 0, #000 9%); mask-image: linear-gradient(90deg, transparent 0, #000 9%); }
+.ihero { position: relative; display: grid; background: linear-gradient(90deg, #0c1014 0%, #10202b 28%, #275c73 60%); grid-template-columns: minmax(280px, 1fr) auto; align-items: center; margin: 0 0 28px; border: 1px solid var(--line, #262626); border-radius: 6px; overflow: hidden; }
+.ihmap { position: relative; height: min(46vh, 430px); max-width: 64vw; overflow: hidden; justify-self: end; cursor: default; grid-column: 2; grid-row: 1; -webkit-mask-image: linear-gradient(90deg, transparent 0, #000 9%); mask-image: linear-gradient(90deg, transparent 0, #000 9%); }
 .ihdrift { position: absolute; inset: 0; transform-origin: 58% 45%; animation: ihdrift 46s ease-in-out infinite alternate; }
 @keyframes ihdrift { from { transform: scale(1.0) translate(0, 0); } to { transform: scale(1.07) translate(-1.2%, 0.8%); } }
 .ihdrift img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: fill; user-select: none; filter: saturate(1.05); }
@@ -31,8 +31,8 @@
 @keyframes ihping { 70% { box-shadow: 0 0 0 14px transparent; } 100% { box-shadow: 0 0 0 0 transparent; } }
 .ihname { position: absolute; left: 50%; top: calc(100% + 6px); transform: translateX(-50%); white-space: nowrap; background: var(--accent); color: var(--accent-ink, #0b0b0b); font: 700 11px/1 var(--font, inherit); padding: 5px 7px; border-radius: 3px; }
 .ihname b { font-weight: 900; text-transform: uppercase; margin-right: 4px; }
-.ihtext { grid-column: 1; grid-row: 1; padding: 40px 28px 40px 40px; z-index: 2; }
-.ihtext .display { font-size: clamp(44px, 6.2vw, 96px); line-height: .86; margin: 12px 0 14px; }
+.ihtext { grid-column: 1; grid-row: 1; padding: 28px 24px 28px 36px; z-index: 2; }
+.ihtext .display { font-size: clamp(38px, 4.6vw, 70px); line-height: .88; margin: 10px 0 12px; }
 .ihtext .meta { color: #d8d8d8; }
 .ihnow { margin: 14px 0 18px; display: flex; gap: 8px; align-items: center; color: #fff; min-height: 20px; }
 .ihlive { display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: var(--accent); margin-right: 8px; animation: ihping 1.8s infinite; }
@@ -45,7 +45,7 @@
 .ihtour span { color: #aaa; white-space: nowrap; }
 @media (max-width: 760px) {
   .ihero { grid-template-columns: 1fr; }
-  .ihmap { grid-column: 1; grid-row: 1; }
+  .ihmap { grid-column: 1; grid-row: 1; height: auto; width: 100%; max-width: none; }
   .ihtext { grid-column: 1; grid-row: 2; padding: 22px 16px 18px; }
   .ihmap { -webkit-mask-image: none; mask-image: none; }
   .ihero { background: #0c1014; }
@@ -69,3 +69,30 @@
 .owfade .display { font-size: clamp(40px, 6vw, 84px); margin: 10px 0; }
 .owfade p { color: #bbb; }
 .ihtour.ihfree { border-color: var(--accent); }
+
+.ihnew { display: inline-block; background: var(--accent); color: var(--accent-ink, #0b0b0b); font-weight: 900; font-size: 11px; letter-spacing: .1em; padding: 4px 8px 3px; border-radius: 3px; margin-right: 10px; vertical-align: 1px; animation: ihnew 2.4s ease-in-out infinite; }
+@keyframes ihnew { 50% { box-shadow: 0 0 0 6px color-mix(in srgb, var(--accent) 22%, transparent); } }
+.ihacts { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; }
+.ihmore { background: none; border: 0; color: #cfcfcf; font: inherit; font-weight: 700; cursor: pointer; padding: 8px 4px; }
+.ihmore:hover { color: #fff; }
+.ihmore i { display: inline-block; font-style: normal; margin-left: 6px; animation: ihbob 1.6s ease-in-out infinite; }
+@keyframes ihbob { 50% { transform: translateY(4px); } }
+.ihstrip { position: absolute; left: 0; right: 0; bottom: 0; height: 3px; background: linear-gradient(90deg, var(--accent), transparent 70%); }
+
+/* smaller map (Freddy 20.11.): smaller labels, the passes name themselves on hover, Harbour Town above its dot */
+.ihnode { font-size: 11px; }
+.ihnode.pass span { opacity: 0; transition: opacity .2s; }
+.ihnode.pass:hover span, .ihnode.pass.sel span { opacity: 1; }
+.ihnode.up { flex-direction: column-reverse; gap: 3px; transform: translate(-50%, calc(-100% + 7px)); }
+
+/* phone (Mac check: 76 % of the screen): a smaller map and a compact text, so "Your routes" shows below */
+@media (max-width: 760px) {
+  .ihmap { height: min(32vh, 290px) !important; width: auto !important; justify-self: center; margin-top: 10px; border-radius: 6px; }
+  .ihero { background: radial-gradient(90% 70% at 50% 30%, #275c73, #0c1014 75%); }
+  .ihtext { padding: 6px 16px 14px; }
+  .ihtext .display { font-size: 34px; margin: 6px 0 6px; }
+  .ihtext .display br { display: none; }
+  .ihtext .meta { font-size: 13px; }
+  .ihnow { margin: 8px 0 10px; font-size: 13px; }
+  .ihero { margin-bottom: 18px; }
+}
