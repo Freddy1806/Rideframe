@@ -34,7 +34,7 @@ export async function islandHero(el, opts) {
   const glow = map.edges.map((e, i) => `<polyline class="ihflow" points="${pts(e.P)}" pathLength="1000" style="--i:${i}"/>`).join('');
   const lakes = map.lakes.map(l => `<polygon class="ihlake" points="${pts(l)}"/>`).join('');
   const places = Object.entries(map.nodes).map(([k, n]) => { const [l, t] = pct(n.p);
-    return `<button type="button" class="ihnode ${n.kind}${+l > 82 ? ' flip' : ''}" data-n="${k}" style="left:${l}%;top:${t}%"><i></i><span>${esc(n.name)}</span></button>`; }).join('');
+    return `<button type="button" class="ihnode ${n.kind}${k === 'H' ? ' up' : +l > 80 ? ' flip' : ''}" data-n="${k}" style="left:${l}%;top:${t}%"><i></i><span>${esc(n.name)}</span></button>`; }).join('');
   el.innerHTML = `<div class="ihero">
     <div class="ihmap" style="aspect-ratio:${map.size[0]} / ${map.size[1]}">
       <div class="ihdrift"><img src="assets/dem/${map.img}" alt="" draggable="false">
@@ -42,11 +42,11 @@ export async function islandHero(el, opts) {
         <div class="ihplaces">${places}</div><div class="ihriders"></div></div>
     </div>
     <div class="ihtext">
-      <div class="label"><i class="ihlive"></i>Open world</div>
+      <div class="label"><span class="ihnew">New</span>Open world</div>
       <h1 class="display">The<br>island</h1>
       <div class="meta">${tours.length} routes · ${fmtNum(roadKm, 0)} km of roads · passes, castle, 5 km bridge</div>
       <div class="ihnow" aria-live="polite"></div>
-      <div class="ihacts"><button class="btn" type="button" id="ihRide">Ride the island ▸</button></div>
+      <div class="ihacts"><button class="btn" type="button" id="ihRide">Ride the island ▸</button><button type="button" class="ihmore" id="ihMore">Routes &amp; workouts<i>↓</i></button></div>
     </div>
     <div class="ihpop" hidden></div>
   </div>`;
@@ -67,6 +67,7 @@ export async function islandHero(el, opts) {
   const legsHere = k => map.edges.flatMap(e => e.a === k ? [{ b: e.b, edge: e }] : e.b === k && e.a !== k ? [{ b: e.a, edge: e }] : []);
   const tourRow = (id, t, at, label) => `<button type="button" class="ihtour" data-go="${id}" data-at="${at}"><b>${esc(t.name.replace(/^Island:\s*/, ''))}</b><span>${label}</span></button>`;
 
+  root.querySelector('#ihMore').onclick = () => document.querySelector('.view-head')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
   root.querySelector('#ihRide').onclick = ev => show(`<div class="label">Ride the island</div>
     ${opts.startOpenWorld ? `<button type="button" class="ihtour ihfree" data-ow="H-L"><b>Open world from Harbour Town</b><span>turn where you like</span></button><p class="hint">Or a fixed tour:</p>` : ''}
     ${tours.map(([id, t]) => tourRow(id, t, 0, `${kmTxt(t.len)} km · ${esc(opts.routeById(id)?.track ? fmtNum(opts.routeById(id).track.gain, 0) + ' m climbing' : '')}`)).join('')}`, local(ev));
