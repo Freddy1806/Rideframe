@@ -4,6 +4,7 @@
 // otherwise one tap on the remembered device opens the chooser again.
 import { db } from './db.js';
 import { pickDevice, U } from './trainer.js';
+import { Rejoin } from './rejoin.js';
 
 const HRS = U(0x180d), HRM = U(0x2a37), CPS = U(0x1818), CPM = U(0x2a63), CSC = U(0x1816), CSCM = U(0x2a5b), FTMS = U(0x1826), IBD = U(0x2ad2), BAT = U(0x180f), BATL = U(0x2a19);
 const NAMES = ['HRM', 'Polar', 'TICKR', 'Wahoo', 'KICKR', 'ELEMNT', 'Garmin', 'HRM-Pro', 'COOSPO', 'Coospo', 'CooSpo', 'Magene', 'Suunto', 'Decathlon', 'XOSS', 'iGPSPORT',
@@ -37,8 +38,8 @@ export class SensorHub extends EventTarget {
     }
     return n;
   }
-  async forget(id) { this.known = this.known.filter(k => k.id !== id); await this.save(); const d = this.devs.get(id); this.devs.delete(id); try { d && (d.closing = true, d.dev.gatt.disconnect()); } catch {} this.emit('change'); }
-  disconnect(id) { const d = this.devs.get(id); if (d) { d.closing = true; try { d.dev.gatt.disconnect(); } catch {} } this.emit('change'); }
+  async forget(id) { this.known = this.known.filter(k => k.id !== id); await this.save(); const d = this.devs.get(id); this.devs.delete(id); try { d && (d.closing = true, d.rj?.stop(), d.dev.gatt.disconnect()); } catch {} this.emit('change'); }
+  disconnect(id) { const d = this.devs.get(id); if (d) { d.closing = true; d.rj?.stop(); try { d.dev.gatt.disconnect(); } catch {} } this.emit('change'); }
 
   async _open(dev) {
     const srv = await dev.gatt.connect(), roles = new Set(), rec = this.devs.get(dev.id) || { dev, closing: false };
@@ -56,9 +57,10 @@ export class SensorHub extends EventTarget {
     if (k) Object.assign(k, entry); else this.known.push(entry);
     await this.save(); this.emit('change');
   }
-  async _lost(rec) {
-    this.emit('change');
-    for (let i = 0; i < 8 && !rec.closing; i++) { await new Promise(r => setTimeout(r, 2000 + i * 2000)); if (rec.closing) return; try { await this._open(rec.dev); return; } catch {} }
+  /** a sensor dropped: keep trying until it is back, forgotten or disconnected by hand (js/rejoin.js; Freddy 20.11.) */
+  _lost(rec) {
+    this.emit('change'); if (rec.closing) return;
+    (rec.rj ||= new Rejoin({ device: () => rec.dev, open: () => this._open(rec.dev), wanted: () => !rec.closing && this.devs.get(rec.dev.id) === rec, on: () => this.emit('change') })).start();
   }
   _set(k, v) { this.live[k] = v; this.at[k] = performance.now(); this.emit('data'); }
   _hr(dv) { const f = dv.getUint8(0); this._set('hr', f & 1 ? dv.getUint16(1, true) : dv.getUint8(1)); }

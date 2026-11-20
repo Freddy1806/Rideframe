@@ -9,6 +9,7 @@ const FTMS = U(0x1826), IBD = U(0x2ad2), FTMS_CP = U(0x2ad9), FTMS_STATUS = U(0x
 const CPS = U(0x1818), CPM = U(0x2a63), BAT = U(0x180f), BATL = U(0x2a19);
 const WAHOO_CP = 'a026e005-0a7d-4ab3-97fa-f1500f9feb8b';
 const HRS = U(0x180d), HRM = U(0x2a37);
+import { Rejoin, rememberDevice, forgetDevice } from './rejoin.js';
 
 /** what to tell people where the browser has no Bluetooth (every iPhone browser except Bluefy; Firefox) */
 export const BT_HELP = /iPhone|iPad|iPod/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1)
@@ -38,26 +39,51 @@ export class Trainer extends EventTarget {
     this.lastGrade = null; this.lastSend = 0; this.queue = Promise.resolve();
     this._crank = null;
     this.pmOnly = false; // "Power meter only" (Freddy 18.11.): read the watts, never take control of the trainer (another app runs it)
+    // one handler each, kept: a reconnect sets the characteristics up again and must never add a second listener
+    this._h = { drop: () => this._dropped(), ibd: e => this._onIBD(e.target.value), cpm: e => this._onCPM(e.target.value), cpr: e => this._onCPResponse(e.target.value), nop: () => {} };
+    this.rj = new Rejoin({ device: () => this.device, open: () => this._setup(), wanted: () => !!this.device && !this._closing, on: (s, n) => this._link(s, n) });
   }
   static supported() { return !!navigator.bluetooth; }
   get connected() { return !!this.device?.gatt?.connected; }
   emit(type, detail) { this.dispatchEvent(new CustomEvent(type, { detail })); }
 
   async connect() {
-    this.device = await pickDevice(this.pmOnly ? { filters: [{ services: [CPS] }], optionalServices: [CPS, FTMS, U(0x180a)] } : {
+    this.rj.stop(); // a fresh chooser (last resort in the ride): the old device's reconnect loop ends
+    const dev = await pickDevice(this.pmOnly ? { filters: [{ services: [CPS] }], optionalServices: [CPS, FTMS, U(0x180a)] } : {
       filters: [{ services: [FTMS] }, { services: [CPS] }, { namePrefix: 'KICKR' }],
       optionalServices: [FTMS, CPS, WAHOO_CP, 'a026ee01-0a7d-4ab3-97fa-f1500f9feb8b', U(0x180a)],
     });
-    this.device.addEventListener('gattserverdisconnected', () => { this.emit('status', 'disconnected'); this._reconnect(); });
-    await this._setup();
+    this._adopt(dev);
+    try { await this._setup(); } catch (e) { this._closing = true; this.rj.stop(); throw e; } // nothing set up: no loop behind the message
+    this._link('ok', 0);
   }
-
-  async _reconnect() {
-    for (let i = 0; i < 5 && this.device && !this.connected; i++) {
-      await new Promise(r => setTimeout(r, 1500 * (i + 1)));
-      try { await this._setup(); return; } catch {}
-    }
+  /** a device the site may already open (Chrome getDevices after a reload, or a test's fake): no chooser. Tries once, then
+   *  keeps trying in the background (max tries, then only when it advertises). Resolves true when it is set up now. */
+  async use(dev, max) {
+    if (!dev) return false;
+    if (this.device === dev && this.connected) return true;
+    this._adopt(dev);
+    try { await this._setup(); this._link('ok', 0); return true; } catch { this.rj.start(max); return false; }
   }
+  _adopt(dev) {
+    if (this.device && this.device !== dev) { this.rj.stop(); try { this.device.removeEventListener('gattserverdisconnected', this._h.drop); } catch {} }
+    this.device = dev; this._closing = false;
+    dev.addEventListener?.('gattserverdisconnected', this._h.drop); // the same function: never twice on one device
+  }
+  /** the trainer dropped (Freddy 20.11.: mid-workout): keep trying for as long as it is wanted, a user's disconnect ends it */
+  _dropped() {
+    if (!this.device || this._closing) return;
+    this.emit('status', 'disconnected'); this.rj.start();
+  }
+  /** the reconnect state: 'lost' / 'try' while it is gone, 'back' when it is set up again ('ok': connected by hand) */
+  _link(s, n) {
+    this.rejoining = s === 'lost' || s === 'try'; this.link = s;
+    if (s === 'back' || s === 'ok') { this.lostAt = 0; rememberDevice('trainer', this.device, { pm: this.pmOnly }); } else if (s === 'lost') this.lostAt = Date.now();
+    this.emit('link', { state: s, n });
+  }
+  /** Reconnect button: try now (wakes the loop, or starts one); resolves true when the trainer is back */
+  rejoinNow() { return this.device ? this.rj.kick() : Promise.resolve(false); }
+  _reconnect() { return this.rejoinNow(); }
 
   async _setup() {
     this.emit('status', 'connecting');
@@ -73,12 +99,12 @@ export class Trainer extends EventTarget {
     try { ftms = await server.getPrimaryService(FTMS); } catch {}
     if (ftms) {
       const ibd = await ftms.getCharacteristic(IBD);
-      ibd.addEventListener('characteristicvaluechanged', e => this._onIBD(e.target.value));
+      ibd.addEventListener('characteristicvaluechanged', this._h.ibd);
       await ibd.startNotifications();
       this.mode = 'ftms';
       try { // control is a bonus: without it the trainer still sends watts (some browsers refuse the control point)
         this.cp = await ftms.getCharacteristic(FTMS_CP);
-        this.cp.addEventListener('characteristicvaluechanged', e => this._onCPResponse(e.target.value));
+        this.cp.addEventListener('characteristicvaluechanged', this._h.cpr);
         await this.cp.startNotifications();
         await this._write([0x00]);        // request control
         await this._write([0x07]);        // start / resume
@@ -86,11 +112,11 @@ export class Trainer extends EventTarget {
     } else {
       const cps = await server.getPrimaryService(CPS);
       const m = await cps.getCharacteristic(CPM);
-      m.addEventListener('characteristicvaluechanged', e => this._onCPM(e.target.value));
+      m.addEventListener('characteristicvaluechanged', this._h.cpm);
       await m.startNotifications();
       try {
         this.cp = await cps.getCharacteristic(WAHOO_CP);
-        this.cp.addEventListener('characteristicvaluechanged', () => {});
+        this.cp.addEventListener('characteristicvaluechanged', this._h.nop);
         await this.cp.startNotifications();
         await this._write([0x20, 0xee, 0xfc]);  // unlock
         this.mode = 'wahoo';
@@ -106,8 +132,8 @@ export class Trainer extends EventTarget {
    *  ever opened, so no ERG, no gradient, and another app keeps the trainer */
   async _listenOnly(server) {
     let cps = null; try { cps = await server.getPrimaryService(CPS); } catch {}
-    if (cps) { const m = await cps.getCharacteristic(CPM); m.addEventListener('characteristicvaluechanged', e => this._onCPM(e.target.value)); await m.startNotifications(); }
-    else { const ibd = await (await server.getPrimaryService(FTMS)).getCharacteristic(IBD); ibd.addEventListener('characteristicvaluechanged', e => this._onIBD(e.target.value)); await ibd.startNotifications(); }
+    if (cps) { const m = await cps.getCharacteristic(CPM); m.addEventListener('characteristicvaluechanged', this._h.cpm); await m.startNotifications(); }
+    else { const ibd = await (await server.getPrimaryService(FTMS)).getCharacteristic(IBD); ibd.addEventListener('characteristicvaluechanged', this._h.ibd); await ibd.startNotifications(); }
     this.cp = null; this.mode = 'pm'; this.erg = null; this.lastGrade = null;
     this.emit('status', 'connected');
   }
@@ -120,7 +146,14 @@ export class Trainer extends EventTarget {
     return was;
   }
 
-  disconnect() { const d = this.device; this.device = null; d?.gatt?.disconnect(); this.emit('status', 'disconnected'); }
+  /** a user's disconnect: no reconnecting; forget = also not reopened after the next reload */
+  disconnect(forget = false) {
+    const d = this.device; this._closing = true; this.rj.stop(); this.device = null; this.rejoining = false;
+    try { d?.removeEventListener?.('gattserverdisconnected', this._h.drop); } catch {}
+    try { d?.gatt?.disconnect(); } catch {}
+    if (forget) forgetDevice('trainer');
+    this.emit('status', 'disconnected');
+  }
 
   _write(bytes) {
     this.queue = this.queue.then(() => this.cp?.writeValueWithResponse
@@ -229,13 +262,38 @@ export class Trainer extends EventTarget {
 }
 
 export class HeartRate extends EventTarget {
+  constructor() {
+    super();
+    this._h = { drop: () => this._lost(), hrm: e => this._onHR(e.target.value) };
+    this.rj = new Rejoin({ device: () => this.device, open: () => this._open(), wanted: () => !!this.device && !this.closing,
+      on: s => { this.rejoining = s === 'lost' || s === 'try'; if (s === 'back') { rememberDevice('hr', this.device); this.dispatchEvent(new CustomEvent('reconnected')); } this.dispatchEvent(new Event('change')); } });
+  }
   async connect(all = false) {
+    this.closing = false; this.rj.stop();
     // straps only advertise while worn (moist electrodes) and often hide the HR service in their advert: also match common names
     const names = ['HRM', 'Polar', 'TICKR', 'Wahoo', 'Garmin', 'COOSPO', 'Coospo', 'Magene', 'Suunto', 'Decathlon', 'Kalenji', 'XOSS', 'iGPSPORT', 'H10', 'H9', 'Verity', 'Forerunner', 'fenix', 'Apple Watch', 'Whoop', 'WHOOP', 'Amazfit', 'Scosche', 'Rhythm', 'CooSpo', 'Heart'];
-    this.device = await pickDevice(all ? { acceptAllDevices: true, optionalServices: [HRS, BAT] }
+    const dev = await pickDevice(all ? { acceptAllDevices: true, optionalServices: [HRS, BAT] }
       : { filters: [{ services: [HRS] }, ...names.map(namePrefix => ({ namePrefix }))], optionalServices: [HRS, BAT] });
-    this.device.addEventListener('gattserverdisconnected', () => this._lost());
-    await this._open();
+    this._adopt(dev);
+    try { await this._open(); } catch (e) { this.closing = true; this.rj.stop(); throw e; } // the wrong device picked: no loop behind the message
+    rememberDevice('hr', dev);
+  }
+  /** a strap the site may already open (Chrome getDevices after a reload): no chooser; tries once, then in the background */
+  async use(dev, max) {
+    if (!dev) return false;
+    if (this.device === dev && this.connected) return true;
+    this.closing = false; this._adopt(dev);
+    try { await this._open(); rememberDevice('hr', dev); return true; } catch { this.rj.start(max); return false; }
+  }
+  _adopt(dev) {
+    if (this.device && this.device !== dev) { this.rj.stop(); try { this.device.removeEventListener('gattserverdisconnected', this._h.drop); } catch {} }
+    this.device = dev; dev.addEventListener?.('gattserverdisconnected', this._h.drop);
+  }
+  _onHR(dv) {
+    const f = dv.getUint8(0);
+    this.hr = f & 1 ? dv.getUint16(1, true) : dv.getUint8(1);
+    this.lastSeen = performance.now();
+    this.dispatchEvent(new CustomEvent('hr', { detail: this.hr }));
   }
   async _open() {
     const srv = await this.device.gatt.connect();
@@ -243,27 +301,21 @@ export class HeartRate extends EventTarget {
     try { s = await srv.getPrimaryService(HRS); }
     catch { this.device.gatt.disconnect(); throw new Error(`“${this.device.name || 'Device'}” sends no heart rate (no heart rate service). On a watch, first turn on “broadcast heart rate”.`); }
     const c = await s.getCharacteristic(HRM);
-    c.addEventListener('characteristicvaluechanged', e => {
-      const dv = e.target.value; const f = dv.getUint8(0);
-      this.hr = f & 1 ? dv.getUint16(1, true) : dv.getUint8(1);
-      this.lastSeen = performance.now();
-      this.dispatchEvent(new CustomEvent('hr', { detail: this.hr }));
-    });
+    c.addEventListener('characteristicvaluechanged', this._h.hrm);
     await c.startNotifications();
     this.battery = null; // battery level, if the strap tells it: an empty battery is the most common reason a strap vanishes
     try { const b = await (await srv.getPrimaryService(BAT)).getCharacteristic(BATL); this.battery = (await b.readValue()).getUint8(0); } catch {}
     this.dispatchEvent(new Event('change'));
   }
-  /** strap dropped (out of range, sweat, battery): try to get it back a few times */
-  async _lost() {
+  /** strap dropped (out of range, sweat, battery): keep trying until it is back or disconnected by hand (js/rejoin.js) */
+  _lost() {
     this.hr = 0; this.dispatchEvent(new Event('change'));
-    if (this.closing) return;
-    for (let i = 0; i < 6 && !this.closing; i++) {
-      await new Promise(r => setTimeout(r, 2000 + i * 2000));
-      try { await this._open(); this.dispatchEvent(new CustomEvent('reconnected')); return; } catch {}
-    }
+    if (this.closing || !this.device) return;
+    this.rj.start();
   }
-  disconnect() { this.closing = true; try { this.device?.gatt?.disconnect(); } catch {} }
+  /** Reconnect button: try now */
+  rejoinNow() { return this.device ? this.rj.kick() : Promise.resolve(false); }
+  disconnect(forget = false) { this.closing = true; this.rj.stop(); this.rejoining = false; try { this.device?.gatt?.disconnect(); } catch {} if (forget) forgetDevice('hr'); }
   get connected() { return !!this.device?.gatt?.connected; }
 }
 
@@ -271,14 +323,19 @@ export class HeartRate extends EventTarget {
  *  rides outside (outdoor.html). Emits 'cad' (rpm) and 'speed' (m/s, wheel 2.105 m) and 'change'. */
 const CSC = U(0x1816), CSCM = U(0x2a5b);
 export class CadenceSensor extends EventTarget {
+  constructor() {
+    super(); this._h = { drop: () => this._lost(), csc: e => this._on(e.target.value) };
+    this.rj = new Rejoin({ device: () => this.device, open: () => this._open(), wanted: () => !!this.device && !this.closing, on: () => this.dispatchEvent(new Event('change')) });
+  }
   async connect() {
-    this.device = await pickDevice({ filters: [{ services: [CSC] }], optionalServices: [CSC, BAT] });
-    this.device.addEventListener('gattserverdisconnected', () => this._lost());
+    this.closing = false; this.rj.stop();
+    const dev = await pickDevice({ filters: [{ services: [CSC] }], optionalServices: [CSC, BAT] });
+    if (this.device !== dev) { try { this.device?.removeEventListener('gattserverdisconnected', this._h.drop); } catch {} this.device = dev; dev.addEventListener('gattserverdisconnected', this._h.drop); }
     await this._open();
   }
   async _open() {
     const c = await (await (await this.device.gatt.connect()).getPrimaryService(CSC)).getCharacteristic(CSCM);
-    c.addEventListener('characteristicvaluechanged', e => this._on(e.target.value));
+    c.addEventListener('characteristicvaluechanged', this._h.csc);
     await c.startNotifications(); this.dispatchEvent(new Event('change'));
   }
   _on(dv) {
@@ -292,9 +349,8 @@ export class CadenceSensor extends EventTarget {
         else if (dr === 0 && now - (this._cAt || 0) > 3000) { this.cad = 0; this.dispatchEvent(new CustomEvent('cad', { detail: 0 })); } }
       this._c = { rev, t }; }
   }
-  async _lost() {
-    this.cad = 0; this.dispatchEvent(new Event('change'));
-    for (let i = 0; i < 6 && !this.closing; i++) { await new Promise(r => setTimeout(r, 2000 + i * 2000)); try { await this._open(); return; } catch {} }
-  }
+  _lost() { this.cad = 0; this.dispatchEvent(new Event('change')); if (!this.closing && this.device) this.rj.start(); }
+  rejoinNow() { return this.device ? this.rj.kick() : Promise.resolve(false); }
+  disconnect() { this.closing = true; this.rj.stop(); try { this.device?.gatt?.disconnect(); } catch {} }
   get connected() { return !!this.device?.gatt?.connected; }
 }

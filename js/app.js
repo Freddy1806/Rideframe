@@ -27,6 +27,8 @@ import { loadShared, sharedFor, shareRide, importShared, groupModal } from './sh
 import { workoutOptions, wireRoutePick } from './myworkouts-ui.js';
 import { loadPersonal } from './myworkouts-store.js';
 import { loadCoach } from './coachworkouts.js';
+import { DRAFT_KEY, draftOn, draftUsable, draftRidden } from './ridedraft.js';
+import { knownDevices, rememberedDevice } from './rejoin.js';
 
 const $ = s => document.querySelector(s);
 const main = $('#main');
@@ -61,7 +63,7 @@ async function boot() {
   state.trainer.pmOnly = state.settings.powerSource === 'pm'; // power meter only (js/ridesetup.js): RIDEFRAME never controls the trainer
   setMyWorkouts(state.settings.myWorkouts);
   const hasAcc = await accountsAvailable();
-  if (hasAcc && account()) await syncAccount(state).catch(e => console.warn('Konto-Abgleich:', e.message));
+  if (hasAcc && account()) await syncAccount(state).catch(e => console.warn('Konto-Abgleich:', e.message)); // also sends the rides saved while offline
   setMyWorkouts(state.settings.myWorkouts); // the account may have brought own workouts from another device
   await loadPersonal(); // personal workouts (js/myworkouts-store.js): the account's, or this browser's when signed out
   await loadCoach(); // coach workouts from coach/workouts.json on the host (js/coachworkouts.js): new ones without a new app version
@@ -81,13 +83,18 @@ async function boot() {
   document.querySelectorAll('.tab').forEach(t => t.addEventListener('click', () => go(t.dataset.view)));
   $('#trainerPill').addEventListener('click', connectTrainer);
   $('#hrPill').addEventListener('click', connectHR);
+  state.trainer.addEventListener('link', () => updateTrainerPill());
   state.trainer.addEventListener('status', () => { updateTrainerPill(); const e = document.querySelector('#trState'), b = document.querySelector('#trBtn'); if (e) e.textContent = trState(); if (b) b.textContent = state.trainer.connected ? 'Disconnect' : 'Connect'; });
   $('#fileInput').addEventListener('change', e => { importFiles([...e.target.files]); e.target.value = ''; });
   document.addEventListener('dragover', e => { e.preventDefault(); document.querySelector('.add-card')?.classList.add('drag'); });
   document.addEventListener('dragleave', e => { if (!e.relatedTarget) document.querySelector('.add-card')?.classList.remove('drag'); });
   document.addEventListener('drop', e => { e.preventDefault(); document.querySelector('.add-card')?.classList.remove('drag'); if (e.dataTransfer.files.length) importFiles([...e.dataTransfer.files]); });
   updateTrainerPill();
-  const v = params.get('view');
+  reopenDevices(); // Chrome: the trainer and strap of the last session come back without a chooser (js/rejoin.js)
+  window.addEventListener('online', () => import('./account.js').then(a => a.retryPushes()).catch(() => {})); // rides saved offline go to the account when the line is back
+  // a ride that did not end (reload, crash, closed tab: js/ridedraft.js): its sheet comes first, even on a ?view=ride link
+  const draft = draftOn() && !params.has('auto') ? await db.kvGet(DRAFT_KEY).catch(() => null) : null;
+  const v = draftUsable(draft) && params.get('view') === 'ride' ? 'library' : params.get('view');
   if (v === 'detail') go('detail', params.get('id') || 'demo');
   else if (v === 'ride' && params.get('open')) { const [a, b] = params.get('open').split('-'); startOpenWorld(a, b); }
   else if (v === 'ride') startRide(params.get('id') || 'demo', { autopilot: params.has('auto'), at: +params.get('at') || 0 });
@@ -95,6 +102,7 @@ async function boot() {
   if (hasAcc) startOnline();
   if (hasAcc) { $('#accPill').hidden = false; $('#accPill').addEventListener('click', () => accountModal(state, accountChanged)); updateAccPill(); }
   (async () => {
+    if (draftUsable(draft)) await offerResume(draft); else if (draft) db.kvDel(DRAFT_KEY).catch(() => {});
     if (hasAcc && !account() && !state.settings.accountAsked && !params.has('noprofile') && v !== 'ride') {
       state.settings.accountAsked = true; saveSettings(); await accountModal(state, accountChanged, { first: true });
     }
@@ -759,7 +767,7 @@ function settings() {
 async function connectTrainer() {
   const t = state.trainer;
   if (!Trainer.supported()) return toast('Bluetooth only works in Chrome or Edge.', 4000);
-  if (t.connected) { if (confirm('Disconnect trainer?')) t.disconnect(); return; }
+  if (t.connected) { if (confirm('Disconnect trainer?')) t.disconnect(true); return; }
   try { await t.connect(); await t.setSim({ riderKg: state.settings.riderKg, bikeKg: state.settings.bikeKg, crr: 0.004, cw: 0.51 }); }
   catch (e) { if (e.name !== 'NotFoundError') toast('Connection failed: ' + e.message, 4000); updateTrainerPill(); }
 }
@@ -767,7 +775,7 @@ function updateTrainerPill() {
   const t = state.trainer, pill = $('#trainerPill');
   const on = t.connected;
   pill.classList.toggle('on', on);
-  pill.querySelector('.t').innerHTML = on ? `✓ ${esc(t.device.name || 'Trainer')} connected <span class="sub">${t.mode === 'pm' ? 'power meter only' : t.mode === 'ftms' ? 'FTMS' : t.mode === 'wahoo' ? 'Wahoo' : 'watts only'}</span>` : t.pmOnly ? 'Connect power meter' : 'Connect KICKR';
+  pill.querySelector('.t').innerHTML = on ? `✓ ${esc(t.device.name || 'Trainer')} connected <span class="sub">${t.mode === 'pm' ? 'power meter only' : t.mode === 'ftms' ? 'FTMS' : t.mode === 'wahoo' ? 'Wahoo' : 'watts only'}</span>` : t.rejoining ? 'Trainer lost · reconnecting …' : t.pmOnly ? 'Connect power meter' : 'Connect KICKR';
   pill.title = on ? 'Connected. Click to disconnect.' : 'Connect trainer via Bluetooth';
 }
 function updateHrPill() { // heart rate strap: its own Bluetooth connection, runs alongside the KICKR
@@ -780,15 +788,52 @@ function updateHrPill() { // heart rate strap: its own Bluetooth connection, run
 async function connectHR(all) {
   if (all instanceof Event) all = false;
   if (!navigator.bluetooth) return toast('Bluetooth only works in Chrome or Edge (not Safari/Firefox).', 6000);
-  if (state.hr?.connected) { if (confirm('Disconnect HR strap?')) { state.hr.disconnect(); updateHrPill(); } return; }
+  if (state.hr?.connected) { if (confirm('Disconnect HR strap?')) { state.hr.disconnect(true); updateHrPill(); } return; }
   state.hr?.disconnect?.();
-  try { state.hr = new HeartRate(); state.hr.addEventListener('hr', updateHrPill); state.hr.addEventListener('change', updateHrPill); state.hr.addEventListener('reconnected', () => toast('HR strap reconnected'));
+  try { newHr();
     await state.hr.connect(!!all); updateHrPill(); toast('HR strap connected' + (state.hr.battery != null ? ` · battery ${state.hr.battery} %` : '')); if (document.querySelector('#hrBtn')) settings(); }
   catch (e) {
     if (e.name === 'NotFoundError' && /adapter|Bluetooth/i.test(e.message) && !/User cancelled|chooser/i.test(e.message)) return toast('Bluetooth is off or Chrome is not allowed to use it (Mac: System Settings > Privacy > Bluetooth > allow Chrome).', 8000);
     if (e.name !== 'NotFoundError') return toast('HR strap: ' + e.message, 7000);
     // nothing picked: most often the strap is asleep (not worn) or still paired with a watch/phone/bike computer
     if (!all) toast('No strap chosen? Put the strap on, wet the electrodes (it only sends while worn) and briefly turn off Bluetooth on your watch/phone/bike computer. Settings also has “All devices”.', 7000);
+  }
+}
+
+function newHr() { const h = state.hr = new HeartRate(); h.addEventListener('hr', updateHrPill); h.addEventListener('change', updateHrPill); h.addEventListener('reconnected', () => toast('HR strap reconnected')); return h; }
+export { connectHR };
+/** after a reload (Freddy 20.11.: "wenn du neu startest, sind die Geräte nicht mehr gekoppelt"): Chrome's getDevices() lists the
+ *  devices this site was allowed before; the remembered trainer and strap are opened again without a chooser. A few tries,
+ *  then they connect when they advertise. Where the browser lacks it (Safari, Firefox, Bluefy, Chrome without the new
+ *  Bluetooth permissions) nothing happens: the pause menu and the pills open the chooser with one tap. Never throws. */
+async function reopenDevices() {
+  try {
+    const list = await knownDevices(); if (!list.length) return;
+    const t = state.trainer, tr = rememberedDevice('trainer'), hr = rememberedDevice('hr');
+    const td = tr && !t.connected && !t.device && !!tr.pm === !!t.pmOnly && list.find(d => d.id === tr.id);
+    if (td) t.use(td, 6).then(ok => { updateTrainerPill(); if (ok) { t.setSim({ riderKg: state.settings.riderKg, bikeKg: state.settings.bikeKg, crr: 0.004, cw: 0.51 }).catch(() => {}); toast(`✓ ${td.name || 'Trainer'} reconnected`); } }).catch(() => {});
+    const hd = hr && !state.hr?.connected && !state.hr?.device && list.find(d => d.id === hr.id);
+    if (hd) newHr().use(hd, 6).then(ok => { updateHrPill(); if (ok) toast('✓ HR strap reconnected'); }).catch(() => {});
+  } catch (e) { console.warn('reopen devices', e); }
+}
+/** the sheet for a ride that did not end: Continue (the same route and workout, paused where it stopped), Save as it is (the
+ *  ride record as a finish would write it), Discard (asked twice). Escape keeps the draft for the next start. */
+async function offerResume(dft) {
+  const { ask } = await import('./myworkouts-ui.js');
+  const route = !dft.leg && routeById(dft.routeId), w = dft.workout || dft.wDef;
+  const a = await ask({ title: 'Unfinished ride', text: `${dft.routeName || 'Ride'} · ${fmtKm(draftRidden(dft))} km · ${fmtTime(dft.elapsed || 0)}${w ? ' · ' + w.name : ''}. ${route ? 'Continue where it stopped (paused, so you can connect first), or keep it as it is.' : 'This route cannot be continued here; keep the ride as it is.'}`,
+    buttons: [...(route ? [{ label: 'Continue', value: 'go', cls: 'primary' }] : []), { label: 'Save as it is', value: 'save', cls: route ? 'ghost' : 'primary' }, { label: 'Discard', value: 'drop' }] });
+  if (a === 'go') { reopenDevices(); return startRide(dft.routeId, { resume: dft }); }
+  if (a === 'save') {
+    try { const rec = RideSession.draftRecord(dft, state); await db.put('rides', rec); await db.kvDel(DRAFT_KEY); import('./account.js').then(m => m.pushRide(rec)).catch(() => {});
+      await reload(); toast(`Ride saved · ${fmtKm(rec.distance)} km · ${fmtTime(rec.duration)}`, 4000); go('history'); }
+    catch (e) { toast('Saving failed: ' + (e?.message || e), 6000); }
+    return;
+  }
+  if (a === 'drop') {
+    const sure = await ask({ title: 'Discard this ride?', text: 'The unfinished ride is deleted for good.', buttons: [{ label: 'Discard', value: 'yes', cls: 'primary' }, { label: 'Back', value: 'no' }] });
+    if (sure === 'yes') return db.kvDel(DRAFT_KEY).catch(() => {});
+    return offerResume(dft);
   }
 }
 
@@ -915,9 +960,9 @@ async function startRide(id, opts = {}) {
   if (state.settings.ghost === 'last') ghost = rides.filter(r => r.complete)[0];
   let ghostName = '';
   if (state.settings.ghost?.startsWith('s:')) { ghost = (state.shared || []).find(r => 's:' + r.id === state.settings.ghost && r.routeId === id) || bestRide(id); ghostName = ghost?.rider || ''; }
-  const workout = opts.group ? null : workoutById(state.settings.workout);
+  const workout = opts.resume ? opts.resume.workout : opts.group ? null : workoutById(state.settings.workout); // a resumed ride: its own workout (personal / coach ones too)
   const keep = state.settings.resume?.[id]; // island: go on where you stopped last time (ride.js _keepPlace)
-  if (keep && !opts.group && !opts.at && !opts.autopilot && keep.d > 300 && keep.d < route.track.length - 400 && Date.now() - keep.at < 60 * 864e5) {
+  if (keep && !opts.resume && !opts.group && !opts.at && !opts.autopilot && keep.d > 300 && keep.d < route.track.length - 400 && Date.now() - keep.at < 60 * 864e5) {
     const { ask } = await import('./myworkouts-ui.js');
     const go = await ask({ title: 'Continue where you stopped?', text: `Last time you got to km ${(keep.d / 1000).toFixed(1)} on ${route.name}.`,
       buttons: [{ label: `Continue at km ${(keep.d / 1000).toFixed(1)}`, value: 'go', cls: 'primary' }, { label: 'From the start', value: 'new' }] });
