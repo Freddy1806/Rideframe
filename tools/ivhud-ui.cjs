@@ -38,7 +38,7 @@ const EXPECT = { voll: 'hr cad speed dist time avg grade', kompakt: 'hr cad spee
       await p.selectOption('#workSel', wid); await p.click('#rideBtn');
       await p.waitForFunction(() => window.__ride?.running && !document.querySelector('.countdown'), null, { timeout: 60000 });
       // a live trainer (FTMS data, no control point: the targets are kept in trainer.erg) and a heart rate from it
-      await p.evaluate(() => { const r = window.__ride, t = r.state.trainer; r.eg = null; t.device = { gatt: { connected: true } }; t.data = { power: 150, cadence: 90, speed: 9, hr: 140 };
+      await p.evaluate(() => { const r = window.__ride, t = r.state.trainer; r.eg = null; t.device = { gatt: { connected: true } }; t.mode = "ftms"; t.cp = { writeValueWithResponse: async () => {} }; t.data = { power: 150, cadence: 90, speed: 9, hr: 140 };
         clearInterval(window.__tl); window.__tl = setInterval(() => { t.lastData = performance.now(); t.data.power = window.__tp ?? 150; t.data.cadence = window.__tc ?? 90; t.data.hr = window.__th ?? 140; }, 50); t.lastData = performance.now(); });
     };
     /** jump to `into` seconds into the step that matches (label regex or index), then let the HUD catch up */
@@ -158,6 +158,14 @@ const EXPECT = { voll: 'hr cad speed dist time avg grade', kompakt: 'hr cad spee
           if (SHOTS && w === 1280 && pre === 'voll') await p.screenshot({ path: path.join(SHOTS, `ivhud_${view}_4digit_1280.jpg`), type: 'jpeg', quality: 82 });
         }
       }
+    }
+    { // the trainer refuses the ERG target: the chip says so in red, and it clears when the trainer follows again
+      const st = async refused => p.evaluate(async refused => { const r = window.__ride, t = r.state.trainer; t.device = { gatt: { connected: true } }; t.mode = 'ftms'; t.cp = { writeValueWithResponse: async () => {} };
+        t.ctlRefused = refused ? { op: 5, res: 5 } : null; r.paused = false; await new Promise(f => setTimeout(f, 400)); const l = document.querySelector('#hGearL');
+        return { erg: !!r._ergNow(), lbl: l.textContent, warn: l.classList.contains('warn') }; }, refused);
+      const a = await st(true), b2 = await st(false);
+      ok(a.erg && a.lbl === 'ERG · trainer not following' && a.warn, 'trainer refuses the target: chip “ERG · trainer not following”, red · ' + JSON.stringify(a));
+      ok(!b2.warn && /^ERG · (workout|target)$/.test(b2.lbl), 'trainer follows again: the warning is gone · ' + JSON.stringify(b2));
     }
     ok(!errs.length, 'no page errors' + (errs.length ? ': ' + errs.join(' | ') : ''));
   } catch (e) { console.log('✗ ' + (e.stack || e.message)); fails++; }
