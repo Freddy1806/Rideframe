@@ -237,7 +237,7 @@ h2.section { font-size: 28px; font-weight: 900; font-stretch: 118%; text-transfo
 .gearchip { min-width: 150px; transition: box-shadow .2s; }
 .gearchip.shifted { box-shadow: 0 0 0 2px var(--accent) inset; }
 .gearbar { display: flex; gap: 3px; margin-top: 8px; }
-.gearbar:empty { display: none; }
+.gearbar:empty, .gearbar[hidden] { display: none; }
 .gearbar i { flex: 1; height: 5px; border-radius: 2px; background: rgba(244,244,239,.18); }
 .gearbar i.on { background: var(--accent); }
 .metric.power.z-lo .v, .metric.power.z-lo .v small { color: #6fb6ff; }
@@ -865,17 +865,24 @@ img.face.big{width:96px;height:96px}
 .wcd { position: absolute; left: 50%; bottom: calc(100% + 92px); transform: translateX(-50%); text-align: center; border-radius: 18px; padding: 10px 30px 14px; background: rgba(11,11,11,.72); }
 .wcd .k { font-size: 96px; font-weight: 900; color: var(--accent); line-height: 1; font-variant-numeric: tabular-nums; }
 .wcd .w { font-size: 22px; font-weight: 900; white-space: nowrap; }
-/* the rest of the HUD makes room: metrics in one slim row right above the bar, no elevation profile, the grade higher up */
-.ride.wk .hud-bottom { bottom: calc(var(--wbh, 230px) + 10px); padding: 8px 18px 6px; }
-.ride.wk .hud-profile, .ride.wk .metric.power { display: none !important; }
-.ride.wk .hud-bottom:not(:has(.metric:not(.power):not([style*="none"]))) { display: none !important; } /* only power left (pur): nothing to show */
-.ride.wk .metrics { display: flex; gap: 22px; } /* flex: the inline grid columns from applyHud count the hidden power metric */
-.ride.wk .metric { flex: 1 1 0; min-width: 0; border-left: 0; padding-left: 0; }
-.ride.wk .metric .v { font-size: 22px; margin-top: 2px; }
-.ride.wk .metric .v small { font-size: 11px; }
-.ride.wk .metric .sub { display: none; }
+/* in a workout the interval window carries the ride numbers (owner 20.11.: "I simply cannot see my heart rate"): the separate
+   metrics row is gone (over the 3D world it even sat under the bar), the big grade sits higher up */
+.ride.wk .hud-bottom { display: none !important; }
 .ride.wk .grade-tag { top: 46%; }
 .ride.wk .grade-tag .g { font-size: 80px; } .ride.wk .grade-tag .g small { font-size: 36px; }
+/* the live numbers (js/ride.js WB_LIVE) in the free space at the bottom right of the big view: a column of up to three rows
+   next to step, target and power, as many columns as the Display mode shows */
+.wbar.v-big .wb-big { display: grid; grid-template-columns: minmax(0, 1fr) auto; column-gap: 26px; align-items: end; }
+.wbar.v-big .wb-big > :not(.wb-live) { grid-column: 1; }
+.wb-live { display: grid; grid-auto-flow: column; grid-template-rows: repeat(3, auto); gap: 6px 22px; align-content: end; }
+.wbar.v-big .wb-live { grid-column: 2; grid-row: 1 / span 3; padding-bottom: 4px; }
+.wl { min-width: 0; white-space: nowrap; }
+.wl[hidden] { display: none; }
+.wl i { display: block; font-style: normal; font-size: 10px; font-weight: 800; letter-spacing: .12em; text-transform: uppercase; color: var(--muted); }
+.wl b { display: block; font-size: 28px; font-weight: 900; font-stretch: 105%; line-height: 1.05; font-variant-numeric: tabular-nums; }
+.wl small { font-size: 12px; font-weight: 800; color: var(--muted); margin-left: 3px; letter-spacing: 0; }
+.wl.off b { color: var(--muted); }
+.wbar[data-clean="1"] .wb-chart { display: none; } /* Display "Landscape only": the window keeps target, time, power, heart rate, cadence */
 @media (max-width: 1100px) {
   .wbar { padding: 12px 18px 0; } .wb-row { gap: 18px; } .wb-chart { margin: 10px -18px 0; }
   .wring { width: 96px; height: 96px; } .wring b { font-size: 27px; } .wring span { bottom: 18px; }
@@ -888,9 +895,9 @@ img.face.big{width:96px;height:96px}
   .wb-next .n { font-size: 18px; } .wb-end .lbl { display: none; }
   .ride.wk .grade-tag { display: none; }
 }
-@media (max-height: 820px) { .wb-chart .wtl { height: 56px; } .wring { width: 100px; height: 100px; } .wring b { font-size: 28px; } .wring span { bottom: 18px; } .wb-t { font-size: 76px; } }
+@media (max-height: 820px) { .wb-chart .wtl { height: 56px; } .wring { width: 100px; height: 100px; } .wring b { font-size: 28px; } .wring span { bottom: 18px; } .wb-t { font-size: 76px; } .wbar.v-big .wl b { font-size: 24px; } .wb-live { gap: 4px 18px; } }
 @media (max-height: 600px) {
-  .ride.wk .hud-bottom, .ride.wk .grade-tag { display: none !important; }
+  .ride.wk .grade-tag { display: none !important; }
   .ride.wk .flash { top: 30%; font-size: 18px; padding: 9px 18px; } /* below the top chips */
   .wb-chart .wtl { height: 34px; } .wring { width: 70px; height: 70px; } .wring b { font-size: 19px; } .wring span { display: none; }
   .wb-t { font-size: 46px; } .wb-p { font-size: 24px; padding-bottom: 2px; } .wb-name { font-size: 15px; } .wzone { margin: 4px 0 0; }
@@ -943,6 +950,18 @@ img.face.big{width:96px;height:96px}
 .wbar.v-focus .wb-chart .wtl { height: 30px; }
 .wbar.v-focus .wcd { bottom: calc(100% + 10px); }
 .wbar.v-focus .wask { width: min(680px, calc(100% - 32px)); margin: 0 auto 10px; }
+/* compact and focus: heart rate and cadence only, smaller, stacked right of target and power (the bar stays as tall) */
+.wbar.v-compact .wl:not([data-wl="hr"]):not([data-wl="cad"]), .wbar.v-focus .wl:not([data-wl="hr"]):not([data-wl="cad"]) { display: none; }
+.wbar.v-compact .wb-live, .wbar.v-focus .wb-live { grid-template-rows: repeat(2, auto); gap: 2px 0; }
+.wbar.v-compact .wl i, .wbar.v-focus .wl i { display: none; }
+.wbar.v-compact .wl b, .wbar.v-focus .wl b { font-size: 22px; }
+.wbar.v-compact .wb-row { grid-template-columns: minmax(0, 1fr) auto auto minmax(0, 1fr); }
+.wbar.v-compact .wb-live { grid-column: 3; grid-row: 1 / span 2; align-self: center; }
+.wbar.v-compact .wb-next { grid-column: 4; }
+.wbar.v-focus .wb-big { display: grid; grid-template-columns: minmax(0, 1fr) auto; column-gap: 18px; }
+.wbar.v-focus .wb-name, .wbar.v-focus .wzone { grid-column: 1 / -1; }
+.wbar.v-focus .wb-nums { grid-column: 1; grid-row: 2; }
+.wbar.v-focus .wb-live { grid-column: 2; grid-row: 2; align-self: center; }
 @media (max-width: 820px) {
   .wbar.v-compact { padding: 8px 14px 0; } .wbar.v-compact .wb-row { gap: 12px; } .wbar.v-compact .wb-chart { margin: 6px -14px 0; }
   .wbar.v-compact .wb-name { font-size: 15px; } .wbar.v-compact .wb-time { font-size: 28px; } .wbar.v-compact .wb-t { font-size: 40px; } .wbar.v-compact .wb-p { font-size: 22px; }
@@ -962,7 +981,6 @@ img.face.big{width:96px;height:96px}
 .wb-p.off, .wb-p.off small { color: var(--muted); }
 .sens-rc { font: inherit; font-size: 10px; font-weight: 800; letter-spacing: .08em; text-transform: uppercase; padding: 3px 9px; border-radius: 999px; border: 1px solid var(--accent); background: none; color: var(--paper); cursor: pointer; }
 .sens-rc[hidden] { display: none; } .wb-p .sens-rc { margin-left: 10px; vertical-align: middle; }
-.ride.wk .metric .sens { font-size: 10px; margin-top: 1px; }
 /* the countdown card says what comes; the step flash would sit on top of it */
 .ride:has(.wcd:not([hidden])) .flash { opacity: 0 !important; }
 
@@ -1021,8 +1039,6 @@ img.face.big{width:96px;height:96px}
 .ride.world3d .metric.power .v { font-size: 44px; }
 .ride.world3d .metric .sub { margin-top: 3px; }
 .ride.world3d .hud-profile { margin-top: 6px; height: 56px; }
-.ride.wk .metric .v { font-size: 22px; margin-top: 2px; }
-.ride.wk .metric .v small { font-size: 11px; }
 
 /* Wizard points (owner 19.11.): one currency; the result block, the leaderboard number and the shop */
 .strrow { grid-template-columns: minmax(0, 1.3fr) 110px 76px; border-left-color: var(--accent); }

@@ -51,13 +51,13 @@ let fails = 0, n = 0; const ok = (c, m, info = '') => { n++; console.log(`${c ? 
       await p.evaluate(shots => { const r = window.__ride, e = r.eagle; window.__log = []; window.__txt = []; window.__shotAt = shots ? {} : null;
         const mo = window.__mo = new MutationObserver(ms => { for (const m of ms) for (const x of m.addedNodes) { const t = (x.textContent || '') + ' ' + (x.className || ''); if (t.trim()) window.__txt.push(t.slice(0, 120)); } });
         mo.observe(document.body, { childList: true, subtree: true, characterData: false });
-        const bar = () => document.querySelector('#hWork')?.getBoundingClientRect(), stats = () => document.querySelector('.hud-bottom')?.getBoundingClientRect();
+        const bar = () => document.querySelector('#hWork')?.getBoundingClientRect(), stats = () => document.querySelector('.hud-bottom')?.getBoundingClientRect(); // in a workout the stats row is hidden (its numbers are in the interval bar): height 0 = nothing to cover
         window.__hudOp = () => { const op = s => { const x = document.querySelector(s); return x ? +getComputedStyle(x).opacity : -1; }; // the right-side HUD fades while the eagle sits there
           return { cls: !!document.querySelector('.hud.eagle-on'), map: op('.minimap'), grade: op('.grade-tag'), top: op('.hud-top'), stats: op('.hud-bottom'), bar: op('#hWork') }; };
         const loop = () => { if (!window.__log) return;
           if (!window.__hold) { const b = e.box(), br = bar(), sr = stats(), on = e.state === 'play' && !!e.rig;
             window.__log.push({ t: e.t, st: e.state, jaw: e.jaw, box: b, bird: on ? e.birdBox() : null, ah: on ? e.aheadOff() : null, lk: on ? e.lookOff() : null, lineT: e.lineT, L: e.L, hud: window.__hudOp(), tOff: e.state === 'play' ? e.tOff : 0, iv: r.wNow?.i, el: r.elapsed,
-              barTop: br ? br.top / innerHeight : 1, statsTop: sr ? sr.top / innerHeight : 1, H: innerHeight, txt: document.body.innerText.length });
+              barTop: br ? br.top / innerHeight : 1, statsTop: sr?.height ? sr.top / innerHeight : 1, H: innerHeight, txt: document.body.innerText.length });
             const S = window.__shotAt, at = (k, c) => { if (S && !S[k] && c) { S[k] = true; window.__hold = k; } };
             if (e.state === 'play') { at('1_ahead', e.t > 3.9 && e.t < 4.6); at('2_turn', e.t > 5.6 && e.t < 6.3); at('3_speaking', e.lineT && e.t - e.lineT > 1.2 && e.jaw > 0.28); at('4_fly_away', e.t > e.tOff + 1.25); } }
           if (e.state === 'done' && window.__log.some(x => x.st === 'play') && !window.__hold) { window.__done = true; return; }
