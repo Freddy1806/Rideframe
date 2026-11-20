@@ -112,6 +112,7 @@ export const workoutDuration = w => w.steps.reduce((s, x) => s + x.dur, 0);
 /** live watt tuning in a workout (Freddy 17.11.: "turn the watts up when I can push more"): an offset in W on the hard
  *  intervals only (pct >= 88, not a free test block), ±150 W, never below 50 W; rest and warm-up stay as they are */
 export const WADJ_MAX = 150;
+export const SHORT_HARD = 60; // s
 export const isHard = s => !!s && !s.free && s.pct >= 88;
 export const tuneAdj = (adj, d) => Math.max(-WADJ_MAX, Math.min(WADJ_MAX, Math.round((+adj || 0) + (+d || 0))));
 export const tunedTarget = (step, target, adj) => target == null || !adj || !isHard(step) ? target : Math.max(50, target + adj);
@@ -143,9 +144,11 @@ export function workoutState(w, t, ftp, o = {}) {
     hardNo: 0, hardCount, nextHardNo: 0, name: '', nextTarget: null, nextName: '', nextDur: 0, totalLeft: 0, countdown: 0, steps: list };
   const st = steps[i], next = steps[i + 1] || null, prev = steps[i - 1] || null, inStep = t - s, left = st.dur - inStep;
   const plateau = W0(st, inStep); let target = plateau, ramp = st.pct2 != null ? 'step' : null;
+  // short efforts (sprints, 30 / 15: up to SHORT_HARD s) get no ramp at all: the trainer needs every second of them, the target jumps at the start and at the end
+  const shortHard = x => !!x && isHard(x) && x.dur <= SHORT_HARD;
   if (o.ramp && !isHard(st) && !st.free && st.pct2 == null) { // a real ramp step needs no extra smoothing
-    if (next && isHard(next) && left < rampIn && rampIn > 0) { const k = 1 - left / rampIn, a = W0(st, st.dur), b = W0(next, 0); target = Math.round(a + (b - a) * k); ramp = 'in'; }
-    else if (prev && isHard(prev) && inStep < rampOut && rampOut > 0) { const k = inStep / rampOut, a = W0(prev, prev.dur), b = W0(st, 0); target = Math.round(a + (b - a) * k); ramp = 'out'; }
+    if (next && isHard(next) && !shortHard(next) && left < rampIn && rampIn > 0) { const k = 1 - left / rampIn, a = W0(st, st.dur), b = W0(next, 0); target = Math.round(a + (b - a) * k); ramp = 'in'; }
+    else if (prev && isHard(prev) && !shortHard(prev) && inStep < rampOut && rampOut > 0) { const k = inStep / rampOut, a = W0(prev, prev.dur), b = W0(st, 0); target = Math.round(a + (b - a) * k); ramp = 'out'; }
   }
   const ser = isHard(st) ? series(st) : steps.filter(x => isHard(x) && stem(x) === main), cnt = ser.length, before = steps.slice(0, i).filter(x => ser.includes(x)).length;
   return { done: false, i, step: st, next, prev, left, inStep, target, plateau, lo: Math.round(target * .95), hi: Math.round(target * 1.05), ramp, hard: isHard(st),

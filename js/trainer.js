@@ -180,9 +180,19 @@ export class Trainer extends EventTarget {
     watts = Math.max(0, Math.min(2000, Math.round(watts)));
     const now = performance.now();
     if (watts === this.erg && now - this.lastSend < 5000) return;
-    this.erg = watts; this.lastSend = now;
-    if (this.mode === 'ftms') this._write([0x05, watts & 255, (watts >> 8) & 255]);
-    else if (this.mode === 'wahoo') this._write([0x42, watts & 255, watts >> 8]);
+    this.erg = watts;
+    // Only the newest target counts (Freddy 20.11.: "420 W, and the trainer needs 30 s"): a ramp asks for a new wattage every
+    // frame, each write waits for the trainer's answer, so the old queue ran many seconds behind. Now at most one write is
+    // under way and one waits; when the one under way is answered, the newest wattage goes out (never an older one).
+    if (this._pwBusy) { this._pwNext = true; return; }
+    this._sendPower();
+  }
+  _sendPower() {
+    const watts = this.erg; if (watts == null || !this.cp || !this.connected) { this._pwBusy = false; this._pwNext = false; return; }
+    this._pwBusy = true; this._pwNext = false; this.lastSend = performance.now(); this.ergSent = watts;
+    const done = () => { this._pwBusy = false; if (this._pwNext && this.erg != null && this.erg !== this.ergSent) this._sendPower(); else this._pwNext = false; };
+    const p = this.mode === 'ftms' ? this._write([0x05, watts & 255, (watts >> 8) & 255]) : this.mode === 'wahoo' ? this._write([0x42, watts & 255, watts >> 8]) : null;
+    if (p?.then) p.then(done, done); else done();
   }
 
   /** Send road grade in % (already scaled by difficulty). Rate-limited. */

@@ -1,0 +1,31 @@
+// ERG targets to the trainer: only the newest wattage counts, nothing queues up behind a ramp (Freddy 20.11.: the trainer was 30 s late).
+import test from 'node:test'; import assert from 'node:assert/strict';
+import { Trainer } from '../js/trainer.js';
+import { workoutById, workoutState } from '../js/workouts.js';
+const wait = ms => new Promise(r => setTimeout(r, ms));
+function rig(delay = 40) { const t = new Trainer(), sent = []; t.device = { gatt: { connected: true } }; t.mode = 'ftms';
+  t.cp = { writeValueWithResponse: b => { sent.push(b[1] | b[2] << 8); return wait(delay); } }; return { t, sent }; }
+
+test('a ramp of 300 different targets in 300 ms: a handful of writes, the last one is the final target, at once', async () => {
+  const { t, sent } = rig(40);
+  for (let w = 130; w <= 420; w++) { t.setPower(w); if (w % 10 === 0) await wait(10); }
+  await wait(120);
+  assert.equal(sent.at(-1), 420); assert.ok(sent.length <= 12, `writes: ${sent.length}`);
+  assert.deepEqual(sent, [...sent].sort((a, b) => a - b), 'never an older target after a newer one');
+});
+test('a jump is written immediately when nothing is under way, the same target is not repeated', async () => {
+  const { t, sent } = rig(20);
+  t.setPower(130); await wait(60); t.setPower(420); await wait(1); assert.deepEqual(sent, [130, 420]);
+  t.setPower(420); t.setPower(420); await wait(60); assert.deepEqual(sent, [130, 420]);
+});
+test('null ends ERG: a waiting target is not sent afterwards', async () => {
+  const { t, sent } = rig(40);
+  t.setPower(200); t.setPower(300); t.setPower(null); await wait(120); assert.deepEqual(sent, [200]); assert.equal(t.erg, null);
+});
+test('30 / 15 and sprints: no ramp, the target jumps at the second the effort starts and ends', () => {
+  const w = workoutById('c_30_15_3x13'), at = t => workoutState(w, t, 280, { ramp: true }).target;
+  assert.equal(at(779.9), at(770)); assert.equal(at(780), 420); assert.equal(at(789.9), 420); assert.equal(at(790), 130);
+  assert.equal(at(1079.9), 130); assert.equal(at(1080), 340); assert.equal(at(1109.9), 340); assert.equal(at(1110), 125); assert.equal(at(1124.9), 125); assert.equal(at(1125), 340);
+});
+test('long intervals keep their ramp in', () => { const w = workoutById('vo2_5x3'); let s = 0, i = w.steps.findIndex(x => /VO2max 1\//.test(x.label)); for (let k = 0; k < i; k++) s += w.steps[k].dur;
+  const a = workoutState(w, s - 5, 280, { ramp: true }), b = workoutState(w, s - 20, 280, { ramp: true }); assert.equal(a.ramp, 'in'); assert.ok(a.target > b.target); });
