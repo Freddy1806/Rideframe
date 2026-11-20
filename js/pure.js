@@ -217,7 +217,7 @@ function render() {
   el.innerHTML = `
   <header class="ptop">
     <a class="pback" href="${appHome()}" title="Back to app">‹</a><div class="pbrand"><b>RIDEFRAME </b><span>Indoor</span></div>
-    <button class="ppill ${trainer.connected || DEMO ? 'on' : ''}" id="pTr"><i></i><span class="pname">${DEMO ? 'Demo' : trainer.connected ? esc(trainer.device?.name || 'Trainer') : 'Trainer'}</span></button>
+    <button class="ppill ${trainer.connected || DEMO ? 'on' : ''}" id="pTr"><i></i><span class="pname">${DEMO ? 'Demo' : trainer.connected ? esc(trainer.device?.name || 'Trainer') : trainer.rejoining ? 'Reconnecting …' : 'Trainer'}</span></button>
     <button class="ppill ${sensOn() ? 'on' : ''}" id="pSens"><i></i>Sensors</button>
     <button class="pgear" id="pSetBtn" title="Settings" aria-label="Settings">${icon('gear', 'gico')}</button>
   </header>
@@ -473,6 +473,7 @@ function doneScreen(rec) {
 // ---------------- data ----------------
 trainer.addEventListener('data', e => { live.power = e.detail.power || 0; live.cad = e.detail.cadence || 0; if (!hrStrap.connected && e.detail.hr) live.hr = e.detail.hr; });
 trainer.addEventListener('status', () => { if (R.state !== 'done') render(); sensDraw?.(); });
+trainer.addEventListener('link', () => { if (R.state !== 'done') render(); }); // dropped: it keeps reconnecting by itself (js/rejoin.js), the pill says so
 hrStrap.addEventListener('hr', e => { live.hr = e.detail; });
 hrStrap.addEventListener('change', () => { if (!hrStrap.connected) live.hr = 0; sensDraw?.(); });
 

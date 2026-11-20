@@ -50,8 +50,28 @@ export async function pullRides() {
   for (const id of ids) if (!mine.has(id)) { const r = await api('rides/' + id).catch(() => null); if (r?.id) { await db.put('rides', r); n++; } }
   return n;
 }
-/** call after a ride was saved locally */
-export async function pushRide(rec) { if (acc) await api('rides/' + rec.id, { method: 'PUT', body: JSON.stringify(rec) }).catch(() => {}); }
+/** call after a ride was saved locally. Without a connection (Freddy 20.11.: "auch wenn das Internet mal ausfällt") the ride
+ *  stays on this device and its id waits in kv 'ridePush'; retryPushes() sends it when the line is back (window 'online', next start). */
+export async function pushRide(rec) {
+  if (!acc) return;
+  try { await api('rides/' + rec.id, { method: 'PUT', body: JSON.stringify(rec) }); await pending(rec.id, false); }
+  catch { await pending(rec.id, true); }
+}
+const PUSH = 'ridePush';
+async function pending(id, add) {
+  try { const l = (await db.kvGet(PUSH)) || [], has = l.includes(id);
+    if (add && !has) await db.kvSet(PUSH, [...l, id]); else if (!add && has) await db.kvSet(PUSH, l.filter(x => x !== id)); } catch {}
+}
+/** the rides that did not reach the account yet, once more; returns how many went out */
+export async function retryPushes() {
+  if (!acc) return 0; let n = 0;
+  for (const id of (await db.kvGet(PUSH).catch(() => null)) || []) {
+    const rec = await db.get('rides', id).catch(() => null);
+    if (!rec) { await pending(id, false); continue; }
+    try { await api('rides/' + id, { method: 'PUT', body: JSON.stringify(rec) }); await pending(id, false); n++; } catch { break; } // still offline: next time
+  }
+  return n;
+}
 
 /** strength workouts (kraft.html) live in kv 'kraft' (newest first); both ways like the rides. Returns the merged list. */
 export async function syncKraft() {

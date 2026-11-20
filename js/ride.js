@@ -29,6 +29,8 @@ import { planEagleAny, eagleGate, moveEagle, othersBusy } from './eaglegate.js';
 import { Music, Coach } from './music.js';
 import { MIC_SVG, SPK_SVG, voiceStatus } from './voice.js';
 import { hudPrefs, applyHud, hudControlsHTML, wireHudControls, HUD_ORDER, HUD_PRESETS } from './hudprefs.js';
+import { DRAFT_KEY, DRAFT_EVERY, draftOn, draftOf, restoreDraft } from './ridedraft.js';
+import { rememberedDevice } from './rejoin.js';
 
 const MIN_RATE = 0.0625, MAX_RATE = 4;
 
@@ -101,7 +103,7 @@ const WB_LIVE = [['hr', 'Heart rate', 'bpm', '#hBpm', 'hr'], ['cad', 'Cadence', 
   ['wkg', 'W/kg', '', '#hWkg', 'wkg'], ['grade', 'Grade', '%', '#hGrade2', 'grade']];
 const WB_ALWAYS = ['hr', 'cad'];
 export class RideSession {
-  constructor({ route, ghost, state, onExit, autopilot = false, at = 0, group = null, ghostName = '', workout = null, catchUp = false, elapsed0 = 0 }) {
+  constructor({ route, ghost, state, onExit, autopilot = false, at = 0, group = null, ghostName = '', workout = null, catchUp = false, elapsed0 = 0, resume = null }) {
     Object.assign(this, { route, ghost, state, onExit, autopilot, group, ghostName, workout }); this._wId = workout?.id;
     this.erg = state.settings.erg !== false && !state.trainer.pmOnly; this.ftp = state.settings.ftp || 200;
     this.wAdj = 0; this.wAdjE = 0; this._adjAcc = 0; this._adjT = 0; this._stepAdj = []; // live watt offset on the hard intervals (_wTune): per rider, never sent to the group
@@ -134,6 +136,18 @@ export class RideSession {
     if (at && ghost?.samples?.length) this.elapsed = Math.max(0, (this.ghostTimeAt(this.d) || 0) - 14); // screenshots / resume
     this._tick = this._tick.bind(this); this._key = this._key.bind(this); this._remote = this._remote.bind(this);
     if (st.ueBridge || new URLSearchParams(location.search).has('ue')) { this.ue = new UEBridge(route.id, { ...this.track, step: STEP }); this.ue.weather = st.ueWeather || 'auto'; } // Unreal view (beta)
+    if (resume) { // the ride after a reload or a crash (js/ridedraft.js): position, clocks, samples and workout go on where they stopped
+      restoreDraft(this, resume); this.d = Math.max(0, Math.min(this.d, this.track.length - 1)); this.lastEle = eleAt(this.track, this.d);
+      if (state.trainer.pmOnly) this.erg = false; this.gi = Math.max(0, Math.min(this.gears.length - 1, this.gi | 0)); this.gear = this.virtual ? this.gears[this.gi] : null; this._resumed = true;
+    }
+  }
+  /** "Save as it is" on the resume sheet: the ride record of a checkpoint, made exactly as _finish makes it (no DOM, no world) */
+  static draftRecord(dft, state) {
+    const r = Object.create(RideSession.prototype);
+    Object.assign(r, { state, route: { id: dft.routeId, name: dft.routeName }, track: { length: Infinity }, ftp: state.settings.ftp || 200, laps: 1, lap: 1, lapOff: 0, _lapBase: 0, _lapT0: 0, startD: 0,
+      lapList: [], lapMarks: [], segDone: [], _stepAdj: [], wAdj: 0, wAdjE: 0, _adjAcc: 0, _adjT: 0 });
+    restoreDraft(r, dft);
+    const rec = r._rideRecord(false); rec.date = dft.savedAt || Date.now(); return rec;
   }
 
   async start() {
@@ -211,10 +225,34 @@ export class RideSession {
     if (!this.group) this.player?.events?.surprises?.startArch?.(this.d + 14); // ride off under the START arch
     this.running = true; this.last = performance.now();
     this._startPresence();
+    this._wireDraft();
+    if (this._resumed) this._workout(0); // the workout bar shows the step it stopped in
     this._updateHUD(true);
-    if (!this.autopilot) await this._countdown();
+    if (!this.autopilot && !this._resumed) await this._countdown();
     this.last = performance.now();
     requestAnimationFrame(this._tick);
+    if (this._resumed && !this._closed) { this._pause(); this._flash('Ride restored · connect your trainer, then Resume', 5000); } // paused: the rider reconnects first
+  }
+  /** checkpoints of the running ride (js/ridedraft.js): every 10 s of riding, on pause, when the tab hides or the page goes.
+   *  A reload, a crash or a closed tab loses at most those seconds; app.js offers to continue. */
+  _wireDraft() {
+    if (!draftOn() || this.autopilot || this._draftWired) return; this._draftWired = true;
+    this._onHide = () => { if (document.visibilityState === 'hidden') this._saveDraft(); };
+    this._onGo = e => { if (!this._draftOk()) return; this._saveDraft(); if (e.type === 'beforeunload') { e.preventDefault(); e.returnValue = ''; } }; // "leave the page?" while a ride runs
+    document.addEventListener('visibilitychange', this._onHide); window.addEventListener('pagehide', this._onGo); window.addEventListener('beforeunload', this._onGo);
+  }
+  _draftOk() { return this._draftWired && !this._draftDone && !this.finished && !this._closed && !this.keyPower && !this.route.leg && this.samples.length > 0 && this.elapsed > 30; }
+  _saveDraft() {
+    if (!this._draftOk()) return;
+    if (this._draftBusy) { this._draftAgain = true; return; } // one write at a time, the newest state follows
+    this._draftT = this.elapsed; this._draftBusy = true;
+    db.kvSet(DRAFT_KEY, draftOf(this)).catch(e => console.warn('ride draft', e)).finally(() => { this._draftBusy = false; if (this._draftAgain) { this._draftAgain = false; this._saveDraft(); } });
+  }
+  /** the ride is saved or thrown away: no draft any more (IndexedDB runs the writes in order, so a write under way lands first) */
+  _dropDraft() {
+    if (!this._draftWired) return; this._draftDone = true;
+    document.removeEventListener('visibilitychange', this._onHide); window.removeEventListener('pagehide', this._onGo); window.removeEventListener('beforeunload', this._onGo);
+    db.kvDel(DRAFT_KEY).catch(() => {});
   }
 
   _hudHTML() {
@@ -400,6 +438,7 @@ export class RideSession {
         this.lastSample = Math.floor(this.elapsed);
         this.samples.push([this.lastSample, Math.round(this._ridden()), Math.round(this.power), Math.round(this.v * 36) / 10, Math.round(this.cadence), this.hr]);
         this.powerHist.push(this.power);
+        if (this.elapsed - (this._draftT || 0) >= DRAFT_EVERY) this._saveDraft();
       }
       if (!this.ow) this._keepPlace(); else this.ow.tick();
       if (this.d >= this.track.length && this.ow) { if (!this.ow.busy) this._swapLeg(); else this.lapOff += this.v * dt; } // open world: the next road (time and km go on while it loads)
@@ -515,20 +554,30 @@ export class RideSession {
     const test = !tr && (this.keyPower || this.autopilot || this.manualPower > 0);
     const pw = tr || test ? 'ok' : this._hadTr || t.device ? 'lost' : 'none';
     const hrOn = !!h?.connected || (tr && t.data?.hr > 0); if (hrOn) this._hadHr = true;
-    return { pw, cad: pw, hr: hrOn ? 'ok' : this._hadHr || h?.device ? 'lost' : 'none' };
+    return { pw, cad: pw, hr: hrOn ? 'ok' : this._hadHr || h?.device ? 'lost' : 'none', trRj: !!t.rejoining && pw === 'lost', hrRj: !!h?.rejoining && !hrOn };
+  }
+  /** a device dropped or came back (Freddy 20.11.): one calm line each way; the ride goes on meanwhile (keys / no watts) */
+  _linkTick() {
+    const t = this.state.trainer, h = this.state.hr, tr = t.rejoining ? 'lost' : t.connected ? 'on' : 'off', hr = h?.rejoining ? 'lost' : h?.connected ? 'on' : 'off', was = this._lk;
+    this._lk = { tr, hr }; if (!was || this.finished) return;
+    if (tr !== was.tr) { if (tr === 'lost') this._flash('Trainer lost · reconnecting …', 5000); else if (tr === 'on' && was.tr === 'lost') { this._flash('✓ Trainer back', 3000); this._trainerUp(); } }
+    if (hr !== was.hr) { if (hr === 'lost') this._flash('Heart rate lost · reconnecting …', 5000); else if (hr === 'on' && was.hr === 'lost') this._flash('✓ Heart rate back', 3000); }
   }
   /** the small "No connection" / "Connection lost · Reconnect" lines under the values, only rebuilt when a state changes */
   _sensUI(sn) {
-    const k = sn.pw + sn.cad + sn.hr; if (k === this._sensK) return; this._sensK = k;
-    const line = (st, none, rc) => st === 'ok' ? '' : `<i class="dot"></i>${st === 'lost' ? 'Connection lost' : none}${st === 'lost' && rc ? ` <button class="sens-rc" data-rc="${rc}">Reconnect</button>` : ''}`;
+    const k = sn.pw + sn.cad + sn.hr + sn.trRj + sn.hrRj; if (k === this._sensK) return; this._sensK = k;
+    const line = (st, none, rc, rj) => st === 'ok' ? '' : `<i class="dot"></i>${st === 'lost' ? (rj ? 'Lost · reconnecting …' : 'Connection lost') : none}${st === 'lost' && rc ? ` <button class="sens-rc" data-rc="${rc}">Reconnect</button>` : ''}`;
     const set = (id, html) => { const e = this.q(id); if (!e) return; e.innerHTML = html; e.hidden = !html; e.previousElementSibling?.classList.toggle('sens-hide', !!html); };
-    set('#hPowS', line(sn.pw, 'No connection', 'tr')); set('#hCadS', line(sn.cad, 'No sensor', '')); set('#hHrS', line(sn.hr, 'No sensor', 'hr'));
+    set('#hPowS', line(sn.pw, 'No connection', 'tr', sn.trRj)); set('#hCadS', line(sn.cad, 'No sensor', '', sn.trRj)); set('#hHrS', line(sn.hr, 'No sensor', 'hr', sn.hrRj));
     this.el.querySelectorAll('.sens-rc').forEach(b => b.onclick = e => { e.currentTarget.blur(); this._reconnect(b.dataset.rc); });
   }
+  /** Reconnect (HUD, workout bar, pause menu): wakes the device's reconnect loop at once; no device known any more (a reload
+   *  in a browser without getDevices): the chooser, which this tap allows */
   _reconnect(which) {
-    const d = which === 'hr' ? this.state.hr : this.state.trainer; if (!d?.device) return;
-    this._flash(which === 'hr' ? 'Reconnecting the heart rate strap…' : 'Reconnecting the trainer…');
-    (which === 'hr' ? d._open() : d._reconnect()).catch?.(() => this._flash('Reconnect failed: wake the device and try again'));
+    const d = which === 'hr' ? this.state.hr : this.state.trainer;
+    if (!d?.device) return which === 'hr' ? this._connHr() : this._connTrainer();
+    this._flash(which === 'hr' ? 'Reconnecting the heart rate strap …' : 'Reconnecting the trainer …', 4000);
+    d.rejoinNow?.().catch?.(() => {});
   }
 
   _updateHUD(force) {
@@ -536,7 +585,7 @@ export class RideSession {
     const g = gradeAt(this.track, this.d);
     const avgP = this._avgP = this.powerHist.length ? Math.round(this.powerHist.reduce((a, b) => a + b, 0) / this.powerHist.length) : 0;
     const p3 = this.powerHist.slice(-3); const pShow = p3.length ? Math.round((p3.reduce((a, b) => a + b, 0) + this.power) / (p3.length + 1)) : this.power;
-    const sn = this._sensors(); this._sensUI(sn);
+    const sn = this._sensors(); this._sensUI(sn); this._linkTick();
     q('#hPow').textContent = sn.pw === 'ok' ? pShow : '–'; const wk = q('#hWkg'); if (wk) wk.textContent = sn.pw === 'ok' ? fmtNum(pShow / (this.state.settings.riderKg || 75), 1) : '–';
     q('#hPowSub').textContent = `avg ${avgP} W · ${fmtNum(pShow / this.state.settings.riderKg, 1)} W/kg`;
     q('#hSpd').textContent = fmtNum(this.v * 3.6, 1);
@@ -929,7 +978,7 @@ export class RideSession {
       q('#hWP').textContent = sp === 'ok' ? pShow : '–'; q('#hWRc').hidden = sp !== 'lost';
       q('#hWLeft').textContent = q('#hWTime').textContent = fmtTime(Math.ceil(w.left));
       arc.setAttribute('stroke-dasharray', `${(C * Math.max(0, Math.min(1, w.left / w.step.dur))).toFixed(1)} ${C.toFixed(1)}`);
-      q('#hWState').textContent = sp !== 'ok' ? (sp === 'lost' ? 'connection lost' : 'no connection') : free ? 'free' : w.ramp === 'in' ? 'ramp up' : w.ramp === 'out' ? 'ramp down' : w.ramp === 'step' ? 'ramp' : rest || !z ? 'easy' : ergOff ? `trainer ${Math.abs(pShow - w.target)} W off` : z === 'ok' ? (this._ergOn && zRaw !== 'ok' ? 'trainer settling' : 'in zone') : z === 'lo' ? `${w.target - pShow} W too low` : `${pShow - w.target} W too high`;
+      q('#hWState').textContent = sp !== 'ok' ? (sp === 'lost' ? (this.state.trainer.rejoining ? 'reconnecting …' : 'connection lost') : 'no connection') : free ? 'free' : w.ramp === 'in' ? 'ramp up' : w.ramp === 'out' ? 'ramp down' : w.ramp === 'step' ? 'ramp' : rest || !z ? 'easy' : ergOff ? `trainer ${Math.abs(pShow - w.target)} W off` : z === 'ok' ? (this._ergOn && zRaw !== 'ok' ? 'trainer settling' : 'in zone') : z === 'lo' ? `${w.target - pShow} W too low` : `${pShow - w.target} W too high`;
       wp.classList.toggle('off', sp !== 'ok');
       if (hard && z && z !== 'ok') { wp.classList.add('z-' + z); pw?.classList.add('z-' + z); } else if (hard) pw?.classList.add('z-ok');
       // the zone band: ±5 % around the target in the middle of a track from 80 to 120 %; the marker is your power
@@ -1150,11 +1199,11 @@ export class RideSession {
 
   _pause() {
     if (this.finished) return;
-    this.paused = true; this.player.pause(); this.music?.pause();
+    this.paused = true; this.player.pause(); this.music?.pause(); this._saveDraft();
     this.q('#pauseOverlay')?.remove();
     const o = document.createElement('div'); o.className = 'paused'; o.id = 'pauseOverlay';
     o.innerHTML = `<div class="box"><div class="label">${fmtKm(this.d)} km · ${fmtTime(this.elapsed)}</div><h2 class="display">Pause</h2>
-      <div class="row-actions padmenu"><button class="btn" id="pResume">Resume</button><button class="btn ghost" id="pOpts">Options</button><button class="btn ghost" id="pSetup">Workout &amp; mode</button><button class="btn ghost" id="pSet">Settings</button>${this.state.trainer.connected ? '' : '<button class="btn ghost" id="pConn">Connect trainer</button>'}<button class="btn ghost" id="pSave">Finish &amp; save</button><button class="btn ghost" id="pDiscard">Discard</button>${this.group?.voice?.on ? '<button class="btn ghost" id="pVoice">Voice chat off</button>' : ''}${this.group ? this.group.others().filter(r => r.riding || r.d > 0).slice(0, 4).map((r, i) => `<button class="btn ghost" data-jump="${i}">⇢ Jump to ${esc(r.name)}</button>`).join('') : this.autopilot ? '' : '<button class="btn ghost" id="pGroup">Open group</button>'}${this.presence?.on ? '<button class="btn ghost" id="pInvite">Invite friends</button>' : ''}</div>
+      <div class="row-actions padmenu"><button class="btn" id="pResume">Resume</button><button class="btn ghost" id="pOpts">Options</button><button class="btn ghost" id="pSetup">Workout &amp; mode</button><button class="btn ghost" id="pSet">Settings</button>${this.state.trainer.connected ? '' : `${this.state.trainer.device ? '<button class="btn ghost" id="pRejoin">Reconnect trainer</button>' : ''}<button class="btn ghost" id="pConn">${this.state.trainer.device ? 'Choose trainer …' : 'Connect trainer'}</button>`}${this.state.hr?.connected || !(this._hadHr || this.state.hr?.device || rememberedDevice('hr')) ? '' : '<button class="btn ghost" id="pHr">Connect heart rate</button>'}<button class="btn ghost" id="pSave">Finish &amp; save</button><button class="btn ghost" id="pDiscard">Discard</button>${this.group?.voice?.on ? '<button class="btn ghost" id="pVoice">Voice chat off</button>' : ''}${this.group ? this.group.others().filter(r => r.riding || r.d > 0).slice(0, 4).map((r, i) => `<button class="btn ghost" data-jump="${i}">⇢ Jump to ${esc(r.name)}</button>`).join('') : this.autopilot ? '' : '<button class="btn ghost" id="pGroup">Open group</button>'}${this.presence?.on ? '<button class="btn ghost" id="pInvite">Invite friends</button>' : ''}</div>
       <div class="hint pad-hint" style="margin-top:12px;opacity:.7">🎮 D-pad to choose · A ok · B back</div></div>`;
     this.el.append(o);
     o.querySelector('#pResume').onclick = () => this._resume();
@@ -1162,6 +1211,8 @@ export class RideSession {
     o.querySelector('#pSetup').onclick = () => this._setup();
     o.querySelector('#pSet').onclick = () => this._settings();
     o.querySelector('#pConn')?.addEventListener('click', () => this._connTrainer());
+    o.querySelector('#pRejoin')?.addEventListener('click', () => this._reconnect('tr'));
+    o.querySelector('#pHr')?.addEventListener('click', () => this._connHr());
     o.querySelector('#pSave').onclick = () => this._end(true);
     o.querySelector('#pDiscard').onclick = () => this._end(false);
     o.querySelector('#pVoice')?.addEventListener('click', e => { this.group.voice?.stop(); this.group.voice = null; e.target.remove(); this._flash('Voice chat off'); });
@@ -1196,6 +1247,13 @@ export class RideSession {
     const b = this.q('#pConn'); if (b) { b.disabled = true; b.textContent = 'Connecting …'; }
     try { const m = await import('./app.js'); await m.connectTrainer(); } catch (e) { this._flash('Connection failed: ' + (e?.message || e), 4000); }
     if (this.state.trainer.connected) { this._trainerUp(); this._flash('✓ ' + (this.state.trainer.device?.name || 'Trainer') + ' connected'); }
+    if (this.paused && !this.finished) this._pause();
+  }
+  /** a heart rate strap from the pause menu (after a reload the browser may need the chooser once more) */
+  async _connHr() {
+    const b = this.q('#pHr'); if (b) { b.disabled = true; b.textContent = 'Connecting …'; }
+    try { const m = await import('./app.js'); await m.connectHR(false); } catch (e) { this._flash('Connection failed: ' + (e?.message || e), 4000); }
+    if (this.state.hr?.connected) this._flash('✓ Heart rate connected');
     if (this.paused && !this.finished) this._pause();
   }
   /** laps also in the ride (like on the route page): 1 → 2 → 3 → 4 → 5 → 10 → 1, never below the lap you are on */
@@ -1401,9 +1459,9 @@ export class RideSession {
     this.finished = true; this.player.pause(); if (this.d > this.track.length - 400) this._keepPlace(true);
     const full = this.startD < 50 && this.laps === 1 && !this._jumps; // jumped to a friend: no time on this route // only a ride from the start line is a time on this route (one lap)
     const rec = this._rideRecord(full);
-    if (this.keyPower) { rec.unsaved = true; return this._summary(rec, null, 'Ridden with the arrow keys: not saved'); }
+    if (this.keyPower) { rec.unsaved = true; this._dropDraft(); return this._summary(rec, null, 'Ridden with the arrow keys: not saved'); }
     const prev = (await db.ridesFor(this.route.id)).filter(r => r.complete).sort((a, b) => a.duration - b.duration);
-    await db.put('rides', rec); import('./account.js').then(a => a.pushRide(rec)); this._keepPhoto(rec);
+    await db.put('rides', rec); this._dropDraft(); import('./account.js').then(a => a.pushRide(rec)); this._keepPhoto(rec);
     this._summary(rec, full ? prev : null, full ? '' : this._jumps && this.laps === 1 ? 'Jumped to other riders, does not count as best time' : this.laps > 1 ? `${this.laps} laps: ` + rec.laps.map((l, i) => `${i + 1}. ${fmtTime(l.t)}`).join(' · ') : 'Started at km ' + fmtKm(this.startD) + ', does not count as best time');
   }
 
@@ -1596,13 +1654,13 @@ export class RideSession {
     if (!save) return this._close(false);
     if (this.elapsed <= 30) { import('./app.js').then(m => m.toast('Under 30 seconds, not saved', 3500)); return this._close(false); }
     if (this.keyPower) { import('./app.js').then(m => m.toast('Ridden with the arrow keys, not saved', 3500)); return this._close(false); }
-    const rec = this._rideRecord(false); await db.put('rides', rec); import('./account.js').then(a => a.pushRide(rec)); this._keepPhoto(rec);
+    const rec = this._rideRecord(false); await db.put('rides', rec); this._dropDraft(); import('./account.js').then(a => a.pushRide(rec)); this._keepPhoto(rec);
     this.finished = true; this.q('#pauseOverlay')?.remove();
     this._summary(rec, null, 'Ended early, saved');
   }
 
   _close(saved) {
-    this._closed = true; this.pose?.stop(); this._clickOff?.(); this.presence?.stop(); this._ask?.answer(false);
+    this._dropDraft(); this._closed = true; this.pose?.stop(); this._clickOff?.(); this.presence?.stop(); this._ask?.answer(false);
     this.running = false; this.ue?.close(); this.state.trainer.setPower?.(null); this.music?.destroy();
     if (this.group?.voice) { this.group.voice.stop(); this.group.voice = null; } // ride over: microphone off, indicator off
     if (this._voiceUI) window.removeEventListener('rf-voicechange', this._voiceUI);
