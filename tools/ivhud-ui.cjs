@@ -54,7 +54,7 @@ const EXPECT = { voll: 'hr cad speed dist time avg grade', kompakt: 'hr cad spee
     await startRide('c_30_15_3x13', { bergWatt: true, shiftMode: 'real' });
     ok(await p.evaluate(() => window.__ride.berg && window.__ride.erg), 'ride starts with the saved ERG mode (hill watts) and the workout in ERG');
     await goStep('^Warm-up$', 200); await same('warm-up ramp (% FTP)');
-    await goStep('^Spin$', 47); { const c = await same('ramp into a sprint'); ok(c.ramp === 'in', 'that was the ERG ramp into the sprint', JSON.stringify(c)); }
+    await goStep('^Spin$', 47); { const c = await same('3 s before a sprint'); ok(c.ramp === null && c.w === 130, 'no ERG ramp into a short sprint (the target jumps at its start, 20.11.)', JSON.stringify(c)); }
     await goStep('30 / 15 · set 1 · 1/13', 5); { const c = await same('hard step 30 s at 340 W'); ok(c.w === 340, 'hard step: 340 W', JSON.stringify(c)); }
     await goStep('^Float$', 7); { const c = await same('float'); ok(c.w === 125, 'float: 125 W', JSON.stringify(c)); }
     await goStep('^Rest$', 60); { const c = await same('rest between the sets'); ok(c.w === 130, 'rest: 130 W', JSON.stringify(c)); }
