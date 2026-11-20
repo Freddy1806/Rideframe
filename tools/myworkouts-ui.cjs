@@ -63,6 +63,19 @@ let fails = 0; const ok = (c, m) => { console.log(`${c ? '✓' : '✗'} ${m}`); 
     await D.click('#back'); await D.click('.card[data-id="coast"]'); await D.waitForSelector('#workSel');
     ok(await D.locator('#workSel optgroup[label="My workouts"] option', { hasText: 'My VO2' }).count() === 1, 'another route: “My VO2” in its workout choice too');
 
+    // ---- the long coach workout (owner 20.11.: "I deleted the start and it threw out the last interval block"): 86 steps stay 86 ----
+    await D.selectOption('#workSel', 'c_30_15_3x13'); await D.click('#wCustom'); await D.waitForSelector('.mwbox');
+    const cw = await D.evaluate(() => import('/js/workouts.js').then(m => m.WORKOUTS.find(w => w.id === 'c_30_15_3x13').steps.map(s => ({ dur: s.dur, label: s.label }))));
+    ok((await D.locator('.mwstep').count()) === cw.length, `editor: all ${cw.length} steps of 30 / 15 · 3 × 13 (${await D.locator('.mwstep').count()})`);
+    await D.click('.mwstep[data-i="0"] button[data-a="del"]'); await D.click('.mwstep[data-i="0"] button[data-a="del"]'); // the start deleted
+    ok((await D.locator('.mwstep').count()) === cw.length - 2, 'editor: two steps deleted at the start, nothing else is gone');
+    await D.fill('#mwName', 'My 30 15'); if (SHOTS) await D.screenshot({ path: `${SHOTS}/myworkouts_long_1280.png` });
+    await D.click('#mwSave'); await D.waitForSelector('.mwbox', { state: 'detached' }); await D.waitForTimeout(300);
+    const long = (await listOf(token)).find(w => w.name === 'My 30 15'), sec = s => Math.round(s.min * 60);
+    ok(!!long && long.steps.length === cw.length - 2, `server: “My 30 15” stored with ${cw.length - 2} steps (${long?.steps.length})`);
+    ok(!!long && long.steps.filter(s => sec(s) === 30 && s.pct > 100).length === 39 && /Cool/i.test(long.steps.at(-1).label || '') , 'server: all 3 × 13 efforts of 30 s and the cool-down are there');
+    ok(!!long && long.steps.every((s, i) => sec(s) === cw[i + 2].dur), 'server: every step keeps its length (10 s sprints stay 10 s)');
+
     // ---- does the workout fit the route? (js/routefit.js) too short: more laps or a longer route; fits; much longer ----
     await D.goto(BASE + '/?desktop&noprofile&demo&view=detail&id=demo'); await D.waitForSelector('#workSel'); await D.selectOption('#lapSel', '1'); await D.waitForTimeout(200);
     const fitOf = async () => ({ fit: await D.getAttribute('#mwFitLine', 'data-fit').catch(() => null), txt: (await D.textContent('#mwFitLine').catch(() => '')).replace(/\s+/g, ' ').trim() });

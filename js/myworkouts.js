@@ -6,7 +6,7 @@
 // For riding it becomes the shape of the built-ins (js/workouts.js: { id, name, what, steps: [{ dur, pct, label, free? }] }),
 // so js/ride.js and workoutAt() run it unchanged.
 
-export const LIM = { name: 40, label: 24, steps: 60, minMin: 0.25, maxMin: 120, minPct: 30, maxPct: 200, count: 50, bytes: 8000, total: 256000, rep: 20 };
+export const LIM = { name: 40, label: 24, steps: 200, minMin: 0.17, maxMin: 120, minPct: 30, maxPct: 200, count: 50, bytes: 24000, total: 256000, rep: 20 };
 const ID = /^[A-Za-z0-9_-]{4,40}$/, REF = /^[A-Za-z0-9_.:-]{1,80}$/;
 const clean = (s, n) => String(s ?? '').replace(/[\u0000-\u001f\u007f<>]/g, '').trim().replace(/\s+/g, ' ').slice(0, n);
 const r2 = v => Math.round(v * 100) / 100;

@@ -28,15 +28,15 @@ test('validation: name 1–40 characters', () => {
   assert.ok(!MW.validateWorkout(W({ name: 'x'.repeat(40) })).error);
   assert.ok(MW.validateWorkout(W({ name: 'x'.repeat(41) })).error);
 });
-test('validation: steps, minutes 0.25–120, % FTP 30–200, at most 60 steps', () => {
+test('validation: steps, minutes 0.17–120 (10 s), % FTP 30–200, at most 200 steps', () => {
   const st = (min, pct) => W({ steps: [{ min, pct }] });
-  for (const [min, pct] of [[0.25, 30], [120, 200], [0.5, 150]]) assert.ok(!MW.validateWorkout(st(min, pct)).error, `${min} min ${pct} %`);
-  for (const [min, pct] of [[0.24, 50], [120.01, 50], [5, 29], [5, 201], [NaN, 50], [5, 'x'], [Infinity, 50]]) assert.ok(MW.validateWorkout(st(min, pct)).error, `${min} min ${pct} % refused`);
+  for (const [min, pct] of [[0.17, 30], [120, 200], [0.5, 150]]) assert.ok(!MW.validateWorkout(st(min, pct)).error, `${min} min ${pct} %`);
+  for (const [min, pct] of [[0.16, 50], [120.01, 50], [5, 29], [5, 201], [NaN, 50], [5, 'x'], [Infinity, 50]]) assert.ok(MW.validateWorkout(st(min, pct)).error, `${min} min ${pct} % refused`);
   assert.ok(MW.validateWorkout(W({ steps: [] })).error);
   assert.ok(MW.validateWorkout(W({ steps: 'no' })).error);
   assert.ok(MW.validateWorkout(W({ steps: [null] })).error);
-  assert.ok(!MW.validateWorkout(W({ steps: Array(60).fill({ min: 1, pct: 80 }) })).error);
-  assert.ok(MW.validateWorkout(W({ steps: Array(61).fill({ min: 1, pct: 80 }) })).error);
+  assert.ok(!MW.validateWorkout(W({ steps: Array(200).fill({ min: 1, pct: 80 }) })).error);
+  assert.ok(MW.validateWorkout(W({ steps: Array(201).fill({ min: 1, pct: 80 }) })).error);
 });
 test('validation: id, base, routeId and the list', () => {
   for (const id of ['', 'abc', 'a b c d', '../../x', 'x'.repeat(41), null]) assert.ok(MW.validateWorkout(W({ id })).error, `id ${id}`);
@@ -65,7 +65,7 @@ test('repeat ×N and collapse are each other\'s inverse', () => {
   assert.deepEqual(MW.expand(MW.collapse(r)), r);
   assert.equal(MW.describe(r), '10 min 60 %, 5 × (3 min 118 % / 3 min 50 %)');
   assert.equal(MW.repeatBlock(s, 0, 0, 100).length, Math.min(MW.LIM.steps, s.length + MW.LIM.rep - 1), 'at most LIM.rep times');
-  assert.equal(MW.repeatBlock(Array(50).fill({ min: 1, pct: 80 }), 0, 9, 3).length, MW.LIM.steps, 'never more than 60 steps');
+  assert.equal(MW.repeatBlock(Array(190).fill({ min: 1, pct: 80 }), 0, 9, 3).length, MW.LIM.steps, 'never more than LIM.steps');
   assert.deepEqual(MW.repeatBlock(s, 2, 1, 3), s, 'from > to: unchanged');
 });
 test('a built-in becomes a draft and back: the ride runs it through workoutAt unchanged', () => {
@@ -130,7 +130,7 @@ test('API: create, read, list, replace, delete', async () => {
   assert.equal((await call('PUT', '/api/account/workouts', { token: A, body: W() })).status, 405);
 });
 test('API: bad input is refused with 400 / 413, nothing stored', async () => {
-  for (const b of [W({ name: '' }), W({ name: 'x'.repeat(41) }), W({ steps: [{ min: 0.1, pct: 80 }] }), W({ steps: [{ min: 5, pct: 250 }] }), W({ steps: Array(61).fill({ min: 1, pct: 80 }) }), [], 'x'])
+  for (const b of [W({ name: '' }), W({ name: 'x'.repeat(41) }), W({ steps: [{ min: 0.1, pct: 80 }] }), W({ steps: [{ min: 5, pct: 250 }] }), W({ steps: Array(201).fill({ min: 1, pct: 80 }) }), [], 'x'])
     assert.equal((await call('PUT', '/api/account/workouts/pw_bad01', { token: A, body: b })).status, 400, JSON.stringify(b).slice(0, 60));
   assert.equal((await call('PUT', '/api/account/workouts/pw_bad01', { token: A, raw: '{nope' })).status, 400);
   assert.equal((await call('PUT', '/api/account/workouts/a%2F..%2Fx', { token: A, body: W() })).status, 400, 'id from the path is checked');
@@ -228,7 +228,7 @@ test('fast editor: templates are valid workouts, − / + steps sensibly within t
   for (const t of MW.TEMPLATES) { const r = MW.validateWorkout({ id: 'tpl_' + t.id, name: t.name, steps: t.steps() }); assert.ok(r.w, t.id + ': ' + r.error);
     assert.equal(r.w.steps[0].label, 'Warm-up'); assert.equal(r.w.steps.at(-1).label, 'Cool-down'); assert.notEqual(t.steps(), t.steps(), 'a fresh copy each time'); }
   const b = (min, f, d, pct = 90) => MW.bump({ min, pct }, f, d)[f];
-  assert.deepEqual([b(4, 'min', 1), b(5, 'min', 1), b(5, 'min', -1), b(12, 'min', 1), b(20, 'min', 1), b(25, 'min', -1), b(0.25, 'min', -1), b(120, 'min', 1)], [4.5, 6, 4.5, 13, 25, 20, 0.25, 120]);
+  assert.deepEqual([b(4, 'min', 1), b(5, 'min', 1), b(5, 'min', -1), b(12, 'min', 1), b(20, 'min', 1), b(25, 'min', -1), b(0.25, 'min', -1), b(120, 'min', 1)], [4.5, 6, 4.5, 13, 25, 20, 0.17, 120]);
   assert.deepEqual([b(4, 'pct', 1, 93), b(4, 'pct', -1, 93), b(4, 'pct', 1, 200), b(4, 'pct', -1, 30)], [95, 90, 200, 30]);
   assert.equal(MW.bump({ min: 3, pct: 100, pct2: 105 }, 'pct2', -1).pct2, undefined, 'a ramp to the same % turns flat');
   const s = MW.addSet([{ min: 10, pct: 45, pct2: 70, label: 'Warm-up' }, { min: 8, pct: 60, pct2: 40, label: 'Cool-down' }]);
@@ -237,4 +237,13 @@ test('fast editor: templates are valid workouts, − / + steps sensibly within t
   assert.deepEqual(MW.nextBlock([{ min: 4, pct: 110, label: 'Interval' }]), { min: 2, pct: 55, label: 'Rest' }, 'after a hard block its rest');
   assert.equal(MW.nextBlock([{ min: 5, pct: 55, label: 'Rest' }]).pct, 105, 'after an easy one an interval');
   assert.equal((MW.graphSVG(s).match(/data-i="\d+"/g) || []).length, s.length, 'every block in the chart can be tapped');
+});
+
+test('customising the long coach workout keeps every step (Freddy 20.11.: the last interval block was cut off at 60 steps)', () => {
+  const bw = workoutById('c_30_15_3x13'), d = MW.fromBuiltin(bw), v = MW.validateWorkout(d);
+  assert.ifError(v.error); assert.equal(v.w.steps.length, bw.steps.length);
+  assert.equal(v.w.steps.filter(s => /set 3/.test(s.label)).length, 13, 'the third set is complete');
+  assert.deepEqual(MW.toRide(v.w).steps.map(s => s.dur), bw.steps.map(s => s.dur), 'every step keeps its length, the 10 s sprints too');
+  const cut = { ...v.w, steps: v.w.steps.slice(8) }, v2 = MW.validateWorkout(cut); assert.ifError(v2.error); // the start deleted
+  assert.equal(MW.toRide(v2.w).steps.filter(s => /· \d+\/13$/.test(s.label)).length, 39, '3 × 13 efforts are still there');
 });
