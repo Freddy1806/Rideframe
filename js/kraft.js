@@ -5,13 +5,15 @@ import { db, uid } from './db.js';
 import { fmtTime, fmtNum, esc, twoWeeks, weekStat, appHome } from './util.js';
 import { applyTheme } from './theme.js';
 import { CATALOG, nm, e1rm, vol, doneSets, sessVol, setTxt, nSets, kgTxt, stravaText } from './kraftlib.js';
+import { GUIDE_EX } from './kraftguide.js';
+import { guideSection, wireGuide, openIntro, openPlayer, loadDraft } from './kraftplayer.js';
 
 const $ = (s, r = document) => r.querySelector(s);
 const el = document.getElementById('kraft');
 
 const GROUP = { Beine: 'Legs', Rücken: 'Back', Brust: 'Chest', Schultern: 'Shoulders', Arme: 'Arms', Rumpf: 'Core', Ganzkörper: 'Full body', Eigene: 'Custom' };
 
-let S = {}, list = [], mine = [], tpls = [], W = null, tab = 'start', rest = null, acc = null;
+let S = {}, list = [], mine = [], tpls = [], W = null, tab = 'start', rest = null, acc = null, gDraft = null;
 
 // ---------------- data ----------------
 async function load() {
@@ -22,6 +24,7 @@ async function load() {
   for (const e of S.kraftEx || []) if (e?.k && !mine.some(x => x.k === e.k)) mine.push(e); // own exercises made on another device (they ride along in the settings)
   tpls = (await db.kvGet('kraftTpl').catch(() => null)) || S.kraftTpl || [];
   W = (await db.kvGet('kraftDraft').catch(() => null)) || null;
+  gDraft = await loadDraft();
   try { const a = await import('./account.js'); acc = a.account(); if (acc) { list = await a.syncKraft(); render(); } } catch {}
 }
 const saveList = () => db.kvSet('kraft', list).catch(() => {});
@@ -39,7 +42,8 @@ async function saveTpls() { await db.kvSet('kraftTpl', tpls).catch(() => {}); //
 function exercises() {
   const m = new Map(CATALOG.map(e => [e.k, e]));
   for (const e of mine) if (!m.has(e.k)) m.set(e.k, { ...e, g: GROUP[e.g] || e.g, own: true });
-  for (const s of list) for (const x of s.ex || []) if (!m.has(x.k)) m.set(x.k, { k: x.k, n: x.n, t: x.t, g: 'Custom', own: true });
+  const guided = new Map(GUIDE_EX.map(e => [e.k, e])); // the exercises of the guided workouts (kraftguide.js), once done
+  for (const s of list) for (const x of s.ex || []) if (!m.has(x.k)) m.set(x.k, guided.get(x.k) || { k: x.k, n: x.n, t: x.t, g: 'Custom', own: true });
   return [...m.values()];
 }
 const exOf = k => exercises().find(e => e.k === k) || { k, n: k, t: 'w', g: '' };
@@ -103,6 +107,7 @@ function startView() {
       ${weekBars()}</section>
     <button class="btn kbig" id="kNew">Start empty workout</button>
     <button class="btn ghost kbig kquick" id="kQuick">Quick entry</button>
+    ${guideSection(list, gDraft)}
     ${tpls.length ? `<h3 class="ksec">Templates</h3><div class="kgrid">${tpls.map((t, i) => `<div class="kcard ktpl" data-tpl="${i}"><b>${esc(t.name)}</b><span>${t.ex.map(x => esc(exOf(x.k).n)).join(', ')}</span><button class="kx" data-tdel="${i}" title="Delete template">✕</button></div>`).join('')}</div>` : ''}
     ${last.length ? `<h3 class="ksec">Repeat</h3><div class="kgrid">${last.map(s => `<div class="kcard ktpl" data-again="${s.id}"><b>${esc(s.name)}</b><span>${dayTxt(s.start || s.date)} · ${(s.ex || []).map(x => esc(nm(x))).join(', ')}</span></div>`).join('')}</div>` : ''}
     ${!list.length ? '<p class="hint" style="margin-top:18px">No workouts yet. Start an empty workout, add exercises and tick off each set. Next time you will see what you did last time next to every set.</p>' : ''}`;
@@ -139,11 +144,20 @@ function wireMain() {
   on('#kNewEx', async () => { const k = await newExercise($('#kFind')?.value.trim() || ''); if (k) { render(); exSheet(k); } });
   on('[data-tpl]', (b, e) => { if (e.target.dataset.tdel) return; const t = tpls[+b.dataset.tpl]; begin({ name: t.name, ex: t.ex.map(x => ({ k: x.k, n: exOf(x.k).n, t: exOf(x.k).t, sets: fromPrev(x.k, x.n || 3) })) }); });
   on('[data-tdel]', b => { if (!confirm('Delete template?')) return; tpls.splice(+b.dataset.tdel, 1); saveTpls(); render(); });
-  on('[data-again]', b => { const s = list.find(x => x.id === b.dataset.again); begin({ name: s.name, ex: s.ex.map(x => ({ k: x.k, n: x.n, t: x.t, sets: fromPrev(x.k, x.sets.filter(y => y.done).length || 3) })) }); });
+  on('[data-again]', b => { const s = list.find(x => x.id === b.dataset.again); if (s.guide) return openIntro(s.guide.id, gctx); begin({ name: s.name, ex: s.ex.map(x => ({ k: x.k, n: x.n, t: x.t, sets: fromPrev(x.k, x.sets.filter(y => y.done).length || 3) })) }); });
   on('[data-open]', b => sessionSheet(list.find(x => x.id === b.dataset.open)));
   on('[data-ex]', b => exSheet(b.dataset.ex));
+  wireGuide(el, gctx);
   const f = $('#kFind'); if (f) f.oninput = () => { const q = f.value.trim().toLowerCase(); el.querySelectorAll('.kexrow').forEach(r => r.hidden = q && !r.dataset.n.includes(q)); };
 }
+/** what the guided workouts (kraftplayer.js) need from this page: the history, saving a finished run like any workout */
+const gctx = {
+  list: () => list,
+  async save(w) { markPrs(w); list.unshift(w); gDraft = null; await saveList(); import('./account.js').then(a => a.pushKraft?.(w)).catch(() => {}); render(); },
+  open(w) { tab = 'hist'; render(); sessionSheet(w); },
+  refresh() { gDraft = null; render(); },
+  flash,
+};
 const defaultName = () => { const h = new Date().getHours(); return h < 11 ? 'Morning workout' : h < 17 ? 'Midday workout' : 'Evening workout'; };
 /** n new empty sets: last time's values show grey in the fields (like Strong); ✓ on an empty field takes them over */
 const fromPrev = (k, n) => [...Array(Math.max(1, n))].map(() => ({ kg: '', r: '', s: '', done: false }));
@@ -379,13 +393,13 @@ function sessionSheet(w) {
   if (!w) return;
   const s = sheet(`<div class="label">${dayTxt(w.start || w.date)} · ${new Date(w.start || w.date).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })}</div>
     <h2 class="display" style="font-size:30px;margin:8px 0 12px">${esc(w.name)}</h2>
-    ${w.source === 'watch' ? '<p class="hint kwsrc">Recorded on watch</p>' : ''}
+    ${w.source === 'watch' ? '<p class="hint kwsrc">Recorded on watch</p>' : ''}${w.guide && w.note ? `<p class="hint kwsrc">${esc(w.note)}</p>` : ''}
     <div class="psum"><div><span>Time</span><b>${fmtTime(w.dur || 0)}</b></div><div><span>Sets</span><b>${doneSets(w)}</b></div><div><span>Volume</span><b>${kgTxt(sessVol(w))}</b></div>${w.prs ? `<div><span>Records</span><b>🏆 ${w.prs}</b></div>` : ''}${w.avgHr ? `<div><span>Avg HR</span><b>${w.avgHr}</b></div>` : ''}</div>
     ${(w.ex || []).map(x => `<div class="kdet"><b data-chart="${x.k}">${esc(nm(x))} ›</b>${x.sets.map((y, j) => `<div><span>${y.warm ? 'W' : j + 1}</span><span>${setTxt(x.t, y)}${y.pr ? ' 🏆' : ''}</span><span>${x.t === 'w' ? fmtNum(e1rm(+y.kg, +y.r), 1) + ' kg 1RM' : ''}</span></div>`).join('')}</div>`).join('')}
     <div class="pfoot col"><button class="btn" id="dAgain">Do it again</button>${w.strava ? `<a class="btn ghost" href="${esc(w.strava)}" target="_blank">View on Strava</a>` : '<button class="btn ghost" id="dStrava">Upload to Strava</button>'}
       <button class="btn danger" id="dDel">Delete</button></div>`);
   s.querySelectorAll('[data-chart]').forEach(b => b.onclick = () => exSheet(b.dataset.chart));
-  $('#dAgain', s).onclick = () => { s.remove(); begin({ name: w.name, ex: w.ex.map(x => ({ k: x.k, n: x.n, t: x.t, sets: fromPrev(x.k, x.sets.length) })) }); };
+  $('#dAgain', s).onclick = () => { s.remove(); if (w.guide) return openIntro(w.guide.id, gctx); begin({ name: w.name, ex: w.ex.map(x => ({ k: x.k, n: x.n, t: x.t, sets: fromPrev(x.k, x.sets.length) })) }); };
   const st = $('#dStrava', s); if (st) st.onclick = async () => { st.disabled = true; await toStrava(w); s.remove(); };
   $('#dDel', s).onclick = async () => {
     if (!confirm('Delete this workout for good?')) return;
@@ -442,4 +456,5 @@ window.addEventListener('beforeunload', () => { if (W) db.kvSet('kraftDraft', W)
 await load();
 render();
 if (W) flash('Your open workout is still running.');
+else if (gDraft) openPlayer(gDraft, true, gctx); // a guided workout was running: back to it, paused, with Resume
 if ('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js').catch(() => {});
