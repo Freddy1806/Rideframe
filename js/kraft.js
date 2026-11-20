@@ -2,7 +2,7 @@
 // every exercise has its graph (estimated 1RM, heaviest weight, volume, reps), records are marked, and a finished workout
 // can go to Strava as "Krafttraining". Stored in kv 'kraft' (newest first) and, with an account, on the host (account.js syncKraft).
 import { db, uid } from './db.js';
-import { fmtTime, fmtNum, esc, twoWeeks, weekStat } from './util.js';
+import { fmtTime, fmtNum, esc, twoWeeks, weekStat, appHome } from './util.js';
 import { applyTheme } from './theme.js';
 import { CATALOG, nm, e1rm, vol, doneSets, sessVol, setTxt, nSets, kgTxt, stravaText } from './kraftlib.js';
 
@@ -84,7 +84,7 @@ function sheet(html) {
 
 function render() {
   if (W) return workoutScreen();
-  const head = `<header class="ptop"><a class="pback" href="handy.html" title="Back to app">‹</a><div class="pbrand"><b>RIDEFRAME </b><span>Strength</span></div>
+  const head = `<header class="ptop"><a class="pback" href="${appHome()}" title="Back to app">‹</a><div class="pbrand"><b>RIDEFRAME </b><span>Strength</span></div>
     ${acc ? `<span class="ppill on"><i></i>${esc(acc.name)}</span>` : '<button class="ppill" id="kAcc" title="Sign in to have your workouts on all devices"><i></i>Sign in</button>'}</header>
     <nav class="pseg kseg">${[['start', 'Workout'], ['hist', 'History'], ['ex', 'Exercises']].map(([k, n]) => `<button data-tab="${k}" class="${tab === k ? 'on' : ''}">${n}</button>`).join('')}</nav>`;
   el.innerHTML = head + `<main class="kmain">${tab === 'hist' ? histView() : tab === 'ex' ? exView() : startView()}</main>`;

@@ -2,14 +2,15 @@
 // Freddy 16.11.: one clear menu, every mode its own big card with colour and icon (ride outside, run, indoor trainer,
 // routes & 3D world, strength); the week at a glance; settings for light/dark and colours.
 import { db } from './db.js';
-import { esc, twoWeeks, weekStat } from './util.js';
+import { esc, twoWeeks, weekStat, markHome } from './util.js';
+markHome('handy');
 import { sportOf, isBike } from './fitness.js';
 import { MODES, ACCENTS, icon, applyTheme } from './theme.js';
 import { loadActs, rowHtml, wireRows } from './feed.js';
 import { nav } from './nav.js';
 
 const el = document.getElementById('handy'), $ = (s, r = document) => r.querySelector(s);
-let S = {}, acc = null, rides = [], kraft = [], installEvt = null, D = null;
+let myW = [], S = {}, acc = null, rides = [], kraft = [], installEvt = null, D = null;
 window.addEventListener('beforeinstallprompt', e => { e.preventDefault(); installEvt = e; render(); });
 
 async function load() {
@@ -17,12 +18,15 @@ async function load() {
   applyTheme(S, null);
   D = await loadActs(); rides = D.acts.filter(a => !a.kraft); kraft = D.acts.filter(a => a.kraft); // one loader for all sports (feed.js)
   try { acc = (await import('./account.js')).account(); } catch {}
+  try { const W = await import('./workouts.js'); W.setMyWorkouts(S.myWorkouts); await (await import('./myworkouts-store.js')).loadPersonal(); // your own workouts on the start page (owner 19.11.: "easy und leicht finden")
+    myW = W.allWorkouts().filter(w => w.mine || w.personal).map(w => ({ id: w.id, name: w.name, min: Math.round(W.workoutDuration(w) / 60) })); } catch { myW = []; }
   if (acc && !load.prefs) { load.prefs = true; import('./live.js').then(l => l.getPrefs()).then(p => { S.liveShow = p.show; S.liveAuto = p.auto; }).catch(() => {}); } // the account's switches, so a later save keeps them
 }
 
 function render() {
   const R2 = twoWeeks(rides), K2 = twoWeeks(kraft), nb = l => l.filter(isBike).length, nr = l => l.filter(r => sportOf(r) === 'run').length, km = l => Math.round(l.reduce((a, r) => a + r.distance, 0) / 1000);
-  const card = m => `<a class="hmode" href="${MODES[m].href}" style="--mc:${MODES[m].color};--mcl:${MODES[m].light}">${icon(m, 'hico')}<b>${MODES[m].name}</b><i>›</i></a>`;
+  const mcs = m => S.modeColors === true ? `--mc:${MODES[m].color};--mcl:${MODES[m].light}` : '--mc:var(--accent);--mcl:var(--accent)';
+  const card = m => `<a class="hmode" href="${MODES[m].href}" style="${mcs(m)}">${icon(m, 'hico')}<b>${MODES[m].name}</b><i>›</i></a>`;
   el.innerHTML = `<header class="ptop"><div class="pbrand" style="font-size:22px">RIDE<span>FRAME</span></div>
       <button class="ppill ${acc ? 'on' : ''}" id="hAcc"><i></i><span class="pname">${acc ? esc(acc.name) : 'Sign in'}</span></button>
       <button class="pgear" id="hSet" title="Settings" aria-label="Settings">${icon('gear', 'gico')}</button></header>
@@ -31,6 +35,8 @@ function render() {
     <section class="hweek"><div class="hwhead"><span class="label">This week</span><span class="wdl">▲▼ vs last week</span></div><div class="kstats">
       ${weekStat(nb(R2.cur), nb(R2.prev), 'Rides')}${weekStat(nr(R2.cur), nr(R2.prev), 'Runs')}${weekStat(km(R2.cur), km(R2.prev), 'km')}${weekStat(K2.cur.length, K2.prev.length, 'Strength')}</div></section>
     <nav class="hmodes">${['ride', 'run', 'trainer', 'world', 'kraft'].map(card).join('')}</nav>
+    <section class="hmyw"><h3 class="ksec">My workouts</h3>${myW.slice(0, 4).map(w => `<a class="hrow hlink" href="pure.html?workout=${encodeURIComponent(w.id)}" style="${mcs('trainer')}"><div><b>${esc(w.name)}</b><small>${w.min} min · indoor trainer</small></div><i>›</i></a>`).join('')}
+      <a class="hall" href="pure.html?workout=">${myW.length > 4 ? `All ${myW.length} and the standard workouts ›` : myW.length ? 'All workouts · build a new one ›' : 'Build your own workout or pick a standard one ›'}</a></section>
     <a class="hrow hlink hremote" href="remote.html?auto" id="hRemote"><div><b>Remote</b><small>Control RIDEFRAME on your laptop with this phone</small></div><i>›</i></a>
     ${D.acts.length ? `<section class="hrecent"><h3 class="ksec">Recent</h3>${D.acts.slice(0, 3).map(a => rowHtml(a, D.P)).join('')}<a class="hall" href="aktivitaeten.html">All activities ›</a></section>` : ''}`;
   wireRows(el, D, async () => { await load(); render(); });
@@ -83,8 +89,8 @@ function settings() {
     s.innerHTML = `<div class="psheetin"><div class="label">Settings</div>
       <h3 class="ksec">Appearance</h3><div class="pseg" id="tSeg">${[['auto', 'Auto'], ['dark', 'Dark'], ['light', 'Light']].map(([k, l]) => `<button data-th="${k}" class="${(S.theme || 'dark') === k ? 'on' : ''}">${l}</button>`).join('')}</div>
       <h3 class="ksec">Colours</h3>
-      <label class="prow">Own colour per mode<input id="tMc" type="checkbox" class="toggle" ${S.modeColors !== false ? 'checked' : ''}></label>
-      <div class="hsw" ${S.modeColors !== false ? 'hidden' : ''}>${Object.entries(ACCENTS).map(([k, c]) => `<button data-ac="${k}" class="${(S.accent || 'orange') === k ? 'on' : ''}" style="background:${c[0]}" aria-label="${k}"></button>`).join('')}</div>
+      <label class="prow">Own colour per mode<input id="tMc" type="checkbox" class="toggle" ${S.modeColors === true ? 'checked' : ''}></label>
+      <div class="hsw" ${S.modeColors === true ? 'hidden' : ''}>${Object.entries(ACCENTS).map(([k, c]) => `<button data-ac="${k}" class="${(S.accent || 'orange') === k ? 'on' : ''}" style="background:${c[0]}" aria-label="${k}"></button>`).join('')}</div>
       <h3 class="ksec">Strava</h3>
       <label class="prow">Upload automatically after saving<input id="tSt" type="checkbox" class="toggle" ${S.autoStrava ? 'checked' : ''}></label>
       <div class="prow" id="tStrava"><span>Strava account</span><button class="btn ghost ksmall" id="tConn">Connect</button></div>

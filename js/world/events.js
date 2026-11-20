@@ -33,6 +33,7 @@ export class Events {
   }
   /** speech bubble over any object (surprises use it too) */
   say(o, text, dur = 3, style = 'call') {
+    if (this.hush) return; // the eagle scene has the stage
     if (this.f.tunnelNear?.(this.w.d)) return; // a call with no one to see, right at a tunnel mouth, looks broken
     const b = document.createElement('div'); b.className = 'rf-bubble'; b.textContent = text; b._o = o; b._until = this.time + dur; this.overlay.append(b);
     this._voice(o, text, style);
@@ -108,7 +109,7 @@ export class Events {
       b.style.transform = `translate(${px}px, ${py}px) translate(-50%, -100%)`;
       b.style.visibility = o.visible === false || Math.abs(v.x) > 1.15 || v.y > 1.35 || v.y < -1.1 ? 'hidden' : ''; // speaker out of view: no orphan bubble
     }
-    if (time < this.nextShout) return;
+    if (time < this.nextShout || this.hush) return;
     const fwd = this.w.camera.getWorldDirection(new THREE.Vector3());
     let best = null, bd = 1e9;
     for (const o of this.people) {

@@ -628,6 +628,7 @@ img.face.big{width:96px;height:96px}
 .libacts { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; min-width: min(100%, 580px); }
 .libacts .btn { width: 100%; justify-content: center; white-space: nowrap; }
 .libacts .btn[hidden] { display: none; }
+.libacts #shopBtnLib { grid-column: 1 / -1; } /* the Shop: its own full row under the others (Wizard points), so the 2 × 2 above keeps its order */
 @media (max-width: 700px) { .libacts { grid-template-columns: 1fr; } }
 /* long segmented choices (Wetter in Unreal: 7 options) wrap inside the card instead of running out of it */
 #ueWeather.seg, .seg.wrap { display: flex; flex-wrap: wrap; border-radius: 18px; flex-shrink: 1; max-width: 100%; }
@@ -1022,3 +1023,58 @@ img.face.big{width:96px;height:96px}
 .ride.world3d .hud-profile { margin-top: 6px; height: 56px; }
 .ride.wk .metric .v { font-size: 22px; margin-top: 2px; }
 .ride.wk .metric .v small { font-size: 11px; }
+
+/* Wizard points (owner 19.11.): one currency; the result block, the leaderboard number and the shop */
+.strrow { grid-template-columns: minmax(0, 1.3fr) 110px 76px; border-left-color: var(--accent); }
+@media (max-width: 560px) { .strrow { grid-template-columns: minmax(0, 1fr) 90px 64px; } }
+.wpsum .wpgrid { display: grid; grid-template-columns: minmax(150px, 220px) minmax(0, 1fr); gap: 10px 26px; align-items: start; margin-top: 6px; }
+.wpride { display: flex; flex-direction: column; gap: 4px; }
+.wpbig { font-size: 54px; font-weight: 900; font-stretch: 118%; line-height: 1; color: var(--accent); letter-spacing: -0.02em; font-variant-numeric: tabular-nums; }
+.wpsub { color: var(--muted); font-size: 13px; font-weight: 600; }
+.wplines { display: grid; gap: 2px; }
+.wpl { display: grid; grid-template-columns: minmax(84px, auto) minmax(0, 1fr) auto; gap: 10px; align-items: baseline; padding: 5px 0; border-bottom: 1px solid var(--line); font-weight: 600; }
+.wpl .wpd { color: var(--muted); font-size: 13px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.wpl b { font-variant-numeric: tabular-nums; }
+.wpfoot { display: flex; align-items: center; flex-wrap: wrap; gap: 10px 22px; margin-top: 12px; padding-top: 10px; border-top: 1px solid var(--line-2); }
+.wpfoot b { font-weight: 900; margin-left: 6px; font-variant-numeric: tabular-nums; }
+.wpfoot .btn { margin-left: auto; }
+@media (max-width: 560px) { .wpsum .wpgrid { grid-template-columns: 1fr; } .wpbig { font-size: 44px; } .wpfoot .btn { margin-left: 0; width: 100%; } }
+.board td.pts .wpn { background: color-mix(in srgb, var(--accent) 18%, transparent); color: var(--paper); border: 1px solid color-mix(in srgb, var(--accent) 55%, transparent); min-width: 64px; }
+.shopbtnbal { font-variant-numeric: tabular-nums; opacity: .85; font-weight: 800; }
+.avchip.locked { color: var(--muted); border-style: dashed; }
+.avchip.locked small { color: var(--accent); font-weight: 800; margin-left: 2px; }
+.avlock { margin-top: 8px; display: flex; align-items: center; flex-wrap: wrap; gap: 8px; color: var(--paper) !important; }
+.avopts > .avrow:last-child { margin-bottom: 4px; }
+.modal .shopbox { width: min(1120px, 96vw); height: min(700px, 94vh); max-height: 94vh; display: flex; flex-direction: column; padding: 22px 24px; gap: 14px; }
+.shophead { display: flex; align-items: center; gap: 18px; }
+.shophead h2 { font-size: 40px; margin: 6px 0 0; }
+.shopbal { margin-left: auto; text-align: right; display: flex; flex-direction: column; gap: 4px; }
+.shopbal b { font-size: 28px; font-weight: 900; font-stretch: 115%; color: var(--accent); font-variant-numeric: tabular-nums; white-space: nowrap; }
+.shopmain { flex: 1; min-height: 0; display: grid; grid-template-columns: minmax(240px, 360px) minmax(0, 1fr); gap: 20px; }
+.shopprev { display: flex; flex-direction: column; gap: 8px; min-height: 0; }
+.shopprev .avcanvas { flex: 1; min-height: 0; aspect-ratio: auto; height: 100%; }
+.shopcap { color: var(--muted); font-size: 13px; text-align: center; } .shopcap b { color: var(--paper); }
+.shoplist { overflow-y: auto; min-height: 0; padding: 2px 6px 6px 2px; }
+.shopslot { margin-bottom: 18px; } .shopslot > .label { margin-bottom: 8px; }
+.shopgrid { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 10px; }
+.shopcard { background: var(--ink); border: 1px solid var(--line-2); border-radius: 6px; padding: 12px 14px; display: flex; flex-direction: column; gap: 8px; cursor: pointer; min-width: 0; transition: border-color .15s; }
+.shopcard:hover, .shopcard.try { border-color: var(--paper); }
+.shopcard.wearing { border-color: var(--accent); box-shadow: inset 0 0 0 1px var(--accent); }
+.shoptop { display: flex; gap: 10px; align-items: center; } .shoptop > div { display: flex; flex-direction: column; min-width: 0; }
+.shoptop b { font-weight: 800; font-size: 15px; } .shopprice { color: var(--accent); font-weight: 800; font-size: 13px; font-variant-numeric: tabular-nums; }
+.shopcard.owned .shopprice, .shopcard.wearing .shopprice { color: var(--muted); }
+.shopico { flex: none; width: 36px; height: 36px; border-radius: 50%; display: grid; place-items: center; background: var(--ink-3); font-size: 19px; }
+.shopcard p { color: var(--muted); font-size: 13px; line-height: 1.4; flex: 1; }
+.shopcard .btn { width: 100%; height: 40px; padding: 0 10px; font-size: 12px; white-space: normal; line-height: 1.15; }
+.shopcard .btn:disabled { background: transparent; color: var(--muted); border: 1px dashed var(--line-2); cursor: default; transform: none; }
+.shopcard .btn.on { border-color: var(--accent); color: var(--accent); }
+@media (max-width: 760px) {
+  .modal .shopbox { height: auto; max-height: 94dvh; overflow-y: auto; display: block; padding: 16px 14px; }
+  .shophead { flex-wrap: wrap; gap: 10px; margin-bottom: 10px; } .shophead h2 { font-size: 30px; } .shopbal b { font-size: 22px; }
+  .shophead #shClose { order: 3; }
+  .shopmain { display: block; }
+  .shopprev { position: sticky; top: -16px; z-index: 2; background: var(--ink-2); padding: 4px 0 6px; margin-bottom: 8px; }
+  .shopprev .avcanvas { height: 200px; flex: none; aspect-ratio: auto; }
+  .shoplist { overflow: visible; padding: 0; }
+  .shopgrid { grid-template-columns: minmax(0, 1fr); }
+}

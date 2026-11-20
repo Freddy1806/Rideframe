@@ -6,6 +6,8 @@ import { randomBytes, scryptSync, timingSafeEqual, createHash } from 'node:crypt
 import { sendMail, welcomeMail, resetMail, mailConfig } from './mailer.mjs';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
+import { mergeWallet, cleanWallet } from '../js/wizpoints.js';
+import { itemFor } from '../js/shop.js';
 
 const DATA = process.env.RIDEFRAME_DATA || join(homedir(), 'RIDEFRAME_data');
 const ACC = join(DATA, 'accounts.json');
@@ -103,7 +105,11 @@ async function profile(u) {
     rides: rides.slice(0, 40).map(({ m, demo, segs, ...r }) => ({ ...r, km: Math.round(r.km * 10) / 10, hm: Math.round(r.hm) })) };
 }
 
-/** weekly leaderboard of every account on this host: km, Hm, minutes, ride days and the story points of the wager */
+/** this week's Wizard points of a story file (old clients sent the three-figure points: their sum stands in) */
+const weekWp = (s, wk) => !s || s.week !== wk ? null : Number.isFinite(+s.wp) ? +s.wp : Math.round((+s.pts?.wizard || 0) + (+s.pts?.king || 0) + (+s.pts?.devil || 0));
+/** the worn shop items a client sends: only known shop values, { key: value } */
+const cleanEquip = e => Object.fromEntries(Object.entries(e && typeof e === 'object' ? e : {}).filter(([k, v]) => typeof v === 'string' && itemFor(k, v)).slice(0, 12));
+/** weekly leaderboard of every account on this host: km, Hm, minutes, ride days and this week's Wizard points */
 async function board(a) {
   const wk = weekKey();
   if (boardCache && boardCache.week === wk && Date.now() - boardCache.at < 30e3) return boardCache.rows;
@@ -117,8 +123,8 @@ async function board(a) {
       if (!(c.date >= since) || c.demo) continue;
       km += c.km; hm += c.hm; days.add(new Date(c.date).toDateString());
     }
-    const s = await readJSON(join(dir, 'story.json'), null), pts = s && s.week === wk ? s.pts : null, look = (await readJSON(join(dir, 'settings.json'), null))?.settings?.look || null;
-    rows.push({ name: u.name, key: u.name.toLowerCase(), look, km: Math.round(km * 10) / 10, hm: Math.round(hm), days: days.size, pts: pts ? { wizard: +pts.wizard || 0, king: +pts.king || 0, devil: +pts.devil || 0 } : null });
+    const s = await readJSON(join(dir, 'story.json'), null), look = (await readJSON(join(dir, 'settings.json'), null))?.settings?.look || null;
+    rows.push({ name: u.name, key: u.name.toLowerCase(), look, km: Math.round(km * 10) / 10, hm: Math.round(hm), days: days.size, wp: weekWp(s, wk) });
   }
   rows.sort((x, y) => y.km - x.km || y.hm - x.hm);
   if (gen === boardGen) boardCache = { at: Date.now(), week: wk, rows }; return rows;
@@ -200,11 +206,22 @@ export async function accountsApi(req, res, path) {
         if (!a.users[t.key]) return send(res, 401, { error: 'Not signed in.' }); a.users[t.key].email = e; await writeJSON(ACC, a); return send(res, 200, { ok: true, email: e }); }); }
     if (op === 'settings' && req.method === 'PUT') { const b = await body(req, 1e6); await writeJSON(join(dir, 'settings.json'), { settings: b.settings || {}, at: +b.at || Date.now() }); return send(res, 200, { ok: true }); }
     if (op === 'board') { const rows = await board(a); return send(res, 200, { week: weekKey(), rows: rows.map(r => ({ ...r, me: r.key === t.key })) }); }
-    if (op === 'story' && req.method === 'PUT') { /* only this week; per figure the higher value wins, so a second device with an empty ledger never wipes the points */
-      const b = await body(req, 1e4), wk = weekKey(); if (b.week !== wk) return send(res, 200, { ok: true, ignored: true });
-      const f = join(dir, 'story.json'), old = await readJSON(f, null), op0 = old?.week === wk ? old.pts || {} : {}, pts = {};
-      for (const k of ['wizard', 'king', 'devil']) pts[k] = Math.max(+op0[k] || 0, Math.min(1e5, +b.pts?.[k] || 0));
-      await writeJSON(f, { week: wk, pts, at: Date.now() }); boardCache = null; boardGen++; return send(res, 200, { ok: true }); }
+    if (op === 'story' && req.method === 'GET') { /* a new device gets the wallet and the worn shop items back */
+      const s = await readJSON(join(dir, 'story.json'), null), wk = weekKey();
+      return send(res, 200, { week: wk, wp: weekWp(s, wk) || 0, wallet: s?.wallet ? cleanWallet(s.wallet) : null, equip: s?.equip ? cleanEquip(s.equip) : null }); }
+    if (op === 'story' && req.method === 'PUT') { /* the week's points: the higher value wins, so a second device with an empty ledger never wipes them;
+      the wallet (Wizard points, 19.11.): max of earned and of spent, union of owned; old clients send only { week, pts } */
+      const b = await body(req, 2e4), wk = weekKey(), f = join(dir, 'story.json'), old = (await readJSON(f, null)) || {}, out = { ...old, at: Date.now() };
+      if (b.week === wk) {
+        const op0 = old.week === wk ? old.pts || {} : {}, pts = {};
+        for (const k of ['wizard', 'king', 'devil']) pts[k] = Math.max(+op0[k] || 0, Math.min(1e5, +b.pts?.[k] || 0));
+        const sent = Number.isFinite(+b.wp) ? +b.wp : (+b.pts?.wizard || 0) + (+b.pts?.king || 0) + (+b.pts?.devil || 0);
+        Object.assign(out, { week: wk, pts, wp: Math.max(weekWp(old, wk) || 0, Math.min(1e6, Math.max(0, Math.round(sent)))) });
+      }
+      if (b.wallet) out.wallet = mergeWallet(old.wallet, b.wallet);
+      if (b.equip) out.equip = cleanEquip(b.equip);
+      if (out.week === undefined && !out.wallet) return send(res, 200, { ok: true, ignored: true });
+      await writeJSON(f, out); boardCache = null; boardGen++; return send(res, 200, { ok: true, wallet: out.wallet || null }); }
     const sm = op.match(/^segs\/(.{1,80})$/);
     if (sm) return send(res, 200, { segs: await segBoard(a, decodeURIComponent(sm[1])), me: u.name });
     const pm = op.match(/^profile\/(.{1,40})$/);

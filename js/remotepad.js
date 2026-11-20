@@ -46,6 +46,7 @@ function command(name) {
   if (!rideOn()) return;
   if (name === 'pause') return tap(9); // Start: pause menu, again: resume
   const key = KEYS[name]; if (key) document.dispatchEvent(new KeyboardEvent('keydown', { key, bubbles: true, cancelable: true }));
+  else if (/^(mode:(erg|real|virtual)|photo|lap)$/.test(name)) document.dispatchEvent(new CustomEvent('rf-remote', { detail: { name } })); // the ride's own switch (js/ride.js _remote): ERG / bike / virtual gears, a photo
 }
 
 // ---------------- the session ----------------
@@ -112,6 +113,8 @@ function snapshot() {
   }
   const po = ride.querySelector('#pauseOverlay');
   const s = { scr: po ? 'paused' : 'ride', pow: txt(ride, '#hPow', 6), spd: txt(ride, '#hSpd', 6), music: (appState?.settings?.musicVol ?? 0.45) > 0 };
+  { const gl = txt(ride, '#hGearL', 20), g = txt(ride, '#hGear', 10); // the gear chip tells the shifting mode (js/ride.js _setShift)
+    s.mode = /^ERG/.test(gl) ? 'erg' : /^(Virtual|Auto)/.test(gl) ? 'virtual' : 'real'; if (s.mode === 'erg') s.tgt = g.replace(/\s*W$/, ''); else s.gear = g; }
   if (ride.querySelector('#hWork')) Object.assign(s, { wo: true, step: txt(ride, '#hWStep'), of: txt(ride, '#hWOf', 30), tgt: txt(ride, '#hWT', 6), left: txt(ride, '#hWLeft', 8), adj: txt(ride, '#hWAdjV', 8), next: txt(ride, '#hWNextN', 30) });
   if (po) {
     const bs = [...po.querySelectorAll('.padmenu button')];

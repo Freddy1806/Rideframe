@@ -1,4 +1,6 @@
 import { trainingView } from './training.js';
+import { markHome } from './util.js';
+markHome('desktop'); // the phone pages' back arrow returns here (js/util.js appHome)
 import { account, accountsAvailable, syncAccount, settingsChanged, accountModal } from './account.js';
 import { db, uid } from './db.js';
 import { readGoProGPS } from './gpmf.js';
@@ -173,7 +175,7 @@ function library() {
         <div class="meta">${routes.length} ${routes.length === 1 ? 'route' : 'routes'} · ${fmtKm(routes.reduce((s, r) => s + r.track.length, 0))} km · ${fmtNum(routes.reduce((s, r) => s + r.track.gain, 0))} m climbing</div>
       </div>
       <div class="libside"><div id="rmMiniBox"></div>
-      <div class="libacts"><button class="btn ghost" id="wishBtnLib" hidden>Wish list</button><button class="btn ghost" id="lookBtnLib">My rider</button><button class="btn ghost" id="groupBtnLib">Ride together</button><button class="btn" id="uploadBtn">＋ Upload route</button></div></div>
+      <div class="libacts"><button class="btn ghost" id="wishBtnLib" hidden>Wish list</button><button class="btn ghost" id="lookBtnLib">My rider</button><button class="btn ghost" id="groupBtnLib">Ride together</button><button class="btn" id="uploadBtn">＋ Upload route</button><button class="btn ghost" id="shopBtnLib" title="Spend your Wizard points on looks for your rider">Shop <span class="shopbtnbal" id="shopBalLib">🧙</span></button></div></div>
     </div>
     <div id="board" hidden></div>
     ${myWorkoutsRow()}
@@ -190,6 +192,8 @@ function library() {
   miniRemote($('#rmMiniBox')); // phone remote: the QR code is simply there (js/remotepad.js)
   $('#groupBtnLib').onclick = () => groupModal({ startRide });
   $('#lookBtnLib').onclick = () => import('./avatar-ui.js').then(x => x.avatarModal());
+  const shopBal = () => import('./shop-ui.js').then(x => x.shopLabel()).then(t => { const e = $('#shopBalLib'); if (e) e.textContent = t; }).catch(() => {});
+  $('#shopBtnLib').onclick = () => import('./shop-ui.js').then(x => x.shopModal({ onClose: shopBal })); shopBal(); // Wizard points shop (owner 19.11.)
   accountsAvailable().then(ok => { const b = $('#wishBtnLib'); if (!ok || !b) return; b.hidden = false; b.onclick = () => import('./wishes.js').then(x => x.wishModal(state, accountChanged)); }); /* wish list: only where RIDEFRAME is hosted with accounts */
   main.querySelectorAll('.card').forEach(c => c.addEventListener('click', () => go('detail', c.dataset.id)));
   main.querySelectorAll('[data-wgo]').forEach(b => b.onclick = () => { state.settings.workout = b.dataset.wgo; saveSettings(); startRide(routeById('kueste60') ? 'kueste60' : 'demo'); });
@@ -267,21 +271,21 @@ async function liveJoinById(id) {
 }
 
 /* friends leaderboard: every account on this host, this week (Monday to Sunday) */
-const BOARD_SORT = { km: ['km', 'km'], hm: ['Climb', 'Climbing'], pts: ['Points', 'Bet'] };
+const BOARD_SORT = { km: ['km', 'km'], hm: ['Climb', 'Climbing'], pts: ['Points', 'Wizard points'] };
 async function showBoard() {
   if (!account()) return;
   const { loadBoard } = await import('./account.js'), { faceImg, fillFaces, profileModal } = await import('./profiles.js'), b = await loadBoard(), el = $('#board');
   if (!b?.rows?.length || !el || !el.isConnected) return;
-  const tot = r => r.pts ? r.pts.wizard + r.pts.king + r.pts.devil : 0;
+  const tot = r => +r.wp || 0; // this week's Wizard points (one number per rider)
   const draw = () => {
     const k = state.settings.boardSort || 'km', val = r => k === 'km' ? r.km : k === 'hm' ? r.hm : tot(r);
     const rows = [...b.rows].sort((x, y) => val(y) - val(x) || y.km - x.km);
     el.innerHTML = `<div class="board">
-      <div class="board-head"><div class="label">Leaderboard this week <button class="betinfo" id="betInfoBtn" title="What do the blue, yellow and red points mean?">?</button></div>
+      <div class="board-head"><div class="label">Leaderboard this week <button class="betinfo" id="betInfoBtn" title="How do Wizard points work?">?</button></div>
         <div class="board-tabs">${Object.entries(BOARD_SORT).map(([id, [t]]) => `<button class="${id === k ? 'on' : ''}" data-k="${id}">${t}</button>`).join('')}</div></div>
       <table><tbody>${rows.map((r, i) => `<tr class="${r.me ? 'me' : ''}" data-key="${esc(r.key || '')}" title="View profile" tabindex="0"><td class="rank">${i + 1}</td><td class="nm"><span class="who">${faceImg(r.look)}${esc(r.name)}</span></td>
         <td>${fmtNum(r.km, 1)} km</td><td>${fmtNum(r.hm)} m</td><td class="dim">${r.days} ${r.days === 1 ? 'day' : 'days'}</td>
-        <td class="pts">${r.pts ? `<span class="wz">${r.pts.wizard}</span><span class="kg">${r.pts.king}</span><span class="dv">${r.pts.devil}</span>` : '<span class="dim">–</span>'}</td></tr>`).join('')}</tbody></table></div>`;
+        <td class="pts">${r.wp != null ? `<span class="wpn" title="Wizard points this week">🧙 ${fmtNum(r.wp)}</span>` : '<span class="dim">–</span>'}</td></tr>`).join('')}</tbody></table></div>`;
     el.querySelector('#betInfoBtn')?.addEventListener('click', () => import('./story.js').then(m => m.betInfo()));
     el.querySelectorAll('.board-tabs button').forEach(x => x.onclick = () => { state.settings.boardSort = x.dataset.k; saveSettings(); draw(); });
     el.querySelectorAll('tr[data-key]').forEach(tr => tr.onclick = () => tr.dataset.key && profileModal(tr.dataset.key, routeName));

@@ -23,3 +23,8 @@ export function twoWeeks(items, at = x => x.date) { const w0 = weekStart(Date.no
 export function weekStat(cur, prev, label, show = v => fmtNum(v)) {
   const d = cur - prev, cls = d > 0 ? 'up' : d < 0 ? 'down' : '';
   return `<div><b>${show(cur)}</b><small>${label}</small><em class="wd ${cls}">${d > 0 ? '▲' : d < 0 ? '▼' : '='} ${show(prev)}</em></div>`; }
+
+/** where "back to the app" leads from the phone pages (strength, indoor, outdoor): the desktop 3D app when you came from
+ *  there (owner 19.11.: from Workouts → Strength there was no way back), else the phone app. The app that loaded last says so. */
+export const appHome = () => { try { return sessionStorage.getItem('rf-from') === 'desktop' ? './?desktop' : 'handy.html'; } catch { return 'handy.html'; } };
+export const markHome = from => { try { sessionStorage.setItem('rf-from', from); } catch {} };
