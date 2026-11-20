@@ -78,6 +78,7 @@ export async function stravaButton(btn, rec, name, eleAt, makeImage = null) {
     } catch (e) { console.warn('Teilen-Bild:', e); }
     const url = await stravaUpload(rec, name, eleAt, set, imageUrl);
     set('Open on Strava ✓'); btn.disabled = false; btn.onclick = () => window.open(url, '_blank');
+    try { rec.strava = url; if (rec.id && !rec.unsaved) { const { db } = await import('./db.js'), r = await db.get('rides', rec.id); if (r && !r.strava) { r.strava = url; await db.put('rides', r); } } } catch {} // Rides & Records shows "On Strava" from now on
     window.open(url, '_blank');
     if (makeImage) import('./app.js').then(m => m.toast('Image saved (Downloads). In Strava, open the ride, Edit → Add photo.', 8000));
   } catch (e) {

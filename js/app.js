@@ -475,7 +475,7 @@ function history() {
     <h2 class="section">All rides</h2>
     ${rides.length ? `<table class="table">
       <tr><th class="label">Date</th><th class="label">Route</th><th class="label">Time</th><th class="label">Distance</th><th class="label">Climb</th><th class="label">Avg W</th><th class="label">Avg km/h</th><th class="label"></th><th class="label"></th></tr>
-      ${rides.map(x => { const pb = x.routeId !== 'pure' && x.routeId !== 'outdoor' && bestRide(x.routeId)?.id === x.id; return `<tr class="${pb ? 'pb' : ''}"><td>${new Date(x.date).toLocaleString('en-GB', { dateStyle: 'short', timeStyle: 'short' })}</td><td>${esc((routeName(x.routeId) || 'Deleted route') + ((x.routeId === 'pure' || x.routeId === 'outdoor') && x.workout ? ' · ' + x.workout : ''))}</td><td>${fmtTime(x.duration)}</td><td>${fmtKm(x.distance)} km</td><td>${fmtNum(x.gain)} m</td><td>${x.avgPower} W</td><td>${fmtNum(x.distance / x.duration * 3.6, 1)}</td><td>${pb ? 'BEST TIME' : x.complete ? '' : '<span style="color:var(--muted)">stopped</span>'}</td><td style="white-space:nowrap"><button class="btn ghost small strava" data-id="${x.id}">Strava</button> <button class="btn ghost small share" data-id="${x.id}">Share</button> <button class="btn ghost small rimg" data-id="${x.id}" title="Make a picture of the ride">Image</button> <button class="btn ghost small rdel" data-id="${x.id}" title="Delete ride">✕</button></td></tr>`; }).join('')}
+      ${rides.map(x => { const pb = x.routeId !== 'pure' && x.routeId !== 'outdoor' && bestRide(x.routeId)?.id === x.id; return `<tr class="${pb ? 'pb' : ''}"><td>${new Date(x.date).toLocaleString('en-GB', { dateStyle: 'short', timeStyle: 'short' })}</td><td>${esc((routeName(x.routeId) || 'Deleted route') + ((x.routeId === 'pure' || x.routeId === 'outdoor') && x.workout ? ' · ' + x.workout : ''))}</td><td>${fmtTime(x.duration)}</td><td>${fmtKm(x.distance)} km</td><td>${fmtNum(x.gain)} m</td><td>${x.avgPower} W</td><td>${fmtNum(x.distance / x.duration * 3.6, 1)}</td><td>${pb ? 'BEST TIME' : x.complete ? '' : '<span style="color:var(--muted)">stopped</span>'}</td><td style="white-space:nowrap">${x.strava ? `<a class="btn ghost small onstrava" href="${esc(x.strava)}" target="_blank" rel="noopener" title="Open this ride on Strava">On Strava ✓</a>` : `<button class="btn ghost small strava" data-id="${x.id}" title="Upload this ride to Strava">Upload to Strava</button>`} <button class="btn ghost small share" data-id="${x.id}">Share</button> <button class="btn ghost small rimg" data-id="${x.id}" title="Make a picture of the ride">Image</button> <button class="btn ghost small rdel" data-id="${x.id}" title="Delete ride">✕</button></td></tr>`; }).join('')}
     </table>` : '<div class="empty">No rides yet. Pick a route and start riding.</div>'}
   </section>`;
   import('./ivview.js').then(m => m.mountIvHistory(main.querySelector('#ivHist'), rides, { kg: state.settings.riderKg })).catch(() => {}); // ivview.js: the ridden watts per interval kind
@@ -595,6 +595,11 @@ function settings() {
         <div class="field"><div>Zwift Click<div class="hint">Its + / − buttons shift the virtual gears in the ride. Click v2: open it in the Zwift app once a day, or it drops after a minute.</div><div class="hint" id="zcState">${clickState()}</div></div><button class="btn ghost small" id="zcBtn">${click.device ? 'Disconnect' : 'Connect'}</button></div>
         <div class="field"><div>Heart rate strap<div class="hint">Optional, via Bluetooth.</div></div><div style="display:flex;gap:8px"><button class="btn ghost small" id="hrAll" title="If the strap is missing in the normal search">All devices</button><button class="btn ghost small" id="hrBtn">${state.hr?.connected ? 'Connected' : 'Connect'}</button></div></div>
       </div>
+      <div class="panel" id="stravaPanel" hidden><h3>Strava</h3>
+        <div class="field"><div>Strava account<div class="hint" id="stvHint">…</div></div><button class="btn ghost small" id="stvConn">Connect</button></div>
+        <label class="field"><div>Upload every ride automatically<div class="hint">Right after you finish and save a ride. The same switch as in the phone app on this device.</div></div><input type="checkbox" class="toggle" id="stvAuto" ${s.autoStrava ? 'checked' : ''}></label>
+        <div class="field"><div>Bring my Strava activities into RIDEFRAME<div class="hint" id="stvImpHint">Runs, outdoor rides and everything else you record elsewhere. They show up under Activities in the phone app.</div></div><div style="display:flex;gap:8px"><a class="btn ghost small" href="aktivitaeten.html" style="text-decoration:none">Activities</a><button class="btn ghost small" id="stvImp">Import now</button></div></div>
+      </div>
       <div class="panel"><h3>Video &amp; data</h3>
         <label class="field"><div>Mute video sound</div><input type="checkbox" class="toggle" id="muteVideo" ${s.muteVideo ? 'checked' : ''}></label>
         <label class="field"><div>Improve elevation data<div class="hint">On import, take elevation from a terrain model (Open-Meteo). GoPro altitude is inaccurate.</div></div><input type="checkbox" class="toggle" id="improveEle" ${s.improveEle ? 'checked' : ''}></label>
@@ -662,6 +667,19 @@ function settings() {
   });
   $('#cockpit').onchange = e => { s.cockpit = e.target.checked; saveSettings(); };
   $('#eagle').onchange = e => { s.eagle = e.target.checked; saveSettings(); };
+  import('./stravaup.js').then(async su => { // Strava on the laptop (owner 20.11.): connect, upload on its own, import
+    const P = $('#stravaPanel'); if (!P) return; let st = await su.stravaStatus(); if (!st.configured) return; P.hidden = false;
+    const paint = () => { const c = $('#stvConn'), h = $('#stvHint'); if (!c) return;
+      c.textContent = !st.connected ? 'Connect' : st.canImport ? 'Connected ✓' : 'Reconnect'; c.disabled = !!(st.connected && st.canImport);
+      h.textContent = !st.connected ? 'Not connected on this computer.' : st.canImport ? 'Connected. Rides can be uploaded and your Strava activities can be imported.' : 'Connected for uploads only. Reconnect and leave reading activities allowed, then the import works too.'; };
+    paint();
+    $('#stvConn').onclick = async () => { $('#stvHint').textContent = 'Waiting for Strava …'; await su.stravaConnect(!!st.connected); st = await su.stravaStatus(); paint(); };
+    $('#stvAuto').onchange = e => { s.autoStrava = e.target.checked; saveSettings(); };
+    $('#stvImp').onclick = async () => { const b = $('#stvImp'), h = $('#stvImpHint'); b.disabled = true; h.textContent = 'Reading Strava …';
+      const r = await (await import('./actimport.js')).importStrava({ onState: t => { h.textContent = t; } }); b.disabled = false;
+      if (r.connect || r.reconnect) { st = await su.stravaStatus(); paint(); }
+      h.textContent = r.text + (r.added ? ' Open Activities to see them.' : ''); };
+  }).catch(() => {});
   $('#liveShow').onchange = e => { s.liveShow = e.target.checked; saveSettings(); import('./live.js').then(l => l.putPrefs({ show: s.liveShow })).catch(() => {}).then(startOnline); };
   $('#liveAuto').onchange = e => { s.liveAuto = e.target.checked; saveSettings(); import('./live.js').then(l => l.putPrefs({ auto: s.liveAuto })).catch(() => {}); };
   $('#together').onchange = e => { s.together = e.target.checked; saveSettings(); };

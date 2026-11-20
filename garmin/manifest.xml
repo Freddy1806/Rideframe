@@ -9,6 +9,7 @@
             <iq:product id="fr265s"/>
             <iq:product id="fenix7xpro"/>
             <iq:product id="fenix7pro"/>
+            <iq:product id="fenix8solar47mm"/>
         </iq:products>
         <iq:permissions>
             <!-- makeWebRequest through Garmin Connect Mobile -->

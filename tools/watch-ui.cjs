@@ -73,7 +73,7 @@ let fails = 0; const ok = (c, m) => { console.log(`${c ? '✓' : '✗'} ${m}`); 
     await W.uncheck('#wNear');
     const cv = W.locator('[data-face="fr265"] canvas'), box = await cv.boundingBox(), at = (u, v) => ({ x: box.x + u * box.width, y: box.y + v * box.height });
     const tap = async (u, v) => { await cv.tap({ position: { x: u * box.width, y: v * box.height } }); await W.waitForTimeout(80); };
-    const swipe = async (dir) => { const [a, z] = { up: [[.5, .7], [.5, .3]], down: [[.5, .3], [.5, .7]], left: [[.75, .5], [.25, .5]] }[dir]; const p0 = at(...a), p1 = at(...z);
+    const swipe = async (dir) => { const [a, z] = { up: [[.5, .7], [.5, .3]], down: [[.5, .3], [.5, .7]], left: [[.75, .5], [.25, .5]] }[dir]; await cv.scrollIntoViewIfNeeded(); const b = await cv.boundingBox(), p0 = { x: b.x + a[0] * b.width, y: b.y + a[1] * b.height }, p1 = { x: b.x + z[0] * b.width, y: b.y + z[1] * b.height }; // three faces wrap: the page may have scrolled since the first measurement
       await W.mouse.move(p0.x, p0.y); await W.mouse.down(); await W.mouse.move(p1.x, p1.y, { steps: 6 }); await W.mouse.up(); await W.waitForTimeout(100); };
     await snap('home_all_rows'); await tap(.5, .27); s = await F(); ok(s.scr === 'start', 'tap the top row: Strength');
     await btn('back'); await tap(.5, .735); s = await F(); ok(s.scr === 'more', 'start menu: the fourth row (More) is visible and tappable without scrolling'); await btn('back'); await tap(.5, .27);

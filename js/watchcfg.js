@@ -20,7 +20,7 @@ const GROUP = { Beine: 'Legs', Rücken: 'Back', Brust: 'Chest', Schultern: 'Shou
 const mmss = s => s >= 60 ? `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}` : `${s} s`;
 const clampN = (v, [lo, hi], step = 1) => Math.min(hi, Math.max(lo, Math.round((+v || 0) / step) * step));
 
-let C = null, st = { at: 0, dirty: false }, tab = 'run', pg = 0, face = 0, msg = '', bad = false, saveT = 0, exList = [];
+let C = null, st = { at: 0, dirty: false }, tab = 'run', pg = 0, face = Math.max(0, FACES.findIndex(f => f.id === 'fenix8solar47mm')), msg = '', bad = false, saveT = 0, exList = [];
 
 async function api(method, body) { // own fetch: a 401 here must not sign the phone out (account.js does that)
   const r = await fetch('/api/watch/config', { method, cache: 'no-store', headers: { 'Content-Type': 'application/json', 'X-RF-Token': account()?.token || '', ...stravaHdr() }, body: body ? JSON.stringify(body) : undefined });
