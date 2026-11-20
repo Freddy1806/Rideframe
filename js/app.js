@@ -22,7 +22,7 @@ import { click } from './zwiftclick.js';
 import { stravaButton } from './stravaup.js';
 import { routeFns } from './tcx.js';
 import { hudPrefs, hudControlsHTML, wireHudControls } from './hudprefs.js';
-import { allWorkouts, setMyWorkouts, workoutById, workoutDuration, workoutSVG } from './workouts.js';
+import { allWorkouts, setMyWorkouts, workoutById, workoutDuration, workoutSVG, setFtp } from './workouts.js';
 import { loadShared, sharedFor, shareRide, importShared, groupModal } from './share.js';
 import { workoutOptions, wireRoutePick } from './myworkouts-ui.js';
 import { loadPersonal } from './myworkouts-store.js';
@@ -56,6 +56,7 @@ function getDemoRoute() { return getBuiltin('demo'); }
 async function boot() {
   const saved = await db.kvGet('settings').catch(() => null);
   if (saved) Object.assign(state.settings, saved);
+  setFtp(state.settings.ftp);
   state.trainer.pmOnly = state.settings.powerSource === 'pm'; // power meter only (js/ridesetup.js): RIDEFRAME never controls the trainer
   setMyWorkouts(state.settings.myWorkouts);
   const hasAcc = await accountsAvailable();
@@ -412,7 +413,7 @@ function detail(id) {
   $('#back').onclick = () => go('library');
   $('#ghostSel').value = state.settings.ghost; if (!$('#ghostSel').value) $('#ghostSel').value = 'best';
   $('#groupBtn').onclick = () => groupModal({ routeId: id, startRide });
-  const showWork = () => { const w = workoutById(state.settings.workout); $('#workInfo').innerHTML = w ? `<p style="margin:6px 0">${esc(w.what)} Target watts from your FTP (${state.settings.ftp || 200} W).</p>${workoutSVG(w)}` : ''; $('#rideBtn').textContent = w ? 'Start workout ▸' : 'Ride ▸'; $('#chRow').hidden = !!w; };
+  const showWork = () => { setFtp(state.settings.ftp || 200); const w = workoutById(state.settings.workout); $('#workInfo').innerHTML = w ? `<p style="margin:6px 0">${esc(w.what)} Target watts from your FTP (${state.settings.ftp || 200} W).</p>${workoutSVG(w)}` : ''; $('#rideBtn').textContent = w ? 'Start workout ▸' : 'Ride ▸'; $('#chRow').hidden = !!w; };
   $('#workSel').value = workoutById(state.settings.workout) ? state.settings.workout : ''; showWork();
   $('#workSel').onchange = e => { state.settings.workout = e.target.value; saveSettings(); showWork(); };
   wireRoutePick(main, { route: r, state, saveSettings, rerender: () => detail(id), routes: allRoutes, openRoute: rid => go('detail', rid) });

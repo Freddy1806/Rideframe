@@ -18,6 +18,15 @@ const cool = [R(6, 55, 35, 'Cool-down')];
 export const Ramp = R;
 const reps = (n, on, off) => Array.from({ length: n }, (_, i) => [{ ...on, label: `${on.label} ${i + 1}/${n}` }, ...(i < n - 1 && off ? [off] : [])]).flat();
 
+// Steps in absolute watts (coach workouts, Freddy 20.11.: "30 s at 340 W"): pct is worked out from the rider's FTP when it is
+// read, so everything that runs on % FTP (ERG, charts, the ride setup) works unchanged. setFtp() is called by the pages; workoutState /
+// workoutAt / workoutSVG also pass their FTP on.
+let FTP_NOW = 250;
+export const setFtp = f => { if (+f > 0) FTP_NOW = +f; };
+const pctOf = w => Math.round(w / FTP_NOW * 1000) / 10;
+export const A = (sec, watts, label = '') => ({ dur: Math.round(sec), watts, label, get pct() { return pctOf(this.watts); } });
+const set3015 = k => Array.from({ length: 13 }, (_, i) => [A(30, 340, `30 / 15 · set ${k} · ${i + 1}/13`), ...(i < 12 ? [A(15, 125, 'Float')] : [])]).flat();
+
 export const WORKOUTS = [
   { id: 'ss3x10', name: 'Sweet Spot 3 × 10', what: '3 × 10 min at 90 % FTP, 4 min easy between. The classic for more endurance power.',
     steps: [...warm, ...reps(3, W(10, 90, 'Sweet Spot'), W(4, 55, 'Rest')), ...cool] },
@@ -55,6 +64,10 @@ export const WORKOUTS = [
   // classic 20-min test (Freddy 12.11. "fitnesstest"): the 20 minutes are ridden freely (no ERG), new FTP = 95 % of their average
   { id: 'ftp20', name: '20-min test (FTP)', what: 'Warm-up, 5 min opener, then 20 min as hard as you can hold evenly. No ERG, you set the pace. New FTP = 95 % of it.',
     steps: [R(10, 40, 75, 'Warm-up'), W(0.5, 110, 'Opener 1/3'), W(1, 50, 'Spin'), W(0.5, 110, 'Opener 2/3'), W(1, 50, 'Spin'), W(0.5, 110, 'Opener 3/3'), W(2.5, 50, 'Spin'), W(5, 105, 'Opener 5 min'), W(10, 50, 'Easy'), { ...W(20, 100, 'Test 20 min'), free: true }, R(10, 55, 35, 'Cool-down')] },
+  { id: 'c_30_15_3x13', name: '30 / 15 · 3 × 13', coach: true, rampIn: 3, rampOut: 2,
+    what: '18 min warm-up with three short sprints, then 3 sets of 13 × 30 s at 340 W with 15 s easy at 125 W, 3 min easy between the sets, 10 min cool-down. The first reps feel too easy, from the middle of the set it gets hard. Start at 340 W; turn the watts up towards 360 W only if it goes well.',
+    steps: [R(10, 40, 72, 'Warm-up'), W(3, 72, 'Warm-up'), A(10, 420, 'Sprint 1/3'), A(50, 130, 'Spin'), A(10, 420, 'Sprint 2/3'), A(50, 130, 'Spin'), A(10, 420, 'Sprint 3/3'), A(170, 130, 'Spin'),
+      ...set3015(1), A(180, 130, 'Rest'), ...set3015(2), A(180, 130, 'Rest'), ...set3015(3), R(10, 50, 35, 'Cool-down')] },
 ];
 
 // ---- own workouts (Pro-Modus): built in the Training tab, stored in settings.myWorkouts as plain rows ----
@@ -112,7 +125,7 @@ export const pctAt = (st, into = 0) => st.pct2 == null ? st.pct : st.pct + (st.p
  *  hardNo / hardCount / nextHardNo, name, nextTarget / nextName / nextDur, totalLeft, countdown (whole s, last 3 s before a
  *  change, else 0), rampTo / nextRampTo (W at the end of a ramp step), steps: [{ dur, pct (height incl. offset), pct2, hard, label }] } */
 export function workoutState(w, t, ftp, o = {}) {
-  const hardAdj = o.hardAdj || 0, easyAdj = o.easyAdj || 0, rampIn = o.rampIn ?? 10, rampOut = o.rampOut ?? 5, steps = w.steps;
+  setFtp(ftp); const hardAdj = o.hardAdj || 0, easyAdj = o.easyAdj || 0, rampIn = o.rampIn ?? w.rampIn ?? 10, rampOut = o.rampOut ?? w.rampOut ?? 5, steps = w.steps; // short on / off sets bring their own short ramps
   const W0 = (st, into) => { const b = Math.round(pctAt(st, into) / 100 * ftp); return isHard(st) ? tunedTarget(st, b, hardAdj) : easyAdj && !st.free ? Math.max(50, b + easyAdj) : b; };
   // intervals are counted within their series ("VO2max 2/5" is 2 of 5; the openers before it are their own series of 3)
   const stem = x => (x?.label || '').replace(/\s*\d+\/\d+$/, ''), series = x => steps.filter(y => isHard(y) && stem(y) === stem(x));
@@ -138,7 +151,7 @@ export function workoutState(w, t, ftp, o = {}) {
 
 /** where in the program we are at time t (seconds since start) */
 export function workoutAt(w, t, ftp) {
-  let s = 0;
+  setFtp(ftp); let s = 0;
   for (let i = 0; i < w.steps.length; i++) {
     const st = w.steps[i];
     if (t < s + st.dur) return { i, step: st, next: w.steps[i + 1] || null, left: s + st.dur - t, target: Math.round(pctAt(st, t - s) / 100 * ftp), nextTarget: w.steps[i + 1] ? Math.round(w.steps[i + 1].pct / 100 * ftp) : null, done: false };

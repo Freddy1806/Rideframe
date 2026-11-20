@@ -7,7 +7,7 @@
 // button; no browser dialogs. Power source (Freddy 18.11. 11:34): trainer control, or a power meter only (pedals / crank,
 // Cycling Power Service) as pure data source while another app runs the trainer: never both, no ERG, no gradient then. The pure part (choices, which mode is on) is tested in Node (tools/ridesetup-test.mjs).
 import { esc } from './util.js';
-import { allWorkouts, workoutDuration, workoutSVG } from './workouts.js';
+import { allWorkouts, workoutDuration, workoutSVG, setFtp } from './workouts.js';
 
 if (typeof document !== 'undefined' && !document.querySelector('link[data-rs]')) { const l = document.createElement('link'); l.rel = 'stylesheet'; l.href = 'css/ridesetup.css'; l.dataset.rs = '1'; document.head.append(l); }
 
@@ -100,7 +100,7 @@ const press = (on, extra = '') => `aria-pressed="${on}"${on ? ' class="rsopt on"
 /** the setup in the pause overlay; focus = index of the button to stand on (the pad's menu index) */
 export function openSetup(r, focus = 0) {
   const box = r.q('#pauseOverlay .box'); if (!box) return;
-  const mode = modeOf(r), shift = shiftOf(r), src = sourceOf(r), pm = src === 'pm', t = r.state.trainer, cur = r.workout?.id || '', ftp = r.ftp || 200;
+  const mode = modeOf(r), shift = shiftOf(r), src = sourceOf(r), pm = src === 'pm', t = r.state.trainer, cur = r.workout?.id || '', ftp = r.ftp || 200; setFtp(ftp);
   const list = workoutChoices();
   box.classList.add('rsbox');
   box.innerHTML = `<div class="label">Ride setup · ${esc(r.route?.name || '')}</div><h2 class="display">Workout &amp; mode</h2>
@@ -162,7 +162,7 @@ const mmss = s => `${Math.floor(s / 60)}:${String(Math.round(s % 60)).padStart(2
 const durStep = (dur, d) => { const st = (d < 0 ? dur <= 120 : dur < 120) ? 15 : 60; return Math.max(15, Math.min(7200, dur + d * st)); };
 export function openAdjust(r, w, back = 0, rows = stepGroups(w.steps), focus = 0) {
   const box = r.q('#pauseOverlay .box'); if (!box) return;
-  const ftp = r.ftp || 200, W = p => Math.round(p / 100 * ftp), out = applyGroups(w, rows), total = out.steps.reduce((a, s) => a + s.dur, 0), warm = warmupRows(rows), warmOff = warm.length > 0 && warm.every(g => g.skip);
+  const ftp = r.ftp || 200; setFtp(ftp); const W = p => Math.round(p / 100 * ftp), out = applyGroups(w, rows), total = out.steps.reduce((a, s) => a + s.dur, 0), warm = warmupRows(rows), warmOff = warm.length > 0 && warm.every(g => g.skip);
   box.classList.add('rsbox');
   box.innerHTML = `<div class="label">Workout · adjust before it starts</div><h2 class="display rsah">${esc(w.name)}</h2>
     <div class="rsasum">${Math.round(total / 60)} min · FTP ${ftp} W<span class="rsmini rsabig">${out.steps.length ? workoutSVG(out, null, 44) : ''}</span></div>

@@ -3,7 +3,7 @@
 import { Trainer, HeartRate, BT_HELP } from './trainer.js';
 import { db, uid } from './db.js';
 import { fmtTime, fmtNum, esc, bestAvg, appHome } from './util.js';
-import { allWorkouts, workoutById, workoutAt, workoutDuration, workoutSVG, setMyWorkouts, isHard, tunedTarget, tuneAdj, fmtAdj } from './workouts.js';
+import { allWorkouts, workoutById, workoutAt, workoutDuration, workoutSVG, setMyWorkouts, isHard, tunedTarget, tuneAdj, fmtAdj, setFtp } from './workouts.js';
 import { defaultParams, step } from './physics.js';
 import { stravaStatus, stravaConnect, stravaUpload } from './stravaup.js';
 import { stravaExport } from './tcx.js';
@@ -55,7 +55,7 @@ async function saveSettings() {
 }
 
 // ---------------- metrics ----------------
-const ftp = () => S.ftp || 200;
+const ftp = () => { const f = S.ftp || 200; setFtp(f); return f; };
 const avgP = () => R.pw.length ? R.pw.reduce((a, b) => a + b, 0) / R.pw.length : 0;
 const NP = () => R.npN ? Math.pow(R.np4 / R.npN, 0.25) : avgP();
 const IF = () => NP() / ftp();

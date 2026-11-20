@@ -69,7 +69,7 @@ test('repeat ×N and collapse are each other\'s inverse', () => {
   assert.deepEqual(MW.repeatBlock(s, 2, 1, 3), s, 'from > to: unchanged');
 });
 test('a built-in becomes a draft and back: the ride runs it through workoutAt unchanged', () => {
-  for (const bw of WORKOUTS) {
+  for (const bw of WORKOUTS.filter(w => !w.coach)) { // coach workouts are in absolute watts and seconds, not a draft in % FTP and minutes
     const d = MW.fromBuiltin(bw), v = MW.validateWorkout(d); assert.ifError(v.error); assert.equal(d.base, bw.id);
     const r = MW.toRide(v.w); assert.deepEqual(r.steps.map(x => [x.dur, x.pct, x.pct2 ?? null, !!x.free]), bw.steps.map(x => [x.dur, Math.min(MW.LIM.maxPct, x.pct), x.pct2 ?? null, !!x.free]), bw.id); // the ramp test's last steps (> 200 %) are capped
     if (bw.id === 'ramp') continue;
