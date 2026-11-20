@@ -99,3 +99,8 @@ button.wcrow { width: 100%; text-align: left; color: inherit; }
 #handy .lvinvite { border-radius: 14px; margin-bottom: 10px; }
 .frstack .frface .frdot { z-index: 2; } /* the dot stays on top of the next face */
 .hmyw { display: flex; flex-direction: column; gap: 8px; } .hmyw .ksec { margin-bottom: 0; }
+
+/* Strava not (fully) connected: say so on the start page (owner 20.11.) */
+.hstrava { display: flex; flex-direction: column; gap: 3px; width: 100%; text-align: left; padding: 12px 14px; border-radius: 12px; border: 1px solid var(--accent); background: color-mix(in srgb, var(--accent) 12%, transparent); color: inherit; }
+.hstrava b { font-size: 15px; font-weight: 900; } .hstrava small { font-size: 12.5px; color: var(--muted); line-height: 1.3; }
+.hstrava { position: relative; } .hstrava i { position: absolute; top: 4px; right: 6px; width: 36px; height: 36px; display: grid; place-items: center; font-style: normal; color: var(--muted); }
