@@ -476,6 +476,8 @@ function history() {
     </div>
     <h2 class="section">Intervals over time</h2>
     <div id="ivHist"></div>
+    <h2 class="section">Heart rate vs power</h2>
+    <div id="hrpHist"></div>
     <h2 class="section">All rides</h2>
     ${rides.length ? `<table class="table">
       <tr><th class="label">Date</th><th class="label">Route</th><th class="label">Time</th><th class="label">Distance</th><th class="label">Climb</th><th class="label">Avg W</th><th class="label">Avg km/h</th><th class="label"></th><th class="label"></th></tr>
@@ -483,6 +485,7 @@ function history() {
     </table>` : '<div class="empty">No rides yet. Pick a route and start riding.</div>'}
   </section>`;
   import('./ivview.js').then(m => m.mountIvHistory(main.querySelector('#ivHist'), rides, { kg: state.settings.riderKg })).catch(() => {}); // ivview.js: the ridden watts per interval kind
+  import('./hrpview.js').then(m => m.mountHrpHistory(main.querySelector('#hrpHist'), rides)).catch(e => console.warn('hrp', e)); // hrpview.js: heart rate vs power, recovery index over the rides of a workout
   wireDashboard(main, { state, saveSettings, toast, rerender: history,
     startTest: id => { state.settings.workout = id; saveSettings(); startRide(routeById('kueste60') ? 'kueste60' : 'demo'); },
     deleteRides: async list => { const { deleteRideRemote } = await import('./account.js'); let n = 0;
