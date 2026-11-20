@@ -64,7 +64,7 @@
 .owopt b { font-size: 15px; } .owopt span:last-child { color: #aaa; font-size: 12px; }
 .owopt.on { border-color: var(--accent); background: color-mix(in srgb, var(--accent) 18%, #141414); }
 .owopt.on .owarr { color: var(--accent); }
-.owfade { position: absolute; inset: 0; z-index: 60; display: grid; place-items: center; text-align: center; background: #0b0b0b; opacity: 0; transition: opacity .8s; pointer-events: none; }
+.owfade { position: absolute; inset: 0; z-index: 400; display: grid; place-items: center; text-align: center; background: #0b0b0b; opacity: 0; transition: opacity .8s; pointer-events: none; }
 .owfade.in { opacity: 1; }
 .owfade .display { font-size: clamp(40px, 6vw, 84px); margin: 10px 0; }
 .owfade p { color: #bbb; }
