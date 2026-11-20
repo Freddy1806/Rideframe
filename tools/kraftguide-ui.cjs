@@ -22,7 +22,7 @@ let fails = 0; const ok = (c, m) => { console.log(`${c ? '✓' : '✗'} ${m}`); 
     const p = await ctx.newPage(); p.on('pageerror', e => errs.push(e.message)); p.on('dialog', d => d.accept());
     await p.clock.install({ time: new Date('2026-11-20T08:00:00') });
     await p.goto(BASE + '/kraft.html'); await p.waitForSelector('#kNew'); await p.clock.pauseAt(new Date('2026-11-20T08:00:05')); // time moves only when the test says so
-    await p.evaluate(async () => { const { db } = await import('/js/db.js'); await db.kvSet('settings', { theme: 'dark', modeColors: true }); });
+    await p.evaluate(async () => { const { db } = await import('/js/db.js'); await db.kvSet('settings', { theme: 'dark' }); });
     await p.reload(); await p.waitForSelector('[data-guide]');
     const shot = async n => { if (SHOTS) await p.screenshot({ path: `${SHOTS}/${n}.jpg`, type: 'jpeg', quality: 88 }); };
     const accent = await p.evaluate(() => getComputedStyle(document.documentElement).getPropertyValue('--accent').trim());
