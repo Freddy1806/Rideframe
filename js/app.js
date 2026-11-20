@@ -26,6 +26,7 @@ import { allWorkouts, setMyWorkouts, workoutById, workoutDuration, workoutSVG, s
 import { loadShared, sharedFor, shareRide, importShared, groupModal } from './share.js';
 import { workoutOptions, wireRoutePick } from './myworkouts-ui.js';
 import { loadPersonal } from './myworkouts-store.js';
+import { loadCoach } from './coachworkouts.js';
 
 const $ = s => document.querySelector(s);
 const main = $('#main');
@@ -63,6 +64,7 @@ async function boot() {
   if (hasAcc && account()) await syncAccount(state).catch(e => console.warn('Konto-Abgleich:', e.message));
   setMyWorkouts(state.settings.myWorkouts); // the account may have brought own workouts from another device
   await loadPersonal(); // personal workouts (js/myworkouts-store.js): the account's, or this browser's when signed out
+  await loadCoach(); // coach workouts from coach/workouts.json on the host (js/coachworkouts.js): new ones without a new app version
   const params = new URLSearchParams(location.search);
   if (params.get('accent')) state.settings.accent = params.get('accent');
   applyAccent();

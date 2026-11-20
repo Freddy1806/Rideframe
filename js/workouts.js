@@ -100,8 +100,13 @@ export function defFrom(w) {
 }
 export function setMyWorkouts(defs = []) { MY.length = 0; for (const d of defs || []) if (d && d.id) MY.push(buildMy(d)); }
 export const PERSONAL = []; // personal workouts of the account (js/myworkouts-store.js), in the same shape as the built-ins
-export const allWorkouts = () => [...MY, ...PERSONAL, ...WORKOUTS];
-export const workoutById = id => MY.find(w => w.id === id) || PERSONAL.find(w => w.id === id) || WORKOUTS.find(w => w.id === id) || null;
+// coach workouts (js/coachworkouts.js): read at start from coach/workouts.json on the host, no app version needed; one with the id
+// of a built-in replaces it (so the file can correct e.g. c_30_15_3x13)
+export const COACH = [];
+/** the catalogue: coach workouts, then the built-ins they do not replace */
+export const catalog = () => COACH.length ? [...COACH, ...WORKOUTS.filter(w => !COACH.some(c => c.id === w.id))] : WORKOUTS.slice();
+export const allWorkouts = () => [...MY, ...PERSONAL, ...catalog()];
+export const workoutById = id => MY.find(w => w.id === id) || PERSONAL.find(w => w.id === id) || COACH.find(w => w.id === id) || WORKOUTS.find(w => w.id === id) || null;
 export const workoutDuration = w => w.steps.reduce((s, x) => s + x.dur, 0);
 
 /** live watt tuning in a workout (Freddy 17.11.: "turn the watts up when I can push more"): an offset in W on the hard
