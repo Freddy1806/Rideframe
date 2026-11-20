@@ -40,9 +40,13 @@ function render() {
     <h3 class="ksec">Intervals over time</h3>
     <section class="kcard ivcard" id="ivHist"></section>
 
+    <h3 class="ksec">Heart rate vs power</h3>
+    <section class="kcard ivcard" id="hrpHist"></section>
+
     <a class="hrow hlink slink" href="profil.html" style="--mc:var(--accent);--mcl:var(--accent)">${icon('user', 'rico')}<div><b>Fitness, fatigue &amp; form</b><small>Trend and estimates on your profile</small></div><i>›</i></a>`}`;
   el.querySelectorAll('[data-by]').forEach(b => b.onclick = () => { by = b.dataset.by; render(); });
   const iv = el.querySelector('#ivHist'); if (iv) import('./ivview.js').then(m => m.mountIvHistory(iv, D.acts.filter(a => a.ivs?.length), { kg: D.S.riderKg })).catch(() => {});
+  const hp = el.querySelector('#hrpHist'); if (hp) import('./hrpview.js').then(m => m.mountHrpHistory(hp, D.acts.filter(a => a.workoutId && !a.kraft))).catch(() => {});
 }
 /** the last 8 weeks (Mon–Sun), one stacked bar each: time or load points per sport */
 function weekBars(acts, P) {

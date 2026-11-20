@@ -1082,3 +1082,54 @@ img.face.big{width:96px;height:96px}
 /* the big Strava button on Rides & Records (owner 20.11.) */
 .stvbig { display: flex; flex-direction: column; align-items: flex-end; gap: 8px; } .stvbig .btn { height: 64px; padding: 0 30px; font-size: 15px; } .stvbig .hint { text-align: right; }
 @media (max-width: 760px) { .stvbig { align-items: stretch; width: 100%; } .stvbig .hint { text-align: left; } }
+
+/* ---- heart rate vs power: recovery index, sets, reps chart, last time (js/hrpview.js; owner 20.11.) ---- */
+.hrp { --good: #2fbf71; --bad: #e5484d; margin-top: 18px; text-align: left; background: var(--ink-2); border: 1px solid var(--line); border-radius: var(--radius); padding: 18px 20px; }
+.hrp.hrp-hint { color: var(--muted); font-size: 13px; font-weight: 700; padding: 12px 16px; }
+.hrp-head { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; flex-wrap: wrap; margin-bottom: 12px; }
+.hrp-head .label { color: var(--paper); }
+.hrp-note { font-size: 11px; color: var(--muted); }
+.hrp-top { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.15fr); gap: 28px; align-items: start; }
+.hrp-big { font-size: 64px; font-weight: 900; font-stretch: 115%; line-height: 1; margin: 6px 0 8px; font-variant-numeric: tabular-nums; color: var(--accent); }
+.hrp-big small { font-size: 16px; color: var(--muted); margin-left: 4px; font-weight: 700; }
+.hrp-big.off { color: var(--muted); }
+.hrp-why { font-size: 13px; color: var(--muted); margin: 0 0 8px; }
+.hrp-at { display: flex; align-items: baseline; gap: 6px; flex-wrap: wrap; font-size: 12px; color: var(--muted); margin-bottom: 12px; font-variant-numeric: tabular-nums; }
+.hrp-at b { font-size: 18px; color: var(--paper); font-weight: 800; } .hrp-at small { margin-right: 12px; }
+.hrp-part { margin-top: 10px; }
+.hrp-pn { display: flex; align-items: baseline; gap: 8px; font-size: 12px; font-weight: 700; }
+.hrp-pn span { flex: 1; } .hrp-pn b { font-variant-numeric: tabular-nums; } .hrp-pn small { color: var(--muted); font-weight: 600; min-width: 74px; text-align: right; }
+.hrp-bar { height: 5px; background: var(--line); border-radius: 3px; margin: 5px 0 4px; overflow: hidden; }
+.hrp-bar i { display: block; height: 100%; background: var(--accent); border-radius: 3px; }
+.hrp-part p { margin: 0; font-size: 12px; line-height: 1.4; color: var(--muted); }
+.hrp-part p b { color: var(--paper); }
+.hrp-right { min-width: 0; }
+.dchart.hrp-chart .ax { font-size: 11px; }
+.dchart .hrp-l { fill: none; stroke: var(--paper); stroke-width: 1.8; stroke-linejoin: round; stroke-linecap: round; }
+.dchart .hrp-l.now { stroke: var(--accent); stroke-width: 2.4; }
+.dchart .hrp-d { fill: var(--paper); } .dchart .hrp-d.now { fill: var(--accent); }
+.dchart .hrp-wbar { fill: var(--paper); opacity: .07; }
+.dchart .hrp-lab { fill: var(--muted); font-size: 11px; font-weight: 800; } .dchart .hrp-lab.now { fill: var(--accent); }
+.hrp-cap { display: flex; flex-wrap: wrap; gap: 4px 14px; font-size: 11px; font-weight: 700; color: var(--muted); margin: 2px 0 0; }
+.hrp-cap span { display: inline-flex; align-items: center; gap: 6px; }
+.hrp-cap .sw { display: inline-block; width: 14px; height: 3px; border-radius: 2px; background: var(--accent); } .hrp-cap .sw.w { height: 8px; width: 8px; background: var(--paper); opacity: .25; }
+.hrp-cmp { margin-top: 14px; }
+.hrp-cmp ul { list-style: none; margin: 6px 0 0; padding: 0; display: grid; gap: 4px; }
+.hrp-cmp li { font-size: 13px; font-weight: 700; font-variant-numeric: tabular-nums; }
+.hrp-cmp li.good { color: var(--good); } .hrp-cmp li.bad { color: var(--bad); }
+.hrp-cmp li small { color: var(--muted); font-weight: 700; margin-left: 6px; }
+.hrp-twrap { margin-top: 16px; overflow-x: auto; }
+.hrp-hist .hrp { margin-top: 0; }
+.hrp-hist .ivpick { display: flex; align-items: center; gap: 12px; margin-bottom: 16px; flex-wrap: wrap; }
+.hrp-hist .ivpick select { width: auto; max-width: 100%; background: var(--ink-2); color: var(--paper); border: 1px solid var(--line-2); border-radius: var(--radius); padding: 8px 10px; font: inherit; font-weight: 700; }
+.hrp-trendbox { margin-top: 20px; }
+.hrp-trendbox .ivcap { font-size: 12px; font-weight: 700; color: var(--muted); margin: 10px 0 4px; display: flex; align-items: center; gap: 8px; }
+.hrp-trendbox .ivcap .sw { display: inline-block; width: 14px; height: 3px; border-radius: 2px; background: var(--accent); } .hrp-trendbox .ivcap .sw.h { background: var(--muted); }
+.finish .hrp { background: rgba(20,20,20,.7); }
+@media (max-width: 760px) {
+  .hrp { padding: 14px; }
+  .hrp-top { grid-template-columns: minmax(0, 1fr); gap: 16px; }
+  .hrp-big { font-size: 52px; }
+  .hrp-tbl .ivx { display: none; }
+}
+.ivcard .hrp { background: none; border: 0; padding: 0; }

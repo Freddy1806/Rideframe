@@ -23,6 +23,7 @@ import { findSegments, segmentBests, segmentLast, SEG_KIND } from './segments.js
 import { testResult } from './stats.js';
 import { Wizard, WIZ } from './wizard.js';
 import { intervalRecords } from './ivhistory.js';
+import { hrpForRide } from './hrpower.js';
 import { hardWindow, wizardGate, challengeGate, summonGap, wzOf, friendCalls, friendsLine } from './ivgate.js';
 import { planEagleAny, eagleGate, moveEagle, othersBusy } from './eaglegate.js';
 import { Music, Coach } from './music.js';
@@ -1284,13 +1285,18 @@ export class RideSession {
 
   _rideRecord(complete) {
     const pw = this.samples.map(s => s[2]);
-    return {
+    return this._hrpRec({
       id: uid(), routeId: this.route.id, date: Date.now(), complete,
       duration: Math.round(this.elapsed), distance: Math.round(this._ridden()), laps: this.laps > 1 ? this._lapRows() : undefined, manLaps: this.manLaps?.length ? [...this.manLaps, this._manRow()] : undefined, segs: this.segDone.length ? this.segDone.map(({ id, t, w }) => ({ id, t, w })) : undefined, lapMarks: this._marks(), ivs: this._intervals(), gain: Math.round(this.gainAcc), startD: Math.round(this.startD), workout: this.workout?.name || this._wName || undefined, workoutId: this._wId || undefined, ...this._adjRec(), ...this._ergRec(),
       avgPower: pw.length ? Math.round(pw.reduce((a, b) => a + b, 0) / pw.length) : 0,
       maxPower: Math.max(0, ...pw), best5: bestAvg(pw, 300), best20: bestAvg(pw, 1200),
       samples: this.samples, jumps: this._jumps?.length ? this._jumps : undefined, challenges: this.ch?.stats.offered ? { ...this.ch.stats } : undefined, wizard: this.wiz?.was || (this.wiz?.state === 'hell' ? 'hell' : this.wiz?.state === 'fly' ? 'fly' : undefined),
-    };
+    });
+  }
+  /** heart rate vs power of a workout ride (js/hrpower.js): worked out once from the samples, only the results are added */
+  _hrpRec(rec) {
+    if (this._wDef && rec.samples?.length) try { const h = hrpForRide(rec, this._wDef, { t0: this._wT0 || 0, ftp: this.ftp }); if (h) rec.hrp = h; } catch (e) { console.warn('hrp', e); }
+    return rec;
   }
 
   _adjRec() { // the watt offsets: intervals final and time-weighted over the hard intervals, easy parts final; kept only when not 0
@@ -1464,6 +1470,7 @@ export class RideSession {
       </div>
       ${this._segSummary()}
       <div id="fIvs"></div>
+      <div id="fHrp"></div>
       ${rec.manLaps ? `<div class="chsum manlaps" style="text-align:left"><div class="label" style="margin-bottom:6px">Your laps</div>${rec.manLaps.map((l, i) => `<div style="display:grid;grid-template-columns:28px 1fr 1fr 1fr;gap:8px;font-variant-numeric:tabular-nums"><span>${i + 1}</span><span>${fmtTime(l.t)}</span><span>${fmtKm(l.d)} km</span><b>${l.w} W</b></div>`).join('')}</div>` : ''}
       ${rec.erg ? '<div class="chsum">Workout (ERG) · the trainer held the target watts</div>' : ''}
       ${rec.wAdj || rec.wAdjAvg ? `<div class="chsum">Intervals ${fmtAdj(rec.wAdj)}${rec.wAdjAvg !== rec.wAdj ? ` · average ${fmtAdj(rec.wAdjAvg)}` : ''} ${rec.wAdjE ? ` · easy parts ${fmtAdj(rec.wAdjE)}` : ''} · targets tuned live</div>` : rec.wAdjE ? `<div class="chsum">Easy parts ${fmtAdj(rec.wAdjE)} · targets tuned live</div>` : ''}
@@ -1476,6 +1483,7 @@ export class RideSession {
     if (rec.ivs?.length) import('./ivview.js').then(async m => { const box = o.querySelector('#fIvs'); if (!box) return; // the ridden intervals, then "Last time …" per set
       box.innerHTML = m.ivSummaryHTML(rec); const rides = await db.all('rides').catch(() => []);
       box.innerHTML = m.ivSummaryHTML(rec, m.ivCompare(rec, rides, this.state.settings.riderKg)); }).catch(() => {});
+    if (rec.hrp) import('./hrpview.js').then(async m => m.mountHrpRide(o.querySelector('#fHrp'), rec, await db.all('rides').catch(() => []))).catch(() => {}); // heart rate vs power, recovery index, "last time"
     o.querySelector('#fDone').onclick = () => this._close(true);
     wireStory(o, this._storySum); // Wizard points: "?", the shop, the strength set for extra points (Freddy 13.11.)
     o.querySelector('#fFtp')?.addEventListener('click', async e => { // fitness test: take the new FTP, the ride remembers it as a test
