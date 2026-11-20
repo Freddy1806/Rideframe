@@ -31,6 +31,7 @@ function render() {
       <button class="ppill ${acc ? 'on' : ''}" id="hAcc"><i></i><span class="pname">${acc ? esc(acc.name) : 'Sign in'}</span></button>
       <button class="pgear" id="hSet" title="Settings" aria-label="Settings">${icon('gear', 'gico')}</button></header>
     <div id="hLive" class="live"></div>
+    ${stv?.configured && (stv.connected ? !stv.canImport : !stvHide()) ? `<button class="hstrava" id="hStrava">${stv.connected ? '' : '<i id="hStravaX" role="button" aria-label="Hide">✕</i>'}<b>${stv.connected ? 'Strava import is off' : 'Strava is not connected'}</b><small>${stv.connected ? 'Tap to reconnect and allow reading your activities, then everything you upload to Strava shows up here.' : 'Tap to connect, then everything you upload to Strava shows up here.'}</small></button>` : stvMsg ? `<p class="hint" role="status">${esc(stvMsg)}</p>` : ''}
     ${installEvt && !window.__rfNative ? `<button class="btn ghost" id="hInstall">Install as app</button>` : ''}
     <section class="hweek"><div class="hwhead"><span class="label">This week</span><span class="wdl">▲▼ vs last week</span></div><div class="kstats">
       ${weekStat(nb(R2.cur), nb(R2.prev), 'Rides')}${weekStat(nr(R2.cur), nr(R2.prev), 'Runs')}${weekStat(km(R2.cur), km(R2.prev), 'km')}${weekStat(K2.cur.length, K2.prev.length, 'Strength')}</div></section>
@@ -136,7 +137,11 @@ function settings() {
   };
   s.onclick = e => { if (e.target === s) s.remove(); }; draw();
 }
+let stv = null, stvMsg = ''; const stvHide = () => { try { return localStorage.getItem('rf-strava-hint') === 'off'; } catch { return false; } };
 await load(); render(); nav('home');
 if (acc) import('./account.js').then(async a => { const n = kraft.length; await a.syncKraft(); await load(); if (kraft.length !== n) render(); }).catch(() => {}); // strength from the watch or another device
-import('./actimport.js').then(m => m.autoImport(S)).then(async r => { if (r?.added) { await load(); render(); } }).catch(() => {}); // new Strava activities, at most every 30 min
+const stravaIn = async force => { const m = await import('./actimport.js'), r = force ? await m.importStrava() : await m.autoImport(S); if (r?.added) { stvMsg = r.text.replace('.', ' from Strava.'); await load(); render(); } else if (force && r?.text) { stvMsg = r.text; render(); } };
+import('./stravaup.js').then(async su => { stv = await su.stravaStatus(); if (stv.configured && (!stv.connected || !stv.canImport)) render(); else stravaIn(false); }).catch(() => {}); // new Strava activities, at most every 5 min
+document.addEventListener('click', async e => { if (e.target.closest?.('#hStravaX')) { try { localStorage.setItem('rf-strava-hint', 'off'); } catch {} return render(); } if (!e.target.closest?.('#hStrava')) return; const su = await import('./stravaup.js'), ok = await su.stravaConnect(!!stv?.connected); stv = await su.stravaStatus(); render(); if (ok && stv.canImport) stravaIn(true); });
+document.addEventListener('visibilitychange', () => { if (!document.hidden && stv?.canImport) stravaIn(false).catch(() => {}); }); // back from the Strava app: look again
 if ('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js').catch(() => {});

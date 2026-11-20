@@ -137,12 +137,12 @@ async function run({ onState = () => {} } = {}) {
   const n = P.add.length, tail = limited ? ' Strava limit reached, the rest follows later.' : err ? ' ' + err : '';
   return { added: n, linked: P.link.length, error: !n && !!err, text: (n ? `${n} new ${n === 1 ? 'activity' : 'activities'}.` : 'Nothing new.') + tail };
 }
-/** on app open: at most every 30 minutes, only with the read permission and unless switched off in the settings */
+/** on app open: at most every 5 minutes, only with the read permission and unless switched off in the settings */
 export async function autoImport(S = {}) {
   if (S.stravaImport === false) return null;
   try {
     const { db } = await import('./db.js'), mem = (await db.kvGet(KV).catch(() => null)) || {};
-    if (Date.now() - (mem.at || 0) < 30 * 60e3) return null;
+    if (Date.now() - (mem.at || 0) < 5 * 60e3) return null;
     const st = await (await import('./stravaup.js')).stravaStatus(); if (!st.connected || !st.canImport) return null;
     return await importStrava();
   } catch { return null; }
