@@ -1078,3 +1078,7 @@ img.face.big{width:96px;height:96px}
   .shoplist { overflow: visible; padding: 0; }
   .shopgrid { grid-template-columns: minmax(0, 1fr); }
 }
+
+/* the big Strava button on Rides & Records (owner 20.11.) */
+.stvbig { display: flex; flex-direction: column; align-items: flex-end; gap: 8px; } .stvbig .btn { height: 64px; padding: 0 30px; font-size: 15px; } .stvbig .hint { text-align: right; }
+@media (max-width: 760px) { .stvbig { align-items: stretch; width: 100%; } .stvbig .hint { text-align: left; } }
