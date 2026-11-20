@@ -168,6 +168,7 @@ function library() {
   main.innerHTML = `
   <section class="view">
     <div id="live" class="live" aria-live="polite"></div>
+    <div id="islandHero"></div>
     <div class="view-head">
       <div>
         <div class="label">Library</div>
@@ -200,6 +201,16 @@ function library() {
   main.querySelectorAll('[data-wtab]').forEach(b => b.onclick = () => go('training'));
   showBoard();
   showLive();
+  showIsland();
+}
+
+/* the open-world island big on the start page (Freddy 20.11.): who is where, click to join, click a place to start there */
+async function showIsland() {
+  const el = $('#islandHero'); if (!el || new URLSearchParams(location.search).has('noinsel') || !routeById('insel_runde')) return;
+  const [{ islandHero }, live, prof] = await Promise.all([import('./islandhero.js'), import('./live.js'), import('./profiles.js').catch(() => null)]);
+  islandHero(el, { routeById, startRide, liveJoin, signedIn: () => !!account(),
+    friendsNow: async () => { const F = await live.friendsNow(); return F?.friends ? F.friends.filter(f => f.state === 'riding' && f.ride).map(live.asRider) : null; },
+    face: r => live.avatar(r, prof?.faceImg), fillFaces: el => prof?.fillFaces(el) });
 }
 
 /* "Riding now" (owner 17.11.: "he is online, I can just join") and the friends with a green dot ("like on the PlayStation"):
