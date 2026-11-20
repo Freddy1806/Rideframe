@@ -222,7 +222,7 @@ export class RideSession {
     this._initWizard();
     this._initEagle();
     this._initStory();
-    if (!this.group) this.player?.events?.surprises?.startArch?.(this.d + 14); // ride off under the START arch
+    if (!this.group && !this._resumed) this.player?.events?.surprises?.startArch?.(this.d + 14); // ride off under the START arch
     this.running = true; this.last = performance.now();
     this._startPresence();
     this._wireDraft();
@@ -1202,7 +1202,7 @@ export class RideSession {
     this.paused = true; this.player.pause(); this.music?.pause(); this._saveDraft();
     this.q('#pauseOverlay')?.remove();
     const o = document.createElement('div'); o.className = 'paused'; o.id = 'pauseOverlay';
-    o.innerHTML = `<div class="box"><div class="label">${fmtKm(this.d)} km · ${fmtTime(this.elapsed)}</div><h2 class="display">Pause</h2>
+    o.innerHTML = `<div class="box"><div class="label">${fmtKm(this.lapOff + this.d)} km · ${fmtTime(this.elapsed)}</div><h2 class="display">Pause</h2>
       <div class="row-actions padmenu"><button class="btn" id="pResume">Resume</button><button class="btn ghost" id="pOpts">Options</button><button class="btn ghost" id="pSetup">Workout &amp; mode</button><button class="btn ghost" id="pSet">Settings</button>${this.state.trainer.connected ? '' : `${this.state.trainer.device ? '<button class="btn ghost" id="pRejoin">Reconnect trainer</button>' : ''}<button class="btn ghost" id="pConn">${this.state.trainer.device ? 'Choose trainer …' : 'Connect trainer'}</button>`}${this.state.hr?.connected || !(this._hadHr || this.state.hr?.device || rememberedDevice('hr')) ? '' : '<button class="btn ghost" id="pHr">Connect heart rate</button>'}<button class="btn ghost" id="pSave">Finish &amp; save</button><button class="btn ghost" id="pDiscard">Discard</button>${this.group?.voice?.on ? '<button class="btn ghost" id="pVoice">Voice chat off</button>' : ''}${this.group ? this.group.others().filter(r => r.riding || r.d > 0).slice(0, 4).map((r, i) => `<button class="btn ghost" data-jump="${i}">⇢ Jump to ${esc(r.name)}</button>`).join('') : this.autopilot ? '' : '<button class="btn ghost" id="pGroup">Open group</button>'}${this.presence?.on ? '<button class="btn ghost" id="pInvite">Invite friends</button>' : ''}</div>
       <div class="hint pad-hint" style="margin-top:12px;opacity:.7">🎮 D-pad to choose · A ok · B back</div></div>`;
     this.el.append(o);

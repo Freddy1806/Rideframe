@@ -153,6 +153,7 @@ const FAKE = ({ fails, watts }) => {
     await p.goto(BASE + URL_Q + '&view=ride&open=H-L');
     await p.waitForFunction(() => window.__ride?.running && window.__ride.ow && !document.querySelector('.countdown'), null, { timeout: 300000 });
     await p.evaluate(FAKE, { fails: 0, watts: 240 }); await p.evaluate(() => window.__ride.state.trainer.use(window.__fake));
+    ok(await p.evaluate(() => !window.__ride.workout), 'the open world starts without the workout chosen on a route page before (30 / 15 from step 2)');
     await p.evaluate(() => { const r = window.__ride; r.eg = null; r.d = r.track.length - 25; });
     await p.waitForFunction(() => { const r = window.__ride; return r.ow.leg.a !== 'H' && !r.ow.busy && r.d > 5; }, null, { timeout: 300000 }); // on the next road
     await p.evaluate(() => { const r = window.__ride; r.elapsed += 40; r.d += 600; }); await p.waitForTimeout(1500);
@@ -165,6 +166,7 @@ const FAKE = ({ fails, watts }) => {
     await p.waitForFunction(() => window.__ride?.running && window.__ride.ow && document.querySelector('#pauseOverlay'), null, { timeout: 300000 }); await p.waitForTimeout(600);
     const o3 = await ow();
     ok(o3.route === 'insel_frei' && o3.a === o2.a && o3.b === o2.b && Math.abs(o3.d - o2.d) < 0.01 && Math.abs(o3.ridden - o2.ridden) < 0.01, `open world Continue: same road ${o3.a}-${o3.b}, same spot, ${(o3.ridden / 1000).toFixed(2)} km in all`, JSON.stringify(o3));
+    { const lb = await p.textContent('#pauseOverlay .label'), km = parseFloat(lb.replace(',', '.')); ok(Math.abs(km - (o3.ridden + (o3.ridden < 1e9 ? 0 : 0)) / 1000) < 0.6 && km > 10, `the pause card shows the km of the whole ride: "${lb}"`); }
     ok(Math.abs(o3.elapsed - o2.elapsed) < 0.01 && o3.samples === o2.samples && o3.dOff === o2.dOff && o3.paused, `time ${Math.round(o3.elapsed)} s, ${o3.samples} samples and the sun go on, paused`);
     await p.evaluate(FAKE, { fails: 0, watts: 240 }); await p.evaluate(() => window.__ride.state.trainer.use(window.__fake)); await p.waitForTimeout(300);
     await p.click('#pResume'); await p.waitForFunction(e => window.__ride.elapsed > e + 3, o2.elapsed, { timeout: 60000 }).catch(() => {}); // the island world is heavy in a software-GL test browser: wait for the ride clock, not the wall clock

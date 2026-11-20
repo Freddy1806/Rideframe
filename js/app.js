@@ -950,7 +950,7 @@ let session = null;
 async function startOpenWorld(a, b, at = 0, opts = {}) {
   const ow = await import('./openworld.js'), map = await ow.islandMap(), l = ow.legsFrom(map, a).find(x => x.b === b) || ow.legsFrom(map, a)[0]; if (!l) return;
   const r = await ow.legRoute(l, map); if (!r) return toast('The island did not load.', 4000);
-  BUILTIN.insel_frei = () => r; builtins.insel_frei = r; return startRide('insel_frei', { ...opts, ...(at > 0 ? { at } : {}) });
+  BUILTIN.insel_frei = () => r; builtins.insel_frei = r; return startRide('insel_frei', { free: true, ...opts, ...(at > 0 ? { at } : {}) });
 }
 async function startRide(id, opts = {}) {
   const route = routeById(id); if (!route) return;
@@ -960,7 +960,7 @@ async function startRide(id, opts = {}) {
   if (state.settings.ghost === 'last') ghost = rides.filter(r => r.complete)[0];
   let ghostName = '';
   if (state.settings.ghost?.startsWith('s:')) { ghost = (state.shared || []).find(r => 's:' + r.id === state.settings.ghost && r.routeId === id) || bestRide(id); ghostName = ghost?.rider || ''; }
-  const workout = opts.resume ? opts.resume.workout : opts.group ? null : workoutById(state.settings.workout); // a resumed ride: its own workout (personal / coach ones too)
+  const workout = opts.resume ? opts.resume.workout : opts.group || opts.free ? null : workoutById(state.settings.workout); /* free: the open world starts without the route page's workout (pick one in the ride: Workout & mode) */ // a resumed ride: its own workout (personal / coach ones too)
   const keep = state.settings.resume?.[id]; // island: go on where you stopped last time (ride.js _keepPlace)
   if (keep && !opts.resume && !opts.group && !opts.at && !opts.autopilot && keep.d > 300 && keep.d < route.track.length - 400 && Date.now() - keep.at < 60 * 864e5) {
     const { ask } = await import('./myworkouts-ui.js');
