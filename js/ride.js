@@ -1294,7 +1294,8 @@ export class RideSession {
   _padMove(dir) {
     const bs = [...(this.q('#pauseOverlay')?.querySelectorAll('.padmenu button') || [])]; if (!bs.length) return;
     const rc = bs.map(b => { const r = b.getBoundingClientRect(); return { left: r.left, top: r.top, right: r.right, bottom: r.bottom }; });
-    const i = this._padI || 0, n = pickInDir(rc[i], rc, dir);
+    const i = this._padI || 0, list = !this.q('#pauseOverlay .rsbox') && (dir === 'up' || dir === 'down'); // pause menu and Options read as a list: ↓ / ↑ = next / previous (the row wraps since Settings / Connect trainer); the ride setup is a grid
+    const n = list ? -1 : pickInDir(rc[i], rc, dir);
     this._padFocus(n >= 0 ? n : i + (dir === 'up' || dir === 'left' ? -1 : 1));
   }
   _padFocus(i) { // highlight one menu button for controller navigation
