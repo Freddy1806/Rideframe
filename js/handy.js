@@ -11,6 +11,10 @@ import { nav } from './nav.js';
 
 const el = document.getElementById('handy'), $ = (s, r = document) => r.querySelector(s);
 let myW = [], S = {}, acc = null, rides = [], kraft = [], installEvt = null, D = null;
+// 23.11. (owner: "I don't know why it is not in"): with a paired watch, the watch setup is on the start page too. The last answer is kept
+// on this phone, so the card is there at once on the next start; the account's watch list (js/watchpair.js) checks it after each render.
+const WKEY = 'rf-watch-paired';
+let watches = (() => { try { const v = JSON.parse(localStorage.getItem(WKEY) || 'null'); return v && Array.isArray(v.l) ? v : null; } catch { return null; } })(); // { u: account name, l: [{ label }] }
 window.addEventListener('beforeinstallprompt', e => { e.preventDefault(); installEvt = e; render(); });
 
 async function load() {
@@ -36,6 +40,7 @@ function render() {
     <section class="hweek"><div class="hwhead"><span class="label">This week</span><span class="wdl">▲▼ vs last week</span></div><div class="kstats">
       ${weekStat(nb(R2.cur), nb(R2.prev), 'Rides')}${weekStat(nr(R2.cur), nr(R2.prev), 'Runs')}${weekStat(km(R2.cur), km(R2.prev), 'km')}${weekStat(K2.cur.length, K2.prev.length, 'Strength')}</div></section>
     <nav class="hmodes">${['ride', 'run', 'trainer', 'world', 'kraft'].map(card).join('')}</nav>
+    <div id="hWatch">${watchCard()}</div>
     <section class="hmyw"><h3 class="ksec">My workouts</h3>${myW.slice(0, 4).map(w => `<a class="hrow hlink" href="pure.html?workout=${encodeURIComponent(w.id)}" style="${mcs('trainer')}"><div><b>${esc(w.name)}</b><small>${w.min} min · indoor trainer</small></div><i>›</i></a>`).join('')}
       <a class="hall" href="pure.html?workout=">${myW.length > 4 ? `All ${myW.length} and the standard workouts ›` : myW.length ? 'All workouts · build a new one ›' : 'Build your own workout or pick a standard one ›'}</a></section>
     <a class="hrow hlink hremote" href="remote.html?auto" id="hRemote"><div><b>Remote</b><small>Control RIDEFRAME on your laptop with this phone</small></div><i>›</i></a>
@@ -43,8 +48,26 @@ function render() {
   wireRows(el, D, async () => { await load(); render(); });
   $('#hAcc').onclick = async () => { const a = await import('./account.js'); await a.accountModal({ settings: S }, async () => { await load(); render(); }); };
   $('#hSet').onclick = settings;
-  liveStrip();
+  liveStrip(); wireWatch(); checkWatch();
   const ib = $('#hInstall'); if (ib) ib.onclick = async () => { installEvt.prompt(); await installEvt.userChoice.catch(() => {}); installEvt = null; render(); };
+}
+/* the watch card on the start page: only signed in with a paired watch; opens the same editor as Settings → Watch */
+function watchCard() {
+  const l = acc && watches?.u === acc.name ? watches.l : []; if (!l.length) return '';
+  const w = l[0], more = l.length > 1 ? ` +${l.length - 1}` : '';
+  return `<button type="button" class="hrow hlink hwatch" id="hWcfg">${icon('watch', 'rico')}<div><b>Watch · Screens &amp; workouts</b><small>${esc(w.label || 'Garmin watch')}${more} · data fields per sport, workouts</small></div><i>›</i></button>`;
+}
+function wireWatch() { const b = $('#hWcfg'); if (b) b.onclick = () => import('./watchcfg.js').then(m => m.openEditor()); }
+let watchAsk = 0;
+function checkWatch() {
+  if (!acc) { if (watches) { watches = null; try { localStorage.removeItem(WKEY); } catch {} } return; }
+  if (Date.now() - watchAsk < 30e3) return; watchAsk = Date.now(); // a re-render does not ask the server again right away
+  import('./watchpair.js').then(m => m.pairedWatches()).then(l => {
+    if (!l) return; // offline / server error: keep what this phone knew
+    const v = { u: acc?.name, l: l.map(w => ({ label: w.label })) }, same = JSON.stringify(v) === JSON.stringify(watches);
+    watches = v; try { localStorage.setItem(WKEY, JSON.stringify(v)); } catch {}
+    const box = $('#hWatch'); if (!same && box) { box.innerHTML = watchCard(); wireWatch(); }
+  }).catch(() => {});
 }
 /* "Riding now" (17.11.) and the friends with a green dot: read-only here (the 3D ride is on the laptop): invites and riding friends
    with "Join on your laptop" + Copy link, a row of faces with dots that opens the list of every friend */
@@ -107,6 +130,7 @@ function settings() {
       <p class="phint">For indoor rides, the smart trainer, heart rate strap and Zwift Click connect on the Indoor page (Indoor trainer → Sensors). Bluetooth does not carry over from page to page, so connect them there.</p>
       <a class="hrow hlink" href="pure.html#sensors" id="tDev"><div><b>Indoor trainer: Sensors</b><small>Trainer, heart rate, Zwift Click</small></div><i>›</i></a>
       <p class="phint">Click v2: open it in the Zwift app once a day, or it drops after a minute.</p>
+      <h3 class="ksec" id="tWatchSec">Watch</h3>
       <div id="tWatch"></div><div id="tWcfg"></div><div id="tMcp"></div>
       <h3 class="ksec">More</h3>
       <a class="hrow hlink" href="profil.html"><div><b>My data</b><small>Weight, FTP, heart rate, export</small></div><i>›</i></a>
@@ -131,12 +155,12 @@ function settings() {
     s.querySelectorAll('[data-th]').forEach(b => b.onclick = () => { S.theme = b.dataset.th; applyTheme(S, null); save(); draw(); });
     $('#tMc', s).onchange = e => { S.oneColor = !e.target.checked; save(); draw(); render(); };
     s.querySelectorAll('[data-ac]').forEach(b => b.onclick = () => { S.accent = b.dataset.ac; applyTheme(S, null); save(); draw(); render(); });
-    import('./watchpair.js').then(m => m.watchRow($('#tWatch', s), async () => { s.remove(); const a = await import('./account.js'); await a.accountModal({ settings: S }, async () => { await load(); render(); }); })).catch(() => {});
+    import('./watchpair.js').then(m => m.watchRow($('#tWatch', s), async () => { s.remove(); watchAsk = 0; const a = await import('./account.js'); await a.accountModal({ settings: S }, async () => { await load(); render(); }); })).catch(() => {});
     import('./watchcfg.js').then(m => m.cfgRow($('#tWcfg', s))).catch(() => {}); // Watch screens & workouts (signed in only)
     import('./mcplink.js').then(m => m.mcpRow($('#tMcp', s))).catch(() => {}); // Claude connector (signed in only, tools/mcp-api.mjs)
-    $('#tOk', s).onclick = () => s.remove();
+    $('#tOk', s).onclick = () => { s.remove(); watchAsk = 0; checkWatch(); }; // a watch paired or removed in Settings shows on the start page right away
   };
-  s.onclick = e => { if (e.target === s) s.remove(); }; draw();
+  s.onclick = e => { if (e.target === s) { s.remove(); watchAsk = 0; checkWatch(); } }; draw();
 }
 let stv = null, stvMsg = ''; const stvHide = () => { try { return localStorage.getItem('rf-strava-hint') === 'off'; } catch { return false; } };
 await load(); render(); nav('home');

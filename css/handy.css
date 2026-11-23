@@ -111,3 +111,11 @@ button.wcrow { width: 100%; text-align: left; color: inherit; }
 .hstrava { display: flex; flex-direction: column; gap: 3px; width: 100%; text-align: left; padding: 12px 14px; border-radius: 12px; border: 1px solid var(--accent); background: color-mix(in srgb, var(--accent) 12%, transparent); color: inherit; }
 .hstrava b { font-size: 15px; font-weight: 900; } .hstrava small { font-size: 12.5px; color: var(--muted); line-height: 1.3; }
 .hstrava { position: relative; } .hstrava i { position: absolute; top: 4px; right: 6px; width: 36px; height: 36px; display: grid; place-items: center; font-style: normal; color: var(--muted); }
+/* 23.11.: the watch setup on the start page (only with a paired watch) and its row in Settings → Watch: a card in the accent colour */
+#hWatch { display: contents; }
+.hrow.hwatch, .hrow.wcrow, :root[data-theme="light"] .hrow:is(.hwatch, .wcrow) { --c: var(--accent); }
+.hwatch, button.wcrow { width: 100%; text-align: left; font: inherit; color: inherit; padding: 10px 12px; border-radius: 14px; background: var(--ink-2); border: 1px solid color-mix(in srgb, var(--accent) 35%, var(--line)); }
+.hwatch:active, button.wcrow:active { transform: scale(.985); border-color: var(--accent); }
+.hwatch > i, button.wcrow > i { color: var(--accent); }
+button.wcrow { margin-top: 8px; }
+#wcSignedOut { margin-top: 6px; }

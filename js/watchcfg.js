@@ -8,7 +8,7 @@ import { account } from './account.js';
 const stravaHdr = () => { try { const k = localStorage.getItem('rf_strava_key'); return k ? { 'X-Strava-Key': k } : {}; } catch { return {}; } };
 import { CATALOG } from './kraftlib.js';
 import { STRAVA } from './sports.js';
-import { MODES } from './theme.js';
+import { MODES, icon } from './theme.js';
 import { FIELDS, MORE, TOP, LIM, MAX_PAGES, MAX_FIELDS, MAX_WORKOUTS, MAX_ITEMS, defaults, validate, labelOf } from './watchfields.js';
 import { FACES, tint, drawPage, pageDots, recRing, paintFace } from './watchdraw.js';
 
@@ -55,11 +55,12 @@ async function exercises() {
 }
 const exOf = k => exList.find(e => e.k === k) || { k, n: k, t: 'w', g: '' };
 
-/** the row in Settings → Devices: only signed in (signed out, the Garmin watch row above asks to sign in) */
+/** the row in Settings → Watch: signed in it opens the editor; signed out one line says what can be set up here after signing in
+ *  (23.11.: the owner did not find it; the start page also has it once a watch is paired, js/handy.js) */
 export function cfgRow(box) {
   if (!box) return;
-  if (!account()) { box.innerHTML = ''; return; }
-  box.innerHTML = `<button class="hrow hlink wcrow" id="wcOpen"><div><b>Watch screens & workouts</b><small>Data pages, workouts, more sports</small></div><i>›</i></button>`;
+  if (!account()) { box.innerHTML = '<p class="phint" id="wcSignedOut">After signing in, you set up the watch screens (data fields per sport) and workouts here.</p>'; return; }
+  box.innerHTML = `<button class="hrow hlink wcrow" id="wcOpen">${icon('watch', 'rico')}<div><b>Watch screens & workouts</b><small>Data fields per sport, workouts, more sports</small></div><i>›</i></button>`;
   $('#wcOpen', box).onclick = () => openEditor();
 }
 

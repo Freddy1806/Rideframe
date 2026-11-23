@@ -409,7 +409,8 @@ module Draw {
             for (var i = 0; i < 2; i++) {
                 var on = F.focus == i;
                 // number fonts have digits only (VERIFY: which glyphs FONT_NUMBER_* carry), so "BW" takes a text font
-                var f = "BW".equals(val[i]) ? Graphics.FONT_LARGE : fontFor(dc, val[i], [Graphics.FONT_NUMBER_HOT, Graphics.FONT_NUMBER_MEDIUM, Graphics.FONT_NUMBER_MILD], mx[i].toNumber());
+                // a wide kg ("102.5") takes the next smaller font instead of being cut; text fonts last (js/watchsim.js SET_NUM)
+                var f = "BW".equals(val[i]) ? Graphics.FONT_LARGE : fontFor(dc, val[i], [Graphics.FONT_NUMBER_HOT, Graphics.FONT_NUMBER_MEDIUM, Graphics.FONT_NUMBER_MILD, Graphics.FONT_LARGE, Graphics.FONT_MEDIUM], mx[i].toNumber());
                 txt(dc, xs[i], S * 0.5, f, val[i], on ? P.acc : P.fg);
                 if (on) { dc.setColor(P.acc, Graphics.COLOR_TRANSPARENT); dc.fillRectangle(xs[i] - S * 0.12, S * 0.615, S * 0.24, S * 0.016 + 1); }
                 txt(dc, xs[i], S * 0.665, Graphics.FONT_XTINY, unit[i], on ? P.fg : P.lbl);
@@ -587,6 +588,11 @@ module Draw {
         var n = F.pages.size(), t = n.toString() + (n == 1 ? " data page" : " data pages") + (F.hasRoutePage() ? " + route" : "");
         if (F.sp.equals("other")) { txt(dc, c, S * 0.655, Graphics.FONT_XTINY, fit(dc, t, Graphics.FONT_XTINY, (S * 0.62).toNumber()), P.lbl); }
         else { // 19.11.: the route line; UP / DOWN or a tap on it opens the choice (RPICK). VERIFY on the device: the two XTINY lines do not touch
+            // js/watchsim.js READY: "2 pages, edit on phone", "2 pages + route, on phone" or the short line: the first that fits in full
+            // (", " for the "·" of js, like RPICK)
+            var np = n.toString() + (n == 1 ? " page" : " pages") + (F.hasRoutePage() ? " + route" : ""), mw = (S * 0.62).toNumber();
+            if (dc.getTextWidthInPixels(np + ", edit on phone", Graphics.FONT_XTINY) <= mw) { t = np + ", edit on phone"; }
+            else if (dc.getTextWidthInPixels(np + ", on phone", Graphics.FONT_XTINY) <= mw) { t = np + ", on phone"; }
             txt(dc, c, S * 0.635, Graphics.FONT_XTINY, fit(dc, t, Graphics.FONT_XTINY, (S * 0.62).toNumber()), P.lbl);
             var i = F.routeIndex(), l = F.routes, rt = "No route";
             if (i >= 0) { if (l != null) { rt = F.route != null ? "Route: " + strOf(l[i]["name"]) : "Loading route"; } }
