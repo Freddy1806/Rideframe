@@ -45,6 +45,18 @@ Wichtig: **Chrome oder Edge** verwenden (Safari kann kein Web Bluetooth). Immer 
 - GoPro-Höhendaten sind ungenau. Beim Import holt die App die Höhe aus einem Geländemodell (Open-Meteo, kostenlos). Ohne Internet wird die GPS-Höhe stark geglättet.
 - Andere Kameras: Video plus GPX-Datei zusammen auswählen (Start von Video und GPX sollte gleich sein).
 
+## Claude-Connector: Uhr-Workouts per Chat
+
+RIDEFRAME hat einen eigenen MCP-Server (`tools/mcp-api.mjs`, Streamable HTTP unter `/mcp/<token>`, ohne SDK). Damit baut Claude Kraft-Workouts direkt in dein Konto, z. B. „Mach mir ein Push-Workout mit 4 Übungen, orientier dich an meinen letzten Gewichten“. Sie erscheinen in der App (Strength → Watch workouts, Settings → Devices → Watch screens & workouts) und auf der Garmin-Uhr bei ihrer nächsten Synchronisierung.
+
+1. In RIDEFRAME angemeldet, **über die öffentliche https-Adresse** (z. B. den Tailscale-Funnel-Link): Settings → Devices → **Claude connector** → **Create link** → **Copy**. Der Link wird nur dieses eine Mal angezeigt.
+2. In Claude (claude.ai oder App): Settings → Connectors → **Add custom connector**, Namen eingeben (z. B. RIDEFRAME), Link einfügen, hinzufügen.
+3. Im Chat den Connector einschalten und loslegen.
+
+Werkzeuge: `list_exercises`, `list_workouts`, `create_workout`, `update_workout`, `delete_workout`, `get_strength_history`. Geprüft wird mit derselben Regel wie im Uhr-Editor (`js/watchfields.js`): bis 30 Workouts, je bis 20 Übungen, 1–10 Sätze, 1–100 Wiederholungen (bei Zeitübungen Sekunden), 0–500 kg in 0,25er-Schritten, 0–600 s Pause in 5er-Schritten. Unbekannte Übungsnamen werden abgelehnt (mit den ähnlichsten Treffern), nie geraten.
+
+**Wichtig:** Der Link ist ein Geheimnis. Wer ihn kennt, kann ohne weiteres Login deine Uhr-Workouts lesen, ändern und löschen und deine Krafttrainings lesen (sonst nichts: keine Fahrten, keine Kontodaten). Also nicht teilen oder posten. Bis zu 3 Links pro Konto; unter Settings → Devices → Claude connector → **Remove** ist ein Link sofort tot. Auf dem Server liegt nur ein SHA-256-Hash, je Link höchstens 60 Aufrufe pro Minute.
+
 ## Technik
 
 Reines HTML/CSS/JavaScript ohne Build-Schritt und ohne Abhängigkeiten.

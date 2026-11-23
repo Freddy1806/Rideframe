@@ -40,6 +40,13 @@ a.hrow { color: inherit; text-decoration: none; }
 .wcode { font-size: 46px; font-weight: 900; font-stretch: 110%; letter-spacing: .06em; font-variant-numeric: tabular-nums; line-height: 1.05; color: var(--paper); }
 .wleft { font-size: 13px; color: var(--muted); margin-top: 4px; } .wleft b { color: var(--paper); font-variant-numeric: tabular-nums; }
 .wsteps { text-align: left; margin: 12px 0 0 22px; font-size: 13.5px; line-height: 1.45; display: grid; gap: 4px; }
+/* Settings → Devices → Claude connector (js/mcplink.js) */
+.mrow .btn:disabled { opacity: .45; } .mfull { margin: 8px 0 2px; }
+.mnew { text-align: left; display: flex; flex-direction: column; gap: 10px; } .mnew .wsteps { margin-top: 0; } .mnew > .btn { align-self: flex-end; }
+.mlead { margin: 0; font-size: 13.5px; font-weight: 700; }
+.murl { display: flex; gap: 8px; min-width: 0; } .murl .btn { flex: none; }
+.murl input { flex: 1 1 auto; min-width: 0; font: 600 12.5px/1.2 ui-monospace, SFMono-Regular, Menlo, monospace; color: var(--paper); background: var(--ink-3, rgba(255,255,255,.06)); border: 1px solid var(--line-2); border-radius: 10px; padding: 9px 10px; }
+.mwarn { color: var(--paper); }
 /* Settings → Devices → Watch screens & workouts (js/watchcfg.js) */
 button.wcrow { width: 100%; text-align: left; color: inherit; }
 .wctabs { display: flex; } .wctabs button { flex: 1 1 auto; padding: 0 7px; } /* "Strength" takes the room it needs at 320 px */
