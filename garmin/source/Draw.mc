@@ -129,6 +129,11 @@ module Draw {
             dc.drawLine(x - s * 0.27, y + s * 0.16, x - s * 0.05, y - s * 0.16);
             dc.drawLine(x - s * 0.05, y - s * 0.16, x + s * 0.27, y + s * 0.16);
             dc.drawLine(x - s * 0.05, y - s * 0.16, x - s * 0.14, y - s * 0.3);
+        } else if (k.equals("trainer")) { // 23.11. (js/theme.js ICONS trainer): a dial on a stand
+            var q = s / 24.0;
+            dc.drawCircle(x, y - q * 2, q * 7);
+            dc.drawLine(x, y - q * 6, x, y - q * 2); dc.drawLine(x, y - q * 2, x + q * 3, y);
+            dc.drawLine(x - q * 8, y + q * 8, x + q * 8, y + q * 8);
         } else {
             var r = s * 0.09;
             dc.fillCircle(x - s * 0.3, y, r); dc.fillCircle(x, y, r); dc.fillCircle(x + s * 0.3, y, r);
@@ -169,6 +174,7 @@ module Draw {
         if (s == S_MORE) { P.acc = P.cOther; }
         else if (s == S_READY || s == S_REC || s == S_PAUSE || s == S_RPICK) { P.acc = P.sport(F.sp); }
         else if (s == S_RSUM) { var r = F.rsum, k = F.sp; if (r != null) { k = strOf(r["sp"]); } P.acc = P.sport(k); }
+        else if (s == S_TSCAN || s == S_TREC || s == S_TEND || s == S_TSUM) { P.acc = P.cRide; }
         var f = F.flash;
         if (f != null) {
             if ("lap".equals(f["k"])) { P.acc = P.sport(F.sp); lapFlash(dc, F, S, P, f); } else { prFlash(dc, S, P, f); }
@@ -191,6 +197,10 @@ module Draw {
         else if (s == S_PAUSE) { drawPause(dc, F, S, P, now); }
         else if (s == S_RSUM) { drawRsum(dc, F, S, P); }
         else if (s == S_RPICK) { drawRpick(dc, F, S, P); }
+        else if (s == S_TSCAN) { drawTScan(dc, F, S, P); }
+        else if (s == S_TREC) { drawTRec(dc, F, S, P, now); }
+        else if (s == S_TEND) { drawTEnd(dc, F, S, P); }
+        else if (s == S_TSUM) { drawTSum(dc, F, S, P); }
         else { drawHome(dc, F, S, P, sum); }
     }
     // RIDE in white, FRAME in the accent, centred on y
@@ -659,6 +669,110 @@ module Draw {
         var nm = sp.equals("other") ? strOf(s["name"]) : F.homeLabel(sp);
         txt(dc, c, S * 0.76, Graphics.FONT_SMALL, fit(dc, nm, Graphics.FONT_SMALL, (S * 0.6).toNumber()), P.acc);
         txt(dc, c, S * 0.86, Graphics.FONT_XTINY, "DONE", P.lbl);
+    }
+    /* ---- 23.11.: the indoor trainer (js/watchsim.js DRAW[SCR.TSCAN ... TSUM], TSCAN_LAY, TREC_LAY, TSUM_LAY, STATS_LAY) ---- */
+    // the trainers nearby (FTMS first) while searching, else the state of the one chosen with START to ride
+    function drawTScan(dc as Dc, F as Flow, S as Number, P as Palette) as Void {
+        var L = F.link, v = L.shown(), c = S / 2;
+        if (v == TL_SCAN || v == TL_OFF) {
+            var n = L.list.size();
+            if (n > 0) {
+                var sub = F.sel < n && L.list[F.sel]["ftms"] == true ? "Smart trainer, ERG" : "Power only, no ERG";
+                list(dc, F, S, P, F.listItems(), "INDOOR TRAINER", false, sub, "Searching, START connects");
+                return;
+            }
+            txt(dc, c, S * 0.12, Graphics.FONT_XTINY, "INDOOR TRAINER", P.dim);
+            dc.setColor(P.acc, Graphics.COLOR_TRANSPARENT); dc.fillCircle(c, S * 0.3, S * 0.07);
+            icon(dc, "trainer", c, S * 0.3, S * 0.085, P.ink);
+            txt(dc, c, S * 0.45, Graphics.FONT_MEDIUM, "Searching", P.fg);
+            txt(dc, c, S * 0.56, Graphics.FONT_XTINY, "Pedal a few turns", P.lbl);
+            txt(dc, c, S * 0.62, Graphics.FONT_XTINY, "to wake the trainer", P.lbl);
+            return;
+        }
+        dc.setColor(P.acc, Graphics.COLOR_TRANSPARENT); dc.fillCircle(c, S * 0.24, S * 0.1);
+        icon(dc, "trainer", c, S * 0.24, S * 0.12, P.ink);
+        txt(dc, c, S * 0.4, Graphics.FONT_SMALL, fit(dc, L.name, Graphics.FONT_SMALL, (S * 0.74).toNumber()), P.fg);
+        var a = "", col = P.fg, b = "", d = "";
+        if (v == TL_CONN) { a = "Connecting"; b = "Taking control"; }
+        else if (v == TL_READY) { a = "Connected"; col = P.good; b = L.ctl ? "ERG ready" : "Power only, no ERG"; }
+        else if (v == TL_REFUSED) { a = "Refuses control"; col = P.bad; b = "Another app controls it."; d = "Close it, or ride without ERG"; }
+        else if (v == TL_LOST) { a = "Lost, reconnecting"; col = P.bad; b = "Keeps trying"; }
+        txt(dc, c, S * 0.52, Graphics.FONT_MEDIUM, fit(dc, a, Graphics.FONT_MEDIUM, (S * 0.8).toNumber()), col);
+        txt(dc, c, S * 0.61, Graphics.FONT_XTINY, fit(dc, b, Graphics.FONT_XTINY, (S * 0.74).toNumber()), P.fg);
+        if (d.length() > 0) { txt(dc, c, S * 0.675, Graphics.FONT_XTINY, fit(dc, d, Graphics.FONT_XTINY, (S * 0.68).toNumber()), P.lbl); }
+        if (v == TL_READY || v == TL_REFUSED) { startHint(dc, S, P); pill(dc, c, S * 0.81, S * 0.42, S * 0.13, P.acc); txt(dc, c, S * 0.81, Graphics.FONT_SMALL, "START", P.ink); }
+        else { txt(dc, c, S * 0.81, Graphics.FONT_XTINY, "BACK: the list", P.lbl); }
+    }
+    // the ERG ride (like the Wahoo app's ERG page): the target big with - / + beside it, the trainer's power, cadence, heart rate below
+    function drawTRec(dc as Dc, F as Flow, S as Number, P as Palette, now as Number) as Void {
+        var R = F.tr;
+        if (R == null) { return; }
+        var L = F.link, v = L.shown(), paused = R.st != RS_RUN, c = S / 2;
+        recRing(dc, S, P, !paused); pageDots(dc, S, P, 2, R.pg);
+        if (R.pg != 0) { trStats(dc, S, P, R); return; }
+        txt(dc, c, S * 0.12, Graphics.FONT_NUMBER_MILD, clock(R.t), P.fg);
+        var warn = v == TL_LOST ? "LOST, RECONNECTING" : (v == TL_REFUSED ? "NO CONTROL, OTHER APP" : (!L.ctl ? "POWER ONLY, NO ERG" : (paused ? "PAUSED" : "")));
+        var wc = warn.length() == 0 ? P.lbl : (paused && L.ctl && v != TL_LOST && v != TL_REFUSED ? P.acc : P.bad);
+        txt(dc, c, S * 0.205, Graphics.FONT_XTINY, fit(dc, warn.length() > 0 ? warn : "TARGET W", Graphics.FONT_XTINY, (S * 0.6).toNumber()), wc);
+        var t = R.tgt.toString();
+        txt(dc, c, S * 0.36, fontFor(dc, t, [Graphics.FONT_NUMBER_THAI_HOT, Graphics.FONT_NUMBER_HOT, Graphics.FONT_NUMBER_MEDIUM], (S * 0.46).toNumber()), t, paused ? P.dim : P.acc);
+        var xs = [0.15, 0.85] as Array<Float>;
+        for (var i = 0; i < 2; i++) {
+            var x = S * xs[i], y = S * 0.36, h = S * 0.035;
+            dc.setColor(P.faint, Graphics.COLOR_TRANSPARENT); dc.fillCircle(x, y, S * 0.085);
+            dc.setColor(P.fg, Graphics.COLOR_TRANSPARENT); dc.setPenWidth(pw(S * 0.018));
+            dc.drawLine(x - h, y, x + h, y); if (i == 1) { dc.drawLine(x, y - h, x, y + h); } // drawn: the fonts may have no minus sign
+            dc.setPenWidth(1);
+        }
+        txt(dc, c, S * 0.5, Graphics.FONT_XTINY, "+/- " + R.step.toString() + " W", P.lbl);
+        dc.setColor(P.line, Graphics.COLOR_TRANSPARENT); dc.setPenWidth(pw(S * 0.006 > 2 ? S * 0.006 : 2));
+        dc.drawLine(S * 0.12, S * 0.56, S * 0.88, S * 0.56); dc.setPenWidth(1);
+        var vals = [L.livePw(now).toString(), L.liveCad(now).toString(), F.hr > 0 ? F.hr.toString() : "--"] as Array<String>, labs = ["WATTS", "RPM", "BPM"] as Array<String>;
+        for (var i = 0; i < 3; i++) {
+            var x = S * (0.27 + i * 0.23);
+            txt(dc, x, S * 0.655, fontFor(dc, vals[i], [Graphics.FONT_NUMBER_MILD, Graphics.FONT_MEDIUM, Graphics.FONT_SMALL], (S * 0.21).toNumber()), vals[i], P.fg);
+            if (i == 2) { heart(dc, x - S * 0.055, S * 0.735, S * 0.03, P.hr); }
+            txt(dc, x + (i == 2 ? S * 0.015 : 0), S * 0.735, Graphics.FONT_XTINY, labs[i], P.lbl);
+        }
+        if (paused) { pill(dc, c, S * 0.85, S * 0.44, S * 0.1, P.acc); txt(dc, c, S * 0.85, Graphics.FONT_XTINY, "START resume", P.ink); }
+        else { txt(dc, c, S * 0.85, Graphics.FONT_XTINY, "AVG " + R.avgPw().toString() + " W, " + rnd(R.kj).toString() + " kJ", P.lbl); }
+    }
+    // three numbers with labels in a row (x 0.27 / 0.5 / 0.73; js cols)
+    function cols(dc as Dc, S as Number, P as Palette, v as Array<String>, l as Array<String>, y as Float, yl as Float) as Void {
+        for (var i = 0; i < 3; i++) {
+            var x = S * (0.27 + i * 0.23);
+            txt(dc, x, S * y, fontFor(dc, v[i], [Graphics.FONT_MEDIUM, Graphics.FONT_SMALL, Graphics.FONT_XTINY], (S * 0.22).toNumber()), v[i], P.fg);
+            txt(dc, x, S * yl, Graphics.FONT_XTINY, l[i], P.lbl);
+        }
+    }
+    function orDash(n as Number) as String { return n > 0 ? n.toString() : "--"; }
+    // the ride's second page: this target's block (time, avg power), then the whole ride
+    function trStats(dc as Dc, S as Number, P as Palette, R as TRide) as Void {
+        var c = S / 2, bAvg = R.bN > 0 ? rnd(R.bSum.toFloat() / R.bN) : 0, sm = R.sum();
+        txt(dc, c, S * 0.17, Graphics.FONT_SMALL, "AT " + R.tgt.toString() + " W", P.acc);
+        txt(dc, c, S * 0.3, Graphics.FONT_NUMBER_MEDIUM, clock(R.t - R.bT0), P.fg);
+        txt(dc, c, S * 0.41, Graphics.FONT_XTINY, fit(dc, bAvg.toString() + " W avg at this target", Graphics.FONT_XTINY, (S * 0.7).toNumber()), P.lbl);
+        dc.setColor(P.line, Graphics.COLOR_TRANSPARENT); dc.setPenWidth(pw(S * 0.006 > 2 ? S * 0.006 : 2));
+        dc.drawLine(S * 0.12, S * 0.48, S * 0.88, S * 0.48); dc.setPenWidth(1);
+        cols(dc, S, P, [R.avgPw().toString(), R.pwMax.toString(), rnd(R.kj).toString()] as Array<String>, ["AVG W", "MAX W", "KJ"] as Array<String>, 0.58, 0.655);
+        cols(dc, S, P, [orDash(numOf(sm["np"])), orDash(numOf(sm["cad"])), orDash(numOf(sm["hr"]))] as Array<String>, ["NP", "RPM", "AVG HR"] as Array<String>, 0.75, 0.82);
+    }
+    // BACK on the ride: Resume, Stats page, Finish & save, Discard (with a confirm step)
+    function drawTEnd(dc as Dc, F as Flow, S as Number, P as Palette) as Void {
+        list(dc, F, S, P, F.listItems(), F.tConf ? "DISCARD RIDE?" : "INDOOR TRAINER", true, null, null);
+        var R = F.tr;
+        if (R != null) { txt(dc, S / 2, S * 0.82, Graphics.FONT_XTINY, fit(dc, clock(R.t) + ", " + R.tgt.toString() + " W" + (R.st != RS_RUN ? ", paused" : ""), Graphics.FONT_XTINY, (S * 0.6).toNumber()), P.lbl); }
+    }
+    // the summary: time, avg / max power, kJ, cadence, avg / max heart rate
+    function drawTSum(dc as Dc, F as Flow, S as Number, P as Palette) as Void {
+        var s = F.tsum, c = S / 2;
+        if (s == null) { return; }
+        txt(dc, c, S * 0.15, Graphics.FONT_SMALL, "SAVED", P.acc);
+        txt(dc, c, S * 0.3, Graphics.FONT_NUMBER_MEDIUM, clock(numOf(s["t"])), P.fg);
+        txt(dc, c, S * 0.395, Graphics.FONT_XTINY, "INDOOR RIDE", P.lbl);
+        cols(dc, S, P, [numOf(s["avgPw"]).toString(), numOf(s["maxPw"]).toString(), numOf(s["kj"]).toString()] as Array<String>, ["AVG W", "MAX W", "KJ"] as Array<String>, 0.52, 0.59);
+        cols(dc, S, P, [orDash(numOf(s["cad"])), orDash(numOf(s["hr"])), orDash(numOf(s["maxHr"]))] as Array<String>, ["RPM", "AVG HR", "MAX HR"] as Array<String>, 0.7, 0.77);
+        txt(dc, c, S * 0.88, Graphics.FONT_XTINY, "DONE", P.lbl);
     }
     function distTxt(m as Float) as String { return m >= 1000.0 ? (m / 1000.0).format("%.1f") + " km" : rnd(m).toString() + " m"; }
     // js/watchsim.js segScreen: the segment popup: warning before, live delta against the PR, the result for 5 s

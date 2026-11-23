@@ -4,11 +4,14 @@
 // 19.11.: the ready screen's Route choice: the paired watch's routes (Bearer), else the signed-in phone account's (X-RF-Token), else demo routes.
 // Drawn like the watch draws (dc.fillCircle / drawText / drawArc in garmin/source/Draw.mc), driven by the five buttons,
 // touch (tap, swipe) or the keyboard, with demo data or against the real API (tools/watch-api.mjs) after pairing.
+// 23.11.: the indoor trainer (TSCAN, TREC, TEND, TSUM) against a pretend KICKR CORE 2 (js/watchkickr.js; the panel: in range, another app).
 // 23.11.: the fenix 8 Solar face, drag scrolling on lists (pointermove), START held (button or Enter, 700 ms), the rest
 // status (last sets, NEXT), END / SAVEQ screens, paged summary; __watch.texts = the fenix 8 face's drawn texts (tests).
 import { newFlow, handle, SCR, curEx, setNo, restLeft, clock, sent, paired, setSetup, setConfig, setRoute, setRoutes, routeFace, routeInfo, recPages, homeItems, listItems, workouts, planItem, HOME, HOME_FIT, HOME_LAY, homeTop, holdPart, pausedTime, HOLD_S,
   LIST_LAY, DRAG_ROW, pickRows, doneOf, prefillOf } from './watchflow.js';
 import { compact, defaults, fieldText, labelOf, TOP } from './watchfields.js';
+import { shown, live as tLive } from './watchtrainer.js';
+import { fakeKickr } from './watchkickr.js';
 import { groupOf } from './sports.js';
 import { MODES } from './theme.js';
 import { FACES, TXT, tint, DEG, txt, pill, arc, line, dot, startHint, tri, heart, icon, SPORT_ICON, drawPage, pageDots, recRing, snap64 } from './watchdraw.js';
@@ -49,11 +52,12 @@ const live = () => mode === 'live';
 function boot() {
   const q = live() ? store.get('queue', []) : [];
   if (live()) { cfg = token ? store.get('cfg', null) : null; cfgFrom = cfg ? 'watch' : 'defaults'; }
-  const o = { queue: q, cfg: cfg || compact(defaults()), last: store.get('last', 'run') };
+  const o = { queue: q, cfg: cfg || compact(defaults()), last: store.get('last', 'run'), trainer: store.get('trainer', ''), tgt: store.get('tgt', 100) };
+  K.paired = false; K.sub = {}; K.scanning = false;
   F = live() ? newFlow(token ? store.get('setup', null) : null, { ...o, paired: !!token }) : newFlow(demoSetup(), o);
   sum = live() ? store.get('summary', null) : DEMO_SUM; net = ''; rsrc = 'demo'; demoAuto = demoNone = false;
   if (live() && token) { refresh(); push(); }
-  window.__watch = { get F() { return F; }, get mode() { return mode; }, get net() { return net; }, get cfgFrom() { return cfgFrom; }, get rsrc() { return rsrc; }, get texts() { return TXT.slice(); }, ev, segDemo, loadCfg };
+  window.__watch = { get F() { return F; }, get mode() { return mode; }, get net() { return net; }, get cfgFrom() { return cfgFrom; }, get rsrc() { return rsrc; }, get texts() { return TXT.slice(); }, get kickr() { return K; }, ev, segDemo, loadCfg };
   panel(); paint(); loadCfg();
 }
 /** the config: the paired watch asks with its token (GET /api/watch/config), the preview without a watch with the phone login */
@@ -126,6 +130,8 @@ function drain() {
     else if (o.k === 'setup') { if (live()) refresh(); else { setSetup(F, structuredClone(DEMO)); } }
     else if (o.k === 'exit') F.scr = SCR.GLANCE;
     else if (o.k === 'pair') pairNow(o.code);
+    else if (o.k === 'trainer') { store.set('trainer', F.link.want); store.set('tgt', F.tTgt); }
+    else if (o.k === 'saveAct' && o.sum.sp === 'trainer') net = `Indoor ride saved on the watch (${o.sum.avgPw} W avg). The watch sends it as a VirtualRide with power and cadence (POST /api/watch/activity), the preview does not.`;
     else if (o.k === 'saveAct') net = `${o.sum.sp === 'other' ? labelOf(o.sum.type) : HOME[o.sum.sp]} saved on the watch. The watch sends it (POST /api/watch/activity), the preview does not.`;
     else if (o.k === 'routes') loadRoutes();
     else if (o.k === 'tpl') { if (live()) { store.set('setup', F.setup); if (cfg) store.set('cfg', F.cfg); } else net = 'Saved as a workout on the watch. The watch sends it (POST /api/watch/workout), the demo does not.'; }
@@ -134,8 +140,12 @@ function drain() {
   if (F.last !== store.get('last', 'run')) store.set('last', F.last);
   autoRoute();
   if (live()) store.set('queue', F.queue);
+  radio();
   panel();
 }
+/** the pretend trainer: every radio action of the link (F.link.act) answered a moment later, like the watch's BleDelegate callbacks */
+const K = fakeKickr({ others: [{ name: 'Assioma DUO', cps: true, rssi: -74 }] });
+function radio() { for (const a of F.link.act.splice(0)) { const evs = K.handle(a); evs.forEach((e, i) => setTimeout(() => ev('ble', e), 90 + i * 40)); } }
 async function pairNow(code) {
   if (!live()) { mode = 'live'; store.set('mode', mode); }
   if (!near) { net = 'No phone nearby.'; paired(F, false); return paint(); }
@@ -145,7 +155,9 @@ async function pairNow(code) {
   } catch { net = 'Server not reachable.'; paired(F, false); }
   panel(); paint();
 }
-const ev = (e, arg) => { const was = F.scr, rid = F.routeId; handle(F, e, now(), arg); if (was === SCR.RPICK && F.scr === SCR.READY && rid != null && F.routeId == null) demoNone = true; drain(); paint(); };
+const ev = (e, arg) => { if (e === 'ble' && F.link.st === 'off') return; // an answer that comes after the trainer was let go
+ evIn(e, arg); };
+const evIn = (e, arg) => { const was = F.scr, rid = F.routeId; handle(F, e, now(), arg); if (was === SCR.RPICK && F.scr === SCR.READY && rid != null && F.routeId == null) demoNone = true; drain(); paint(); };
 
 /* ---- drawing: one function per screen, in watch pixels; the same numbers as Draw.mc ---- */
 function dumbbell(g, x, y, s, col) { g.strokeStyle = col; g.lineWidth = s * .13; g.lineCap = 'round'; g.beginPath(); const p = (a, b, c, d) => { g.moveTo(x + (a - 12) * s / 24, y + (b - 12) * s / 24); g.lineTo(x + (c - 12) * s / 24, y + (d - 12) * s / 24); };
@@ -250,6 +262,47 @@ const DRAW = {
     txt(g, 'DONE', S / 2, S * .86, S * .05, C.lbl, { w: 900 });
   },
   [SCR.MENU](g, S, C) { list(g, S, C, F.menu, F.sel, 'MENU', null, true); },
+  [SCR.TSCAN](g, S, C) { // 23.11.: the trainers nearby (FTMS first), or the state of the one chosen with START to ride
+    C = tint(C, 'ride'); const L = F.link, v = shown(L), T = TSCAN_LAY;
+    if (v === 'scan' || v === 'off') {
+      const n = L.list.length; if (n) return list(g, S, C, listItems(F), F.sel, 'INDOOR TRAINER', i => L.list[i].ftms ? 'Smart trainer · ERG' : 'Power only, no ERG', false, 'Searching · START connects');
+      txt(g, 'INDOOR TRAINER', S / 2, S * LIST_LAY.title, S * .045, C.dim, { w: 900, max: S * .56 }); dot(g, S / 2, S * .3, S * .07, C.acc); icon(g, 'trainer', S / 2, S * .3, S * .085, C.ink, 2.6);
+      { txt(g, 'Searching…', S / 2, S * .45, S * .085, C.fg, { w: 900 }); txt(g, 'Pedal a few turns', S / 2, S * .56, S * .05, C.lbl, { w: 800, max: S * .7 }); txt(g, 'to wake the trainer', S / 2, S * .62, S * .05, C.lbl, { w: 800, max: S * .7 }); }
+      return;
+    }
+    dot(g, S / 2, S * T.icon, S * .1, C.acc); icon(g, 'trainer', S / 2, S * T.icon, S * .12, C.ink, 2.6);
+    txt(g, L.name, S / 2, S * T.name, S * .065, C.fg, { w: 900, max: S * .74 });
+    const [a, col, b, c] = { conn: ['Connecting…', C.fg, 'Taking control', ''], ready: ['Connected', C.good, L.ctl ? 'ERG ready' : 'Power only, no ERG', ''],
+      refused: ['Refuses control', C.bad, 'Another app controls it.', 'Close it, or ride without ERG'], lost: ['Lost · reconnecting', C.bad, 'Keeps trying', ''] }[v] || ['', C.fg, '', ''];
+    txt(g, a, S / 2, S * T.st, S * .08, col, { w: 900, max: S * .8 }); txt(g, b, S / 2, S * T.l1, S * .048, C.fg, { w: 800, max: S * .74 }); if (c) txt(g, c, S / 2, S * T.l2, S * .042, C.lbl, { w: 800, max: S * .68 });
+    if (v === 'ready' || v === 'refused') { startHint(g, S, C); pill(g, S / 2, S * T.pill, S * .42, S * .13, C.acc); txt(g, 'START', S / 2, S * T.pill + 1, S * .062, C.ink, { w: 900 }); }
+    else txt(g, 'BACK: the list', S / 2, S * T.pill, S * .045, C.lbl, { w: 800 });
+  },
+  [SCR.TREC](g, S, C) { // 23.11.: like the Wahoo app's ERG page: the target big, - / + beside it, the trainer's power, cadence, heart rate below
+    C = tint(C, 'ride'); const R = F.tr; if (!R) return; const L = F.link, v = shown(L), d = tLive(L, now()), paused = R.st !== 'run', T = TREC_LAY;
+    recRing(g, S, C, !paused); pageDots(g, S, C, 2, R.pg);
+    if (R.pg) return trStats(g, S, C, R);
+    txt(g, clock(R.t), S / 2, S * T.time, S * .065, C.fg, { w: 900 });
+    const warn = v === 'lost' ? 'LOST · RECONNECTING' : v === 'refused' ? 'NO CONTROL · OTHER APP' : !L.ctl ? 'POWER ONLY · NO ERG' : paused ? 'PAUSED' : '';
+    txt(g, warn || 'TARGET W', S / 2, S * T.lab, S * .045, warn ? (paused && !(v === 'lost' || v === 'refused' || !L.ctl) ? C.acc : C.bad) : C.lbl, { w: 900, max: S * .6 });
+    txt(g, R.tgt, S / 2, S * T.tgt, S * .25, paused ? C.dim : C.acc, { w: 900, max: S * .46 });
+    for (const [x, t] of [[T.mx, '−'], [1 - T.mx, '+']]) { dot(g, S * x, S * T.tgt, S * T.r, C.faint); txt(g, t, S * x, S * T.tgt - S * .006, S * .12, C.fg, { w: 900 }); }
+    txt(g, `±${R.step} W`, S / 2, S * T.step, S * .046, C.lbl, { w: 800 });
+    line(g, S * .12, S * T.sep, S * .88, S * T.sep, C.line, Math.max(2, S * .006));
+    [[d.pw, 'WATTS'], [d.cad, 'RPM'], [F.hr || '--', 'BPM']].forEach(([val, l], i) => { const x = S * (.27 + i * .23);
+      txt(g, val, x, S * T.val, S * .1, C.fg, { w: 900, max: S * .21 }); if (i === 2) heart(g, x - S * .055, S * T.vl, S * .03, C.hr); txt(g, l, x + (i === 2 ? S * .015 : 0), S * T.vl, S * .04, C.lbl, { w: 800 }); });
+    if (paused) { pill(g, S / 2, S * T.bot, S * .44, S * .1, C.acc); txt(g, 'START resume', S / 2, S * T.bot + 1, S * .045, C.ink, { w: 900 }); }
+    else txt(g, `AVG ${R.t ? Math.round(R.pwSum / R.t) : 0} W · ${Math.round(R.kj)} kJ`, S / 2, S * T.bot, S * .045, C.lbl, { w: 800, max: S * .6 });
+  },
+  [SCR.TEND](g, S, C) { C = tint(C, 'ride'); list(g, S, C, listItems(F), F.sel, F.tConf ? 'DISCARD RIDE?' : 'INDOOR TRAINER', null, true);
+    if (F.tr) txt(g, `${clock(F.tr.t)} · ${F.tr.tgt} W${F.tr.st !== 'run' ? ' · paused' : ''}`, S / 2, S * .82, S * .048, C.lbl, { w: 800, max: S * .6 }); },
+  [SCR.TSUM](g, S, C) { // 23.11.: time, avg / max power, kJ, cadence, avg / max heart rate
+    C = tint(C, 'ride'); const s = F.tsum || { t: 0, avgPw: 0, maxPw: 0, kj: 0, cad: 0, hr: 0, maxHr: 0 }, U = TSUM_LAY;
+    txt(g, '✓ SAVED', S / 2, S * U.st, S * .058, C.acc, { w: 900 });
+    txt(g, clock(s.t), S / 2, S * U.time, S * .15, C.fg, { w: 900 }); txt(g, 'INDOOR RIDE', S / 2, S * U.timeL, S * .04, C.lbl, { w: 800 });
+    cols(g, S, C, [[s.avgPw, 'AVG W'], [s.maxPw, 'MAX W'], [s.kj, 'KJ']], U.c1, U.c1l); cols(g, S, C, [[s.cad || '--', 'RPM'], [s.hr || '--', 'AVG HR'], [s.maxHr || '--', 'MAX HR']], U.c2, U.c2l);
+    txt(g, 'DONE', S / 2, S * U.done, S * .046, C.lbl, { w: 900 });
+  },
   [SCR.SET](g, S, C) {
     const e = curEx(F); startHint(g, S, C);
     hrClock(g, S, C, S * .12); // 23.11.: the heart rate the whole time, next to the session clock
@@ -326,6 +379,22 @@ function list(g, S, C, items, sel, title, sub, menu = false, count = null) {
     txt(g, items[i], S / 2, S * y, S * px[o], on ? C.fg : Math.abs(o) > 1 ? (C.lbl === C.fg ? C.dim : C.faint) : C.dim, { w: on ? 900 : 700, max: S * (Math.abs(o) > 1 ? .55 : .74) }); // far rows: dark grey on AMOLED, light grey on MIP
     if (on && sub) txt(g, sub(i), S / 2, S * L.sub, S * .052, C.acc, { w: 800, max: S * .7 }); }
   scrollArc(g, S, C, sel, n); startHint(g, S, C);
+}
+/** 23.11.: the trainer screens' rows (screen fractions; the same in garmin/source/Draw.mc and the tap tables) */
+const TSCAN_LAY = { icon: .24, name: .4, st: .52, l1: .61, l2: .675, pill: .81 };
+const TREC_LAY = { time: .12, lab: .205, tgt: .36, mx: .15, r: .085, step: .5, sep: .56, val: .655, vl: .735, bot: .85 };
+const TSUM_LAY = { st: .15, time: .3, timeL: .395, c1: .52, c1l: .59, c2: .7, c2l: .77, done: .88 };
+const STATS_LAY = { title: .17, time: .3, avg: .41, sep: .48, c1: .58, c1l: .655, c2: .75, c2l: .82 };
+/** three numbers with labels in a row (x 0.27 / 0.5 / 0.73) */
+function cols(g, S, C, vals, y, yl) { vals.forEach(([v, l], i) => { const x = S * (.27 + i * .23); txt(g, v, x, S * y, S * .08, C.fg, { w: 900, max: S * .22 }); txt(g, l, x, S * yl, S * .04, C.lbl, { w: 800 }); }); }
+/** the trainer ride's second page: this target's block (time, avg power), then the whole ride */
+function trStats(g, S, C, R) {
+  const T = STATS_LAY, bAvg = R.bN ? Math.round(R.bSum / R.bN) : 0, sm = { np: R.npN ? Math.round(Math.pow(R.np4 / R.npN, .25)) : 0, cad: R.cadN ? Math.round(R.cadSum / R.cadN) : 0, hr: R.hrN ? Math.round(R.hrSum / R.hrN) : 0 };
+  txt(g, `AT ${R.tgt} W`, S / 2, S * T.title, S * .05, C.acc, { w: 900 });
+  txt(g, clock(R.t - R.bT0), S / 2, S * T.time, S * .14, C.fg, { w: 900 }); txt(g, `${bAvg} W avg at this target`, S / 2, S * T.avg, S * .046, C.lbl, { w: 800, max: S * .7 });
+  line(g, S * .12, S * T.sep, S * .88, S * T.sep, C.line, Math.max(2, S * .006));
+  cols(g, S, C, [[R.t ? Math.round(R.pwSum / R.t) : 0, 'AVG W'], [R.pwMax, 'MAX W'], [Math.round(R.kj), 'KJ']], T.c1, T.c1l);
+  cols(g, S, C, [[sm.np || '--', 'NP'], [sm.cad || '--', 'RPM'], [sm.hr || '--', 'AVG HR']], T.c2, T.c2l);
 }
 /** the rest screen's and the summary's rows (screen fractions; the same in garmin/source/Draw.mc) */
 const REST_LAY = { hr: .15, clock: .3, name: .425, sets: .49, dy: .062, next: .7, skip: .855 };
@@ -468,17 +537,23 @@ function touch(cv, f) {
   });
 }
 /** the screens a dragged finger scrolls (FlowDelegate.scrollable) */
-const scrollable = () => [SCR.PICK, SCR.MENU, SCR.HOME, SCR.MORE, SCR.SMODE, SCR.RPICK, SCR.END, SCR.SAVEQ, SCR.SUM].includes(F.scr) && !F.flash;
+const scrollable = () => ([SCR.PICK, SCR.MENU, SCR.HOME, SCR.MORE, SCR.SMODE, SCR.RPICK, SCR.END, SCR.SAVEQ, SCR.SUM, SCR.TEND].includes(F.scr) || F.scr === SCR.TSCAN && tList()) && !F.flash;
+/** the trainer screen shows the list (searching), not one trainer's state */
+const tList = () => ['scan', 'off'].includes(shown(F.link));
 /** a tap in face coordinates (0..1) -> the flow's event; the same table is in garmin/source/FlowDelegate.mc onTap */
 function tapAt(u, v) {
   const s = F.scr;
   if (F.flash) return ev('tap');
   if (s === SCR.SET) { if (v > .72 && Math.abs(u - .5) < .24) return ev('done'); if (v > .36 && v < .72) return ev('focus', u < .51 ? 0 : 1); return; } // DONE logs; a value takes the focus
   if (s === SCR.READY && F.sp !== 'other' && v > .665 && v < .74) return ev('down'); // the route line
+  if (s === SCR.TREC) { const T = TREC_LAY; if (F.tr && F.tr.pg) return ev('tap'); // the stats page: back to the ERG page
+    if (v > T.lab + .02 && v < T.sep) return ev('item', u < .31 ? 0 : u > .69 ? 1 : 2); // - / + (the whole side) and the target (step size)
+    if (v > T.bot - .07 && F.tr && F.tr.st !== 'run') return ev('start'); return; } // the resume pill
+  if (s === SCR.TSCAN && !tList()) return ev('tap');
   if (s === SCR.PAUSE) { const P = F.pz || {}; // conf: the Discard pill = yes, elsewhere = no; else Discard row = ask, the top = resume
     if (P.conf) return ev(Math.abs(v - PAUSE_LAY.discard) < .06 ? 'start' : 'back');
     if (Math.abs(v - PAUSE_LAY.discard) < .055) return ev('item', 1); if (v < .62) return ev('item', 0); return; }
-  const menu = [SCR.MENU, SCR.END, SCR.SAVEQ].includes(s), pick = [SCR.PICK, SCR.MORE, SCR.SMODE, SCR.RPICK].includes(s);
+  const menu = [SCR.MENU, SCR.END, SCR.SAVEQ, SCR.TEND].includes(s), pick = [SCR.PICK, SCR.MORE, SCR.SMODE, SCR.RPICK, SCR.TSCAN].includes(s);
   if (s === SCR.HOME) { const n = listItems(F).length, r = Math.round((v - HOME_LAY.y0) / HOME_LAY.dy), i = homeTop(F.sel, n) + r; // the rows as DRAW[SCR.HOME] draws them
     if (r >= 0 && r < HOME_FIT && i < n) ev('item', i); return; }
   if (menu || pick) { const rows = menu ? LIST_LAY.menu : LIST_LAY.rows; if (pick && v < LIST_LAY.count + .04) return; // the title is no row
@@ -534,6 +609,8 @@ function wirePanel() {
   $('#wRestart').onclick = () => boot();
   $('#wSeg').onclick = segDemo;
   $('#wFast').onchange = e => { fast = e.target.checked; };
+  $('#wKOn').onchange = e => { K.on = e.target.checked; if (!K.on && K.paired) { K.paired = false; K.sub = {}; ev('ble', { k: 'drop' }); } }; // out of range: the link drops
+  $('#wKRefuse').onchange = e => { K.refuse = e.target.checked; };
   $('#wUnpair').onclick = () => { if (confirm('Forget the pairing on this preview watch?')) unpair('Unpaired.'); };
 }
 
@@ -541,7 +618,10 @@ mount(); keys(); wirePanel(); boot();
 setInterval(() => { handle(F, 'tick', now()); drain(); paint(); }, 200);
 setInterval(() => { const base = F.scr === SCR.REST ? 128 - Math.min(30, (now() - (F.restEnd - F.restLen)) * .5) : F.start ? 112 : 72; ev('hr', Math.round(base + Math.random() * 6)); }, 2000); // a simulated heart rate (Sensor on the watch)
 setInterval(() => { if (F.queue.length && near) push(); }, 30e3); // retry, like the watch does on its timer
-setInterval(() => { if (F.rec && F.rec.st === 'run') ev('sample', simSample(fast ? 10 : 1)); }, 1000); // GPS and sensors while recording (Position / Sensor on the watch)
+setInterval(() => { if (F.rec && F.rec.st === 'run') ev('sample', simSample(fast ? 10 : 1)); }, 1000);
+// the pretend trainer's data once a second: in ERG it holds the target (a little noise), else what the legs give
+setInterval(() => { if (K.scanning && K.on) for (const e of K.handle({ k: 'scan', on: true })) ev('ble', e); // a scan keeps reporting what is in range
+  if (!K.paired || !K.on || !K.sub.ibd) return; const t = now(), erg = F.link.ctl && K.tgt > 0; ev('ble', K.data((erg ? K.tgt : 150) + 6 * Math.sin(t * 1.7) + 3 * Math.sin(t / 3), 88 + 3 * Math.sin(t / 5))); }, 1000); // GPS and sensors while recording (Position / Sensor on the watch)
 /** one simulated second (or ten): a steady run at about 5:10 /km, a ride at about 34 km/h with power, other sports by heart rate */
 function simSample(dt) {
   const t = now(), w = Math.sin(t / 7), sp = F.sp;

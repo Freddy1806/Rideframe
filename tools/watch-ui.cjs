@@ -4,6 +4,8 @@
 // workout in the demo preview.
 // 23.11.: START steps kg -> reps -> logs, lists follow the finger, BACK set -> list -> Keep / Finish / Discard, the rest's NEXT line,
 // the paged summary, "Save as workout?" sent to the account and shown on the phone's strength page, the fenix 8 face too.
+// 23.11.: the indoor trainer (ERG) against the pretend KICKR CORE 2: list, connect, + / - by button and touch, latest wins, pause, stats page,
+// another app in control, lost and back, menu, summary; its upload (a VirtualRide with power) on the phone's Activities.
 // Starts its own serve.mjs on a free port with a temp data folder. Screenshots of every screen on all three faces go to SHOTS.
 // Usage: NODE_PATH=$(npm root -g) node tools/watch-ui.cjs [shotsDir]
 const { chromium } = require('playwright');
@@ -51,7 +53,7 @@ let fails = 0; const ok = (c, m) => { console.log(`${c ? '✓' : '✗'} ${m}`); 
     let s = await F(); ok(s.paired && s.scr === 'home' && s.nEx > 0, 'paired with buttons only, setup loaded, the start menu');
     await P.waitForSelector('.wdev', { timeout: 6000 }).catch(() => {}); ok(/Preview \(browser\)/.test(await P.textContent('#tWatch')), 'phone lists the paired watch');
     if (SHOTS) await P.screenshot({ path: `${SHOTS}/phone_settings_paired.png` });
-    await W.waitForTimeout(400); await snap('home'); await btn('down', 2); await btn('start'); s = await F(); ok(s.scr === 'start', 'start menu: Strength'); await snap('start');
+    await W.waitForTimeout(400); await snap('home'); await btn('down', 3); await btn('start'); s = await F(); ok(s.scr === 'start', 'start menu: Strength'); await snap('start');
 
     // ---- session 1: buttons only ----
     await btn('start'); s = await F(); ok(s.scr === 'pick' && s.ex === 'bench', 'START opens the picker, last used first'); await btn('down'); await btn('up'); await snap('pick');
@@ -80,7 +82,9 @@ let fails = 0; const ok = (c, m) => { console.log(`${c ? '✓' : '✗'} ${m}`); 
     const drag = async (v0, v1) => { await cv.scrollIntoViewIfNeeded(); const b = await cv.boundingBox(); await W.mouse.move(b.x + b.width / 2, b.y + v0 * b.height); await W.mouse.down();
       await W.mouse.move(b.x + b.width / 2, b.y + v1 * b.height, { steps: 8 }); await W.mouse.up(); await W.waitForTimeout(100); };
     await snap('home_all_rows'); await tap(.5, .27); s = await F(); ok(s.scr === 'start', 'tap the top row: Strength');
-    await btn('back'); await tap(.5, .735); s = await F(); ok(s.scr === 'more', 'start menu: the fourth row (More) is visible and tappable without scrolling'); await btn('back'); await tap(.5, .27);
+    await btn('back'); await tap(.5, .735); s = await F(); ok(s.scr === 'tscan', 'start menu: the fourth row (Indoor trainer) is visible and tappable without scrolling'); await btn('back'); await W.waitForTimeout(300);
+    s = await F(); ok(s.scr === 'home', 'BACK on the trainer list: the start menu'); await drag(.6, .4); await drag(.6, .4); await snap('home_scrolled'); s = await F(); ok(s.sel === 4, 'five entries: a drag scrolls to More');
+    await W.evaluate(() => { __watch.F.sel = 0; }); await tap(.5, .27);
     await tap(.5, .5); s = await F(); ok(s.scr === 'pick', 'tap: picker'); const sel0 = s.sel;
     const nRows = await W.evaluate(async () => (await import('/js/watchflow.js')).pickRows(__watch.F).length);
     await swipe('up'); s = await F(); ok(s.sel === Math.min(sel0 + 4, nRows - 1), `drag up 0.4 of the screen: the list follows the finger, 4 rows (${sel0} -> ${s.sel})`); await snap('pick_dragged');
@@ -143,7 +147,7 @@ let fails = 0; const ok = (c, m) => { console.log(`${c ? '✓' : '✗'} ${m}`); 
     await D.evaluate(() => { for (let i = 0; i < 40; i++) __watch.ev('sample', { dt: 1, v: 9.6, hr: 144, cad: 90, pw: 245, up: .1 }); __watch.F.flash = null; }); await dsnap('12_ride_page1');
     await D.click('#wSeg'); ok(await until(() => __watch.F.seg?.k === 'live'), 'ride segment: live'); await dsnap('13_ride_segment_live'); await dbtn('back'); ok((await G()).seg === 'live' && await D.evaluate(() => __watch.F.seg.hide), 'BACK hides the popup');
     await dbtn('start'); await dbtn('down'); await dbtn('start'); await dbtn('start'); d = await G(); ok(d.scr === 'home', 'Discard, START yes: start menu');
-    await dbtn('down', 3); await dbtn('start'); d = await G(); ok(d.scr === 'more', 'More: the sports list'); await dsnap('14_more_list'); await dbtn('down', 2); await dbtn('start'); d = await G(); ok(d.scr === 'ready' && d.sp === 'other' && d.type === 'Yoga', 'Yoga: ready');
+    await dbtn('down', (await D.evaluate(async () => (await import('/js/watchflow.js')).homeItems(__watch.F))).indexOf('more')); await dbtn('start'); d = await G(); ok(d.scr === 'more', 'More: the sports list'); await dsnap('14_more_list'); await dbtn('down', 2); await dbtn('start'); d = await G(); ok(d.scr === 'ready' && d.sp === 'other' && d.type === 'Yoga', 'Yoga: ready');
     await dbtn('start'); await D.evaluate(() => { for (let i = 0; i < 30; i++) __watch.ev('sample', { dt: 60, v: 0, hr: 112 }); }); d = await G(); ok(d.scr === 'rec', 'Yoga: recording, one page'); await dsnap('15_other_sport');
     await dbtn('start'); await dbtn('down'); await dbtn('start'); await dbtn('start');
     // strength: Workout -> Push day, guided
@@ -203,6 +207,53 @@ let fails = 0; const ok = (c, m) => { console.log(`${c ? '✓' : '✗'} ${m}`); 
     await toHome(); await pick('ride'); await qb('start'); await qb('start'); await qb('down'); await qb('start'); await qb('start'); ok((await qs()).scr === 'home' && !(await qs()).rec, 'Discard, START yes: gone, the start menu');
     ok(!qerr.length, 'no page errors in the pause flows' + (qerr.length ? ': ' + qerr.join(' | ') : '')); await pc.close();
 
+    // ---- 23.11.: the indoor trainer (ERG) against the pretend KICKR CORE 2, on the page clock; the fenix 8 face's buttons and touch ----
+    const tc = await b.newContext({ viewport: { width: 1280, height: 1150 }, deviceScaleFactor: 2, hasTouch: true });
+    const T = await tc.newPage(); const terr = []; T.on('pageerror', e => terr.push(e.message)); await T.clock.install();
+    await T.goto(BASE + '/watch.html'); await T.clock.runFor(800); await T.waitForFunction(() => window.__watch?.F);
+    const ts = () => T.evaluate(() => ({ scr: __watch.F.scr, st: __watch.F.link.st, ctl: __watch.F.link.ctl, tgt: __watch.F.tr?.tgt, kt: __watch.kickr.tgt, t: __watch.F.tr?.t, pg: __watch.F.tr?.pg, paused: __watch.F.tr?.st === 'pause', step: __watch.F.tr?.step, n: __watch.F.link.list.length, sel: __watch.F.sel }));
+    const F8 = 'fenix8solar47mm', tb = async (k, n = 1) => { for (let i = 0; i < n; i++) { await T.click(`[data-face="${F8}"] .wbtn.${k}`); await T.clock.runFor(400); } };
+    const tt = () => T.evaluate(() => __watch.texts.join(' | '));
+    let tn = 0; const tshot = async (nm, ms = 1300) => { tn++; await T.clock.runFor(ms); /* after the vibration ring of the preview */ if (!SHOTS) return; for (const f of [F8, 'fr265']) await T.locator(`[data-face="${f}"] .wscale`).screenshot({ path: `${SHOTS}/trainer_${f}_${String(tn).padStart(2, '0')}_${nm}.png` }); };
+    const tcv = T.locator(`[data-face="${F8}"] canvas`); await tcv.scrollIntoViewIfNeeded();
+    const ttap = async (u, v) => { const bb = await tcv.boundingBox(); await tcv.tap({ position: { x: u * bb.width, y: v * bb.height } }); await T.clock.runFor(400); };
+    const tswipe = async () => { const bb = await tcv.boundingBox(); await T.mouse.move(bb.x + bb.width / 2, bb.y + bb.height * .7); await T.mouse.down(); await T.mouse.move(bb.x + bb.width / 2, bb.y + bb.height * .3, { steps: 6 }); await T.mouse.up(); await T.clock.runFor(300); };
+    await T.uncheck('#wKOn'); await T.evaluate(async () => { const m = await import('/js/watchflow.js'); __watch.ev('item', m.homeItems(__watch.F).indexOf('trainer')); }); await T.clock.runFor(500);
+    let x = await ts(); ok(x.scr === 'tscan' && x.st === 'scan' && x.n === 0, 'Indoor trainer: searching, nothing in range yet'); await tshot('searching'); ok(/Searching/.test(await tt()), 'fenix 8: "Searching…"');
+    await T.check('#wKOn'); await T.clock.runFor(1200); x = await ts(); ok(x.n === 2, 'the scan lists the KICKR and the power meter'); await tshot('list');
+    ok(/KICKR CORE 2 5A1F/.test(await tt()) && /ERG/.test(await tt()), 'the list: the trainer first, "Smart trainer · ERG"');
+    await T.click(`[data-face="${F8}"] .wbtn.start`); await tshot('connecting', 30); ok(/Connecting/.test(await tt()), 'START: "Connecting…"');
+    await T.clock.runFor(1000); x = await ts(); ok(x.st === 'ready' && x.ctl, 'connected, control taken (FTMS request control + start)'); await tshot('connected'); ok(/Connected/.test(await tt()), '"Connected", START to ride');
+    await tb('start'); await T.clock.runFor(3000); x = await ts(); ok(x.scr === 'trec' && x.tgt === 100 && x.kt === 100, 'riding: target 100 W, the trainer has it'); await tshot('erg_page');
+    ok(/TARGET W/.test(await tt()) && /WATTS/.test(await tt()) && /RPM/.test(await tt()) && /BPM/.test(await tt()), 'ERG page: target, watts, rpm, heart rate');
+    await tb('up', 3); x = await ts(); ok(x.tgt === 115 && x.kt === 115, 'UP 3×: 115 W, sent');
+    await ttap(.86, .36); x = await ts(); ok(x.tgt === 120, 'touch +: 120'); await ttap(.14, .36); x = await ts(); ok(x.tgt === 115, 'touch -: 115');
+    await ttap(.5, .36); x = await ts(); ok(x.step === 10, 'a tap on the target: 10 W steps'); await tb('up'); x = await ts(); ok(x.tgt === 120, 'UP: onto the 10 grid'); await tshot('erg_step10');
+    await T.evaluate(() => { __watch.kickr.hold = true; }); await tb('up', 4); x = await ts(); const held = await T.evaluate(() => __watch.kickr.writes.filter(w => w[1] === 5).length);
+    await T.evaluate(() => { for (const e of __watch.kickr.release()) __watch.ev('ble', e); }); await T.clock.runFor(500);
+    const after = await T.evaluate(() => __watch.kickr.writes.filter(w => w[1] === 5).map(w => w[2] + (w[3] << 8)));
+    x = await ts(); ok(x.tgt === 160 && x.kt === 160 && after.length === held + 1, `a slow trainer: 4 presses = one more write, the newest (${after.slice(-3).join(', ')})`);
+    { const bb = await T.locator(`[data-face="${F8}"] .wbtn.up`).boundingBox(); await T.mouse.move(bb.x + bb.width / 2, bb.y + bb.height / 2); await T.mouse.down(); await T.clock.runFor(1250); await T.mouse.up(); await T.clock.runFor(400); }
+    x = await ts(); ok(x.tgt >= 210, `UP held: 25 W steps (${x.tgt})`);
+    await tswipe(); x = await ts(); ok(x.pg === 1, 'swipe up: the stats page'); await tshot('stats_page'); ok(/AVG W/.test(await tt()) && /at this target/.test(await tt()), 'stats: this target and the ride');
+    await ttap(.5, .5); x = await ts(); ok(x.pg === 0, 'a tap: back to the ERG page');
+    await tb('start'); x = await ts(); ok(x.paused && x.kt === 30, 'START: paused, the trainer at 30 W'); await tshot('paused'); const tp = x.t; await T.clock.runFor(5000); ok((await ts()).t === tp, 'the clock stands while paused');
+    await ttap(.5, .85); x = await ts(); ok(!x.paused && x.kt === x.tgt, 'the resume pill: riding, the target again');
+    await T.check('#wKRefuse'); await tb('up'); x = await ts(); ok(x.st === 'refused', 'another app takes the trainer: the target is refused'); await tshot('refused'); ok(/NO CONTROL/.test(await tt()), '"NO CONTROL · OTHER APP"');
+    await T.uncheck('#wKRefuse'); await T.clock.runFor(6000); x = await ts(); ok(x.st === 'ready' && x.kt === x.tgt, 'control again after the other app let go, the newest target sent');
+    await T.uncheck('#wKOn'); await T.clock.runFor(500); x = await ts(); ok(x.st === 'lost' && x.scr === 'trec', 'out of range: lost, the ride goes on'); await tshot('lost'); ok(/LOST/.test(await tt()), '"LOST · RECONNECTING"');
+    await tb('down'); await T.check('#wKOn'); await T.clock.runFor(17000); x = await ts(); ok(x.st === 'ready' && x.kt === x.tgt, `back in range: reconnected, the target sent again (${x.kt} W)`);
+    await tb('back'); x = await ts(); ok(x.scr === 'tend', 'BACK: the menu'); await tshot('menu');
+    await tb('down', 3); await tb('start'); ok((await tt()).includes('Discard ride'), 'Discard asks once more'); await tshot('discard_confirm'); await tb('back'); await tb('up'); await tb('start');
+    x = await ts(); ok(x.scr === 'tsum', 'Finish & save: the summary'); await tshot('summary'); const tsum = await T.evaluate(() => __watch.F.tsum);
+    ok(tsum.avgPw > 50 && tsum.maxPw >= tsum.avgPw && tsum.kj > 0 && tsum.cad > 80, `summary: ${tsum.avgPw} W avg, ${tsum.maxPw} max, ${tsum.kj} kJ, ${tsum.cad} rpm, ${tsum.hr} bpm`);
+    ok(/AVG W/.test(await tt()) && /MAX HR/.test(await tt()), 'summary: avg / max power, kJ, cadence, heart rate'); ok(!(await T.evaluate(() => __watch.kickr.paired)), 'the trainer is let go after the ride');
+    const tbody = await T.evaluate(() => __watch.F.tbody); ok(tbody.type === 'VirtualRide' && tbody.s.pw.length > 1, `upload body: VirtualRide with ${tbody.s.pw.length} power values`);
+    await tb('start'); x = await ts(); ok(x.scr === 'home' && (await T.evaluate(async () => (await import('/js/watchflow.js')).homeItems(__watch.F)[0])) === 'trainer', 'the start menu, Indoor trainer on top');
+    await T.check('#wKRefuse'); await tb('start'); await T.clock.runFor(1500); x = await ts(); ok(x.scr === 'tscan' && x.st === 'refused', 'the trainer used last connects by itself; refused shows on the trainer screen'); await tshot('refuses_control');
+    ok(/Refuses control/.test(await tt()) && /Another app/.test(await tt()), '"Refuses control", "Another app controls it."'); await tb('back'); await tb('back'); x = await ts(); ok(x.scr === 'home', 'BACK, BACK: the start menu');
+    ok(!terr.length, 'no page errors in the trainer flows' + (terr.length ? ': ' + terr.join(' | ') : '')); await tc.close();
+
     // ---- 19.11.: routes sent from the phone reach the paired preview watch (GET /api/watch/routes, /route) ----
     const pts = []; for (let i = 0; i <= 40; i++) pts.push([47.37 + i * .0004, 8.54 + (i > 20 ? (i - 20) * .0005 : 0)]);
     const put = await fetch(BASE + '/api/watch/routes/r-test', { method: 'PUT', headers: { 'Content-Type': 'application/json', 'X-RF-Token': token }, body: JSON.stringify({ name: 'Test loop to the lake', pts }) }).then(r => r.json());
@@ -231,6 +282,14 @@ let fails = 0; const ok = (c, m) => { console.log(`${c ? '✓' : '✗'} ${m}`); 
     const det = await P.textContent('.psheetin'); ok(/Recorded on watch/.test(det) && /Bench press/.test(det), 'detail: "Recorded on watch" and the exercises');
     ok(/🏆/.test(det) || (await P.locator('[data-act^="k:watch-"]').count()) === 2, 'record trophy on the first session');
     if (SHOTS) await P.screenshot({ path: `${SHOTS}/phone_activity_watch.png` });
+    // 23.11.: the trainer ride as the watch uploads it: one entry with power, cadence, kJ
+    const wtok = await W.evaluate(() => JSON.parse(localStorage.getItem('rf_watch_token')));
+    const up = await fetch(BASE + '/api/watch/activity', { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + wtok }, body: JSON.stringify({ ...tbody, start: Math.round(Date.now() / 1000) - 7200 }) }).then(r => r.json());
+    ok(up.ok && up.id === 'watch-' + tbody.id, 'the trainer ride uploads (POST /api/watch/activity)');
+    await P.reload(); await P.waitForTimeout(500); for (let i = 0; i < 30 && !(await P.locator(`[data-act$="watch-${tbody.id}"]`).count()); i++) await P.waitForTimeout(200);
+    ok((await P.locator(`[data-act$="watch-${tbody.id}"]`).count()) === 1, 'Activities: the indoor ride, once'); await P.locator(`[data-act$="watch-${tbody.id}"]`).first().click(); await P.waitForTimeout(400);
+    const rdet = await P.textContent('.psheetin'); ok(/Avg power/.test(rdet) && /Max power/.test(rdet) && /Cadence/.test(rdet) && /Recorded on watch/.test(rdet) && /Virtual ride/.test(rdet), 'detail: Virtual ride, avg / max power, cadence, recorded on watch');
+    if (SHOTS) await P.screenshot({ path: `${SHOTS}/phone_activity_trainer.png` });
     ok(!perr.length, 'no page errors on the phone' + (perr.length ? ': ' + perr.join(' | ') : ''));
     console.log(`${shot} screens × 3 faces`);
   } catch (e) { console.log('✗ ' + e.message); fails++; }

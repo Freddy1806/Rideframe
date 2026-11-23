@@ -6,6 +6,8 @@
 // aqueue (19.11.: saved runs / rides / more for POST /api/watch/activity, sent like the strength queue).
 // 19.11.: the routes for the ready screen's Route choice (GET /api/watch/routes, /route) and the segments near the watch
 // (GET /api/watch/segments at the start of a run / ride and every 3 km; timed on the watch by Feed.mc).
+// 23.11.: the indoor trainer: TrainerBle.mc (made on the first radio action) carries Flow.link's actions to Bluetooth and its callbacks
+// back as E_BLE; Storage "trainer" (the trainer used last, connected by itself) and "tgt" (the last ERG target).
 import Toybox.Activity;
 import Toybox.ActivityRecording;
 import Toybox.Application;
@@ -33,6 +35,7 @@ class RideframeApp extends Application.AppBase {
     var acts as Array<Dictionary> = [] as Array<Dictionary>;   // saved activities waiting for the phone (Storage "aqueue")
     var actSending as Boolean = false;
     var actTry as Number = 0;
+    var ble = null;             // 23.11.: TrainerBle, the indoor trainer's radio (only once the trainer screen is opened)
 
     function initialize() { AppBase.initialize(); }
 
@@ -44,7 +47,8 @@ class RideframeApp extends Application.AppBase {
     function getInitialView() {
         var token = Application.Storage.getValue("token");
         var q = Application.Storage.getValue("queue");
-        var f = new Flow(Application.Storage.getValue("setup"), token != null, q instanceof Array ? q : [], Application.Storage.getValue("cfg"), Application.Storage.getValue("last"));
+        var f = new Flow(Application.Storage.getValue("setup"), token != null, q instanceof Array ? q : [], Application.Storage.getValue("cfg"), Application.Storage.getValue("last"),
+            Application.Storage.getValue("trainer"), Application.Storage.getValue("tgt"));
         flow = f; lastKey = f.last;
         api = new Api();
         recorder = new Recorder(f);
@@ -76,6 +80,7 @@ class RideframeApp extends Application.AppBase {
             saveActs();
         }
         if (rec != null && rec.isRecording()) { rec.stop(); rec.discard(); rec = null; }
+        if (ble != null) { ble.close(); ble = null; } // no scan left on, the trainer free for the laptop or the Wahoo app
     }
 
     function now() as Number { return Time.now().value(); }
@@ -103,6 +108,23 @@ class RideframeApp extends Application.AppBase {
         }
         WatchUi.requestUpdate();
     }
+    // 23.11.: an event of the trainer's radio (TrainerBle callbacks)
+    function bleEv(d as Dictionary) as Void {
+        if (flow == null) { return; }
+        flow.handle(E_BLE, now(), d);
+        drain();
+        WatchUi.requestUpdate();
+    }
+    // the link's actions to the radio; TrainerBle is made the first time there is one (it registers the GATT profiles then)
+    function runBle() as Void {
+        var L = flow.link;
+        if (L.act.size() == 0) { return; }
+        if (ble == null) {
+            if (!(Toybox has :BluetoothLowEnergy)) { L.act = [] as Array<Dictionary>; return; } // no radio: the trainer screen stays at Searching
+            ble = new TrainerBle(self);
+        }
+        ble.run(L);
+    }
     function onSensor(info as Sensor.Info) as Void {
         if (info has :heartRate && info.heartRate != null) { flow.handle(E_HR, now(), info.heartRate); }
     }
@@ -124,6 +146,9 @@ class RideframeApp extends Application.AppBase {
             else if (k == O_ROUTES) { loadRoutes(); }
             else if (k == O_ROUTE) { loadRoute(strOf(o["id"])); }
             else if (k == O_TPL) { keepTpl(); }
+            else if (k == O_TRAINER) { // the trainer used last and the last target, for the next ride
+                Application.Storage.setValue("trainer", flow.link.want); Application.Storage.setValue("tgt", flow.tTgt);
+            }
         }
         if (flow.routeId == null) { recorder.track = null; }
         recorder.sync();
@@ -131,6 +156,7 @@ class RideframeApp extends Application.AppBase {
         if (flow.scr == S_SUM && rec != null) { stopRecording(true); }
         else if (flow.start == 0 && rec != null) { stopRecording(false); } // discarded, or back to the choice before a set (23.11.)
         if (!lastKey.equals(flow.last)) { lastKey = flow.last; Application.Storage.setValue("last", lastKey); }
+        runBle();
     }
     function saveQueue() as Void {
         // VERIFY (Toybox.Application.Storage): the size limit of one value; a queue of a few sessions (~2 KB each) should fit

@@ -153,12 +153,13 @@ test('start menu layout: all four rows at once, 64 px touch rows on 416 px, noth
   assert.ok(L.y0 - L.dy / 2 > L.logo + .02 && L.y0 + (HOME_FIT - .5) * L.dy < L.pts - .02, 'logo and week points clear of the rows');
   const hp = Math.sqrt(.25 - (L.pts - .5 + .03) ** 2); assert.ok(hp * 2 > .5, 'the points line has room at its y');
 });
-test('start menu: run, ride, strength, more with the last used on top; BACK leaves the app', () => {
-  const F = fl(); assert.equal(F.scr, SCR.HOME); assert.deepEqual(listItems(F), ['Run', 'Ride', 'Strength', 'More']);
-  const G = fl({ last: 'kraft' }); assert.deepEqual(homeItems(G), ['kraft', 'run', 'ride', 'more']); go(G, ['start']); assert.equal(G.scr, SCR.START, 'Strength: its ready screen');
-  go(G, ['back']); assert.equal(G.scr, SCR.HOME); go(G, ['up']); assert.equal(G.sel, 3, 'wraps'); go(G, ['swipeDown', 'down', 'down']); assert.equal(G.sel, 0);
+test('start menu: run, ride, indoor trainer, strength, more with the last used on top; BACK leaves the app', () => {
+  const F = fl(); assert.equal(F.scr, SCR.HOME); assert.deepEqual(listItems(F), ['Run', 'Ride', 'Indoor trainer', 'Strength', 'More']);
+  const G = fl({ last: 'kraft' }); assert.deepEqual(homeItems(G), ['kraft', 'run', 'ride', 'trainer', 'more']); go(G, ['start']); assert.equal(G.scr, SCR.START, 'Strength: its ready screen');
+  go(G, ['back']); assert.equal(G.scr, SCR.HOME); go(G, ['up']); assert.equal(G.sel, 4, 'wraps'); assert.equal(homeTop(G.sel, 5), 1, 'five entries: the list scrolls to the last'); go(G, ['swipeDown', 'down', 'down']); assert.equal(G.sel, 0);
   go(G, ['back']); assert.deepEqual(G.out.at(-1), { k: 'exit' });
-  go(F, [['item', 3]]); assert.equal(F.scr, SCR.MORE); assert.deepEqual(listItems(F), ['Basketball', 'Yoga']); go(F, ['back']); assert.equal(F.scr, SCR.HOME);
+  assert.deepEqual(homeItems(fl({ last: 'trainer' })).slice(0, 2), ['trainer', 'run'], 'the trainer used last is on top');
+  go(F, [['item', 4]]); assert.equal(F.scr, SCR.MORE); assert.deepEqual(listItems(F), ['Basketball', 'Yoga']); go(F, ['back']); assert.equal(F.scr, SCR.HOME);
   go(F, ['menu']); assert.equal(F.scr, SCR.MENU); assert.deepEqual(F.menu, [MENU.SYNC, MENU.PAIR]); go(F, ['back']); assert.equal(F.scr, SCR.HOME);
 });
 test('run: ready, data pages from the config, values tick, UP / DOWN switch pages, auto lap banner', () => {
@@ -236,11 +237,11 @@ test('segment popup: warning, live delta, result for 5 s; BACK closes it first; 
   const H = fl(); handle(H, 'seg', 3000, { k: 'warn', name: 'x', len: 1, eta: 30 }); assert.equal(H.seg, null, 'not recording: nothing');
 });
 test('more: the sports from the phone, one fixed page, no route', () => {
-  const F = fl(); setRoute(F, { len: 1000, pts: [[0, 0], [1, 1]] }); go(F, [['item', 3], 'down', 'start']); assert.equal(F.scr, SCR.READY); assert.deepEqual([F.sp, F.type], ['other', 'Yoga']);
+  const F = fl(); setRoute(F, { len: 1000, pts: [[0, 0], [1, 1]] }); go(F, [['item', 4], 'down', 'start']); assert.equal(F.scr, SCR.READY); assert.deepEqual([F.sp, F.type], ['other', 'Yoga']);
   go(F, ['back']); assert.equal(F.scr, SCR.MORE); go(F, ['start', 'start']); assert.equal(F.scr, SCR.REC); assert.deepEqual(recPages(F), [['hr', 'time', 'clock', 'kcal']]);
   move(F, 600, 0); assert.equal(F.rec.t, 600, 'no auto pause for other sports'); assert.equal(fieldText('time', F.rec, 0), '10:00'); assert.ok(F.rec.kcal > 50);
   assert.equal(F.last, 'more'); go(F, ['start', 'down', 'start', 'start']); assert.deepEqual(homeItems(F)[0], 'more');
-  const E = newFlow(null, { cfg: { ...CFG(), more: [] } }); go(E, [['item', 3]]); assert.equal(E.scr, SCR.MORE); go(E, ['start']); assert.equal(E.scr, SCR.MORE, 'empty list: nothing to start'); go(E, ['back']); assert.equal(E.scr, SCR.HOME);
+  const E = newFlow(null, { cfg: { ...CFG(), more: [] } }); go(E, [['item', 4]]); assert.equal(E.scr, SCR.MORE); go(E, ['start']); assert.equal(E.scr, SCR.MORE, 'empty list: nothing to start'); go(E, ['back']); assert.equal(E.scr, SCR.HOME);
 });
 test('strength: Exercises or a saved workout in one list; free = recent, then top 20, then the rest', () => {
   const F = fl({ last: 'kraft' }); go(F, ['start', 'start']); assert.equal(F.scr, SCR.SMODE); assert.deepEqual(listItems(F), ['Exercises', 'Push day']);

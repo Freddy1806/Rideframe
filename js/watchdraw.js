@@ -40,7 +40,7 @@ export function icon(g, k, x, y, s, col, lw = 2.4) {
     if (e.startsWith('<circle')) { const p = new Path2D(); p.arc(a('cx'), a('cy'), a('r'), 0, Math.PI * 2); return p; } return new Path2D(e.match(/ d="([^"]+)"/)[1]); }) || [];
   g.save(); g.translate(x - s / 2, y - s / 2); g.scale(s / 24, s / 24); g.strokeStyle = col; g.lineWidth = lw; g.lineCap = 'round'; g.lineJoin = 'round'; for (const p of P) g.stroke(p); g.restore();
 }
-export const SPORT_ICON = { run: 'run', ride: 'ride', kraft: 'kraft', more: 'other', other: 'other' };
+export const SPORT_ICON = { run: 'run', ride: 'ride', trainer: 'trainer', kraft: 'kraft', more: 'other', other: 'other' };
 
 /** a value with its unit after it, centred on x and kept inside max (the value shrinks, the unit goes first when there is no room) */
 export function valUnit(g, x, y, v, u, px, max, col, ucol) {

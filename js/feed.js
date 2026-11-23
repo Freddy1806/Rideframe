@@ -64,8 +64,8 @@ export function detail(a, P, onChange = () => {}) {
   const nums = a.kraft ? cell('Time', fmtTime(a.dur || 0)) + cell('Sets', String(doneSets(a))) + cell('Volume', kgTxt(sessVol(a))) + cell('Records', a.prs ? '🏆 ' + a.prs : '') + cell('Avg HR', a.avgHr > 0 && String(a.avgHr)) + cell('Max HR', a.maxHr > 0 && String(a.maxHr)) + cell('Calories', a.kcal > 0 && `${fmtNum(a.kcal)} kcal`)
     : cell('Distance', a.distance > 0 && (m === 'swim' && a.distance < 10000 ? distOf(m, a.distance) : `${fmtNum(a.distance / 1000, 2)} km`)) + cell('Time', fmtTime(a.duration))
       + (run ? cell('Avg pace', `${paceS(a.distance, a.duration)} /km`) + cell('Fastest km', a.kmSplits?.length && fmtTime(Math.min(...a.kmSplits)))
-        : pc ? cell('Avg pace', pc) : cell('Avg speed', a.duration && a.distance && `${fmtNum(a.distance / a.duration * 3.6, 1)} km/h`) + cell('Avg power', a.avgPower > 0 && `${a.avgPower} W`) + cell('NP', a.np > 0 && `${a.np} W`))
-      + cell('Avg HR', hr.length ? String(Math.round(hr.reduce((x, y) => x + y, 0) / hr.length)) : a.avgHr > 0 && String(a.avgHr)) + cell('Max HR', hr.length ? String(Math.max(...hr)) : a.maxHr > 0 && String(a.maxHr))
+        : pc ? cell('Avg pace', pc) : cell('Avg speed', a.duration && a.distance && `${fmtNum(a.distance / a.duration * 3.6, 1)} km/h`) + cell('Avg power', a.avgPower > 0 && `${a.avgPower} W`) + cell('NP', a.np > 0 && `${a.np} W`) + cell('Max power', a.maxPower > 0 && `${a.maxPower} W`) + cell('Cadence', a.avgCad > 0 && `${a.avgCad} rpm`))
+      + cell('Avg HR', hr.length ? String(Math.round(hr.reduce((x, y) => x + y, 0) / hr.length)) : a.avgHr > 0 && String(a.avgHr)) + cell('Max HR', hr.length ? String(Math.max(...hr, a.maxHr || 0)) : a.maxHr > 0 && String(a.maxHr)) // 23.11.: the watch's samples are 10 s averages, its own max is higher
       + cell('Climb', a.gain > 0 && `${fmtNum(a.gain)} m`) + cell('Work', a.kj > 0 && `${fmtNum(a.kj)} kJ`) + cell('Calories', `${fmtNum(a.kcal > 0 ? a.kcal : kcalOf(a, P.kg))} kcal`);
   const laps = (a.laps || []).filter(l => l && l.t > 0);
   const at = ext && a.start ? a.start : a.date; // outside activities show their start, like Strava

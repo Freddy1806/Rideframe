@@ -8,6 +8,8 @@
 //   ready (run / ride): UP / DOWN or a tap on the route line = the Route choice (RPICK)
 //   pause screen (every mode): START = resume, BACK held 3 s = save (a short BACK only shows the hint), DOWN / tap = Discard (confirm);
 //   on the AMOLED touch face a finger resting on the "Hold to finish" pill = BACK held
+//   indoor trainer (23.11.): UP / DOWN = +/- the step (held: 25 W), a tap on the left / right half = - / +, on the target = the step 5 / 10 / 25,
+//   START = pause / resume, BACK = its menu, swipe up / down = the stats page
 import Toybox.Lang;
 import Toybox.System;
 import Toybox.Timer;
@@ -85,8 +87,11 @@ class FlowDelegate extends WatchUi.BehaviorDelegate {
     // 23.11.: the screens a dragged finger scrolls (js/watchsim.js scrollable)
     function scrollable() as Boolean {
         var s = flow.scr;
-        return flow.flash == null && (s == S_PICK || s == S_MENU || s == S_HOME || s == S_MORE || s == S_SMODE || s == S_RPICK || s == S_END || s == S_SAVEQ || s == S_SUM);
+        return flow.flash == null && (s == S_PICK || s == S_MENU || s == S_HOME || s == S_MORE || s == S_SMODE || s == S_RPICK || s == S_END || s == S_SAVEQ || s == S_SUM
+            || s == S_TEND || (s == S_TSCAN && tList()));
     }
+    // 23.11.: the trainer screen shows the list (searching), not one trainer's state (js tList)
+    function tList() as Boolean { var v = flow.link.shown(); return v == TL_SCAN || v == TL_OFF; }
     // a drag that moved the list is running or just ended
     function dragged() as Boolean { return dragMoved && (dragY >= 0.0 || System.getTimer() - dragEnd < 500); }
     // 23.11. (js/watchsim.js touch pointermove): the list follows the finger, one row per DRAG_ROW of the screen.
@@ -139,7 +144,15 @@ class FlowDelegate extends WatchUi.BehaviorDelegate {
             return true;
         }
         if (s == S_READY && !flow.sp.equals("other") && v > 0.665 && v < 0.74) { app.input(E_DOWN, null); return true; } // the route line
-        var menu = s == S_MENU || s == S_END || s == S_SAVEQ, pick = s == S_PICK || s == S_MORE || s == S_SMODE || s == S_RPICK;
+        if (s == S_TREC) { // 23.11. (js TREC_LAY): the stats page: back; - / + (the whole side) and the target (step size); the resume pill
+            var R = flow.tr;
+            if (R != null && R.pg != 0) { app.input(E_TAP, null); }
+            else if (v > 0.225 && v < 0.56) { app.input(E_ITEM, u < 0.31 ? 0 : (u > 0.69 ? 1 : 2)); }
+            else if (v > 0.78 && R != null && R.st != RS_RUN) { app.input(E_START, null); }
+            return true;
+        }
+        if (s == S_TSCAN && !tList()) { app.input(E_TAP, null); return true; } // one trainer's state: like START
+        var menu = s == S_MENU || s == S_END || s == S_SAVEQ || s == S_TEND, pick = s == S_PICK || s == S_MORE || s == S_SMODE || s == S_RPICK || s == S_TSCAN;
         if (s == S_HOME) {
             // the rows as Draw.drawHome draws them: row r at HOME_Y0 + r * HOME_DY, all four entries at once
             var hr = ((v - HOME_Y0) / HOME_DY + 0.5).toNumber(), hn = flow.listItems().size(), hi = flow.homeTop(hn) + hr;

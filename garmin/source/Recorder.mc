@@ -6,8 +6,13 @@
 // work exactly like the preview. Kept out of RideframeApp so the glance process does not load it.
 // 19.11.: the GPS position also drives the segment tracker and the route following (Feed.mc) once a second; segments near
 // the watch are asked for at the start of a run / ride and every 3 km (by RideframeApp, through needSegs / segsAsked / segsLoaded).
+// 23.11.: the indoor trainer (Flow.tr) records an indoor ride: Activity.SPORT_CYCLING / SUB_SPORT_INDOOR_CYCLING, no GPS, the trainer's
+// power and cadence written once a second through FitContributor fields that carry the native FIT field numbers (record power = 7,
+// cadence = 4; Session.createField :nativeNum, API 1.3.0), so Garmin Connect may show them as its own power and cadence (VERIFY), plus
+// the ERG target as a developer field. The heart rate comes from the watch's sensor like in every session.
 import Toybox.Activity;
 import Toybox.ActivityRecording;
+import Toybox.FitContributor;
 import Toybox.Lang;
 import Toybox.Math;
 import Toybox.Position;
@@ -42,6 +47,10 @@ class Recorder {
     var segBusy as Boolean = false;
     var segLat = 0.0d;
     var segLon = 0.0d;
+    var trainer as Boolean = false;           // 23.11.: the session is an indoor trainer ride (Flow.tr)
+    var fPw = null;                           // its FitContributor.Field: power, cadence, the ERG target
+    var fCad = null;
+    var fTgt = null;
 
     function initialize(f as Flow) { flow = f; feed = new SegFeed(); }
 
@@ -49,11 +58,21 @@ class Recorder {
     function sync() as Void {
         var wantGps = (flow.scr == S_READY || flow.rec != null) && Sports.gps(flow.sp, flow.type);
         if (wantGps != gpsOn) { setGps(wantGps); }
-        var R = flow.rec;
+        var R = flow.rec, T = flow.tr;
+        if (R == null && T != null) { // 23.11.: the trainer ride: recording while it runs, stopped while paused
+            if (session != null && !trainer) { close(false); }
+            if (session == null) { openTrainer(); }
+            var ts = session;
+            if (ts == null) { return; }
+            if (T.st == RS_RUN && !ts.isRecording()) { ts.start(); }
+            else if (T.st != RS_RUN && ts.isRecording()) { ts.stop(); }
+            return;
+        }
         if (R == null) {
             if (session != null) { close(false); }
             return;
         }
+        if (session != null && trainer) { close(false); }
         if (session == null) { open(); }
         var s = session;
         if (s == null) { return; }
@@ -73,20 +92,49 @@ class Recorder {
         // "ActivityRecording.Sport or Activity.Sport"); the 4.1.6 constants in Sports.mc compile for the API 5.2 targets
         session = ActivityRecording.createSession({ :name => name(), :sport => Sports.sport(flow.sp, flow.type), :subSport => Sports.sub(flow.sp, flow.type) });
         laps = 0; lastAsc = -1; lastDist = -1.0; lastMs = System.getTimer();
-        segD = -1.0; segNext = 0; feed.clear();
+        segD = -1.0; segNext = 0; feed.clear(); trainer = false;
+    }
+    // 23.11.: the indoor trainer ride as a native indoor cycling activity with the trainer's power and cadence
+    // VERIFY (Toybox.FitContributor, Session.createField): :nativeNum makes Garmin Connect take the fields as the record's power / cadence
+    // (the Indoor Endurance Coach app does this); if not, they still show as the app's own charts "Power" / "Cadence"
+    function openTrainer() as Void {
+        if (!(Toybox has :ActivityRecording)) { return; }
+        var s = ActivityRecording.createSession({ :name => "Indoor ride", :sport => Activity.SPORT_CYCLING, :subSport => Activity.SUB_SPORT_INDOOR_CYCLING });
+        // VERIFY: SUB_SPORT_INDOOR_CYCLING makes Garmin Connect file it as "Indoor Cycling" (no GPS, no distance from the trainer here)
+        session = s; trainer = true; laps = 0; lastMs = System.getTimer(); fPw = null; fCad = null; fTgt = null;
+        try {
+            var R = FitContributor.MESG_TYPE_RECORD;
+            fPw = s.createField("power", 0, FitContributor.DATA_TYPE_UINT16, { :mesgType => R, :units => "W", :nativeNum => 7 });
+            fCad = s.createField("cadence", 1, FitContributor.DATA_TYPE_UINT8, { :mesgType => R, :units => "rpm", :nativeNum => 4 });
+            fTgt = s.createField("target_power", 2, FitContributor.DATA_TYPE_UINT16, { :mesgType => R, :units => "W" });
+        } catch (e) { System.println("fit: trainer fields not created"); } // the ride is still recorded (time, heart rate); RIDEFRAME gets the power
+    }
+    // once a second while the trainer ride runs: the trainer's values into the FIT record
+    function trainerSec(now as Number) as Void {
+        var T = flow.tr, L = flow.link;
+        if (T == null || T.st != RS_RUN) { return; }
+        var a = fPw, b = fCad, c = fTgt, p = L.livePw(now), k = L.liveCad(now);
+        if (a != null) { a.setData(p > 65535 ? 65535 : p); }
+        if (b != null) { b.setData(k > 254 ? 254 : k); }
+        if (c != null) { c.setData(T.tgt); }
     }
     // Save (true) or Discard (false); the summary for the server is taken before the session closes
     function close(save as Boolean) as Void {
         var s = session;
         if (s == null) { return; }
         if (s.isRecording()) { s.stop(); }
-        if (save) { lastAct = activityBody(); s.save(); } else { s.discard(); }
-        session = null; laps = 0;
+        if (save) { lastAct = trainer ? flow.tbody : activityBody(); s.save(); } else { s.discard(); }
+        if (trainer) { flow.tbody = null; }
+        session = null; laps = 0; trainer = false; fPw = null; fCad = null; fTgt = null;
     }
     // the app is closed by the system mid-recording: keep what was recorded (a minute or more), else drop it
     function shutdown() as Void {
-        var R = flow.rec, keep = false;
+        var R = flow.rec, keep = false, T = flow.tr;
         if (R != null) { keep = R.t >= 60; }
+        if (T != null && trainer) { // 23.11.: a trainer ride closed by the system: kept from a minute on, with its upload
+            keep = T.t >= 60;
+            if (keep) { var now = Time.now().value(); flow.tbody = T.body(T.sum(), flow.newId(now), now); }
+        }
         if (session != null) { close(keep); }
         if (gpsOn) { setGps(false); }
     }
@@ -138,6 +186,7 @@ class Recorder {
     // every app tick (200 ms): once a second one sample into the flow while the recording runs
     function tick(ms as Number, now as Number) as Void {
         var R = flow.rec;
+        if (R == null && trainer) { if (ms - lastMs >= 1000) { lastMs = ms - lastMs > 3000 ? ms : lastMs + 1000; trainerSec(now); } return; }
         if (R == null) { lastMs = ms; return; }
         if (R.st != RS_RUN) { lastMs = ms; return; }
         if (ms - lastMs < 1000) { return; }
