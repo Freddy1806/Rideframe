@@ -153,7 +153,7 @@ let fails = 0; const ok = (c, m) => { console.log(`${c ? '✓' : '✗'} ${m}`); 
     d = await G(); const home = await D.evaluate(async () => (await import('/js/watchflow.js')).homeItems(__watch.F)); await dbtn('down', home.indexOf('kraft')); await dbtn('start');
     const DT = () => D.evaluate(() => __watch.texts.join(' | ')), DM = f => D.evaluate(async f => { const m = await import('/js/watchflow.js'); return m[f](__watch.F); }, f);
     await D.evaluate(() => { __watch.F.setup.ex.find(e => e.id === 'bench').s = [[80, 8], [77.5, 7], [75, 6]]; }); // 24.11.: last time's bench, set by set
-    d = await G(); ok(d.scr === 'smode', 'Strength: Exercises or a saved workout'); ok((await D.evaluate(async () => (await import('/js/watchflow.js')).listItems(__watch.F)))[0] === 'Exercises', 'one list: Exercises first, then the workouts'); await dsnap('16_strength_mode');
+    d = await G(); ok(d.scr === 'smode', 'Strength: Exercises or a saved workout'); ok((await D.evaluate(async () => (await import('/js/watchflow.js')).listItems(__watch.F)))[0] === 'Free', 'one list: Free first, then the workouts'); await dsnap('16_strength_mode');
     await dbtn('down'); await dbtn('start'); d = await G(); ok(d.scr === 'set' && d.ex === 'bench' && d.kg === 80 && d.reps === 8 && d.plan.i === 0 && await DM('setNo') === 1, 'Push day: bench 80 kg × 8, set 1'); await dsnap('18_guided_set');
     ok(/♥|bpm|\d+:\d\d/.test(await DT()), 'set screen: heart rate and clock line');
     ok(/SET 1 OF 3 \| 80 \| 8 \| ×/.test(await DT()), 'set 1: last time\'s set 1 small on the SET row (80, 8)');

@@ -177,7 +177,7 @@ const DRAW = {
       txt(g, 'from the phone', S / 2, S * .585, S * .052, C.lbl, { w: 800, max: S * .7 }); return; }
     list(g, S, C, listItems(F), F.sel, w ? w.n.toUpperCase() : 'EXERCISES', i => pickSub(i, g, S), false, n ? `${F.sel + 1}/${n}${k ? ` · ${k} ${k === 1 ? 'set' : 'sets'} done` : ''}` : '');
   },
-  [SCR.SMODE](g, S, C) { list(g, S, C, listItems(F), F.sel, 'STRENGTH', i => { if (!i) return 'Pick as you go'; const w = workouts(F)[i - 1]; return `${w.it.length} exercises · ${w.it.reduce((a, x) => a + x[1], 0)} sets`; }); },
+  [SCR.SMODE](g, S, C) { list(g, S, C, listItems(F), F.sel, 'STRENGTH', i => { if (!i) return 'Choose exercises'; const w = workouts(F)[i - 1]; return `${w.it.length} exercises · ${w.it.reduce((a, x) => a + x[1], 0)} sets`; }); },
   [SCR.END](g, S, C) { // BACK on the exercise list with sets logged: keep training, finish, or discard (asks once more)
     list(g, S, C, listItems(F), F.sel, F.endConf ? 'DISCARD?' : 'END WORKOUT?', null, true);
     const k = F.sets.length; txt(g, `${k} ${k === 1 ? 'set' : 'sets'} · ${clock(now() - F.start - F.pauseT)}`, S / 2, S * .82, S * .048, C.lbl, { w: 800, max: S * .6 });

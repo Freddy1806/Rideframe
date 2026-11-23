@@ -24,7 +24,7 @@ export const HOME = { run: 'Run', ride: 'Ride', trainer: 'Indoor trainer', kraft
 /** 23.11.: the trainer ride's menu (BACK): it does not pause (a stray BACK must not drop the watts), START pauses */
 export const TEND_ROWS = ['Resume', 'Stats page', 'Finish & save', 'Discard'];
 /** 23.11.: the strength list: the exercises (free), then the saved workouts (the phone's and those saved on the watch) */
-export const FREE = 'Exercises';
+export const FREE = 'Free';
 /** BACK from the exercise list once sets are logged: nothing is lost without a second step */
 export const END_ROWS = ['Keep training', 'Finish & save', 'Discard'];
 /** the pause screen (every mode): BACK held this long (or a finger on the "Hold to finish" pill) saves; the short-press hint shows this long */

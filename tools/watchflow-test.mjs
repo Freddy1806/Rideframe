@@ -244,7 +244,7 @@ test('more: the sports from the phone, one fixed page, no route', () => {
   const E = newFlow(null, { cfg: { ...CFG(), more: [] } }); go(E, [['item', 4]]); assert.equal(E.scr, SCR.MORE); go(E, ['start']); assert.equal(E.scr, SCR.MORE, 'empty list: nothing to start'); go(E, ['back']); assert.equal(E.scr, SCR.HOME);
 });
 test('strength: Exercises or a saved workout in one list; free = recent, then top 20, then the rest', () => {
-  const F = fl({ last: 'kraft' }); go(F, ['start']); assert.equal(F.scr, SCR.SMODE); assert.deepEqual(listItems(F), ['Exercises', 'Push day']);
+  const F = fl({ last: 'kraft' }); go(F, ['start']); assert.equal(F.scr, SCR.SMODE); assert.deepEqual(listItems(F), ['Free', 'Push day']);
   go(F, ['start']); assert.equal(F.scr, SCR.PICK); assert.deepEqual(listItems(F), ['Pull-ups', 'Squat', 'Biceps curls', 'Bench press', 'Plank']);
   go(F, ['start']); assert.equal(curEx(F).id, 'pull'); go(F, ['done', 'back']); assert.equal(F.scr, SCR.PICK); assert.equal(F.sel, 0, 'the list opens on the current exercise');
   const G = mk(); go(G, ['start']); assert.equal(G.scr, SCR.PICK, 'no workouts: straight to the exercises');
@@ -291,7 +291,7 @@ test('23.11. save as workout: free session -> asked, saved on the watch and queu
   assert.deepEqual(F.saveq.it, [['pull', 2, 10, 0, 90], ['squat', 1, 5, 100, 90]]);
   go(F, ['start']); assert.equal(F.scr, SCR.SAVEQ); const q0 = F.queue.length; go(F, ['start']); assert.equal(F.scr, SCR.HOME);
   assert.equal(F.queue.length, q0 + 1); const t = F.queue.at(-1); assert.ok(t.tpl && /^w/.test(t.tpl.id)); assert.deepEqual({ ...t.tpl, id: 0 }, { id: 0, n: 'Pull-ups + Squat', it: [['pull', 2, 10, 0, 90], ['squat', 1, 5, 100, 90]] });
-  assert.deepEqual(F.out.slice(-2), [{ k: 'tpl' }, { k: 'send' }]); assert.deepEqual(listItems({ ...F, scr: SCR.SMODE }), ['Exercises', 'Push day', 'Pull-ups + Squat'], 'on the watch at once');
+  assert.deepEqual(F.out.slice(-2), [{ k: 'tpl' }, { k: 'send' }]); assert.deepEqual(listItems({ ...F, scr: SCR.SMODE }), ['Free', 'Push day', 'Pull-ups + Squat'], 'on the watch at once');
   go(F, ['start']); handle(F, 'item', 3000, 2); assert.equal(curEx(F).id, 'pull'); go(F, ['done', 'start', 'done']); assert.equal(F.scr, SCR.REST); go(F, ['start', 'start']); assert.equal(curEx(F).id, 'squat'); go(F, ['done']);
   assert.equal(F.scr, SCR.SUM); assert.equal(F.saveq, null, 'the saved workout done as saved: no question'); go(F, ['start']); assert.equal(F.scr, SCR.HOME);
   const U = fl({ last: 'kraft' }); go(U, ['start', 'down', 'start', 'done', 'menu']); go(U, [['item', U.menu.indexOf(MENU.FIN)]]); assert.deepEqual(U.saveq.rows, ['Update Push day', 'Save as new', 'No'], 'workout ended early: changed');

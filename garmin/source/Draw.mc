@@ -304,7 +304,7 @@ module Draw {
     }
     // Exercises or a saved workout (the phone's and those saved on the watch)
     function drawSmode(dc as Dc, F as Flow, S as Number, P as Palette) as Void {
-        var sub = "Pick as you go", ws = F.workouts();
+        var sub = "Choose exercises", ws = F.workouts();
         if (F.sel > 0 && F.sel - 1 < ws.size()) {
             var it = arrOf(ws[F.sel - 1]["it"]), n = 0;
             for (var i = 0; i < it.size(); i++) { var x = arrOf(it[i]); if (x.size() > 1) { n += numOf(x[1]); } }

@@ -100,7 +100,7 @@ const M_FIN = "Finish";
 const M_PAUSE = "Pause";
 const M_SYNC = "Sync now";
 const M_PAIR = "Pair with phone";
-const FREE_ROW = "Exercises";
+const FREE_ROW = "Free";
 // pairing states / sum states
 const P_ENTER = 0;
 const P_SENDING = 1;
