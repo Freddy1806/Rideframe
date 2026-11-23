@@ -346,6 +346,8 @@ module Draw {
         var n = items.size(), c = S / 2, sel = F.sel;
         txt(dc, c, S * 0.12, Graphics.FONT_XTINY, fit(dc, title, Graphics.FONT_XTINY, (S * 0.56).toNumber()), P.dim);
         if (n == 0) { txt(dc, c, c, Graphics.FONT_SMALL, "Nothing yet", P.dim); return; }
+        // 23.11. diagnostics: what the app last got from a finger (FlowDelegate.touchNote)
+        if (isMenu) { txt(dc, c, S * 0.86, Graphics.FONT_XTINY, fit(dc, gTouch, Graphics.FONT_XTINY, (S * 0.6).toNumber()), P.lbl); }
         if (!isMenu) {
             var ct = count instanceof String ? count as String : (sel + 1).toString() + "/" + n.toString();
             txt(dc, c, S * 0.19, Graphics.FONT_XTINY, fit(dc, ct, Graphics.FONT_XTINY, (S * 0.62).toNumber()), P.dim);

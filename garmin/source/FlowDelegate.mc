@@ -15,6 +15,17 @@ import Toybox.System;
 import Toybox.Timer;
 import Toybox.WatchUi;
 
+// 23.11. diagnostics (Freddy: no touch arrives in the app on his fenix 8): the last touch event and how many came, shown under the menu
+var gTouch as String = "touch: none yet";
+var gTouchN as Number = 0;
+function touchNote(kind as String, xy) as Void {
+    gTouchN += 1;
+    var t = kind;
+    if (xy != null) { t = t + " " + xy[0].toString() + "," + xy[1].toString(); }
+    gTouch = "touch " + gTouchN.toString() + ": " + t;
+    WatchUi.requestUpdate();
+}
+
 class FlowDelegate extends WatchUi.BehaviorDelegate {
     var flow as Flow;
     var app;
@@ -68,7 +79,7 @@ class FlowDelegate extends WatchUi.BehaviorDelegate {
         return true;
     }
     // behaviours the keys above already cover (and that touch devices also send for swipes): swallowed
-    function onSelect() as Boolean { return true; }
+    function onSelect() as Boolean { touchNote("select", null); return true; }
     function onBack() as Boolean { return true; }
     function onNextPage() as Boolean { return true; }
     function onPreviousPage() as Boolean { return true; }
@@ -77,6 +88,7 @@ class FlowDelegate extends WatchUi.BehaviorDelegate {
     // ---- touch ----
     function onSwipe(evt as WatchUi.SwipeEvent) as Boolean {
         var d = evt.getDirection();
+        touchNote("swipe " + d.toString(), null);
         if ((d == WatchUi.SWIPE_UP || d == WatchUi.SWIPE_DOWN) && dragged()) { return true; } // the drag already moved the list
         if (d == WatchUi.SWIPE_UP) { app.input(E_SWIPE_UP, null); }
         else if (d == WatchUi.SWIPE_DOWN) { app.input(E_SWIPE_DOWN, null); }
@@ -99,6 +111,7 @@ class FlowDelegate extends WatchUi.BehaviorDelegate {
     // while the finger moves, and onSwipe may still follow at the end (swallowed above). If no drag events come, swipes still step.
     function onDrag(evt as WatchUi.DragEvent) as Boolean {
         if (!scrollable()) { dragY = -1.0; return false; }
+        touchNote("drag", evt.getCoordinates());
         var t = evt.getType(), y = evt.getCoordinates()[1].toFloat(), row = System.getDeviceSettings().screenHeight * DRAG_ROW;
         if (t == WatchUi.DRAG_TYPE_START) { dragY = y; dragMoved = false; return true; }
         if (dragY < 0.0) { return false; }
@@ -116,6 +129,7 @@ class FlowDelegate extends WatchUi.BehaviorDelegate {
         return flow.scr == S_PAUSE && !flow.pzConf && hasTouch() && v > 0.75 && (u - 0.5).abs() < 0.27;
     }
     function onHold(evt as WatchUi.ClickEvent) as Boolean {
+        touchNote("hold", evt.getCoordinates());
         if (!onPill(evt)) { return false; }
         pillHold = true; app.input(E_HOLD_START, System.getTimer());
         return true;
@@ -127,6 +141,7 @@ class FlowDelegate extends WatchUi.BehaviorDelegate {
     }
     // js/watchsim.js tapAt: the same table, in screen fractions
     function onTap(evt as WatchUi.ClickEvent) as Boolean {
+        touchNote("tap", evt.getCoordinates());
         var xy = evt.getCoordinates(), S = System.getDeviceSettings().screenWidth.toFloat();
         var u = xy[0] / S, v = xy[1] / S, s = flow.scr;
         if (dragged()) { return true; } // the end of a drag is no tap

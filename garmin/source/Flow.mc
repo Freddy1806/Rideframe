@@ -102,7 +102,7 @@ const M_SYNC = "Sync now";
 const M_PAIR = "Pair with phone";
 const FREE_ROW = "Free";
 // js/watchflow.js VERSION: the menu title shows it
-const RF_VERSION = "23.11.4";
+const RF_VERSION = "23.11.5";
 // pairing states / sum states
 const P_ENTER = 0;
 const P_SENDING = 1;
