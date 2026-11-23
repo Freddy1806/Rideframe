@@ -79,10 +79,14 @@ class FlowDelegate extends WatchUi.BehaviorDelegate {
         return true;
     }
     // behaviours the keys above already cover (and that touch devices also send for swipes): swallowed
-    function onSelect() as Boolean { touchNote("select", null); return true; }
+    // 23.11. (Freddy on the fenix 8: no touch anywhere): a BehaviorDelegate that returns true for a behaviour stops the matching
+    // InputDelegate call (SDK BehaviorDelegate overview). A tap is the Select behaviour and swipes are next / previous page, so
+    // returning true here ate every onTap / onSwipe. false lets them through; the keys are handled in onKeyPressed / onKeyReleased.
+    // onBack stays true: false would let the system leave the app on BACK.
+    function onSelect() as Boolean { touchNote("select", null); return false; }
     function onBack() as Boolean { return true; }
-    function onNextPage() as Boolean { return true; }
-    function onPreviousPage() as Boolean { return true; }
+    function onNextPage() as Boolean { return false; }
+    function onPreviousPage() as Boolean { return false; }
     function onMenu() as Boolean { app.input(E_MENU, null); return true; }
 
     // ---- touch ----
