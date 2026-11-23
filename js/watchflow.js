@@ -26,7 +26,7 @@ export const TEND_ROWS = ['Resume', 'Stats page', 'Finish & save', 'Discard'];
 /** 23.11.: the strength list: the exercises (free), then the saved workouts (the phone's and those saved on the watch) */
 export const FREE = 'Free';
 /** shown in the menu title on the watch and in the preview, so the user can tell which file is on the watch; raise it with every watch file (garmin/source/Flow.mc VERSION) */
-export const VERSION = '23.11.7';
+export const VERSION = '23.11.8';
 /** BACK from the exercise list once sets are logged: nothing is lost without a second step */
 export const END_ROWS = ['Keep training', 'Finish & save', 'Discard'];
 /** the pause screen (every mode): BACK held this long (or a finger on the "Hold to finish" pill) saves; the short-press hint shows this long */

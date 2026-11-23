@@ -67,6 +67,24 @@ monkeyc -d fenix7xpro -f monkey.jungle -o bin/rideframe-fenix7xpro.prg -y ~/garm
 The first build will most likely stop at type errors (the code was never compiled). Fix them one by one; if the type
 checker is too strict at first, VS Code Settings → Monkey C → Type Check Level → Gradual.
 
+**On-device tests (23.11.8).** `tests/` holds only `(:test)` code (left out of the app build): `smokeWalk` drives the flow with
+random buttons, taps, swipes, drags and wheel turns plus scripted trips through the indoor trainer (a pretend FTMS trainer over
+`E_BLE`) and a saved run, and draws every screen with `Draw.screen` on the watch's own fonts (it fails when TREC, TEND, TSUM, RSUM
+or another main screen was never reached); `measureFonts` logs the fonts' height / ascent / descent and worst-case widths (to compare
+with `js/watchfontdata.js`); `layoutCheck` checks the layout helpers on worst-case texts. Run them per watch, also with the fenix 8's
+font size setting at its largest:
+
+```sh
+monkeyc -d fenix8solar47mm -f monkey.jungle -o bin/test.prg -y ~/garmin/developer_key.der -t
+monkeydo bin/test.prg fenix8solar47mm -t
+```
+
+**Layout.** `source/Draw.mc` and `js/watchscreens.js` are the same code; `node --test tools/watch-layout-test.mjs` checks every
+screen of `js/watchscreens.js` on all five watches (fenix 8 also at font size 0.8 and 1.45) and that both files have the same
+numbers function by function. A layout change goes into both. `node tools/watch-layout.mjs [scene]` prints the findings,
+`node tools/watch-sheets.cjs <dir> <device> <scale>` draws contact sheets (with `GARMIN_FONTS` set: in the device fonts, which are
+not in the repo).
+
 ## Run in the simulator
 
 Command Palette → **Monkey C: Run** (pick `fr265`), or `connectiq` (opens the simulator) and then
