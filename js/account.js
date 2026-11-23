@@ -50,6 +50,8 @@ export async function pullRides() {
   for (const id of ids) if (!mine.has(id)) { const r = await api('rides/' + id).catch(() => null); if (r?.id) { await db.put('rides', r); n++; } }
   return n;
 }
+/** Strava ids deleted in this account on any device, merged with this device's (actimport.js forget): one list, kept on the host */
+export async function syncStravaGone(ids = []) { if (!acc) return ids; return (await api('stravagone', { method: 'PUT', body: JSON.stringify({ ids }) })).ids || ids; }
 /** call after a ride was saved locally. Without a connection (Freddy 20.11.: "auch wenn das Internet mal ausfällt") the ride
  *  stays on this device and its id waits in kv 'ridePush'; retryPushes() sends it when the line is back (window 'online', next start). */
 export async function pushRide(rec) {
