@@ -2,6 +2,9 @@
 // its Node tests use that file): same screens, same events, same numbers. Keep both in step when one changes.
 // Time is in seconds (Time.now().value()); kg is a Float, reps a Number (a timed exercise: seconds).
 // Outputs drained by RideframeApp: cues (vibrations) and out (requests to the server, saveAct).
+// 23.11. (the owner's first day on his fenix 8): BACK goes back (SET / REST -> PICK -> END once sets are logged), START goes weight -> reps ->
+// logged, E_DONE (the DONE pill) logs at once, E_START_HOLD switches the field, E_SCROLL (a dragged finger) moves lists, SMODE = Exercises or
+// a saved workout, a workout keeps its items in the exercise list (sets carry "pi"), the paged summary, SAVEQ saves the session as a workout.
 // Watch-only additions (not in the JS, the preview has no clock to hold): the hold timer of a timed exercise (holdAt,
 // first START starts it, the second logs the seconds held, C_HOLD at the planned time) and the gps quality (gps).
 // 19.11.: READY (run / ride) -> RPICK (UP / DOWN or a tap on the route line): None or a route sent from the phone; O_ROUTES asks
@@ -20,14 +23,17 @@ const S_SUM = 5;
 const S_PAIR = 6;
 const S_GLANCE = 7;
 const S_HOME = 8;
-const S_SMODE = 9;
-const S_WPICK = 10;
+const S_SMODE = 9;          // 23.11.: Exercises or a saved workout in one list (10 was WPICK)
 const S_MORE = 11;
 const S_READY = 12;
 const S_REC = 13;
 const S_PAUSE = 14;
 const S_RSUM = 15;
 const S_RPICK = 16;
+const S_END = 17;          // 23.11.: BACK on the exercise list with sets logged: Keep training, Finish & save, Discard (asks once more)
+const S_SAVEQ = 18;        // 23.11.: after the summary: save the session as a workout
+// 23.11.: a finger dragged over a list moves it one row per DRAG_ROW of the screen (js: DRAG_ROW); the list rows: js LIST_LAY
+const DRAG_ROW = 0.1;
 // the start menu (js/watchflow.js HOME_FIT, HOME_LAY): four rows at once; first row y, row step (= touch target) in screen fractions
 const HOME_FIT = 4;
 const HOME_Y0 = 0.27;
@@ -53,6 +59,9 @@ const E_SAMPLE = 17;
 const E_SEG = 18;
 const E_HOLD_START = 19;   // BACK pressed (arg = System.getTimer() ms), or a finger on the pause screen's "Hold to finish" pill
 const E_HOLD_END = 20;     // released
+const E_SCROLL = 21;       // 23.11.: a finger dragged over a list or the summary, arg = rows (+ = on down the list)
+const E_DONE = 22;         // 23.11.: the set screen's DONE pill (logs at once; START goes weight -> reps -> logged)
+const E_START_HOLD = 23;   // 23.11.: START held: weight <-> reps
 // vibration cues
 const C_SET = 1;
 const C_PR = 2;
@@ -72,6 +81,7 @@ const O_EXIT = 4;
 const O_SAVEACT = 5;
 const O_ROUTES = 6;
 const O_ROUTE = 7;
+const O_TPL = 8;           // 23.11.: a workout saved on the watch: keep setup and cfg in Storage (it is queued for POST /api/watch/workout)
 // menu items (js: MENU)
 const M_EX = "Change exercise";
 const M_SKIP = "Skip exercise";
@@ -80,6 +90,7 @@ const M_FIN = "Finish";
 const M_PAUSE = "Pause";
 const M_SYNC = "Sync now";
 const M_PAIR = "Pair with phone";
+const FREE_ROW = "Exercises";
 // pairing states / sum states
 const P_ENTER = 0;
 const P_SENDING = 1;
@@ -222,9 +233,12 @@ class Flow {
     var start as Number = 0;
     var restEnd as Number = 0;
     var restLen as Number = 0;
-    var plan as Array<Number> or Null = null;                  // js: plan { w, i, n } as [w, i, n]
+    var plan as Array<Number> or Null = null;                  // js: plan { w, i, on } as [w, i, on (1 / 0)]; sets on a planned item carry "pi"
+    var planSkip as Array<Number> = [] as Array<Number>;       // js: plan.skip
+    var endConf as Boolean = false;                            // S_END: the Discard step
+    var saveq as Dictionary or Null = null;                    // js: F.saveq { "it", "n", "rows", "wid"?, "wn"? }
     var flash as Dictionary or Null = null;                    // { "k" => "pr" | "lap", "until", ... }
-    var sum as Dictionary or Null = null;                      // { "id", "dur", "sets", "vol", "exs", "prs", "st" }
+    var sum as Dictionary or Null = null;                      // { "id", "dur", "sets", "vol", "exs", "prs", "st", "hr" ({ avg, max } or null), "ex" ([{ n, t, s: [[kg, reps, pr]] }]) }
     var hr as Number = 0;
     var hrN as Number = 0;
     var hrSum as Number = 0;
@@ -293,11 +307,64 @@ class Flow {
         for (var i = 0; i < sets.size(); i++) { if (id.equals(sets[i]["ex"])) { r.add(sets[i]); } }
         return r;
     }
+    // js: planIts(F): the items of the workout in progress
+    function planIts() as Array {
+        var p = plan, ws = workouts();
+        if (p == null) { return [] as Array; }
+        if (p[0] < 0 || p[0] >= ws.size()) { return [] as Array; }
+        return arrOf(ws[p[0]]["it"]);
+    }
+    // item j of the workout: [ex, sets, reps, kg, rest, name?] or null
+    function itAt(j as Number) as Array or Null {
+        var a = planIts();
+        if (j < 0 || j >= a.size() || !(a[j] instanceof Array)) { return null; }
+        var x = a[j] as Array;
+        return x.size() >= 5 ? x : null;
+    }
+    // js: planItem(F): the planned item now, null without a workout or while a free exercise is done in between
+    function planItem() as Array or Null {
+        var p = plan;
+        if (p == null) { return null; }
+        if (p[2] == 0) { return null; }
+        return itAt(p[1]);
+    }
+    // js: doneOf(F, j): sets logged on planned item j
+    function doneOf(j as Number) as Number {
+        var n = 0;
+        for (var i = 0; i < sets.size(); i++) { var pi = sets[i]["pi"]; if (pi != null) { if (numOf(pi) == j) { n++; } } }
+        return n;
+    }
     // js: setNo(F)
     function setNo() as Number {
         var p = plan;
-        if (p != null) { return p[2] + 1; }
+        if (p != null && planItem() != null) { return doneOf(p[1]) + 1; }
         return setsOf(strOf(curEx()["id"])).size() + 1;
+    }
+    // js: nextOpen(F): the next item with sets left (after the one now, wrapping, skipped ones not), -1 = all done
+    function nextOpen() as Number {
+        var p = plan;
+        if (p == null) { return -1; }
+        var n = planIts().size();
+        for (var k = 1; k <= n; k++) {
+            var j = (p[1] + k) % n, x = itAt(j);
+            if (x != null) { if (planSkip.indexOf(j) < 0 && doneOf(j) < numOf(x[1])) { return j; } }
+        }
+        return -1;
+    }
+    function unskip(j as Number) as Void {
+        var r = [] as Array<Number>;
+        for (var i = 0; i < planSkip.size(); i++) { if (planSkip[i] != j) { r.add(planSkip[i]); } }
+        planSkip = r;
+    }
+    // js: pickRows(F): [setup index, planned item or -1]; in a workout its items first, then every other exercise in the free order
+    function pickRows() as Array<Array<Number>> {
+        var r = [] as Array<Array<Number>>, a = planIts(), l = exList(), inPlan = [] as Array<Number>;
+        for (var j = 0; j < a.size(); j++) {
+            var x = arrOf(a[j]);
+            if (x.size() > 0) { var i = exIndex(l, x[0]); if (i >= 0) { r.add([i, j] as Array<Number>); inPlan.add(i); } }
+        }
+        for (var k = 0; k < list.size(); k++) { if (inPlan.indexOf(list[k]) < 0) { r.add([list[k], -1] as Array<Number>); } }
+        return r;
     }
     // js: workouts(F): from the setup, else from the config, only those with exercises
     function workouts() as Array<Dictionary> {
@@ -308,17 +375,6 @@ class Flow {
             if (w instanceof Dictionary && arrOf((w as Dictionary)["it"]).size() > 0) { r.add(w as Dictionary); }
         }
         return r;
-    }
-    // js: planItem(F): [ex, sets, reps, kg, rest, name?] or null
-    function planItem() as Array or Null {
-        var p = plan;
-        if (p == null) { return null; }
-        var ws = workouts();
-        if (p[0] < 0 || p[0] >= ws.size()) { return null; }
-        var it = arrOf(ws[p[0]]["it"]);
-        if (p[1] < 0 || p[1] >= it.size() || !(it[p[1]] instanceof Array)) { return null; }
-        var x = it[p[1]] as Array;
-        return x.size() >= 5 ? x : null;
     }
     // js: HOME and homeItems(F): the sport used last on top
     function homeKeys() as Array<String> { return ["run", "ride", "kraft", "more"] as Array<String>; }
@@ -353,17 +409,20 @@ class Flow {
         return seen.size();
     }
 
-    // js: prefill(F): last set of this session, else last session's set n (or its last), else a start value; a workout suggests its own
-    function prefill() as Void {
-        var e = curEx(), id = strOf(e["id"]), t = exT(e), mine = setsOf(id), n = mine.size();
-        if (n > 0) { kg = fltOf(mine[n - 1]["kg"]); reps = numOf(mine[n - 1]["reps"]); return; }
+    // js: prefillOf(F, e): [kg, reps] for the next set of e: last set of this session, else last session's set n (or its last), else a start
+    // value; a workout suggests its own
+    function prefillOf(e as Dictionary) as Array {
+        var id = strOf(e["id"]), t = exT(e), mine = setsOf(id), n = mine.size(), k = 0.0, r = 0;
+        if (n > 0) { return [fltOf(mine[n - 1]["kg"]), numOf(mine[n - 1]["reps"])]; }
         var s = arrOf(e["s"]);
         var p = s.size() > 0 ? arrOf(n < s.size() ? s[n] : s[s.size() - 1]) : [] as Array;
-        if (p.size() >= 2) { kg = fltOf(p[0]); reps = numOf(p[1]); }
-        else { kg = "w".equals(t) ? 20.0 : 0.0; reps = "time".equals(t) ? 60 : ("bw".equals(t) ? 10 : 8); }
+        if (p.size() >= 2) { k = fltOf(p[0]); r = numOf(p[1]); }
+        else { k = "w".equals(t) ? 20.0 : 0.0; r = "time".equals(t) ? 60 : ("bw".equals(t) ? 10 : 8); }
         var it = planItem();
-        if (it != null) { if (id.equals(it[0])) { var pk = fltOf(it[3]); if (pk > 0.0 || !"w".equals(t)) { kg = pk; } reps = numOf(it[2]); } }
+        if (it != null) { if (id.equals(it[0])) { var pk = fltOf(it[3]); if (pk > 0.0 || !"w".equals(t)) { k = pk; } r = numOf(it[2]); } }
+        return [k, r];
     }
+    function prefill() as Void { var v = prefillOf(curEx()); kg = fltOf(v[0]); reps = numOf(v[1]); }
     // js: stepValue(F, d, big)
     function stepValue(d as Number, big as Boolean) as Void {
         if (focus == 0) {
@@ -381,7 +440,7 @@ class Flow {
     function menuFor() as Array<String> {
         if (start != 0) {
             var m = [M_EX] as Array<String>;
-            if (plan != null) { m.add(M_SKIP); }
+            if (planItem() != null) { m.add(M_SKIP); }
             if (sets.size() > 0) { m.add(M_UNDO); }
             m.add(M_FIN);
             m.add(M_PAUSE);
@@ -390,6 +449,7 @@ class Flow {
         return paired ? [M_SYNC, M_PAIR] as Array<String> : [M_PAIR] as Array<String>;
     }
     function openMenu() as Void { back = scr; menu = menuFor(); sel = 0; scr = S_MENU; }
+    // to exercise i: weight first (bodyweight and timed: reps / seconds), prefilled
     function choose(i as Number) as Void {
         var n = exCount();
         cur = i < 0 ? 0 : (i > n - 1 ? imax(0, n - 1) : i);
@@ -398,32 +458,45 @@ class Flow {
         prefill();
         scr = S_SET;
     }
-    // the free picker leaves a workout
-    function toPick() as Void { plan = null; holdAt = 0; sel = sets.size() > 0 ? imax(0, list.indexOf(cur)) : 0; scr = S_PICK; }
-    // js: goPlan(F): to the planned exercise (added to the setup when the setup does not know it)
-    function goPlan() as Void {
-        var it = planItem();
-        if (it == null) { return; }
-        var id = strOf(it[0]), l = exList(), i = exIndex(l, id);
+    // js: toPick(F, keep): the exercise list (BACK from a set or the rest, Change exercise); a workout stays on; keep = on the exercise now
+    function toPick(keep as Boolean) as Void {
+        restEnd = 0; holdAt = 0;
+        var p = plan, pi = -1, k = -1;
+        if (p != null) { if (p[2] != 0) { pi = p[1]; } }
+        if (keep) {
+            var rows = pickRows();
+            for (var i = 0; i < rows.size() && k < 0; i++) { if (rows[i][0] == cur && rows[i][1] == pi) { k = i; } }
+        }
+        sel = k < 0 ? 0 : k; scr = S_PICK;
+    }
+    // js: ensureEx(F, id, n): the setup index of exercise id (added with its name when the setup does not know it)
+    function ensureEx(id as String, nm) as Number {
+        var l = exList(), i = exIndex(l, id);
         if (i < 0) {
-            var nm = it.size() > 5 && it[5] instanceof String ? it[5] as String : id;
-            l.add({ "id" => id, "n" => nm, "t" => "w" });
+            l.add({ "id" => id, "n" => nm instanceof String ? nm as String : id, "t" => "w" });
             i = l.size() - 1;
             list.add(i);
         }
-        choose(i);
+        return i;
     }
-    // js: advance(F): one step on in the workout
-    function advance() as Void {
-        var it = planItem(), p = plan;
-        if (it == null) { return; }
+    // js: goPlan(F): to the planned item now
+    function goPlan() as Void {
+        var p = plan;
         if (p == null) { return; }
-        p[2] = p[2] + 1;
-        if (p[2] >= numOf(it[1])) { p[1] = p[1] + 1; p[2] = 0; }
+        var x = itAt(p[1]);
+        if (x == null) { return; }
+        p[2] = 1;
+        choose(ensureEx(strOf(x[0]), x.size() > 5 ? x[5] : null));
     }
-    function startPlan(w as Number, now as Number) as Void { plan = [w, 0, 0] as Array<Number>; if (start == 0) { start = now; } goPlan(); }
+    function startPlan(w as Number, now as Number) as Void {
+        plan = [w, 0, 1] as Array<Number>; planSkip = [] as Array<Number>;
+        if (start == 0) { start = now; }
+        var a = planIts();
+        for (var j = 0; j < a.size(); j++) { var x = arrOf(a[j]); if (x.size() > 0) { ensureEx(strOf(x[0]), x.size() > 5 ? x[5] : null); } }
+        goPlan();
+    }
 
-    // js: completeSet(F, now)
+    // js: completeSet(F, now): stored, record check, rest; a workout goes on to the next item with sets left (none left = finished)
     function completeSet(now as Number) as Void {
         if (reps <= 0) { cues.add(C_ERROR); return; }
         var e = curEx(), id = strOf(e["id"]), w = "w".equals(exT(e));
@@ -433,8 +506,9 @@ class Flow {
             var x = w ? e1rm(fltOf(mine[i]["kg"]), numOf(mine[i]["reps"])) : numOf(mine[i]["reps"]).toFloat();
             if (x > before) { before = x; }
         }
-        var t = now - start - pauseT;
+        var t = now - start - pauseT, it = planItem(), p = plan;
         var set = { "ex" => id, "kg" => kg, "reps" => reps, "t" => t > 0 ? t : 0 } as Dictionary;
+        if (it != null && p != null) { set["pi"] = p[1]; }
         var best = fltOf(e["b"]);
         if (best > 0.0 && v > best + 0.01 && v > before + 0.01) {
             set["pr"] = true;
@@ -444,40 +518,98 @@ class Flow {
             cues.add(C_SET);
         }
         sets.add(set);
-        var it = planItem(), sr = numOf(setup["rest"]);
+        var sr = numOf(setup["rest"]);
         restLen = sr > 0 ? sr : 90;
-        if (it != null) {
+        if (it != null && p != null) {
             if (numOf(it[4]) > 0) { restLen = numOf(it[4]); }
-            advance();
-            if (planItem() == null) { finish(now); return; } // the last planned set ends the workout
+            if (doneOf(p[1]) >= numOf(it[1])) { var j = nextOpen(); if (j < 0) { finish(now); return; } p[1] = j; } // the last planned set ends the workout
         }
         restEnd = now + restLen;
         scr = S_REST;
     }
     function endRest(vib as Boolean) as Void {
         restEnd = 0;
-        if (planItem() != null) { goPlan(); } else { prefill(); scr = S_SET; }
+        if (planItem() != null) { goPlan(); } else { choose(cur); }
         if (vib) { cues.add(C_REST); }
     }
-    // js: undo(F): back on that set with its values, to fix and tick again
+    // js: undo(F): back on that set with its values, to fix and tick again (a workout: back on its item)
     function undo() as Void {
         var n = sets.size();
         if (n == 0) { return; }
         var s = sets[n - 1];
         sets = sets.slice(0, n - 1) as Array<Dictionary>;
-        var p = plan;
-        if (p != null) {
-            if (p[2] > 0) { p[2] = p[2] - 1; }
-            else if (p[1] > 0) { p[1] = p[1] - 1; p[2] = 0; var it = planItem(); if (it != null) { p[2] = imax(0, numOf(it[1]) - 1); } }
-        }
         var i = exIndex(exList(), s["ex"]);
         if (i >= 0) { cur = i; }
+        var p = plan;
+        if (p != null) { var pi = s["pi"]; if (pi != null) { p[1] = numOf(pi); p[2] = 1; unskip(p[1]); } else { p[2] = 0; } }
+        focus = "w".equals(exT(curEx())) ? 0 : 1;
         kg = fltOf(s["kg"]); reps = numOf(s["reps"]); restEnd = 0; holdAt = 0; scr = S_SET;
     }
-    // js: finish(F, now): the session goes into the queue (sent and retried by the app), the summary shows
+    // js: tplOf(F): the session as a workout, one item per block (a planned item, else an exercise) in the order first done:
+    // [ex, sets, reps, kg, rest] with the last set's reps and kg, inside the phone editor's limits (js/watchfields.js LIM), at most 20
+    function tplOf() as Array<Array> {
+        var keys = [] as Array<String>, b = [] as Array<Array>, r0 = numOf(setup["rest"]);
+        if (r0 <= 0) { r0 = 90; }
+        for (var i = 0; i < sets.size(); i++) {
+            var s = sets[i], pi = s["pi"], k = pi != null ? "p" + numOf(pi).toString() : "e" + strOf(s["ex"]), at = keys.indexOf(k);
+            if (at < 0) {
+                var rest = r0;
+                if (pi != null) { var x = itAt(numOf(pi)); if (x != null) { if (numOf(x[4]) > 0) { rest = numOf(x[4]); } } }
+                keys.add(k); b.add([strOf(s["ex"]), 0, 0, 0.0, rest]); at = b.size() - 1;
+            }
+            var o = b[at];
+            o[1] = numOf(o[1]) + 1; o[2] = numOf(s["reps"]); o[3] = fltOf(s["kg"]);
+        }
+        var r = [] as Array<Array>;
+        for (var i = 0; i < b.size() && i < 20; i++) {
+            var ob = b[i], kq = rnd(fltOf(ob[3]) * 4.0).toFloat() / 4.0;
+            r.add([ob[0], imin(10, imax(1, numOf(ob[1]))), imin(100, imax(1, numOf(ob[2]))), kq < 0.0 ? 0.0 : (kq > 500.0 ? 500.0 : kq), imin(600, imax(0, rnd(numOf(ob[4]) / 5.0) * 5))]);
+        }
+        return r;
+    }
+    // js: saveOffer(F): null (a saved workout done as planned), else { "it", "n" (name for a new one), "rows", "wid" / "wn" (the workout done) }
+    function saveOffer() as Dictionary or Null {
+        var p = plan, ws = workouts(), w = null;
+        if (p != null) { if (p[0] >= 0 && p[0] < ws.size()) { w = ws[p[0]]; } }
+        if (w != null && planSkip.size() == 0) {
+            var same = true, n = planIts().size();
+            for (var i = 0; i < sets.size() && same; i++) { if (sets[i]["pi"] == null) { same = false; } }
+            for (var j = 0; j < n && same; j++) { var x = itAt(j); if (x == null || doneOf(j) != numOf(x[1])) { same = false; } }
+            if (same) { return null; }
+        }
+        var it = tplOf(), l = exList(), nm = "", room = ws.size() < 30;
+        for (var i = 0; i < it.size() && i < 2; i++) {
+            var k = exIndex(l, it[i][0]), en = k >= 0 ? strOf((l[k] as Dictionary)["n"]) : strOf(it[i][0]);
+            nm = i == 0 ? en : nm + " + " + en;
+        }
+        if (it.size() > 2) { nm = nm + " +" + (it.size() - 2).toString(); }
+        if (nm.length() > 40) { nm = nm.substring(0, 40) as String; }
+        var rows = [] as Array<String>;
+        if (w != null) { rows.add("Update " + strOf(w["n"])); if (room) { rows.add("Save as new"); } rows.add("No"); }
+        else if (room) { rows.add("Save as workout"); rows.add("No"); }
+        else { return null; }
+        var q = { "it" => it, "n" => nm, "rows" => rows } as Dictionary;
+        if (w != null) { q["wid"] = strOf(w["id"]); q["wn"] = strOf(w["n"]); }
+        return q;
+    }
+    // js: sumEx(F): the summary's exercises in the order first done: [{ "n", "t", "s" => [[kg, reps, pr 1 / 0]] }]
+    function sumEx() as Array<Dictionary> {
+        var r = [] as Array<Dictionary>, ids = [] as Array<String>, l = exList();
+        for (var i = 0; i < sets.size(); i++) {
+            var s = sets[i], id = strOf(s["ex"]), k = ids.indexOf(id);
+            if (k < 0) {
+                var j = exIndex(l, id), e = j >= 0 ? l[j] as Dictionary : { "n" => id, "t" => "w" } as Dictionary;
+                ids.add(id); r.add({ "n" => strOf(e["n"]), "t" => exT(e), "s" => [] as Array } as Dictionary); k = r.size() - 1;
+            }
+            (r[k]["s"] as Array).add([fltOf(s["kg"]), numOf(s["reps"]), s["pr"] == true ? 1 : 0]);
+        }
+        return r;
+    }
+    function newId(now as Number) as String { return Math.rand().format("%08x") + now.format("%x"); }
+    // js: finish(F, now): the session goes into the queue (sent and retried by the app), the summary shows, then the question to save it
     function finish(now as Number) as Void {
         if (sets.size() == 0) { reset(); return; }
-        var id = Math.rand().format("%08x") + now.format("%x");
+        var id = newId(now);
         var dur = now - start - pauseT; if (dur < 1) { dur = 1; }
         var l = [] as Array<Dictionary>, prs = 0;
         for (var i = 0; i < sets.size(); i++) {
@@ -485,14 +617,43 @@ class Flow {
             l.add({ "ex" => s["ex"], "kg" => s["kg"], "reps" => s["reps"], "t" => s["t"] } as Dictionary);
             if (s["pr"] == true) { prs++; }
         }
-        var sess = { "id" => id, "start" => start, "duration" => dur, "sets" => l } as Dictionary;
-        if (hrN > 0) { sess["hr"] = { "avg" => rnd(hrSum.toFloat() / hrN), "max" => hrMax } as Dictionary; }
+        var sess = { "id" => id, "start" => start, "duration" => dur, "sets" => l } as Dictionary, h = null;
+        if (hrN > 0) { h = { "avg" => rnd(hrSum.toFloat() / hrN), "max" => hrMax } as Dictionary; sess["hr"] = h; }
         queue.add(sess);
-        sum = { "id" => id, "dur" => dur, "sets" => sets.size(), "vol" => volume(), "exs" => distinctEx(), "prs" => prs, "st" => paired ? ST_SENDING : ST_QUEUED } as Dictionary;
-        sets = [] as Array<Dictionary>; start = 0; pauseT = 0; restEnd = 0; plan = null; holdAt = 0; hrN = 0; hrSum = 0; hrMax = 0;
-        scr = S_SUM; cues.add(C_DONE); out.add({ "k" => O_SEND } as Dictionary);
+        sum = { "id" => id, "dur" => dur, "sets" => sets.size(), "vol" => volume(), "exs" => distinctEx(), "prs" => prs, "st" => paired ? ST_SENDING : ST_QUEUED,
+                "hr" => h, "ex" => sumEx() } as Dictionary;
+        saveq = saveOffer();
+        sets = [] as Array<Dictionary>; start = 0; pauseT = 0; restEnd = 0; plan = null; planSkip = [] as Array<Number>; holdAt = 0; hrN = 0; hrSum = 0; hrMax = 0;
+        sel = 0; scr = S_SUM; cues.add(C_DONE); out.add({ "k" => O_SEND } as Dictionary);
     }
-    function reset() as Void { sets = [] as Array<Dictionary>; start = 0; pauseT = 0; pzConf = false; pzHolding = false; restEnd = 0; plan = null; flash = null; sum = null; holdAt = 0; scr = S_START; }
+    function reset() as Void {
+        sets = [] as Array<Dictionary>; start = 0; pauseT = 0; pzConf = false; pzHolding = false; restEnd = 0; plan = null; planSkip = [] as Array<Number>;
+        flash = null; sum = null; saveq = null; endConf = false; holdAt = 0; sel = 0; scr = S_START;
+    }
+    // js: saveTpl(F, asNew): on the watch at once (the strength list), for the account through the queue (POST /api/watch/workout)
+    function saveTpl(asNew as Boolean, now as Number) as Void {
+        var q = saveq;
+        if (q == null) { return; }
+        var upd = !asNew && q["wid"] != null;
+        var w = { "id" => upd ? strOf(q["wid"]) : "w" + newId(now), "n" => upd ? strOf(q["wn"]) : strOf(q["n"]), "it" => q["it"] } as Dictionary;
+        var ls = [setup["workouts"], cfg["w"]] as Array;
+        for (var i = 0; i < ls.size(); i++) {
+            var a = ls[i];
+            if (!(a instanceof Array)) { continue; }
+            var la = a as Array, k = -1;
+            for (var j = 0; j < la.size(); j++) { var x = la[j]; if (x instanceof Dictionary) { if (strOf((x as Dictionary)["id"]).equals(w["id"])) { k = j; } } }
+            if (k >= 0) { la[k] = w; } else { la.add(w); }
+        }
+        queue.add({ "id" => "t" + newId(now), "tpl" => w } as Dictionary);
+        out.add({ "k" => O_TPL } as Dictionary); out.add({ "k" => O_SEND } as Dictionary); cues.add(C_DONE);
+    }
+    // js: pickBack(F): BACK on the exercise list: with sets the end question, else back to the choice (nothing to lose)
+    function pickBack() as Void {
+        if (sets.size() > 0) { endConf = false; sel = 0; scr = S_END; return; }
+        var w = workouts().size();
+        reset();
+        if (w > 0) { scr = S_SMODE; }
+    }
     // js: sent(F, id, res)
     function sent(id as String, res as Number) as Void {
         if (res != R_RETRY) {
@@ -772,18 +933,26 @@ class Flow {
         if (ev == E_SWIPE_LEFT) { ev = E_MENU; }
         if (ev == E_SWIPE_RIGHT) { ev = E_BACK; }
         var s = scr;
-        var isList = s == S_PICK || s == S_MENU || s == S_HOME || s == S_MORE || s == S_SMODE || s == S_WPICK || s == S_RPICK;
-        // a list (and the data pages) scroll with the finger, a number counts up
-        if (ev == E_SWIPE_UP) { ev = (isList || s == S_REC || s == S_PAUSE) ? E_DOWN : E_UP; }
-        else if (ev == E_SWIPE_DOWN) { ev = (isList || s == S_REC || s == S_PAUSE) ? E_UP : E_DOWN; }
+        var isList = s == S_PICK || s == S_MENU || s == S_HOME || s == S_MORE || s == S_SMODE || s == S_RPICK || s == S_END || s == S_SAVEQ;
+        var paged = isList || s == S_REC || s == S_PAUSE || s == S_SUM;
+        // a list (the data pages, the summary) scrolls with the finger, a number counts up
+        if (ev == E_SWIPE_UP) { ev = paged ? E_DOWN : E_UP; }
+        else if (ev == E_SWIPE_DOWN) { ev = paged ? E_UP : E_DOWN; }
+        if (ev == E_SCROLL) { // the finger dragged: the list follows it row by row (no wrapping)
+            var d = numOf(arg), m = -1;
+            if (isList) { m = listItems().size() - 1; }
+            else if (s == S_SUM) { var u = sum; if (u != null) { m = arrOf(u["ex"]).size(); } }
+            if (m >= 0) { var v = sel + d; sel = v < 0 ? 0 : (v > m ? m : v); }
+            return;
+        }
         if (ev == E_MENU) { if (s == S_HOME || s == S_START || s == S_PICK || s == S_SET || s == S_REST) { openMenu(); } return; }
         if (s == S_PAUSE) { if (rec != null || start != 0) { onPause(ev, now, arg); } else { scr = S_HOME; } return; }
         if (s == S_GLANCE) { if (ev == E_START || ev == E_TAP) { sel = 0; scr = paired ? S_HOME : S_PAIR; } return; }
         if (s == S_START) {
             if (ev == E_START || ev == E_TAP) {
                 if (exCount() == 0) { out.add({ "k" => O_SETUP } as Dictionary); return; }
-                start = now; sets = [] as Array<Dictionary>; sum = null; plan = null; last = "kraft";
-                if (workouts().size() > 0) { sel = 0; scr = S_SMODE; } else { toPick(); }
+                start = now; sets = [] as Array<Dictionary>; sum = null; plan = null; last = "kraft"; sel = 0;
+                if (workouts().size() > 0) { scr = S_SMODE; } else { toPick(false); }
             } else if (ev == E_BACK) { sel = 0; scr = S_HOME; }
             return;
         }
@@ -812,10 +981,10 @@ class Flow {
                 if (ev == E_BACK) {
                     if (s == S_MENU) { scr = back; }
                     else if (s == S_MORE) { scr = S_HOME; }
-                    else if (s == S_WPICK) { scr = S_SMODE; }
                     else if (s == S_RPICK) { scr = S_READY; }
                     else if (s == S_HOME) { out.add({ "k" => O_EXIT } as Dictionary); }
-                    else { scr = S_START; }
+                    else if (s == S_PICK) { pickBack(); }
+                    else { reset(); }
                 }
                 return;
             }
@@ -828,10 +997,10 @@ class Flow {
                 if (s == S_MENU) { scr = back; }
                 else if (s == S_HOME) { out.add({ "k" => O_EXIT } as Dictionary); }
                 else if (s == S_MORE) { sel = 0; scr = S_HOME; }
-                else if (s == S_WPICK) { sel = 0; scr = S_SMODE; }
                 else if (s == S_RPICK) { sel = 0; scr = S_READY; }
-                else if (sets.size() > 0) { if (planItem() != null) { goPlan(); } else { prefill(); scr = S_SET; } }
-                else { reset(); } // PICK / SMODE
+                else if (s == S_PICK) { pickBack(); }
+                else if (s == S_END) { if (endConf) { endConf = false; sel = 2; } else { toPick(true); } } // BACK = keep training
+                else { reset(); } // SMODE: the strength screen; SAVEQ: = No
             }
             return;
         }
@@ -840,22 +1009,30 @@ class Flow {
             var timed = isTime(curEx());
             if (ev == E_UP || ev == E_DOWN) { stepValue(ev == E_UP ? 1 : -1, false); }
             else if (ev == E_UP_HOLD || ev == E_DOWN_HOLD) { stepValue(ev == E_UP_HOLD ? 1 : -1, true); }
-            else if (ev == E_FOCUS) { focus = numOf(arg) == 0 ? 0 : 1; }
-            else if (ev == E_BACK) { if (timed && holdAt > 0) { holdAt = 0; } else { focus = 1 - focus; } } // BACK: weight <-> reps; a running hold timer is cancelled
-            else if (ev == E_START) {                                                                     // touch: the drawn DONE button sends E_START
-                if (timed && holdAt == 0) { holdAt = now; holdCued = false; cues.add(C_START); }        // watch only: START starts the hold clock
+            else if (ev == E_FOCUS) { focus = numOf(arg) == 0 ? 0 : 1; }                           // touch: a tap on the weight or the reps
+            else if (ev == E_START_HOLD) { if (!timed) { focus = 1 - focus; } }                      // buttons: START held moves between weight and reps
+            else if (ev == E_BACK) { if (timed && holdAt > 0) { holdAt = 0; } else { toPick(true); } } // 23.11.: BACK goes back to the exercise list; a running hold timer is cancelled first
+            else if (ev == E_START && !timed && focus == 0) { focus = 1; }                           // START: weight, then reps, then the set is logged
+            else if (ev == E_START || ev == E_DONE) {                                                // the DONE pill logs at once
+                if (timed && holdAt == 0) { holdAt = now; holdCued = false; cues.add(C_START); }    // watch only: the first START / DONE starts the hold clock
                 else { if (timed) { var el = now - holdAt; holdAt = 0; if (el > 0) { reps = el; } } completeSet(now); }
             }
             return;
         }
         if (s == S_REST) {
             if (ev == E_START || ev == E_TAP) { endRest(false); }
-            else if (ev == E_BACK) { toPick(); }
+            else if (ev == E_BACK) { toPick(true); }
             else if (ev == E_UP) { restEnd += REST_STEP; restLen += REST_STEP; }
             else if (ev == E_DOWN) { var e2 = restEnd - REST_STEP; restEnd = e2 > now + 1 ? e2 : now + 1; }
             return;
         }
-        if (s == S_SUM) { if (ev == E_START || ev == E_BACK || ev == E_TAP) { reset(); } return; }
+        if (s == S_SUM) { // 23.11.: page 0 the totals, then one page per exercise; done: the question to save it as a workout (when there is one)
+            var su = sum, pn = 1;
+            if (su != null) { pn = arrOf(su["ex"]).size() + 1; }
+            if (ev == E_UP || ev == E_DOWN) { sel = (sel + (ev == E_DOWN ? 1 : pn - 1)) % pn; }
+            else if (ev == E_START || ev == E_BACK || ev == E_TAP) { if (saveq != null) { sel = 0; scr = S_SAVEQ; } else { reset(); } }
+            return;
+        }
         if (s == S_PAIR) {
             if (pairSt == P_SENDING) { return; }
             if (pairSt == P_FAIL && ev != E_BACK) { pairSt = P_ENTER; }
@@ -879,17 +1056,27 @@ class Flow {
     function listItems() as Array<String> {
         var s = scr, r = [] as Array<String>;
         if (s == S_MENU) { return menu; }
-        if (s == S_PICK) { var l = exList(); for (var i = 0; i < list.size(); i++) { var e = l[list[i]]; r.add(e instanceof Dictionary ? strOf((e as Dictionary)["n"]) : ""); } }
+        if (s == S_PICK) { var el = exList(), rows = pickRows(); for (var i = 0; i < rows.size(); i++) { var e = el[rows[i][0]]; r.add(e instanceof Dictionary ? strOf((e as Dictionary)["n"]) : ""); } }
         else if (s == S_HOME) { var h = homeItems(); for (var i = 0; i < h.size(); i++) { r.add(homeLabel(h[i])); } }
         else if (s == S_MORE) { var m = moreList(); for (var i = 0; i < m.size(); i++) { var x = arrOf(m[i]); r.add(x.size() > 1 ? strOf(x[1]) : ""); } }
-        else if (s == S_SMODE) { r = ["Workout", "Free"] as Array<String>; }
-        else if (s == S_WPICK) { var w = workouts(); for (var i = 0; i < w.size(); i++) { r.add(strOf(w[i]["n"])); } }
+        else if (s == S_SMODE) { r.add(FREE_ROW); var w = workouts(); for (var i = 0; i < w.size(); i++) { r.add(strOf(w[i]["n"])); } }
         else if (s == S_RPICK) { r.add("None"); var l = routes; if (l != null) { for (var i = 0; i < l.size(); i++) { r.add(strOf(l[i]["name"])); } } }
+        else if (s == S_END) {
+            if (endConf) { var k = sets.size(); r = ["Keep", "Discard " + k.toString() + (k == 1 ? " set" : " sets")] as Array<String>; }
+            else { r = ["Keep training", "Finish & save", "Discard"] as Array<String>; }
+        }
+        else if (s == S_SAVEQ) { var q = saveq; if (q != null) { return q["rows"] as Array<String>; } }
         return r;
     }
     function pickItem(i as Number, now as Number) as Void {
         var s = scr;
-        if (s == S_PICK) { choose(i < list.size() ? list[i] : 0); }
+        if (s == S_PICK) {
+            var rows = pickRows(), p = plan;
+            if (i >= rows.size()) { return; }
+            var j = rows[i][1];
+            if (j >= 0 && p != null) { p[1] = j; unskip(j); goPlan(); }
+            else { if (p != null) { p[2] = 0; } choose(rows[i][0]); }
+        }
         else if (s == S_MENU) { act(menu[i], now); }
         else if (s == S_HOME) {
             var k = homeItems()[i];
@@ -897,17 +1084,24 @@ class Flow {
             if (k.equals("kraft")) { scr = S_START; } else if (k.equals("more")) { scr = S_MORE; } else { ready(k, "", ""); }
         }
         else if (s == S_MORE) { var x = arrOf(moreList()[i]); ready("other", x.size() > 0 ? strOf(x[0]) : "", x.size() > 1 ? strOf(x[1]) : ""); }
-        else if (s == S_SMODE) { if (i == 0) { sel = 0; scr = S_WPICK; } else { toPick(); } }
-        else if (s == S_WPICK) { startPlan(i, now); }
+        else if (s == S_SMODE) { if (start == 0) { start = now; } if (i == 0) { toPick(false); } else { startPlan(i - 1, now); } }
         else if (s == S_RPICK) { chooseRoute(i); }
+        else if (s == S_END) {
+            if (endConf) { if (i == 1) { reset(); } else { endConf = false; sel = 2; } } // the second step: Discard for real, or keep
+            else if (i == 0) { toPick(true); } else if (i == 1) { finish(now); } else { endConf = true; sel = 0; }
+        }
+        else if (s == S_SAVEQ) { // the last row is No
+            var q = saveq;
+            if (q != null) { var lastRow = (q["rows"] as Array).size() - 1; if (i < lastRow) { saveTpl(q["wid"] == null || i == 1, now); } }
+            reset();
+        }
     }
     function act(item as String, now as Number) as Void {
-        if (M_EX.equals(item)) { toPick(); }
+        if (M_EX.equals(item)) { toPick(true); }
         else if (M_SKIP.equals(item)) {
             var p = plan;
-            if (p != null) { p[1] = p[1] + 1; p[2] = 0; }
             restEnd = 0;
-            if (planItem() != null) { goPlan(); } else { finish(now); }
+            if (p != null) { planSkip.add(p[1]); var j = nextOpen(); if (j < 0) { finish(now); } else { p[1] = j; goPlan(); } }
         }
         else if (M_UNDO.equals(item)) { undo(); }
         else if (M_FIN.equals(item)) { finish(now); }

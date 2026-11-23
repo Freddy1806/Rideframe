@@ -4,11 +4,14 @@
 // 19.11.: the ready screen's Route choice: the paired watch's routes (Bearer), else the signed-in phone account's (X-RF-Token), else demo routes.
 // Drawn like the watch draws (dc.fillCircle / drawText / drawArc in garmin/source/Draw.mc), driven by the five buttons,
 // touch (tap, swipe) or the keyboard, with demo data or against the real API (tools/watch-api.mjs) after pairing.
-import { newFlow, handle, SCR, curEx, setNo, restLeft, clock, sent, paired, setSetup, setConfig, setRoute, setRoutes, routeFace, routeInfo, recPages, homeItems, listItems, workouts, planItem, HOME, HOME_FIT, HOME_LAY, homeTop, holdPart, pausedTime, HOLD_S } from './watchflow.js';
+// 23.11.: the fenix 8 Solar face, drag scrolling on lists (pointermove), START held (button or Enter, 700 ms), the rest
+// status (last sets, NEXT), END / SAVEQ screens, paged summary; __watch.texts = the fenix 8 face's drawn texts (tests).
+import { newFlow, handle, SCR, curEx, setNo, restLeft, clock, sent, paired, setSetup, setConfig, setRoute, setRoutes, routeFace, routeInfo, recPages, homeItems, listItems, workouts, planItem, HOME, HOME_FIT, HOME_LAY, homeTop, holdPart, pausedTime, HOLD_S,
+  LIST_LAY, DRAG_ROW, pickRows, doneOf, prefillOf } from './watchflow.js';
 import { compact, defaults, fieldText, labelOf, TOP } from './watchfields.js';
 import { groupOf } from './sports.js';
 import { MODES } from './theme.js';
-import { FACES, tint, DEG, txt, pill, arc, line, dot, startHint, tri, heart, icon, SPORT_ICON, drawPage, pageDots, recRing, snap64 } from './watchdraw.js';
+import { FACES, TXT, tint, DEG, txt, pill, arc, line, dot, startHint, tri, heart, icon, SPORT_ICON, drawPage, pageDots, recRing, snap64 } from './watchdraw.js';
 
 const $ = s => document.querySelector(s), LS = window.localStorage;
 const store = { get: (k, d) => { try { const v = LS.getItem('rf_watch_' + k); return v == null ? d : JSON.parse(v); } catch { return d; } }, set: (k, v) => { try { v == null ? LS.removeItem('rf_watch_' + k) : LS.setItem('rf_watch_' + k, JSON.stringify(v)); } catch {} } };
@@ -50,7 +53,7 @@ function boot() {
   F = live() ? newFlow(token ? store.get('setup', null) : null, { ...o, paired: !!token }) : newFlow(demoSetup(), o);
   sum = live() ? store.get('summary', null) : DEMO_SUM; net = ''; rsrc = 'demo'; demoAuto = demoNone = false;
   if (live() && token) { refresh(); push(); }
-  window.__watch = { get F() { return F; }, get mode() { return mode; }, get net() { return net; }, get cfgFrom() { return cfgFrom; }, get rsrc() { return rsrc; }, ev, segDemo, loadCfg };
+  window.__watch = { get F() { return F; }, get mode() { return mode; }, get net() { return net; }, get cfgFrom() { return cfgFrom; }, get rsrc() { return rsrc; }, get texts() { return TXT.slice(); }, ev, segDemo, loadCfg };
   panel(); paint(); loadCfg();
 }
 /** the config: the paired watch asks with its token (GET /api/watch/config), the preview without a watch with the phone login */
@@ -108,7 +111,7 @@ async function push() { // the queue, oldest first; kept on any network trouble,
       if (!near) { sent(F, s.id, 'retry'); continue; }
       if (!live()) { await new Promise(r => setTimeout(r, 500)); sent(F, s.id, 'ok'); continue; }
       let res = 'retry';
-      try { const r = await api('POST', 'strength', s); res = r.ok ? 'ok' : r.status === 400 || r.status === 413 ? 'drop' : 'retry'; if (r.status === 401) { unpair('This watch was removed on the phone.'); break; } } catch {}
+      try { const r = await api('POST', s.tpl ? 'workout' : 'strength', s.tpl || s); /* 23.11.: a workout saved on the watch, else a session */ res = r.ok ? 'ok' : r.status === 400 || r.status === 413 ? 'drop' : 'retry'; if (r.status === 401) { unpair('This watch was removed on the phone.'); break; } } catch {}
       sent(F, s.id, res);
     }
   } finally { pushing = false; if (live()) store.set('queue', F.queue); panel(); paint(); }
@@ -125,6 +128,7 @@ function drain() {
     else if (o.k === 'pair') pairNow(o.code);
     else if (o.k === 'saveAct') net = `${o.sum.sp === 'other' ? labelOf(o.sum.type) : HOME[o.sum.sp]} saved on the watch. The watch sends it (POST /api/watch/activity), the preview does not.`;
     else if (o.k === 'routes') loadRoutes();
+    else if (o.k === 'tpl') { if (live()) { store.set('setup', F.setup); if (cfg) store.set('cfg', F.cfg); } else net = 'Saved as a workout on the watch. The watch sends it (POST /api/watch/workout), the demo does not.'; }
     else if (o.k === 'route') { demoAuto = false; loadRoute(o.id); }
   }
   if (F.last !== store.get('last', 'run')) store.set('last', F.last);
@@ -164,9 +168,20 @@ const DRAW = {
       txt(g, t, S / 2 - S * .04, S * .66, S * .058, C.fg, { w: 700 }); if (d) { tri(g, S / 2 + tw / 2 + S * .01, S * .66, S * .018, d > 0, C.acc); txt(g, Math.abs(Math.round(d)), S / 2 + tw / 2 + S * .035, S * .66, S * .05, C.acc, { al: 'left', w: 700 }); } }
     pill(g, S / 2, S * .81, S * .42, S * .13, C.acc); txt(g, 'START', S / 2, S * .812, S * .062, C.ink, { w: 900 });
   },
-  [SCR.PICK](g, S, C) { list(g, S, C, listItems(F), F.sel, 'EXERCISE', i => { const e = F.setup.ex[F.list[i]]; return e.s ? setTxt(e, e.s[0][0], e.s[0][1]) : 'New'; }); },
-  [SCR.SMODE](g, S, C) { list(g, S, C, listItems(F), F.sel, 'STRENGTH', null, true); txt(g, F.sel ? 'Pick as you go' : `${workouts(F).length} from the phone`, S / 2, S * .81, S * .05, C.fg, { w: 700, max: S * .6 }); },
-  [SCR.WPICK](g, S, C) { list(g, S, C, listItems(F), F.sel, 'WORKOUT', i => { const w = workouts(F)[i]; return `${w.it.length} exercises · ${w.it.reduce((a, x) => a + x[1], 0)} sets`; }); },
+  [SCR.PICK](g, S, C) { // 23.11.: in a workout its items first with what is done; the counter line is the session so far
+    const w = F.plan ? workouts(F)[F.plan.w] : null, n = listItems(F).length, k = F.sets.length;
+    list(g, S, C, listItems(F), F.sel, w ? w.n.toUpperCase() : 'EXERCISES', i => pickSub(i), false, n ? `${F.sel + 1}/${n}${k ? ` · ${k} ${k === 1 ? 'set' : 'sets'} done` : ''}` : '');
+  },
+  [SCR.SMODE](g, S, C) { list(g, S, C, listItems(F), F.sel, 'STRENGTH', i => { if (!i) return 'Pick as you go'; const w = workouts(F)[i - 1]; return `${w.it.length} exercises · ${w.it.reduce((a, x) => a + x[1], 0)} sets`; }); },
+  [SCR.END](g, S, C) { // BACK on the exercise list with sets logged: keep training, finish, or discard (asks once more)
+    list(g, S, C, listItems(F), F.sel, F.endConf ? 'DISCARD?' : 'END WORKOUT?', null, true);
+    const k = F.sets.length; txt(g, `${k} ${k === 1 ? 'set' : 'sets'} · ${clock(now() - F.start - F.pauseT)}`, S / 2, S * .82, S * .048, C.lbl, { w: 800, max: S * .6 });
+  },
+  [SCR.SAVEQ](g, S, C) { // after the summary: save the session as a workout (not asked when a saved one was done as planned)
+    const q = F.saveq; if (!q) return; list(g, S, C, listItems(F), F.sel, 'SAVE AS WORKOUT?', null, true);
+    if (F.sel < q.rows.length - 1) { const nm = q.w && F.sel === 0 ? q.w.n : q.n; txt(g, nm, S / 2, S * .815, S * .05, C.fg, { w: 800, max: S * .62 });
+      txt(g, `${q.it.length} ${q.it.length === 1 ? 'exercise' : 'exercises'} · ${q.it.reduce((a, x) => a + x[1], 0)} sets`, S / 2, S * .875, S * .042, C.lbl, { w: 800, max: S * .56 }); }
+  },
   [SCR.HOME](g, S, C) { // all four entries at once (HOME_FIT rows), the selected one as the orange pill; the week points below
     const items = homeItems(F), n = items.length, top = homeTop(F.sel, n), V = HOME_LAY;
     let w = txt(g, 'RIDE', 0, -99, S * .045, C.fg, { w: 900 }); const w2 = g.measureText('FRAME').width, x0 = S / 2 - (w + w2) / 2;
@@ -205,7 +220,7 @@ const DRAW = {
   [SCR.RPICK](g, S, C) { C = tint(C, F.sp); list(g, S, C, listItems(F), F.sel, 'ROUTE', i => { if (!i) return 'Data pages only'; const r = F.routes[i - 1]; return `${kmTxt(r.dist || 0)} km${r.climb ? ` · ${Math.round(r.climb)} m up` : ''}`; });
     if (F.routes && !F.routes.length) txt(g, rsrc === 'demo' || live() ? 'Send routes from the phone' : 'Phone: Routes > Send to watch', S / 2, S * .81, S * .042, C.lbl, { w: 700, max: S * .62 }); },
   [SCR.PAUSE](g, S, C, f) { // one screen in every mode: PAUSED, the time, START resume, Hold BACK to finish, Discard (with a confirm step)
-    const P = F.pz || { sel: 0, conf: false, hint: 0 }, h = holdPart(F, now()), touch = !f.mip, T = PAUSE_LAY;
+    const P = F.pz || { sel: 0, conf: false, hint: 0 }, h = holdPart(F, now()), touch = f.touch, T = PAUSE_LAY;
     if (h) { arc(g, S / 2, S / 2, S / 2 - S * .035, 0, Math.PI * 2, C.faint, S * .05); arc(g, S / 2, S / 2, S / 2 - S * .035, -Math.PI / 2, -Math.PI / 2 + h.p * Math.PI * 2, C.acc, S * .05); }
     txt(g, 'PAUSED', S / 2, S * T.title, S * .058, C.acc, { w: 900 });
     txt(g, F.rec ? (F.sp === 'other' ? labelOf(F.type) : HOME[F.sp]) : 'Strength', S / 2, S * T.sport, S * .045, C.lbl, { w: 800, max: S * .5 });
@@ -237,7 +252,7 @@ const DRAW = {
   [SCR.MENU](g, S, C) { list(g, S, C, F.menu, F.sel, 'MENU', null, true); },
   [SCR.SET](g, S, C) {
     const e = curEx(F); startHint(g, S, C);
-    txt(g, clock(now() - F.start - F.pauseT), S / 2, S * .12, S * .048, C.dim, { w: 700 });
+    hrClock(g, S, C, S * .12); // 23.11.: the heart rate the whole time, next to the session clock
     txt(g, e.n, S / 2, S * .22, S * .08, C.fg, { w: 800, max: S * .74 });
     const it = planItem(F); txt(g, it ? `SET ${setNo(F)} OF ${it[1]}` : 'SET ' + setNo(F), S / 2, S * .315, S * .055, C.acc, { w: 900 });
     if (e.t === 'time') { txt(g, clock(F.reps), S / 2, S * .5, S * .23, C.acc, { w: 900 }); g.fillStyle = C.acc; g.fillRect(S * .36, S * .615, S * .28, S * .016); txt(g, 'hold', S / 2, S * .665, S * .048, C.fg, { w: 700 }); }
@@ -247,27 +262,35 @@ const DRAW = {
         if (on) { g.fillStyle = C.acc; g.fillRect(xs[i] - S * .12, S * .615, S * .24, S * .016); } txt(g, unit[i], xs[i], S * .665, S * .048, on ? C.fg : C.lbl, { w: 700 }); } }
     pill(g, S / 2, S * .815, S * .4, S * .12, C.acc); txt(g, 'DONE', S / 2, S * .817, S * .062, C.ink, { w: 900 });
   },
-  [SCR.REST](g, S, C) {
-    const left = restLeft(F, now()), part = F.restLen ? Math.max(0, Math.min(1, (F.restEnd - now()) / F.restLen)) : 0, r = S / 2 - S * .04, e = curEx(F);
+  [SCR.REST](g, S, C) { // 23.11.: heart rate, the clock, what this exercise has so far (the last 3 sets) and what comes next
+    const left = restLeft(F, now()), part = F.restLen ? Math.max(0, Math.min(1, (F.restEnd - now()) / F.restLen)) : 0, r = S / 2 - S * .04, e = curEx(F), R = REST_LAY;
     arc(g, S / 2, S / 2, r, 0, Math.PI * 2, C.faint, S * .05); if (part > 0) arc(g, S / 2, S / 2, r, -Math.PI / 2, -Math.PI / 2 + part * Math.PI * 2, C.acc, S * .05);
-    heart(g, S / 2 - S * .08, S * .27, S * .05, C.hr); txt(g, F.hr || '--', S / 2 - S * .03, S * .27, S * .065, C.fg, { al: 'left', w: 800 });
-    txt(g, clock(left), S / 2, S * .46, S * .23, left <= 5 ? C.acc : C.fg, { w: 900 });
-    const it = planItem(F), nx = it ? (F.setup.ex.find(x => x.id === it[0]) || { n: it[0] }) : e;
-    txt(g, 'NEXT', S / 2, S * .625, S * .042, C.lbl, { w: 800 });
-    txt(g, it ? `${nx.n} ${setNo(F)}/${it[1]}` : `Set ${setNo(F)}: ${e.n}`, S / 2, S * .7, S * .058, C.fg, { w: 700, max: S * .66 });
-    txt(g, 'SKIP', S / 2, S * .82, S * .05, C.acc, { w: 900 });
+    hrClock(g, S, C, S * R.hr, true);
+    txt(g, clock(left), S / 2, S * R.clock, S * .17, left <= 5 ? C.acc : C.fg, { w: 900 });
+    const mine = F.sets.filter(x => x.ex === e.id), k0 = Math.max(0, mine.length - 3);
+    txt(g, e.n.toUpperCase(), S / 2, S * R.name, S * .043, C.acc, { w: 900, max: S * .62 });
+    mine.slice(k0).forEach((x, j) => txt(g, `${k0 + j + 1}   ${setShort(e.t, x.kg, x.reps)}`, S / 2, S * (R.sets + j * R.dy), S * .05, C.fg, { w: 800, max: S * .64 }));
+    const [lab, val] = nextTxt(); txt(g, lab, S / 2, S * R.next, S * .04, C.lbl, { w: 900, max: S * .66 }); txt(g, val, S / 2, S * (R.next + .058), S * .05, C.fg, { w: 800, max: S * .66 });
+    txt(g, 'SKIP', S / 2, S * R.skip, S * .046, C.acc, { w: 900 });
   },
-  [SCR.SUM](g, S, C) {
-    const s = F.sum || { dur: 0, sets: 0, vol: 0, exs: 0, st: 'saved' };
-    if (s.st === 'saved') txt(g, '✓ SAVED', S / 2, S * .17, S * .058, C.acc, { w: 900 });
-    else if (s.st === 'sending') txt(g, 'SENDING', S / 2, S * .17, S * .055, C.dim, { w: 900 });
-    else if (s.st === 'failed') txt(g, 'NOT SAVED', S / 2, S * .17, S * .055, C.acc, { w: 900 });
-    else { txt(g, 'Will send when', S / 2, S * .14, S * .048, C.fg, { w: 700 }); txt(g, 'the phone is near', S / 2, S * .2, S * .048, C.fg, { w: 700 }); }
-    txt(g, clock(s.dur), S / 2, S * .36, S * .16, C.fg, { w: 900 }); txt(g, 'TIME', S / 2, S * .46, S * .042, C.dim, { w: 800 });
+  [SCR.SUM](g, S, C) { // 23.11.: page 0 the totals with the heart rate, then one page per exercise with every set (UP / DOWN, swipe, drag)
+    const s = F.sum || { dur: 0, sets: 0, vol: 0, exs: 0, st: 'saved', ex: [] }, pg = F.sel, U = SUM_LAY;
+    pageDots(g, S, C, s.ex.length + 1, pg); txt(g, 'DONE', S / 2, S * U.done, S * .046, C.lbl, { w: 900 });
+    if (pg > 0) { const x = s.ex[pg - 1], v = x.s.reduce((a, y) => a + y[0] * y[1], 0), many = x.s.length > 5;
+      txt(g, x.n, S / 2, S * U.name, S * .07, C.acc, { w: 900, max: S * .66 });
+      txt(g, `${x.s.length} ${x.s.length === 1 ? 'set' : 'sets'}${x.t !== 'time' && v ? ' · ' + volTxt(v) + ' kg' : ''}`, S / 2, S * U.info, S * .045, C.lbl, { w: 800, max: S * .62 });
+      (many ? x.s.slice(0, 4) : x.s).forEach((y, j) => txt(g, `${j + 1}   ${setShort(x.t, y[0], y[1])}${y[2] ? '  PR' : ''}`, S / 2, S * (U.sets + j * U.dy), S * .055, y[2] ? C.acc : C.fg, { w: 800, max: S * .7 }));
+      if (many) txt(g, `+ ${x.s.length - 4} more`, S / 2, S * (U.sets + 4 * U.dy), S * .05, C.lbl, { w: 800 });
+      return; }
+    if (s.st === 'saved') txt(g, '✓ SAVED', S / 2, S * U.st, S * .058, C.acc, { w: 900 });
+    else if (s.st === 'sending') txt(g, 'SENDING', S / 2, S * U.st, S * .055, C.dim, { w: 900 });
+    else if (s.st === 'failed') txt(g, 'NOT SAVED', S / 2, S * U.st, S * .055, C.acc, { w: 900 });
+    else txt(g, 'Sends when the phone is near', S / 2, S * U.st, S * .046, C.fg, { w: 800, max: S * .6 });
+    txt(g, clock(s.dur), S / 2, S * U.time, S * .15, C.fg, { w: 900 }); txt(g, 'TIME', S / 2, S * U.timeL, S * .04, C.lbl, { w: 800 });
     const col = [[s.sets, 'SETS'], [volTxt(s.vol), 'KG'], [s.exs, 'LIFTS']];
-    col.forEach(([v, l], i) => { const x = S * (.27 + i * .23); txt(g, v, x, S * .6, S * .085, C.fg, { w: 900, max: S * .22 }); txt(g, l, x, S * .68, S * .04, C.dim, { w: 800 }); });
-    if (s.prs) txt(g, `${s.prs} PR`, S / 2, S * .78, S * .055, C.acc, { w: 900 });
-    txt(g, 'DONE', S / 2, S * .87, S * .05, C.dim, { w: 900 });
+    col.forEach(([v, l], i) => { const x = S * (.27 + i * .23); txt(g, v, x, S * U.cols, S * .08, C.fg, { w: 900, max: S * .22 }); txt(g, l, x, S * U.colsL, S * .04, C.lbl, { w: 800 }); });
+    heart(g, S / 2 - S * .2, S * U.hr, S * .042, C.hr); txt(g, s.hr ? `${s.hr.avg} avg · ${s.hr.max} max` : 'no heart rate', S / 2 - S * .16, S * U.hr, S * .048, C.fg, { al: 'left', w: 800, max: S * .44 });
+    if (s.prs) txt(g, `${s.prs} PR`, S / 2, S * U.pr, S * .05, C.acc, { w: 900 });
   },
   [SCR.PAIR](g, S, C) {
     const P = F.pair, bw = S * .1, gap = S * .018, x0 = S / 2 - (6 * bw + 5 * gap) / 2 + bw / 2;
@@ -291,20 +314,47 @@ const DRAW = {
     if (sum && sum.delta != null) { const d = Math.round(sum.delta); tri(g, S * .35, S * .615, S * .02, d >= 0, C.acc); txt(g, `${Math.abs(d)} vs last week`, S * .385, S * .615, S * .045, C.acc, { al: 'left', w: 700, max: S * .5 }); }
   },
 };
-function list(g, S, C, items, sel, title, sub, menu = false) {
-  const n = items.length; txt(g, title, S / 2, S * .13, S * .045, C.dim, { w: 900 }); if (!n) return txt(g, 'Nothing yet', S / 2, S / 2, S * .07, C.dim);
-  if (!menu) txt(g, `${sel + 1}/${n}`, S / 2, S * .185, S * .04, C.faint === '#555555' ? C.dim : C.dim, { w: 600 });
-  const rows = menu ? [[-1, .33, .07], [0, .5, .085], [1, .67, .07]] : [[-2, .24, .05], [-1, .345, .065], [0, .5, .095], [1, .7, .065], [2, .8, .05]];
-  for (const [o, y, px] of rows) { const i = sel + o; if (i < 0 || i >= n) continue; const on = !o;
-    if (on && menu) { pill(g, S / 2, S * y, S * .78, S * .14, C.acc); txt(g, items[i], S / 2, S * y + 1, S * px, C.ink, { w: 900, max: S * .7 }); continue; }
+/** every list (23.11.: LIST_LAY, rows 44 px apart on the 260 px fenix 8 for the finger): the selected row big in the middle with its sub line,
+ *  the neighbours smaller and dimmer; a menu has three rows and a pill on the selected one. count = the line under the title (default n / N) */
+function list(g, S, C, items, sel, title, sub, menu = false, count = null) {
+  const n = items.length, L = LIST_LAY; txt(g, title, S / 2, S * L.title, S * .045, C.dim, { w: 900, max: S * .56 }); if (!n) return txt(g, 'Nothing yet', S / 2, S / 2, S * .07, C.dim);
+  if (!menu) txt(g, count == null ? `${sel + 1}/${n}` : count, S / 2, S * L.count, S * .04, C.dim, { w: 700, max: S * .62 });
+  const px = menu ? { '-1': .07, 0: .085, 1: .07 } : { '-1': .065, 0: .095, 1: .065, 2: .05 };
+  for (const [o, y] of menu ? L.menu : L.rows) { const i = sel + o; if (i < 0 || i >= n) continue; const on = !o;
+    if (on && menu) { pill(g, S / 2, S * y, S * .78, S * .14, C.acc); txt(g, items[i], S / 2, S * y + 1, S * px[o], C.ink, { w: 900, max: S * .7 }); continue; }
     if (on) { g.fillStyle = C.acc; g.fillRect(S * .1, S * (y - .055), S * .012, S * .11); }
-    txt(g, items[i], S / 2, S * y, S * px, on ? C.fg : Math.abs(o) > 1 ? (C.lbl === C.fg ? C.dim : C.faint) : C.dim, { w: on ? 900 : 700, max: S * (Math.abs(o) > 1 ? .55 : .74) }); // far rows: dark grey on AMOLED, light grey on MIP
-    if (on && sub) txt(g, sub(i), S / 2, S * (y + .085), S * .055, C.acc, { w: 800, max: S * .7 }); }
+    txt(g, items[i], S / 2, S * y, S * px[o], on ? C.fg : Math.abs(o) > 1 ? (C.lbl === C.fg ? C.dim : C.faint) : C.dim, { w: on ? 900 : 700, max: S * (Math.abs(o) > 1 ? .55 : .74) }); // far rows: dark grey on AMOLED, light grey on MIP
+    if (on && sub) txt(g, sub(i), S / 2, S * L.sub, S * .052, C.acc, { w: 800, max: S * .7 }); }
   scrollArc(g, S, C, sel, n); startHint(g, S, C);
+}
+/** the rest screen's and the summary's rows (screen fractions; the same in garmin/source/Draw.mc) */
+const REST_LAY = { hr: .15, clock: .3, name: .425, sets: .49, dy: .062, next: .7, skip: .855 };
+const SUM_LAY = { st: .15, time: .3, timeL: .395, cols: .52, colsL: .59, hr: .69, pr: .77, done: .87, name: .2, info: .285, sets: .38, dy: .08 };
+/** one set, short: 80 kg × 8, +5 × 10, 10 reps, 1:00 */
+const setShort = (t, kg, r) => t === 'time' ? clock(r) : t === 'bw' ? (kg ? `+${kgTxt(kg)} × ${r}` : `${r} reps`) : `${kgTxt(kg)} kg × ${r}`;
+/** the heart rate (and the session clock) on one line, centred at y */
+function hrClock(g, S, C, y, hrOnly = false) {
+  const h = F.hr ? String(F.hr) : '--';
+  if (hrOnly) { heart(g, S / 2 - S * .07, y, S * .045, C.hr); txt(g, h, S / 2 - S * .035, y, S * .06, C.fg, { al: 'left', w: 800 }); return; }
+  heart(g, S / 2 - S * .17, y, S * .04, C.hr); txt(g, h, S / 2 - S * .14, y, S * .05, C.fg, { al: 'left', w: 800 });
+  txt(g, clock(now() - F.start - F.pauseT), S / 2 + S * .03, y, S * .048, C.dim, { al: 'left', w: 700 });
+}
+/** the exercise list's sub line of row k: a workout item's progress, else this session's sets, else last time's */
+function pickSub(k) {
+  const [i, j] = pickRows(F)[k], e = F.setup.ex[i], mine = F.sets.filter(s => s.ex === e.id);
+  if (j >= 0) { const it = workouts(F)[F.plan.w].it[j], d = doneOf(F, j); if (d >= it[1]) return `Done · ${d} ${d === 1 ? 'set' : 'sets'}`; if (F.plan.skip.includes(j)) return 'Skipped';
+    return `${d}/${it[1]} sets · ${e.t === 'time' ? clock(it[2]) : it[2] + ' reps'}`; }
+  if (mine.length) return `${mine.length} done · ${setShort(e.t, mine.at(-1).kg, mine.at(-1).reps)}`;
+  return e.s ? 'Last ' + setShort(e.t, e.s[0][0], e.s[0][1]) : 'New';
+}
+/** the rest screen's NEXT: [label, values]: the next set of this exercise, or the next exercise of the workout */
+function nextTxt() {
+  const it = planItem(F), e = curEx(F), nx = it ? F.setup.ex.find(x => x.id === it[0]) || { id: it[0], n: it[0], t: 'w' } : e, [kg, r] = prefillOf(F, nx), v = setShort(nx.t, kg, r);
+  if (nx.id === e.id) return [`NEXT · SET ${setNo(F)}${it ? ' OF ' + it[1] : ''}`, v];
+  return [`NEXT · ${nx.n.toUpperCase()}`, `Set ${setNo(F)}${it ? '/' + it[1] : ''} · ${v}`];
 }
 function scrollArc(g, S, C, sel, n) { if (n < 2) return; const a0 = 150 * DEG, span = 60 * DEG, p = sel / (n - 1); arc(g, S / 2, S / 2, S / 2 - S * .03, a0, a0 + span, C.faint, S * .012);
   arc(g, S / 2, S / 2, S / 2 - S * .03, a0 + span - p * span * .85 - span * .15, a0 + span - p * span * .85, C.acc, S * .012); }
-const setTxt = (e, kg, r) => e.t === 'time' ? clock(r) : `${e.t === 'bw' && !kg ? 'BW' : kgTxt(kg) + ' kg'} × ${r}`;
 const paceTxt = (t, d) => fieldText('avgPace', { t, d }, 0);
 const kmTxt = m => m >= 10000 ? (m / 1000).toFixed(1) : (m / 1000).toFixed(2);
 /** the route page: next turn on top, the line with the position dot, the distance left at the bottom */
@@ -394,7 +444,8 @@ function holdable(el, k) { // UP / DOWN: short = one step, held = big steps ever
   let t = 0, rep = 0, held = false;
   const down = e => { e.preventDefault(); el.classList.add('on'); held = false; clearTimeout(t); clearInterval(rep); if (k === 'back') ev('holdStart'); // the pause screen's hold to finish
     if (k === 'up' || k === 'down') t = setTimeout(() => { held = true; ev(k + 'Hold'); rep = setInterval(() => ev(k + 'Hold'), 350); }, 500);
-    if (k === 'back') t = setTimeout(() => { held = true; ev('menu'); }, 700); };
+    if (k === 'back') t = setTimeout(() => { held = true; ev('menu'); }, 700);
+    if (k === 'start') t = setTimeout(() => { held = true; ev('startHold'); }, 700); }; // the set screen: weight <-> reps
   const up = e => { if (!el.classList.contains('on')) return; el.classList.remove('on'); clearTimeout(t); clearInterval(rep); if (k === 'back') ev('holdEnd'); if (held) return;
     if (k === 'light') { light = !light; paint(); return; } ev(k); };
   el.addEventListener('pointerdown', down); el.addEventListener('pointerup', up); el.addEventListener('pointerleave', () => { if (el.classList.contains('on')) { el.classList.remove('on'); clearTimeout(t); clearInterval(rep); if (k === 'back') ev('holdEnd'); } });
@@ -404,28 +455,33 @@ function touch(cv, f) {
   let p0 = null;
   let pillHold = false; // the pause screen's "Hold to finish" pill (touch face): pressed = holdStart, lifted = holdEnd
   const onPill = e => { const r = cv.getBoundingClientRect(), u = (e.clientX - r.left) / r.width, v = (e.clientY - r.top) / r.height; return !f.mip && F.scr === SCR.PAUSE && F.pz && !F.pz.conf && v > PAUSE_LAY.pill - .07 && Math.abs(u - .5) < .27; };
-  cv.addEventListener('pointerdown', e => { p0 = { x: e.clientX, y: e.clientY }; cv.setPointerCapture?.(e.pointerId); if (onPill(e)) { pillHold = true; ev('holdStart'); } });
+  cv.addEventListener('pointerdown', e => { p0 = { x: e.clientX, y: e.clientY, y1: e.clientY, drag: false }; cv.setPointerCapture?.(e.pointerId); if (onPill(e)) { pillHold = true; ev('holdStart'); } });
+  // 23.11.: a finger dragged over a list (or the summary) moves it row by row with the finger (FlowDelegate.onDrag on the watch)
+  cv.addEventListener('pointermove', e => { if (!p0 || pillHold || !scrollable()) return; const r = cv.getBoundingClientRect(), k = f.S / r.width, row = f.S * DRAG_ROW, n = Math.trunc((p0.y1 - e.clientY) * k / row);
+    if (n) { p0.y1 -= n * row / k; p0.drag = true; ev('scroll', n); } });
   cv.addEventListener('pointercancel', () => { if (pillHold) { pillHold = false; ev('holdEnd'); } p0 = null; });
   cv.addEventListener('pointerup', e => {
     if (pillHold) { pillHold = false; p0 = null; ev('holdEnd'); return; }
-    if (!p0) return; const r = cv.getBoundingClientRect(), k = f.S / r.width, dx = (e.clientX - p0.x) * k, dy = (e.clientY - p0.y) * k; p0 = null;
+    if (!p0) return; const r = cv.getBoundingClientRect(), k = f.S / r.width, dx = (e.clientX - p0.x) * k, dy = (e.clientY - p0.y) * k, drag = p0.drag; p0 = null; if (drag) return;
     if (Math.hypot(dx, dy) > f.S * .08) return ev(Math.abs(dx) > Math.abs(dy) ? (dx < 0 ? 'swipeLeft' : 'swipeRight') : (dy < 0 ? 'swipeUp' : 'swipeDown'));
     tapAt((e.clientX - r.left) * k / f.S, (e.clientY - r.top) * k / f.S);
   });
 }
-/** a tap in face coordinates (0..1) -> the flow's event; the same table is in garmin/source/Delegates.mc onTap */
+/** the screens a dragged finger scrolls (FlowDelegate.scrollable) */
+const scrollable = () => [SCR.PICK, SCR.MENU, SCR.HOME, SCR.MORE, SCR.SMODE, SCR.RPICK, SCR.END, SCR.SAVEQ, SCR.SUM].includes(F.scr) && !F.flash;
+/** a tap in face coordinates (0..1) -> the flow's event; the same table is in garmin/source/FlowDelegate.mc onTap */
 function tapAt(u, v) {
   const s = F.scr;
   if (F.flash) return ev('tap');
-  if (s === SCR.SET) { if (v > .72 && Math.abs(u - .5) < .24) return ev('start'); if (v > .36 && v < .72) return ev('focus', u < .51 ? 0 : 1); return; }
+  if (s === SCR.SET) { if (v > .72 && Math.abs(u - .5) < .24) return ev('done'); if (v > .36 && v < .72) return ev('focus', u < .51 ? 0 : 1); return; } // DONE logs; a value takes the focus
   if (s === SCR.READY && F.sp !== 'other' && v > .665 && v < .74) return ev('down'); // the route line
   if (s === SCR.PAUSE) { const P = F.pz || {}; // conf: the Discard pill = yes, elsewhere = no; else Discard row = ask, the top = resume
     if (P.conf) return ev(Math.abs(v - PAUSE_LAY.discard) < .06 ? 'start' : 'back');
     if (Math.abs(v - PAUSE_LAY.discard) < .055) return ev('item', 1); if (v < .62) return ev('item', 0); return; }
-  const menu = [SCR.MENU, SCR.SMODE].includes(s), pick = [SCR.PICK, SCR.MORE, SCR.WPICK, SCR.RPICK].includes(s);
+  const menu = [SCR.MENU, SCR.END, SCR.SAVEQ].includes(s), pick = [SCR.PICK, SCR.MORE, SCR.SMODE, SCR.RPICK].includes(s);
   if (s === SCR.HOME) { const n = listItems(F).length, r = Math.round((v - HOME_LAY.y0) / HOME_LAY.dy), i = homeTop(F.sel, n) + r; // the rows as DRAW[SCR.HOME] draws them
     if (r >= 0 && r < HOME_FIT && i < n) ev('item', i); return; }
-  if (menu || pick) { const rows = menu ? [[-1, .33], [0, .5], [1, .67]] : [[-2, .24], [-1, .345], [0, .5], [1, .7], [2, .8]];
+  if (menu || pick) { const rows = menu ? LIST_LAY.menu : LIST_LAY.rows; if (pick && v < LIST_LAY.count + .04) return; // the title is no row
     const [o] = rows.reduce((a, r) => Math.abs(r[1] - v) < Math.abs(a[1] - v) ? r : a); const n = listItems(F).length, i = F.sel + o;
     if (i >= 0 && i < n) ev('item', i); return; }
   if (s === SCR.PAIR) { if (v > .4 && v < .6 && u > .13 && u < .87) return ev('focus', Math.min(5, Math.max(0, Math.floor((u - .146) / .118)))); return ev('tap'); }
@@ -436,7 +492,7 @@ function keys() {
   const st = {};
   addEventListener('keydown', e => { if (e.target.closest?.('input, textarea, select')) return; const k = KEYS[e.key]; if (e.key === 'ArrowLeft') { e.preventDefault(); return ev('swipeLeft'); } if (e.key === 'ArrowRight') { e.preventDefault(); return ev('swipeRight'); }
     if (e.key === 'm') return ev('menu'); if (!k) return; e.preventDefault(); if (e.repeat) return; if (k === 'back') ev('holdStart');
-    st[k] = { at: Date.now(), held: false, t: setTimeout(function hold() { st[k].held = true; if (k === 'back') return ev('menu'); if (k === 'up' || k === 'down') { ev(k + 'Hold'); st[k].t = setTimeout(hold, 350); } }, k === 'back' ? 700 : 500) }; });
+    st[k] = { at: Date.now(), held: false, t: setTimeout(function hold() { st[k].held = true; if (k === 'back') return ev('menu'); if (k === 'start') return ev('startHold'); if (k === 'up' || k === 'down') { ev(k + 'Hold'); st[k].t = setTimeout(hold, 350); } }, k === 'back' || k === 'start' ? 700 : 500) }; });
   addEventListener('keyup', e => { const k = KEYS[e.key]; if (!k || !st[k]) return; clearTimeout(st[k].t); const h = st[k].held; delete st[k]; if (k === 'back') ev('holdEnd'); if (!h) ev(k); });
 }
 
@@ -451,7 +507,8 @@ function paint() {
   for (const { f, g, dpr } of views) {
     const S = f.S, C = f.C; g.setTransform(dpr, 0, 0, dpr, 0, 0); g.fillStyle = C.bg; g.fillRect(0, 0, S, S);
     g.save(); g.beginPath(); g.arc(S / 2, S / 2, S / 2, 0, Math.PI * 2); g.clip();
-    (DRAW[F.scr] || DRAW[SCR.HOME])(g, S, C, f); if (F.flash) (F.flash.k === 'lap' ? lapFlash : prFlash)(g, S, C);
+    if (f.id === 'fenix8solar47mm') TXT.length = 0; TXT.on = f.id === 'fenix8solar47mm'; // the texts on the owner's watch face, for the UI test (__watch.texts)
+    (DRAW[F.scr] || DRAW[SCR.HOME])(g, S, C, f); if (F.flash) (F.flash.k === 'lap' ? lapFlash : prFlash)(g, S, C); TXT.on = false;
     g.restore();
     if (f.mip) { if (light) { g.globalCompositeOperation = 'lighter'; g.fillStyle = '#003355'; g.fillRect(0, 0, S, S); g.globalCompositeOperation = 'source-over'; } snap64(g, S); }
   }

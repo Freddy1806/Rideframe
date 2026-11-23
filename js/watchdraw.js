@@ -5,14 +5,14 @@ import { MODES, ICONS } from './theme.js';
 import { FIELDS } from './watchfields.js';
 
 /** the faces: Forerunner 265 (416 px AMOLED) and fenix 7X Pro (280 px MIP, every colour one of 00 / 55 / AA / FF per channel).
- *  lbl = field labels: grey on AMOLED, white on MIP (no thin grey text on the fenix), line = separators */
+ *  lbl = field labels: grey on AMOLED, white on MIP (no thin grey text on the fenix), line = separators; touch: all three have a touchscreen (23.11.) */
 export const FACES = [
-  { id: 'fr265', name: 'Forerunner 265', sub: '416 × 416 AMOLED', S: 416, mip: false, C: { bg: '#000000', fg: '#f4f4ef', dim: '#8b8b85', faint: '#2c2c2a', lbl: '#a3a39c', line: '#3a3a37', acc: '#ff5a1f', ink: '#0b0b0b', hr: '#ff5a5a', good: '#3ddc84', bad: '#ff5a5a',
+  { id: 'fr265', name: 'Forerunner 265', sub: '416 × 416 AMOLED', S: 416, mip: false, touch: true, C: { bg: '#000000', fg: '#f4f4ef', dim: '#8b8b85', faint: '#2c2c2a', lbl: '#a3a39c', line: '#3a3a37', acc: '#ff5a1f', ink: '#0b0b0b', hr: '#ff5a5a', good: '#3ddc84', bad: '#ff5a5a',
     sp: { run: '#ff5a1f', ride: '#ff5a1f', kraft: '#ff5a1f', other: '#ff5a1f' } } },
-  { id: 'fenix7xpro', name: 'fenix 7X Pro', sub: '280 × 280 MIP · 64 colours', S: 280, mip: true, C: { bg: '#000000', fg: '#ffffff', dim: '#aaaaaa', faint: '#555555', lbl: '#ffffff', line: '#555555', acc: '#ff5500', ink: '#000000', hr: '#ff5555', good: '#55ff55', bad: '#ff5555',
+  { id: 'fenix7xpro', name: 'fenix 7X Pro', sub: '280 × 280 MIP · 64 colours', S: 280, mip: true, touch: true, C: { bg: '#000000', fg: '#ffffff', dim: '#aaaaaa', faint: '#555555', lbl: '#ffffff', line: '#555555', acc: '#ff5500', ink: '#000000', hr: '#ff5555', good: '#55ff55', bad: '#ff5555',
     sp: { run: '#ff5500', ride: '#ff5500', kraft: '#ff5500', other: '#ff5500' } } },
   // the owner's watch (20.11.): fenix 8 Solar 47 mm, 260 px MIP, 5 buttons and touch; same palette as the 7X Pro
-  { id: 'fenix8solar47mm', name: 'fenix 8 Solar', sub: '47 mm · 260 × 260 MIP · 64 colours', S: 260, mip: true, C: { bg: '#000000', fg: '#ffffff', dim: '#aaaaaa', faint: '#555555', lbl: '#ffffff', line: '#555555', acc: '#ff5500', ink: '#000000', hr: '#ff5555', good: '#55ff55', bad: '#ff5555',
+  { id: 'fenix8solar47mm', name: 'fenix 8 Solar', sub: '47 mm · 260 × 260 MIP · 64 colours', S: 260, mip: true, touch: true, C: { bg: '#000000', fg: '#ffffff', dim: '#aaaaaa', faint: '#555555', lbl: '#ffffff', line: '#555555', acc: '#ff5500', ink: '#000000', hr: '#ff5555', good: '#55ff55', bad: '#ff5555',
     sp: { run: '#ff5500', ride: '#ff5500', kraft: '#ff5500', other: '#ff5500' } } },
 ];
 /** the face's colours with the sport's accent */
@@ -22,7 +22,9 @@ export const DEG = Math.PI / 180;
 const FONT = (w, p) => `${w} ${p}px Archivo, system-ui, sans-serif`;
 export function fit(g, t, max, px, w = 800) { let p = px; g.font = FONT(w, p); while (g.measureText(t).width > max && p > px * .62) { p -= 1; g.font = FONT(w, p); }
   if (g.measureText(t).width <= max) return t; let s = t; while (s.length > 1 && g.measureText(s + '.').width > max) s = s.slice(0, -1); return s.trim() + '.'; }
-export function txt(g, t, x, y, px, col, o = {}) { const w = o.w || 800; t = String(t); if (o.max) t = fit(g, t, o.max, px, w); else g.font = FONT(w, px);
+/** the texts drawn while TXT.on (the preview turns it on for one face, so the UI test can read the screen) */
+export const TXT = Object.assign([], { on: false });
+export function txt(g, t, x, y, px, col, o = {}) { const w = o.w || 800; t = String(t); if (TXT.on && y > -50) TXT.push(t); if (o.max) t = fit(g, t, o.max, px, w); else g.font = FONT(w, px);
   g.fillStyle = col; g.textAlign = o.al || 'center'; g.textBaseline = 'middle'; g.fillText(t, x, y); return g.measureText(t).width; }
 export const pill = (g, x, y, w, h, col, fill = true) => { g.beginPath(); g.roundRect(x - w / 2, y - h / 2, w, h, h / 2); if (fill) { g.fillStyle = col; g.fill(); } else { g.strokeStyle = col; g.lineWidth = 2; g.stroke(); } };
 export const arc = (g, cx, cy, r, a0, a1, col, lw) => { g.beginPath(); g.arc(cx, cy, r, a0, a1); g.strokeStyle = col; g.lineWidth = lw; g.lineCap = 'butt'; g.stroke(); };

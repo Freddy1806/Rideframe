@@ -80,6 +80,27 @@ export async function setup(u) {
     top, recent, workouts: W.compact(C).w };
 }
 
+/* ---- 23.11.: a workout saved on the watch (the session as a template) -> the account's watch config, so it shows on the phone
+ *      (Settings > Devices > Watch screens & workouts, the Strength page) and comes back to the watch with the setup / config ---- */
+let cfgLock = Promise.resolve(); // serialise the read-change-write of one config against itself
+/** body { id, n, it: [[ex, sets, reps, kg, rest]] } (js/watchflow.js tplOf); the same id again replaces its exercises and keeps the phone's name.
+ *  Returns [status, body]: 400 for anything the watch must not send again (bad, or 30 workouts already) */
+export function saveWatchWorkout(uid, b) {
+  const run = cfgLock.then(async () => {
+    if (!b || typeof b !== 'object') return [400, { error: 'Body must be JSON.' }];
+    const id = String(b.id || ''); if (!/^[A-Za-z0-9_-]{1,40}$/.test(id)) return [400, { error: 'id: 1 to 40 letters, digits, _ or -.' }];
+    if (!Array.isArray(b.it) || !b.it.length || b.it.length > 20) return [400, { error: 'it: 1 to 20 exercises.' }];
+    if (!b.it.every(x => Array.isArray(x) && x.length >= 5)) return [400, { error: 'it: [ex, sets, reps, kg, rest].' }];
+    const W = await WFM(), c = await configOf(uid), list = c.cfg.workouts.slice(), k = list.findIndex(x => x.id === id);
+    const items = b.it.map(([ex, sets, reps, kg, rest]) => ({ ex, sets, reps, kg, rest }));
+    if (k >= 0) list[k] = { ...list[k], items }; else { if (list.length >= W.MAX_WORKOUTS) return [400, { error: `Up to ${W.MAX_WORKOUTS} workouts. Delete one on the phone.` }]; list.push({ id, name: clean(b.n, 40) || 'Workout', items }); }
+    const v = W.validate({ ...c.cfg, workouts: list }); if (v.error) return [400, { error: v.error }];
+    await writeJSON(cfgFile(uid), { cfg: v.cfg, at: Date.now() });
+    return [200, { ok: true, id, new: k < 0 }];
+  });
+  cfgLock = run.catch(() => {}); return run;
+}
+
 /* ---- a finished watch session -> a strength record exactly like kraft.js saves it ---- */
 /** checks and normalises the watch's JSON; returns { error } or { rec } (without names / records, see toRecord) */
 export function validate(b) {
@@ -232,7 +253,7 @@ export async function watchApi(req, res, path) {
         await writeJSON(WF, W); return send(res, 200, { token, name: u.name, label });
       });
     }
-    if (!['strength/setup', 'strength', 'summary', 'me', 'config', 'activity', 'segments', 'routes', 'route'].includes(op)) return send(res, 404, { error: 'unknown' });
+    if (!['strength/setup', 'strength', 'summary', 'me', 'config', 'activity', 'segments', 'routes', 'route', 'workout'].includes(op)) return send(res, 404, { error: 'unknown' });
     const w = await watchOf(req); if (!w) return send(res, 401, { error: 'Not paired.' });
     if (limited('wcall:' + w.h, 120, 10 * 60e3)) return send(res, 429, { error: 'Too many requests.' });
     if (op === 'me') return send(res, 200, { name: w.u.name, label: w.d.label });
@@ -251,6 +272,10 @@ export async function watchApi(req, res, path) {
       const rec = await linkStrength(w.u.id, toRecord(v, info, hist)).catch(() => toRecord(v, info, hist)); // its Strava copy already here: linked (watch-feed.mjs)
       await writeJSON(f, rec); sumCache.delete(w.u.id);
       return send(res, 200, { ok: true, id: rec.id, prs: rec.prs || 0 });
+    }
+    if (op === 'workout' && M === 'POST') { // 23.11.: a workout saved on the watch (queued there like the sessions)
+      let b; try { b = await body(req, 8e3); } catch (e) { return send(res, e.message === 'too large' ? 413 : 400, { error: e.message === 'too large' ? 'Workout too large.' : 'Body must be JSON.' }); }
+      return send(res, ...await saveWatchWorkout(w.u.id, b));
     }
     if (op === 'activity' && M === 'POST') { // a run / ride / more recording (19.11.): one ride record, source 'watch' (watch-feed.mjs)
       let b; try { b = await body(req, 4e3); } catch (e) { return send(res, e.message === 'too large' ? 413 : 400, { error: e.message === 'too large' ? 'Activity too large.' : 'Body must be JSON.' }); }

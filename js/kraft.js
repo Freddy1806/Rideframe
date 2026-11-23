@@ -13,7 +13,7 @@ const el = document.getElementById('kraft');
 
 const GROUP = { Beine: 'Legs', Rücken: 'Back', Brust: 'Chest', Schultern: 'Shoulders', Arme: 'Arms', Rumpf: 'Core', Ganzkörper: 'Full body', Eigene: 'Custom' };
 
-let S = {}, list = [], mine = [], tpls = [], W = null, tab = 'start', rest = null, acc = null, gDraft = null;
+let S = {}, list = [], mine = [], tpls = [], wtpl = [], W = null, tab = 'start', rest = null, acc = null, gDraft = null;
 
 // ---------------- data ----------------
 async function load() {
@@ -25,7 +25,12 @@ async function load() {
   tpls = (await db.kvGet('kraftTpl').catch(() => null)) || S.kraftTpl || [];
   W = (await db.kvGet('kraftDraft').catch(() => null)) || null;
   gDraft = await loadDraft();
-  try { const a = await import('./account.js'); acc = a.account(); if (acc) { list = await a.syncKraft(); render(); } } catch {}
+  try { const a = await import('./account.js'); acc = a.account(); if (acc) { list = await a.syncKraft(); render(); loadWatchTpl(); } } catch {}
+}
+/** the workouts of the account's watch config (set up on the phone or saved on the watch, POST /api/watch/workout): startable here too */
+async function loadWatchTpl() {
+  try { const r = await fetch('/api/watch/config', { cache: 'no-store', headers: { 'X-RF-Token': acc?.token || '' } }); if (!r.ok) return;
+    const j = await r.json(); wtpl = (j.config?.workouts || []).filter(w => w.items?.length); if (wtpl.length && !W) render(); } catch {}
 }
 const saveList = () => db.kvSet('kraft', list).catch(() => {});
 let draftT = 0;
@@ -109,6 +114,7 @@ function startView() {
     <button class="btn ghost kbig kquick" id="kQuick">Quick entry</button>
     ${guideSection(list, gDraft)}
     ${tpls.length ? `<h3 class="ksec">Templates</h3><div class="kgrid">${tpls.map((t, i) => `<div class="kcard ktpl" data-tpl="${i}"><b>${esc(t.name)}</b><span>${t.ex.map(x => esc(exOf(x.k).n)).join(', ')}</span><button class="kx" data-tdel="${i}" title="Delete template">✕</button></div>`).join('')}</div>` : ''}
+    ${wtpl.length ? `<h3 class="ksec">Watch workouts</h3><div class="kgrid">${wtpl.map((t, i) => `<div class="kcard ktpl" data-wtpl="${i}"><b>${esc(t.name)}</b><span>${t.items.map(x => esc(exOf(x.ex).n)).join(', ')}</span></div>`).join('')}</div>` : ''}
     ${last.length ? `<h3 class="ksec">Repeat</h3><div class="kgrid">${last.map(s => `<div class="kcard ktpl" data-again="${s.id}"><b>${esc(s.name)}</b><span>${dayTxt(s.start || s.date)} · ${(s.ex || []).map(x => esc(nm(x))).join(', ')}</span></div>`).join('')}</div>` : ''}
     ${!list.length ? '<p class="hint" style="margin-top:18px">No workouts yet. Start an empty workout, add exercises and tick off each set. Next time you will see what you did last time next to every set.</p>' : ''}`;
 }
@@ -143,6 +149,8 @@ function wireMain() {
   on('#kQuick', () => quickSheet());
   on('#kNewEx', async () => { const k = await newExercise($('#kFind')?.value.trim() || ''); if (k) { render(); exSheet(k); } });
   on('[data-tpl]', (b, e) => { if (e.target.dataset.tdel) return; const t = tpls[+b.dataset.tpl]; begin({ name: t.name, ex: t.ex.map(x => ({ k: x.k, n: exOf(x.k).n, t: exOf(x.k).t, sets: fromPrev(x.k, x.n || 3) })) }); });
+  on('[data-wtpl]', b => { const t = wtpl[+b.dataset.wtpl]; begin({ name: t.name, ex: t.items.map(x => { const e = exOf(x.ex); // the watch plan: sets × reps (seconds when timed) at kg
+    return { k: x.ex, n: e.n, t: e.t, sets: [...Array(Math.max(1, +x.sets || 1))].map(() => ({ kg: e.t === 'w' && +x.kg ? String(x.kg) : '', r: e.t === 'time' ? '' : String(x.reps || ''), s: e.t === 'time' ? String(x.reps || '') : '', done: false })) }; }) }); });
   on('[data-tdel]', b => { if (!confirm('Delete template?')) return; tpls.splice(+b.dataset.tdel, 1); saveTpls(); render(); });
   on('[data-again]', b => { const s = list.find(x => x.id === b.dataset.again); if (s.guide) return openIntro(s.guide.id, gctx); begin({ name: s.name, ex: s.ex.map(x => ({ k: x.k, n: x.n, t: x.t, sets: fromPrev(x.k, x.sets.filter(y => y.done).length || 3) })) }); });
   on('[data-open]', b => sessionSheet(list.find(x => x.id === b.dataset.open)));

@@ -15,7 +15,7 @@ Target watches: Forerunner 265 / 265S (416 / 360 px round AMOLED, touch + 5 butt
 
 | File | What it is |
 | --- | --- |
-| `manifest.xml` | watch-app, products fr265, fr265s, fenix7xpro, fenix7pro, minApiLevel 5.0.0, permissions Communications, Sensor, Fit, Positioning |
+| `manifest.xml` | watch-app, products fr265, fr265s, fenix7xpro, fenix7pro, fenix8solar47mm, minApiLevel 5.0.0, permissions Communications, Sensor, Fit, Positioning |
 | `monkey.jungle` | project file (default `source/` and `resources/`) |
 | `resources/settings/properties.xml` | `baseUrl` (default `https://mac-mini-von-gary.tailcde074.ts.net`), `recordActivity` (off) |
 | `resources/settings/settings.xml` | both editable in the Garmin Connect app (app settings) |
@@ -99,6 +99,11 @@ Command Palette → **Monkey C: Run** (pick `fr265`), or `connectiq` (opens the 
 - All with `Authorization: Bearer <token>`; 401 = the watch was removed on the phone (pair again).
 - 19.11.: `POST /api/watch/activity`, `GET /api/watch/segments`, `GET /api/watch/routes`, `GET /api/watch/route`: see
   "Activities, segments, routes" below.
+- 23.11.: `POST /api/watch/workout` `{ id, n, it: [[ex, sets, reps, kg, rest], …] }` (body ≤ 8 KB, 1 to 20 items): a workout saved
+  on the watch ("Save as workout?"). The same `id` replaces its items (the phone's name stays), a new `id` is added (400 at 30:
+  "Up to 30 workouts. Delete one on the phone."). Stored in the account's watch config, so it shows on the phone under
+  Settings → Devices → Watch screens & workouts and as **Watch workouts** on the strength page (`js/kraft.js`), and comes
+  back to the watch with the next config / setup. Queued like a session (a queue entry with `tpl`); answer `{ ok, id, new }`.
 
 ## Step 2: start menu, run / ride / more, workouts (18.11., ported to Monkey C, see "Port status" below)
 
@@ -125,8 +130,14 @@ START = pause, BACK = lap, or first closes the segment popup) ⇄ `PAUSE` → `R
 the menu's Pause; its clock and a running rest stop): START resumes, BACK held 3 s saves (an orange ring with 3-2-1, released
 early = nothing; on the touch face also a finger on the "Hold to finish" pill; events `holdStart` / `holdEnd`), a short BACK
 only shows the hint, DOWN / a tap reaches Discard with a confirm step (START yes, BACK no). `MORE` lists
-`cfg.more`, its sports record one fixed page. Strength: `HOME` → `START` → `SMODE` (Workout, Free) → `WPICK` → guided `SET`
-(kg / reps / rest from the plan, the last planned set finishes) or `PICK` (recent, then top 20, then the rest).
+`cfg.more`, its sports record one fixed page. Strength (23.11.): `HOME` → `START` → `SMODE` (one list: **Exercises**, then the saved workouts; skipped when there are none) →
+`PICK` (a workout's exercises first with "1/4 sets", then the rest: recent, top 21, the others) ⇄ `SET` → `REST` → `SET` ….
+`SET`: START on kg goes to reps, START on reps logs; the DONE pill (touch) logs at once; START held 0.7 s (`startHold`)
+switches kg / reps; a tap on a value focuses it. BACK in `SET` / `REST` → `PICK` (the exercise just done selected); BACK in
+`PICK` → `END` (Keep training / Finish & save / Discard, Discard asks again) when sets are logged, else back to `SMODE`.
+Finish → `SUM` (paged: totals with avg / max heart rate, then one page per exercise) → `SAVEQ` "Save as workout?" (Update
+<name> / Save as new / No; not asked when a saved workout was done exactly as planned) → `HOME`. Lists scroll with the finger
+(`scroll` event, one row per 0.1 of the screen dragged, `DRAG_ROW`); a swipe still moves one row.
 Events: `sample` `{ dt, v, hr, pw, cad, up }` once a second from Position / Sensor (auto lap, auto pause, NP),
 `seg` `{ k: "warn" | "live" | "end" | "none", name, len, eta, done, delta, need, time, pr, ref }` for the segment popup (result 5 s).
 Outputs: cues `start`, `stop`, `lap`, `seg` (suppressed while recording with `vib: 0`), `out` `saveAct` (save the activity),
@@ -153,10 +164,12 @@ Ported from `js/watchflow.js` / `js/watchfields.js` / `js/watchsim.js` / `js/wat
   power, ascent (delta of `totalAscent`), distance (delta of `elapsedDistance`, `dd`) and calories (`calories`); the
   last two replace the JS estimates when the watch has them. Nothing per second is kept in a growing list: 3 s power
   and the NP window are rings, laps are a count.
-- **Strength**: START → `S_SMODE` (Workout / Free, only when there are workouts) → `S_WPICK` → guided `S_SET` with the
-  planned kg / reps / rest ("SET 2 OF 3", the next planned set on the rest screen, Skip exercise in the menu, the last
-  planned set finishes) or `S_PICK` in the free order (recent, then the 20 standard, then the rest). Logging, queue
-  and upload unchanged.
+- **Strength** (23.11. rework, = `js/watchflow.js`): START → `S_SMODE` (Exercises + the workouts, only when there are
+  workouts) → `S_PICK` → `S_SET` / `S_REST` with heart rate and clock on both; BACK → `S_PICK` → `S_END`; Finish → paged
+  `S_SUM` → `S_SAVEQ` (`saveTpl` queues `{ id: "t…", tpl }`, `RideframeApp.push` sends it to `Api.workout`, `O_TPL` keeps
+  setup and cfg). The rest screen shows the last 3 sets of the exercise and NEXT (the next set, or the next exercise of
+  the workout). A workout set may also be left for a free exercise and picked up again from the list. Events `E_SCROLL`,
+  `E_DONE`, `E_START_HOLD`. Front squat (`frontsquat`) is in the top list and the phone catalogue.
 - **Timed exercises** (`t: "time"`, reps are seconds): watch only (the preview has no clock for it): the first START
   starts the hold clock (counts up, "of 1:00" below), a triple vibration at the planned time, the second START logs
   the seconds held; BACK while it runs cancels it.
@@ -166,7 +179,8 @@ Ported from `js/watchflow.js` / `js/watchfields.js` / `js/watchsim.js` / `js/wat
   segment 30 s into a run or ride; it turns the real segment and route following off.
 - **Colours**: AMOLED (fr265) black with the RIDEFRAME sport colours; MIP (fenix) only 64-colour palette colours,
   white field labels, light grey (not dark grey) far list rows (`Palette` in `Draw.mc`).
-- **Touch** (fr265, fenix 7 Pro): taps on list rows / home rows / START pill, swipes as in the preview (`FlowDelegate.onTap`).
+- **Touch** (every device with `DeviceSettings.isTouchScreen`, fenix 8 Solar included; 23.11.): taps on list rows (4 rows, each
+  tap zone at least 0.17 S = 44 px high on 260 px), the DONE pill, kg / reps; lists follow the finger (`onDrag`); swipes as in the preview.
 
 Not ported on purpose: the preview's panel, demo data, keyboard. `js/watchflow.js` is unchanged (its comment in
 `setConfig` says a running recording keeps its pages; the JS does not do that, the watch does).
@@ -261,7 +275,7 @@ the `(:glance)` app class so the glance does not load it. 19.11.: segments (8 ×
 kept as flat `Array<Float>` (x, y, metres along; the route also u, v), about 3 000 numbers at most; no per-second lists.
 The JSON answers (< 8 KB, < 12 KB) are dropped after they are turned into these arrays.
 
-## VERIFY items (30)
+## VERIFY items (39)
 
 `grep -rn VERIFY source manifest.xml resources`
 
@@ -271,14 +285,16 @@ The JSON answers (< 8 KB, < 12 KB) are dropped after they are turned into these 
 - **Feed.mc** (1): the `d` suffix for Double literals.
 - **Sports.mc** (1): run sub sport `SUB_SPORT_STREET` or `SUB_SPORT_GENERIC` (what the watch's Run app writes).
 - **Fields.mc** (1): `Math.pow` result type for NP.
-- **Draw.mc** (7): `requiresBurnInProtection` tells AMOLED from MIP; `Gregorian.info(...).day_of_week` is a String with
+- **Draw.mc** (12): `isTouchScreen` is true on the fenix 8 (23.11.); the rest screen's clock font and its three XTINY set rows
+  fit on 260 px (23.11., 2×); `requiresBurnInProtection` tells AMOLED from MIP; `Gregorian.info(...).day_of_week` is a String with
   `FORMAT_MEDIUM`; the glyphs of `FONT_NUMBER_*` (digits, `:`, `.`, `-`; anything else uses text fonts) (2×); "PR"
   in `FONT_LARGE` may look small; the unit's vertical place next to a number; the two XTINY lines on the ready screen
   (data pages, route) do not touch.
 - **Api.mc** (3): device label; JSON body / GET without body / negative codes in `makeWebRequest`; a query string in
   the URL of a GET with null params.
-- **FlowDelegate.mc** (1): returning true from `onKeyPressed` / `onKeyReleased` stops onSelect / onBack / onNextPage.
-- **RideframeApp.mc** (7): `(:glance)` on the app class; what onStart may do in the glance; the system closing the app
+- **FlowDelegate.mc** (4): returning true from `onKeyPressed` / `onKeyReleased` stops onSelect / onBack / onNextPage;
+  `onHold` / `onRelease`; 23.11.: START held (`KEY_ENTER`) reaches the app; `onDrag` / `DragEvent` (API 3.3.0) on the fenix 8.
+- **RideframeApp.mc** (8): pause / resume of the strength `ActivityRecording`; `(:glance)` on the app class; what onStart may do in the glance; the system closing the app
   mid-workout; the size limit of one Storage value (queue); which exception a too large value throws (`store`, `saveActs`);
   sets as laps in the native strength activity.
 - **Glance.mc** (2): Storage readable in the glance; glance colours.
@@ -310,11 +326,13 @@ Build for `fr265` and again for `fenix7xpro`, run, pair (or put a `token` into F
    playback stands still; auto lap at 5 km; the summary shows km/h and AVG W. Discard: back on the start menu, nothing saved.
 5. **More**: More → Yoga (indoor: heart rate, no GPS) and Hike (GPS): one page heart rate, time, clock, calories;
    Save: the summary shows KCAL and LAPS, the activity's sport is Training / Yoga and Hiking.
-6. **Strength, workout**: needs a workout set up on the phone. Strength → START → Workout → the workout: "SET 1 OF 3"
-   with the planned kg / reps; DONE → rest with the planned rest and the next set; the last planned set ends on the
-   summary. Menu (BACK held): Skip exercise. A plank in the workout: START starts the clock, a vibration at the planned
+6. **Strength, workout**: needs a workout set up on the phone. Strength → START → the workout (second row): "SET 1 OF 3"
+   with the planned kg / reps; START, START (or DONE) → rest with the planned rest, the sets so far and NEXT; BACK → the
+   workout's exercise list ("1/3 sets"); BACK → Keep training / Finish & save / Discard. Done as planned: no "Save as
+   workout?"; one set more or less, or Skip exercise (menu, BACK held): "Update <name> / Save as new / No". A plank in the workout: START starts the clock, a vibration at the planned
    seconds, START logs them.
-7. **Strength, free**: Free → the picker starts with the recent exercises, then the standard 20; the session uploads
+7. **Strength, free**: Exercises → the list starts with the recent exercises, then the standard 21 (Front squat after
+   Squat); Finish → the summary pages (UP / DOWN) → "Save as workout?" → Save: the phone shows it; the session uploads
    as before (Settings → Connection Type off: "Will send when the phone is near", on again: SAVED).
 8. **Route page / segment, demo** (only with `DEMO_FEED = true`, rebuild): READY says "+ route" and "Route: Riverside 8k",
    the last page is the route with the next turn; 30 s into a run the segment popup counts down, then shows ahead /
@@ -344,12 +362,13 @@ becoming a second session.
 
 ## Check first on a real watch
 
-1. It compiles for `fr265` and `fenix7xpro`; fix every `VERIFY` (`grep -rn VERIFY source manifest.xml resources`).
+1. It compiles for `fr265`, `fr265s`, `fenix7pro`, `fenix7xpro` and `fenix8solar47mm`; fix every `VERIFY`
+   (`grep -rn VERIFY source manifest.xml resources`).
 2. The launcher icon shows (size per device), the app opens, BACK on the start screen closes it.
-3. Buttons: UP / DOWN step once on a press and keep stepping when held (10 kg); BACK switches weight / reps; BACK held
-   opens the menu; START logs the set. No double events (a press must not also trigger onSelect / onNextPage).
+3. Buttons: UP / DOWN step once on a press and keep stepping when held (10 kg); START on kg goes to reps, START on reps
+   logs the set; START held 0.7 s switches kg / reps; BACK leaves the set for the exercise list; BACK held opens the menu. No double events (a press must not also trigger onSelect / onNextPage).
 4. Touch: tap a value, swipe up / down to change it, tap DONE; swipe left opens the menu; swipe right is not taken by
-   the system as "leave the app".
+   the system as "leave the app". See "VERIFY on the device (23.11.)" below for the fenix 8.
 5. Pairing with the code over Garmin Connect Mobile on the iPhone (HTTPS to the ts.net host works, no certificate error).
 6. A whole session with the phone away: "Will send when the phone is near", then it arrives after the phone is back
    and shows on the phone under Activities with "Recorded on watch".
@@ -362,3 +381,30 @@ becoming a second session.
     at 1 km / 5 km, auto pause at traffic lights, the saved activity in Garmin Connect with the right sport and laps.
 12. A ride with a power meter and a cadence sensor paired on the watch: power, 3 s power, NP and cadence fields fill.
 13. A guided workout with a plank: the hold clock and its vibration at the planned time.
+
+## VERIFY on the device (23.11., strength rework after the first fenix 8 run)
+
+Not compiled here; the JS mirror (`js/watchflow.js`, `tools/watchflow-test.mjs`, `tools/watch-ui.cjs`) is green. On the Mac:
+
+1. **Compile for all five**: `fr265`, `fr265s`, `fenix7pro`, `fenix7xpro`, `fenix8solar47mm` (Command Palette → Monkey C: Build
+   for Device, or `monkeyc -d <id> -f monkey.jungle -o bin/rideframe-<id>.prg -y ~/garmin/developer_key.der`). Likely build
+   errors in the new code: `WatchUi.DragEvent` / `DRAG_TYPE_*` names and `evt.getCoordinates()` in `FlowDelegate.onDrag`;
+   `ds has :isTouchScreen` in `Draw.hasTouch`; Dictionary / Array casts in `Flow.saveOffer`, `Flow.sumEx`, `Flow.saveTpl`.
+2. **Touch on the fenix 8 at all**: first the watch's own setting (Settings → System → Touch, and the per-activity /
+   per-app touch toggle; a "touch off during activities" setting would explain the first run). `Draw.hasTouch()`
+   (`DeviceSettings.isTouchScreen`) decides the DONE / "Hold to finish" pills.
+3. **Taps**: every list row (4 rows, tap zones ≥ 44 px), the DONE pill, kg / reps on the set screen, the rows of END, SAVEQ and the menu.
+4. **Drag scroll** (`onDrag`, API 3.3.0): a list follows the finger, one row per 26 px on 260 px; lifting the finger does
+   not also count as a tap or a swipe (`dragEnd`, 500 ms). If the fenix 8 sends no drag events, swipes still step one row.
+5. **START held** (`KEY_ENTER`, 700 ms on the existing hold timer) switches kg / reps and is not taken by the system;
+   START now fires on release (so a hold does not also log). A short START must still feel instant.
+6. **BACK**: set / rest → the exercise list (never leaves the app); list → END when sets are logged; END → Discard asks again.
+   BACK held still opens the menu. With nothing logged BACK goes back to the Exercises / workouts choice.
+7. **Rest screen** on 260 px: heart rate, clock (`FONT_NUMBER_MEDIUM` when `getFontHeight` ≤ 0.2 S, else `NUMBER_MILD`),
+   the exercise name, the last 3 sets, NEXT and SKIP do not touch or clip at the round edge; same on 280 / 360 / 416 px.
+8. **Heart rate** on the set and rest screens updates (`Sensor` heart rate) and the summary shows avg / max.
+9. **Save as workout**: after a free session "Save as workout" → the phone (strength page, Watch workouts; and Settings →
+   Devices → Watch screens & workouts) shows it after the queue is sent; the watch lists it under Strength next start.
+   A saved workout done as planned does not ask; with a skipped exercise it offers Update / Save as new / No.
+10. **Front squat** appears in the list and uploads as `frontsquat` (Front squat on the phone).
+

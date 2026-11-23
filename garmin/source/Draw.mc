@@ -16,6 +16,13 @@ function isAmoled() as Boolean {
     // VERIFY: DeviceSettings.requiresBurnInProtection (API 3.0) is true on AMOLED watches (doc page Toybox.System.DeviceSettings)
     return (ds has :requiresBurnInProtection) && ds.requiresBurnInProtection;
 }
+// 23.11.: a touchscreen (fr265, fenix 7 Pro / 7X Pro, fenix 8: all of them), not AMOLED, decides the touch-only parts (the "Hold to
+// finish" pill); before, the MIP fenix were taken for button-only watches
+function hasTouch() as Boolean {
+    var ds = System.getDeviceSettings();
+    // VERIFY (Toybox.System.DeviceSettings.isTouchScreen, API 1.0): true on the fenix 8 Solar 47 mm (and stays true with touch locked)
+    return (ds has :isTouchScreen) && ds.isTouchScreen;
+}
 class Palette {
     var fg as Number; var dim as Number; var faint as Number; var acc as Number; var ink as Number; var hr as Number;
     var lbl as Number; var line as Number; var good as Number; var bad as Number; var far as Number; var path as Number;
@@ -171,9 +178,10 @@ module Draw {
         else if (s == S_START) { drawStart(dc, F, S, P, sum); }
         else if (s == S_PICK) { drawPick(dc, F, S, P); }
         else if (s == S_SMODE) { drawSmode(dc, F, S, P); }
-        else if (s == S_WPICK) { drawWpick(dc, F, S, P); }
         else if (s == S_MORE) { drawMore(dc, F, S, P); }
-        else if (s == S_MENU) { list(dc, F, S, P, F.menu, "MENU", true, null); }
+        else if (s == S_MENU) { list(dc, F, S, P, F.menu, "MENU", true, null, null); }
+        else if (s == S_END) { drawEnd(dc, F, S, P, now); }
+        else if (s == S_SAVEQ) { drawSaveq(dc, F, S, P); }
         else if (s == S_SET) { drawSet(dc, F, S, P, now); }
         else if (s == S_REST) { drawRest(dc, F, S, P, now); }
         else if (s == S_SUM) { drawSum(dc, F, S, P); }
@@ -254,52 +262,91 @@ module Draw {
         }
         pill(dc, c, S * 0.81, S * 0.42, S * 0.13, P.acc); txt(dc, c, S * 0.81, Graphics.FONT_SMALL, "START", P.ink);
     }
-    // the picker (recent, then top 20, then the rest) with the last set of the selected exercise
+    // js/watchsim.js setShort: one set, short: 80 kg x 8, +5 x 10, 10 reps, 1:00
+    function setShort(t as String, kg as Float, r as Number) as String {
+        if (t.equals("time")) { return clock(r); }
+        if (t.equals("bw")) { return kg > 0.0 ? "+" + kgTxt(kg) + " x " + r.toString() : r.toString() + " reps"; }
+        return kgTxt(kg) + " kg x " + r.toString();
+    }
+    function plural(n as Number, one as String, many as String) as String { return n.toString() + " " + (n == 1 ? one : many); }
+    // js/watchsim.js pickSub: row k's sub line: a workout item's progress, else this session's sets, else last time's
+    function pickSub(F as Flow, k as Number) as String {
+        var rows = F.pickRows();
+        if (k < 0 || k >= rows.size()) { return ""; }
+        var l = F.exList(), e = l[rows[k][0]], j = rows[k][1];
+        if (!(e instanceof Dictionary)) { return ""; }
+        var ed = e as Dictionary, t = F.exT(ed), mine = F.setsOf(strOf(ed["id"])), n = mine.size();
+        if (j >= 0) {
+            var it = F.itAt(j), d = F.doneOf(j);
+            if (it == null) { return ""; }
+            if (d >= numOf(it[1])) { return "Done, " + plural(d, "set", "sets"); }
+            if (F.planSkip.indexOf(j) >= 0) { return "Skipped"; }
+            return d.toString() + "/" + numOf(it[1]).toString() + " sets, " + (t.equals("time") ? clock(numOf(it[2])) : numOf(it[2]).toString() + " reps");
+        }
+        if (n > 0) { return n.toString() + " done, " + setShort(t, fltOf(mine[n - 1]["kg"]), numOf(mine[n - 1]["reps"])); }
+        var s = arrOf(ed["s"]);
+        if (s.size() > 0) { var p = arrOf(s[0]); if (p.size() >= 2) { return "Last " + setShort(t, fltOf(p[0]), numOf(p[1])); } }
+        return "New";
+    }
+    // the exercise list: in a workout its items first with what is done; the counter line is the session so far (js DRAW[SCR.PICK])
     function drawPick(dc as Dc, F as Flow, S as Number, P as Palette) as Void {
-        var sub = null, l = F.exList();
-        if (F.sel < F.list.size()) {
-            var e = l[F.list[F.sel]];
-            if (e instanceof Dictionary) {
-                var ed = e as Dictionary, s = arrOf(ed["s"]);
-                sub = "New";
-                if (s.size() > 0) { var p = arrOf(s[0]); if (p.size() >= 2) { sub = setTxt(F.exT(ed), fltOf(p[0]), numOf(p[1])); } }
-            }
-        }
-        list(dc, F, S, P, F.listItems(), "EXERCISE", false, sub);
+        var items = F.listItems(), n = items.size(), k = F.sets.size(), title = "EXERCISES", p = F.plan, ws = F.workouts();
+        if (p != null) { if (p[0] >= 0 && p[0] < ws.size()) { title = strOf(ws[p[0]]["n"]).toUpper(); } }
+        var cnt = (F.sel + 1).toString() + "/" + n.toString() + (k > 0 ? ", " + plural(k, "set", "sets") + " done" : "");
+        list(dc, F, S, P, items, title, false, pickSub(F, F.sel), cnt);
     }
+    // Exercises or a saved workout (the phone's and those saved on the watch)
     function drawSmode(dc as Dc, F as Flow, S as Number, P as Palette) as Void {
-        list(dc, F, S, P, F.listItems(), "STRENGTH", true, null);
-        var t = F.sel != 0 ? "Pick as you go" : F.workouts().size().toString() + " from the phone";
-        txt(dc, S / 2, S * 0.81, Graphics.FONT_XTINY, fit(dc, t, Graphics.FONT_XTINY, (S * 0.6).toNumber()), P.fg);
-    }
-    function drawWpick(dc as Dc, F as Flow, S as Number, P as Palette) as Void {
-        var ws = F.workouts(), sub = null;
-        if (F.sel < ws.size()) {
-            var it = arrOf(ws[F.sel]["it"]), n = 0;
+        var sub = "Pick as you go", ws = F.workouts();
+        if (F.sel > 0 && F.sel - 1 < ws.size()) {
+            var it = arrOf(ws[F.sel - 1]["it"]), n = 0;
             for (var i = 0; i < it.size(); i++) { var x = arrOf(it[i]); if (x.size() > 1) { n += numOf(x[1]); } }
-            sub = it.size().toString() + " exercises, " + n.toString() + " sets";
+            sub = plural(it.size(), "exercise", "exercises") + ", " + n.toString() + " sets";
         }
-        list(dc, F, S, P, F.listItems(), "WORKOUT", false, sub);
+        list(dc, F, S, P, F.listItems(), "STRENGTH", false, sub, null);
+    }
+    // BACK on the exercise list with sets logged (js DRAW[SCR.END])
+    function drawEnd(dc as Dc, F as Flow, S as Number, P as Palette, now as Number) as Void {
+        list(dc, F, S, P, F.listItems(), F.endConf ? "DISCARD?" : "END WORKOUT?", true, null, null);
+        txt(dc, S / 2, S * 0.82, Graphics.FONT_XTINY, plural(F.sets.size(), "set", "sets") + ", " + clock(now - F.start - F.pauseT), P.lbl);
+    }
+    // after the summary: save the session as a workout (js DRAW[SCR.SAVEQ])
+    function drawSaveq(dc as Dc, F as Flow, S as Number, P as Palette) as Void {
+        var q = F.saveq;
+        if (q == null) { return; }
+        var rows = q["rows"] as Array, it = q["it"] as Array;
+        list(dc, F, S, P, rows as Array<String>, "SAVE AS WORKOUT?", true, null, null);
+        if (F.sel < rows.size() - 1) {
+            var nm = q["wid"] != null && F.sel == 0 ? strOf(q["wn"]) : strOf(q["n"]), n = 0;
+            for (var i = 0; i < it.size(); i++) { n += numOf((it[i] as Array)[1]); }
+            txt(dc, S / 2, S * 0.81, Graphics.FONT_XTINY, fit(dc, nm, Graphics.FONT_XTINY, (S * 0.62).toNumber()), P.fg);
+            txt(dc, S / 2, S * 0.875, Graphics.FONT_XTINY, fit(dc, plural(it.size(), "exercise", "exercises") + ", " + n.toString() + " sets", Graphics.FONT_XTINY, (S * 0.56).toNumber()), P.lbl);
+        }
     }
     function drawMore(dc as Dc, F as Flow, S as Number, P as Palette) as Void {
         var m = F.moreList(), sub = null;
         if (F.sel < m.size()) { var x = arrOf(m[F.sel]); if (x.size() > 0) { sub = Sports.group(strOf(x[0])); } }
-        list(dc, F, S, P, F.listItems(), "MORE SPORTS", false, sub);
+        list(dc, F, S, P, F.listItems(), "MORE SPORTS", false, sub, null);
         if (m.size() == 0) {
             txt(dc, S / 2, S * 0.62, Graphics.FONT_XTINY, fit(dc, "Choose sports in the app:", Graphics.FONT_XTINY, (S * 0.7).toNumber()), P.fg);
             txt(dc, S / 2, S * 0.69, Graphics.FONT_XTINY, fit(dc, "Settings > Watch > More", Graphics.FONT_XTINY, (S * 0.7).toNumber()), P.fg);
         }
     }
-    // every list: selected row big in the middle, neighbours smaller and dimmer; a menu has a pill on the selected row
-    function list(dc as Dc, F as Flow, S as Number, P as Palette, items as Array<String>, title as String, isMenu as Boolean, sub) as Void {
+    // every list (js/watchflow.js LIST_LAY, 23.11.: rows 0.17 S apart around the selected one = 44 px touch targets on the 260 px fenix 8):
+    // the selected row big in the middle with its sub line, the neighbours smaller and dimmer; a menu has three rows and a pill on the
+    // selected one. count = the line under the title (null: n / N)
+    function list(dc as Dc, F as Flow, S as Number, P as Palette, items as Array<String>, title as String, isMenu as Boolean, sub, count) as Void {
         var n = items.size(), c = S / 2, sel = F.sel;
-        txt(dc, c, S * 0.13, Graphics.FONT_XTINY, title, P.dim);
+        txt(dc, c, S * 0.12, Graphics.FONT_XTINY, fit(dc, title, Graphics.FONT_XTINY, (S * 0.56).toNumber()), P.dim);
         if (n == 0) { txt(dc, c, c, Graphics.FONT_SMALL, "Nothing yet", P.dim); return; }
-        if (!isMenu) { txt(dc, c, S * 0.185, Graphics.FONT_XTINY, (sel + 1).toString() + "/" + n.toString(), P.dim); }
+        if (!isMenu) {
+            var ct = count instanceof String ? count as String : (sel + 1).toString() + "/" + n.toString();
+            txt(dc, c, S * 0.19, Graphics.FONT_XTINY, fit(dc, ct, Graphics.FONT_XTINY, (S * 0.62).toNumber()), P.dim);
+        }
         // rows: [offset, y]; the same y values are the tap table in FlowDelegate.onTap
-        var offs = isMenu ? [-1, 0, 1] as Array<Number> : [-2, -1, 0, 1, 2] as Array<Number>;
-        var ys = isMenu ? [0.33, 0.5, 0.67] as Array<Float> : [0.24, 0.345, 0.5, 0.7, 0.8] as Array<Float>;
-        var fs = isMenu ? [Graphics.FONT_SMALL, Graphics.FONT_MEDIUM, Graphics.FONT_SMALL] : [Graphics.FONT_XTINY, Graphics.FONT_SMALL, Graphics.FONT_MEDIUM, Graphics.FONT_SMALL, Graphics.FONT_XTINY];
+        var offs = isMenu ? [-1, 0, 1] as Array<Number> : [-1, 0, 1, 2] as Array<Number>;
+        var ys = isMenu ? [0.33, 0.5, 0.67] as Array<Float> : [0.3, 0.5, 0.72, 0.845] as Array<Float>;
+        var fs = isMenu ? [Graphics.FONT_SMALL, Graphics.FONT_MEDIUM, Graphics.FONT_SMALL] : [Graphics.FONT_SMALL, Graphics.FONT_MEDIUM, Graphics.FONT_SMALL, Graphics.FONT_XTINY];
         for (var r = 0; r < offs.size(); r++) {
             var o = offs[r], y = S * ys[r], f = fs[r], i = sel + o;
             if (i < 0 || i >= n) { continue; }
@@ -307,15 +354,22 @@ module Draw {
             if (o == 0 && isMenu) { pill(dc, c, y, S * 0.78, S * 0.14, P.acc); txt(dc, c, y, f, fit(dc, items[i], f, (S * 0.7).toNumber()), P.ink); continue; }
             if (o == 0) { dc.setColor(P.acc, Graphics.COLOR_TRANSPARENT); dc.fillRectangle(S * 0.1, y - S * 0.055, S * 0.012 + 1, S * 0.11); }
             txt(dc, c, y, f, t, o == 0 ? P.fg : (far ? P.far : P.dim)); // far rows: dark grey on AMOLED, light grey on MIP
-            if (o == 0 && sub instanceof String) { txt(dc, c, y + S * 0.085, Graphics.FONT_XTINY, fit(dc, sub as String, Graphics.FONT_XTINY, (S * 0.7).toNumber()), P.acc); }
+            if (o == 0 && sub instanceof String) { txt(dc, c, S * 0.585, Graphics.FONT_XTINY, fit(dc, sub as String, Graphics.FONT_XTINY, (S * 0.7).toNumber()), P.acc); }
         }
         scrollArc(dc, S, P, sel, n);
         startHint(dc, S, P);
     }
+    // js/watchsim.js hrClock: the heart rate (and the session clock) on one line, centred at y; 23.11.: shown the whole time in strength
+    function hrClock(dc as Dc, F as Flow, S as Number, P as Palette, y, now as Number, hrOnly as Boolean) as Void {
+        var c = S / 2, h = F.hr > 0 ? F.hr.toString() : "--";
+        if (hrOnly) { heart(dc, c - S * 0.07, y, S * 0.045, P.hr); txtL(dc, c - S * 0.035, y, Graphics.FONT_SMALL, h, P.fg); return; }
+        heart(dc, c - S * 0.17, y, S * 0.04, P.hr); txtL(dc, c - S * 0.14, y, Graphics.FONT_XTINY, h, P.fg);
+        txtL(dc, c + S * 0.03, y, Graphics.FONT_XTINY, clock(now - F.start - F.pauseT), P.dim);
+    }
     function drawSet(dc as Dc, F as Flow, S as Number, P as Palette, now as Number) as Void {
         var e = F.curEx(), c = S / 2, t = F.exT(e), it = F.planItem();
         startHint(dc, S, P);
-        txt(dc, c, S * 0.12, Graphics.FONT_XTINY, clock(now - F.start - F.pauseT), P.dim);
+        hrClock(dc, F, S, P, S * 0.12, now, false);
         txt(dc, c, S * 0.22, Graphics.FONT_SMALL, fit(dc, strOf(e["n"]), Graphics.FONT_SMALL, (S * 0.74).toNumber()), P.fg);
         var no = "SET " + F.setNo().toString();
         if (it != null) { no = no + " OF " + numOf(it[1]).toString(); }
@@ -342,8 +396,9 @@ module Draw {
         }
         pill(dc, c, S * 0.815, S * 0.4, S * 0.12, P.acc); txt(dc, c, S * 0.815, Graphics.FONT_SMALL, t.equals("time") && F.holdAt == 0 ? "GO" : "DONE", P.ink);
     }
+    // js/watchsim.js DRAW[SCR.REST] and REST_LAY (23.11.): heart rate, the clock, what this exercise has so far (the last 3 sets), what comes next
     function drawRest(dc as Dc, F as Flow, S as Number, P as Palette, now as Number) as Void {
-        var left = F.restLeft(now), c = S / 2, r = c - (S * 0.04).toNumber(), e = F.curEx();
+        var left = F.restLeft(now), c = S / 2, r = c - (S * 0.04).toNumber(), e = F.curEx(), t = F.exT(e);
         var part = F.restLen > 0 ? left.toFloat() / F.restLen : 0.0;
         dc.setPenWidth(pw(S * 0.05)); dc.setColor(P.faint, Graphics.COLOR_TRANSPARENT); dc.drawCircle(c, c, r);
         if (part > 0.0) {
@@ -352,18 +407,26 @@ module Draw {
             else { dc.drawArc(c, c, r, Graphics.ARC_CLOCKWISE, 90, 90 - (part * 360).toNumber()); } // from 12 o'clock, clockwise
         }
         dc.setPenWidth(1);
-        heart(dc, c - S * 0.08, S * 0.27, S * 0.05, P.hr);
-        txtL(dc, c - S * 0.03, S * 0.27, Graphics.FONT_SMALL, F.hr > 0 ? F.hr.toString() : "--", P.fg);
-        txt(dc, c, S * 0.46, Graphics.FONT_NUMBER_HOT, clock(left), left <= 5 ? P.acc : P.fg);
-        txt(dc, c, S * 0.625, Graphics.FONT_XTINY, "NEXT", P.lbl);
-        var it = F.planItem(), nx = "Set " + F.setNo().toString() + ": " + strOf(e["n"]);
-        if (it != null) {
-            var id = strOf(it[0]), l = F.exList(), k = exIndex(l, id), nm = id;
-            if (k >= 0) { nm = strOf((l[k] as Dictionary)["n"]); }
-            nx = nm + " " + F.setNo().toString() + "/" + numOf(it[1]).toString();
+        hrClock(dc, F, S, P, S * 0.15, now, true);
+        // the clock no taller than 0.2 S, so the sets below keep their room (VERIFY on the device: NUMBER_MEDIUM on 260 px)
+        var cf = dc.getFontHeight(Graphics.FONT_NUMBER_MEDIUM) <= S * 0.2 ? Graphics.FONT_NUMBER_MEDIUM : Graphics.FONT_NUMBER_MILD;
+        txt(dc, c, S * 0.3, cf, clock(left), left <= 5 ? P.acc : P.fg);
+        txt(dc, c, S * 0.425, Graphics.FONT_XTINY, fit(dc, strOf(e["n"]).toUpper(), Graphics.FONT_XTINY, (S * 0.62).toNumber()), P.acc);
+        var mine = F.setsOf(strOf(e["id"])), k0 = mine.size() > 3 ? mine.size() - 3 : 0, fh = dc.getFontHeight(Graphics.FONT_XTINY) * 0.85;
+        var dy = S * 0.062 > fh ? S * 0.062 : fh; // VERIFY on the device: three XTINY rows fit between the name and NEXT
+        for (var k = k0; k < mine.size(); k++) {
+            var ln = (k + 1).toString() + "   " + setShort(t, fltOf(mine[k]["kg"]), numOf(mine[k]["reps"]));
+            txt(dc, c, S * 0.49 + (k - k0) * dy, Graphics.FONT_XTINY, fit(dc, ln, Graphics.FONT_XTINY, (S * 0.64).toNumber()), P.fg);
         }
-        txt(dc, c, S * 0.7, Graphics.FONT_XTINY, fit(dc, nx, Graphics.FONT_XTINY, (S * 0.66).toNumber()), P.fg);
-        txt(dc, c, S * 0.82, Graphics.FONT_XTINY, "SKIP", P.acc);
+        // NEXT: the next set of this exercise, or the next exercise of the workout (js nextTxt)
+        var it = F.planItem(), nx = e;
+        if (it != null) { var l = F.exList(), j = exIndex(l, it[0]); nx = j >= 0 ? l[j] as Dictionary : { "id" => strOf(it[0]), "n" => strOf(it[0]), "t" => "w" } as Dictionary; }
+        var v = F.prefillOf(nx), vt = setShort(F.exT(nx), fltOf(v[0]), numOf(v[1])), no = F.setNo().toString(), lab = "", val = vt;
+        if (strOf(nx["id"]).equals(strOf(e["id"]))) { lab = "NEXT: SET " + no + (it != null ? " OF " + numOf(it[1]).toString() : ""); }
+        else { lab = "NEXT: " + strOf(nx["n"]).toUpper(); val = "Set " + no + (it != null ? "/" + numOf(it[1]).toString() : "") + ", " + vt; }
+        txt(dc, c, S * 0.7, Graphics.FONT_XTINY, fit(dc, lab, Graphics.FONT_XTINY, (S * 0.66).toNumber()), P.lbl);
+        txt(dc, c, S * 0.758, Graphics.FONT_XTINY, fit(dc, val, Graphics.FONT_XTINY, (S * 0.66).toNumber()), P.fg);
+        txt(dc, c, S * 0.855, Graphics.FONT_XTINY, "SKIP", P.acc);
     }
     function prFlash(dc as Dc, S as Number, P as Palette, f as Dictionary) as Void {
         var c = S / 2, t = strOf(f["t"]), kg = fltOf(f["kg"]), r = numOf(f["reps"]);
@@ -383,21 +446,42 @@ module Draw {
         else { l = kmTxt(d) + " km"; }
         txt(dc, c, S * 0.69, Graphics.FONT_MEDIUM, l, P.ink);
     }
+    // js/watchsim.js DRAW[SCR.SUM] and SUM_LAY (23.11.): page 0 the totals with the heart rate, then one page per exercise with every set
     function drawSum(dc as Dc, F as Flow, S as Number, P as Palette) as Void {
         var s = F.sum, c = S / 2;
         if (s == null) { return; }
-        var st = numOf(s["st"]);
-        if (st == ST_SAVED) { txt(dc, c, S * 0.17, Graphics.FONT_SMALL, "SAVED", P.acc); }
-        else if (st == ST_SENDING) { txt(dc, c, S * 0.17, Graphics.FONT_SMALL, "SENDING", P.dim); }
-        else if (st == ST_FAILED) { txt(dc, c, S * 0.17, Graphics.FONT_SMALL, "NOT SAVED", P.acc); }
-        else { txt(dc, c, S * 0.14, Graphics.FONT_XTINY, "Will send when", P.fg); txt(dc, c, S * 0.2, Graphics.FONT_XTINY, "the phone is near", P.fg); }
-        txt(dc, c, S * 0.36, Graphics.FONT_NUMBER_MEDIUM, clock(numOf(s["dur"])), P.fg);
-        txt(dc, c, S * 0.46, Graphics.FONT_XTINY, "TIME", P.lbl);
-        var v = [numOf(s["sets"]).toString(), volTxt(fltOf(s["vol"])), numOf(s["exs"]).toString()] as Array<String>, l = ["SETS", "KG", "LIFTS"] as Array<String>;
-        for (var i = 0; i < 3; i++) { var x = S * (0.27 + i * 0.23); txt(dc, x, S * 0.6, Graphics.FONT_MEDIUM, v[i], P.fg); txt(dc, x, S * 0.68, Graphics.FONT_XTINY, l[i], P.lbl); }
-        var prs = numOf(s["prs"]);
-        if (prs > 0) { txt(dc, c, S * 0.78, Graphics.FONT_SMALL, prs.toString() + " PR", P.acc); }
+        var exs = arrOf(s["ex"]), pg = F.sel;
+        pageDots(dc, S, P, exs.size() + 1, pg);
         txt(dc, c, S * 0.87, Graphics.FONT_XTINY, "DONE", P.lbl);
+        if (pg > 0 && pg <= exs.size()) {
+            var ex1 = exs[pg - 1] as Dictionary, t = strOf(ex1["t"]), ss = arrOf(ex1["s"]), vol = 0.0, many = ss.size() > 5;
+            for (var i = 0; i < ss.size(); i++) { var y0 = arrOf(ss[i]); vol += fltOf(y0[0]) * numOf(y0[1]); }
+            txt(dc, c, S * 0.2, Graphics.FONT_SMALL, fit(dc, strOf(ex1["n"]), Graphics.FONT_SMALL, (S * 0.66).toNumber()), P.acc);
+            txt(dc, c, S * 0.285, Graphics.FONT_XTINY, plural(ss.size(), "set", "sets") + (!t.equals("time") && vol > 0.0 ? ", " + volTxt(vol) + " kg" : ""), P.lbl);
+            var shown = many ? 4 : ss.size();
+            for (var i = 0; i < shown; i++) {
+                var y1 = arrOf(ss[i]), pr = numOf(y1[2]) == 1;
+                var ln = (i + 1).toString() + "   " + setShort(t, fltOf(y1[0]), numOf(y1[1])) + (pr ? "  PR" : "");
+                txt(dc, c, S * (0.38 + i * 0.08), Graphics.FONT_XTINY, fit(dc, ln, Graphics.FONT_XTINY, (S * 0.7).toNumber()), pr ? P.acc : P.fg);
+            }
+            if (many) { txt(dc, c, S * (0.38 + 4 * 0.08), Graphics.FONT_XTINY, "+ " + (ss.size() - 4).toString() + " more", P.lbl); }
+            return;
+        }
+        var st = numOf(s["st"]);
+        if (st == ST_SAVED) { txt(dc, c, S * 0.15, Graphics.FONT_SMALL, "SAVED", P.acc); }
+        else if (st == ST_SENDING) { txt(dc, c, S * 0.15, Graphics.FONT_SMALL, "SENDING", P.dim); }
+        else if (st == ST_FAILED) { txt(dc, c, S * 0.15, Graphics.FONT_SMALL, "NOT SAVED", P.acc); }
+        else { txt(dc, c, S * 0.15, Graphics.FONT_XTINY, fit(dc, "Sends when the phone is near", Graphics.FONT_XTINY, (S * 0.6).toNumber()), P.fg); }
+        txt(dc, c, S * 0.3, Graphics.FONT_NUMBER_MILD, clock(numOf(s["dur"])), P.fg);
+        txt(dc, c, S * 0.395, Graphics.FONT_XTINY, "TIME", P.lbl);
+        var v = [numOf(s["sets"]).toString(), volTxt(fltOf(s["vol"])), numOf(s["exs"]).toString()] as Array<String>, l = ["SETS", "KG", "LIFTS"] as Array<String>;
+        for (var i = 0; i < 3; i++) { var x = S * (0.27 + i * 0.23); txt(dc, x, S * 0.52, fontFor(dc, v[i], [Graphics.FONT_MEDIUM, Graphics.FONT_SMALL], (S * 0.22).toNumber()), v[i], P.fg); txt(dc, x, S * 0.59, Graphics.FONT_XTINY, l[i], P.lbl); }
+        var h = s["hr"];
+        heart(dc, c - S * 0.2, S * 0.69, S * 0.042, P.hr);
+        var ht = h instanceof Dictionary ? numOf((h as Dictionary)["avg"]).toString() + " avg, " + numOf((h as Dictionary)["max"]).toString() + " max" : "no heart rate";
+        txtL(dc, c - S * 0.16, S * 0.69, Graphics.FONT_XTINY, fit(dc, ht, Graphics.FONT_XTINY, (S * 0.44).toNumber()), P.fg);
+        var prs = numOf(s["prs"]);
+        if (prs > 0) { txt(dc, c, S * 0.77, Graphics.FONT_XTINY, prs.toString() + " PR", P.acc); }
     }
     function drawPair(dc as Dc, F as Flow, S as Number, P as Palette) as Void {
         var c = S / 2, bw = S * 0.1, gap = S * 0.018, x0 = c - (6 * bw + 5 * gap) / 2 + bw / 2;
@@ -420,7 +504,7 @@ module Draw {
     // Discard (with a confirm step); while BACK is held an orange ring fills with 3-2-1. Rows: the tap table in FlowDelegate.onTap.
     // VERIFY on the 280 px MIP: FONT_SMALL at 0.5 and FONT_XTINY at 0.57 do not touch (20 px apart)
     function drawPause(dc as Dc, F as Flow, S as Number, P as Palette, now as Number) as Void {
-        var c = S / 2, part = F.holdPart(System.getTimer()), touch = !P.mip;
+        var c = S / 2, part = F.holdPart(System.getTimer()), touch = hasTouch();
         if (part >= 0.0) {
             var r = c - (S * 0.035).toNumber();
             dc.setPenWidth(pw(S * 0.05)); dc.setColor(P.faint, Graphics.COLOR_TRANSPARENT); dc.drawCircle(c, c, r);
@@ -487,7 +571,7 @@ module Draw {
         if (l != null) {
             if (F.sel > 0 && F.sel - 1 < l.size()) { var r = l[F.sel - 1], cl = rnd(fltOf(r["climb"])); sub = kmTxt(fltOf(r["dist"])) + " km" + (cl > 0 ? ", " + cl.toString() + " m up" : ""); }
         }
-        list(dc, F, S, P, F.listItems(), "ROUTE", false, sub);
+        list(dc, F, S, P, F.listItems(), "ROUTE", false, sub, null);
         if (l != null) { if (l.size() == 0) { txt(dc, S / 2, S * 0.81, Graphics.FONT_XTINY, fit(dc, "Send routes from the phone", Graphics.FONT_XTINY, (S * 0.62).toNumber()), P.lbl); } }
     }
     function drawRec(dc as Dc, F as Flow, S as Number, P as Palette, now as Number) as Void {
