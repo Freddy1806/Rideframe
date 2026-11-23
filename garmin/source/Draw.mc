@@ -302,13 +302,14 @@ module Draw {
         var cnt = (F.sel + 1).toString() + "/" + n.toString() + (k > 0 ? ", " + plural(k, "set", "sets") + " done" : "");
         list(dc, F, S, P, items, title, false, pickSub(dc, F, S, F.sel), cnt);
     }
-    // Exercises or a saved workout (the phone's and those saved on the watch)
+    // Exercises or a workout (the phone's, those saved on the watch, then the standard ones)
     function drawSmode(dc as Dc, F as Flow, S as Number, P as Palette) as Void {
         var sub = "Choose exercises", ws = F.workouts();
         if (F.sel > 0 && F.sel - 1 < ws.size()) {
             var it = arrOf(ws[F.sel - 1]["it"]), n = 0;
             for (var i = 0; i < it.size(); i++) { var x = arrOf(it[i]); if (x.size() > 1) { n += numOf(x[1]); } }
             sub = plural(it.size(), "exercise", "exercises") + ", " + n.toString() + " sets";
+            if (ws[F.sel - 1]["std"] == true) { sub = "Standard, " + plural(it.size(), "exercise", "exercises"); } // 23.11.7: built into the watch
         }
         list(dc, F, S, P, F.listItems(), "STRENGTH", false, sub, null);
     }
@@ -390,9 +391,13 @@ module Draw {
             if (lp != null) { txt(dc, S * 0.735, S * 0.315, Graphics.FONT_XTINY, clock(numOf(lp[1])), P.lbl); }
             // watch only: while the hold clock runs it counts up, the planned time below; else the planned time
             var held = F.holdAt > 0, v = held ? clock(now - F.holdAt) : clock(F.reps);
-            txt(dc, c, S * 0.5, fontFor(dc, v, [Graphics.FONT_NUMBER_HOT, Graphics.FONT_NUMBER_MEDIUM, Graphics.FONT_NUMBER_MILD], (S * 0.6).toNumber()), v, P.acc);
-            dc.setColor(P.acc, Graphics.COLOR_TRANSPARENT); dc.fillRectangle(S * 0.36, S * 0.615, S * 0.28, S * 0.016 + 1);
-            txt(dc, c, S * 0.665, Graphics.FONT_XTINY, held ? "of " + clock(F.reps) : "hold", P.fg);
+            var bf = fontFor(dc, v, [Graphics.FONT_NUMBER_HOT, Graphics.FONT_NUMBER_MEDIUM, Graphics.FONT_NUMBER_MILD], (S * 0.6).toNumber());
+            txt(dc, c, S * 0.5, bf, v, P.acc);
+            if (wheelOn(F, 1)) { wheelNb(dc, F, S, P, 1, c, bf, true, false); } // 23.11.7: the wheel's neighbours take the bar's and the label's room
+            else {
+                dc.setColor(P.acc, Graphics.COLOR_TRANSPARENT); dc.fillRectangle(S * 0.36, S * 0.615, S * 0.28, S * 0.016 + 1);
+                txt(dc, c, S * 0.665, Graphics.FONT_XTINY, held ? "of " + clock(F.reps) : "hold", P.fg);
+            }
         } else {
             var bw = t.equals("bw");
             var val = [bw && F.kg == 0.0 ? "BW" : kgTxt(F.kg), F.reps.toString()] as Array<String>, unit = [bw ? "+kg" : "kg", "reps"] as Array<String>;
@@ -414,11 +419,38 @@ module Draw {
                 // a wide kg ("102.5") takes the next smaller font instead of being cut; text fonts last (js/watchsim.js SET_NUM)
                 var f = "BW".equals(val[i]) ? Graphics.FONT_LARGE : fontFor(dc, val[i], [Graphics.FONT_NUMBER_HOT, Graphics.FONT_NUMBER_MEDIUM, Graphics.FONT_NUMBER_MILD, Graphics.FONT_LARGE, Graphics.FONT_MEDIUM], mx[i].toNumber());
                 txt(dc, xs[i], S * 0.5, f, val[i], on ? P.acc : P.fg);
+                if (wheelOn(F, i)) { wheelNb(dc, F, S, P, i, xs[i], f, false, bw); continue; } // 23.11.7: the wheel; its column's bar and unit make room
                 if (on) { dc.setColor(P.acc, Graphics.COLOR_TRANSPARENT); dc.fillRectangle(xs[i] - S * 0.12, S * 0.615, S * 0.24, S * 0.016 + 1); }
                 txt(dc, xs[i], S * 0.665, Graphics.FONT_XTINY, unit[i], on ? P.fg : P.lbl);
             }
         }
         pill(dc, c, S * 0.815, S * 0.4, S * 0.12, P.acc); txt(dc, c, S * 0.815, Graphics.FONT_SMALL, t.equals("time") && F.holdAt == 0 ? "GO" : "DONE", P.ink);
+    }
+    // 23.11.7 (FlowDelegate gWheel ...): a finger turns column c of the screen now (or lifted less than WHEEL_SHOW_MS ago)
+    function wheelOn(F as Flow, c as Number) as Boolean {
+        return gWheel == c && gWheelScr == F.scr && (gWheelEnd == 0 || System.getTimer() - gWheelEnd < WHEEL_SHOW_MS);
+    }
+    // js/watchsim.js DRAW[SCR.SET] nb: the values one step below / above the number turned, small and dim above / below it (the next higher
+    // one below: it comes up with the finger); placed from the font heights (a digit about 0.72 of a number font's height, 0.6 of FONT_XTINY's);
+    // one without room under the SET row (last time's numbers) or above DONE is left out, never those
+    function wheelNb(dc as Dc, F as Flow, S as Number, P as Palette, c as Number, x, f, timed as Boolean, bw as Boolean) as Void {
+        var hb = dc.getFontHeight(f) * 0.36, hn = dc.getFontHeight(Graphics.FONT_XTINY) * 0.3, gap = S * 0.02; // gap: to the big number
+        var top = S * 0.315 + hn + S * 0.012, bot = S * 0.75;
+        for (var d = -1; d <= 1; d += 2) {
+            var y = S * 0.5 + d * (hb + hn + gap), t = "";
+            if (d < 0 && y - hn < top) { continue; }
+            if (d > 0 && y + hn > bot) { continue; }
+            if (c == 0) {
+                var k = F.kgStep(d, false);
+                if (k == F.kg) { continue; }
+                t = bw && k == 0.0 ? "BW" : kgTxt(k);
+            } else {
+                var r = F.repStep(d, false);
+                if (r == F.reps) { continue; }
+                t = timed ? clock(r) : r.toString();
+            }
+            txt(dc, x, y, Graphics.FONT_XTINY, t, P.dim);
+        }
     }
     // js/watchflow.js lastSet(F, e): last session's set with the number of the set now (its last one when today goes further): [kg, reps] or null
     function lastSet(F as Flow, e as Dictionary) as Array? {
@@ -740,7 +772,8 @@ module Draw {
         txt(dc, c, S * 0.12, Graphics.FONT_NUMBER_MILD, clock(R.t), P.fg);
         var warn = v == TL_LOST ? "LOST, RECONNECTING" : (v == TL_REFUSED ? "NO CONTROL, OTHER APP" : (!L.ctl ? "POWER ONLY, NO ERG" : (paused ? "PAUSED" : "")));
         var wc = warn.length() == 0 ? P.lbl : (paused && L.ctl && v != TL_LOST && v != TL_REFUSED ? P.acc : P.bad);
-        txt(dc, c, S * 0.205, Graphics.FONT_XTINY, fit(dc, warn.length() > 0 ? warn : "TARGET W", Graphics.FONT_XTINY, (S * 0.6).toNumber()), wc);
+        var wh = wheelOn(F, 0); // 23.11.7 (js TREC_LAY wUp / wDn): while a finger turns the target its neighbours take the label's and the step line's places
+        if (!wh) { txt(dc, c, S * 0.205, Graphics.FONT_XTINY, fit(dc, warn.length() > 0 ? warn : "TARGET W", Graphics.FONT_XTINY, (S * 0.6).toNumber()), wc); }
         var t = R.tgt.toString();
         txt(dc, c, S * 0.36, fontFor(dc, t, [Graphics.FONT_NUMBER_THAI_HOT, Graphics.FONT_NUMBER_HOT, Graphics.FONT_NUMBER_MEDIUM], (S * 0.46).toNumber()), t, paused ? P.dim : P.acc);
         var xs = [0.15, 0.85] as Array<Float>;
@@ -751,7 +784,9 @@ module Draw {
             dc.drawLine(x - h, y, x + h, y); if (i == 1) { dc.drawLine(x, y - h, x, y + h); } // drawn: the fonts may have no minus sign
             dc.setPenWidth(1);
         }
-        txt(dc, c, S * 0.5, Graphics.FONT_XTINY, "+/- " + R.step.toString() + " W", P.lbl);
+        if (wh) {
+            for (var d = -1; d <= 1; d += 2) { var w = R.nextTarget(d, false); if (w != R.tgt) { txt(dc, c, S * (d < 0 ? 0.22 : 0.49), Graphics.FONT_XTINY, w.toString(), P.dim); } }
+        } else { txt(dc, c, S * 0.5, Graphics.FONT_XTINY, "+/- " + R.step.toString() + " W", P.lbl); }
         dc.setColor(P.line, Graphics.COLOR_TRANSPARENT); dc.setPenWidth(pw(S * 0.006 > 2 ? S * 0.006 : 2));
         dc.drawLine(S * 0.12, S * 0.56, S * 0.88, S * 0.56); dc.setPenWidth(1);
         var vals = [L.livePw(now).toString(), L.liveCad(now).toString(), F.hr > 0 ? F.hr.toString() : "--"] as Array<String>, labs = ["WATTS", "RPM", "BPM"] as Array<String>;
