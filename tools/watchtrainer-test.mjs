@@ -146,3 +146,13 @@ test('the link alone: one GATT operation at a time, a failed subscription does n
   linkTick(L, OP_S + 1); assert.equal(L.st, 'ready', 'no indication within 3 s: the writes went through, taken as control (VERIFY on the KICKR)');
   setTarget(L, 150, 5); setTarget(L, 160, 5); assert.equal(L.act.filter(a => a.k === 'write' && a.v[0] === 5).length, 1);
 });
+
+test('23.11.7 wheel on the ERG target: one step of the current size per finger step, latest wins, limits, not on the stats page', () => {
+  const [F, K] = ride(); assert.equal(F.tr.tgt, 100); F.cues = [];
+  ev(F, K, 1006, ['wheel', [0, 1]]); assert.equal(F.tr.tgt, 105); ev(F, K, 1006, ['wheel', [0, 2]]); assert.equal(F.tr.tgt, 115); assert.equal(K.tgt, 115, 'sent');
+  assert.deepEqual(F.cues, ['tick', 'tick']); ev(F, K, 1006, ['item', 2]); assert.equal(F.tr.step, 10); ev(F, K, 1006, ['wheel', [0, -1]]); assert.equal(F.tr.tgt, 110, 'onto the 10 grid');
+  K.hold = true; const w0 = tgtWrites(K).length; ev(F, K, 1007, ['wheel', [0, 1]], ['wheel', [0, 1]], ['wheel', [0, 1]]); assert.equal(F.tr.tgt, 140);
+  for (const e of K.release()) handle(F, 'ble', 1007, e); radio(F, K, 1007); assert.equal(K.tgt, 140, 'the newest target reached the trainer'); assert.ok(tgtWrites(K).length <= w0 + 2, 'latest wins: no write per step');
+  ev(F, K, 1008, ['wheel', [0, -500]]); assert.equal(F.tr.tgt, W_MIN); ev(F, K, 1008, ['wheel', [0, 500]]); assert.equal(F.tr.tgt, W_MAX);
+  F.tr.pg = 1; ev(F, K, 1009, ['wheel', [0, -3]]); assert.equal(F.tr.tgt, W_MAX, 'the stats page: no wheel'); assert.equal(F.scr, SCR.TREC);
+});

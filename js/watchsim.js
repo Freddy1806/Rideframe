@@ -9,8 +9,11 @@
 // status (last sets, NEXT), END / SAVEQ screens, paged summary; __watch.texts = the fenix 8 face's drawn texts (tests).
 // 24.11.: last time's values for the set small above the big numbers; the exercise list's sub line with all of last time's sets;
 // no strength ready screen: Strength on the start menu opens the choice / the exercise list at once.
+// 23.11.7: the wheel (a finger dragged over kg / reps / the trainer's target steps it, the neighbours show small above and below), lists
+// track the finger 1:1 (dragRow), a drag is never also a tap or a swipe; the six standard workouts (watchflow STD_W) instead of demo ones.
 import { newFlow, handle, SCR, curEx, setNo, restLeft, clock, sent, paired, setSetup, setConfig, setRoute, setRoutes, routeFace, routeInfo, recPages, homeItems, listItems, workouts, planItem, HOME, HOME_FIT, HOME_LAY, homeTop, holdPart, pausedTime, HOLD_S,
-  LIST_LAY, DRAG_ROW, pickRows, doneOf, prefillOf, lastSet, lastTxt, loading, VERSION } from './watchflow.js';
+  LIST_LAY, dragRow, pickRows, doneOf, prefillOf, lastSet, lastTxt, loading, VERSION, stepOf, WHEEL_STEP, WHEEL_SHOW, DRAG_MIN } from './watchflow.js';
+import { nextTarget } from './watchtrainer.js';
 import { compact, defaults, fieldText, labelOf, TOP } from './watchfields.js';
 import { shown, live as tLive } from './watchtrainer.js';
 import { fakeKickr } from './watchkickr.js';
@@ -34,9 +37,8 @@ const DEMO_SUM = { pts: 245, prev: 233, delta: 12, sessions: 4, strength: 2, str
 // 18.11.: the free picker's order (done lately, then the 20 standard exercises) and two workouts, while the account has none
 for (const e of TOP) if (!DEMO.ex.some(x => x.id === e.id)) DEMO.ex.push({ ...e });
 Object.assign(DEMO, { top: TOP.map(e => e.id), recent: ['bench', 'squat', 'pull'] });
-const DEMO_W = [{ id: 'd1', n: 'Push day', it: [['bench', 3, 8, 80, 120], ['ohp', 3, 8, 45, 90], ['dip', 3, 10, 0, 90], ['lateral', 3, 12, 10, 60]] },
-  { id: 'd2', n: 'Leg day', it: [['squat', 4, 5, 100, 150], ['rdl', 3, 8, 80, 120], ['lunge', 3, 10, 20, 90], ['plank', 2, 60, 0, 60]] }];
-const demoSetup = () => ({ ...structuredClone(DEMO), workouts: cfg && cfg.w.length ? cfg.w : DEMO_W });
+// 23.11.7: no demo workouts any more: the watch has its six standard ones (js/watchflow.js STD_W), the account's come first
+const demoSetup = () => ({ ...structuredClone(DEMO), workouts: cfg && cfg.w.length ? cfg.w : [] });
 /** a demo route for the route page: a loop with four turns, as fractions of a square (the real ones: GET /api/watch/route, js/watchflow.js routeFace) */
 function demoRoute(sp) {
   const len = sp === 'ride' ? 42000 : 8000, pts = [];
@@ -59,7 +61,7 @@ function boot() {
   F = live() ? newFlow(token ? store.get('setup', null) : null, { ...o, paired: !!token }) : newFlow(demoSetup(), o);
   sum = live() ? store.get('summary', null) : DEMO_SUM; net = ''; rsrc = 'demo'; demoAuto = demoNone = false;
   if (live() && token) { refresh(); push(); }
-  window.__watch = { get F() { return F; }, get mode() { return mode; }, get net() { return net; }, get cfgFrom() { return cfgFrom; }, get rsrc() { return rsrc; }, get texts() { return TXT.slice(); }, get kickr() { return K; }, ev, segDemo, loadCfg };
+  window.__watch = { get F() { return F; }, get mode() { return mode; }, get net() { return net; }, get cfgFrom() { return cfgFrom; }, get rsrc() { return rsrc; }, get texts() { return TXT.slice(); }, get boxes() { return TXT.box.slice(); }, get kickr() { return K; }, get wheel() { return wheelUi; }, ev, segDemo, loadCfg };
   panel(); paint(); loadCfg();
 }
 /** the config: the paired watch asks with its token (GET /api/watch/config), the preview without a watch with the phone login */
@@ -177,7 +179,8 @@ const DRAW = {
       txt(g, 'from the phone', S / 2, S * .585, S * .052, C.lbl, { w: 800, max: S * .7 }); return; }
     list(g, S, C, listItems(F), F.sel, w ? w.n.toUpperCase() : 'EXERCISES', i => pickSub(i, g, S), false, n ? `${F.sel + 1}/${n}${k ? ` · ${k} ${k === 1 ? 'set' : 'sets'} done` : ''}` : '');
   },
-  [SCR.SMODE](g, S, C) { list(g, S, C, listItems(F), F.sel, 'STRENGTH', i => { if (!i) return 'Choose exercises'; const w = workouts(F)[i - 1]; return `${w.it.length} exercises · ${w.it.reduce((a, x) => a + x[1], 0)} sets`; }); },
+  [SCR.SMODE](g, S, C) { list(g, S, C, listItems(F), F.sel, 'STRENGTH', i => { if (!i) return 'Choose exercises'; const w = workouts(F)[i - 1];
+    return w.std ? `Standard · ${w.it.length} exercises` : `${w.it.length} exercises · ${w.it.reduce((a, x) => a + x[1], 0)} sets`; }); },
   [SCR.END](g, S, C) { // BACK on the exercise list with sets logged: keep training, finish, or discard (asks once more)
     list(g, S, C, listItems(F), F.sel, F.endConf ? 'DISCARD?' : 'END WORKOUT?', null, true);
     const k = F.sets.length; txt(g, `${k} ${k === 1 ? 'set' : 'sets'} · ${clock(now() - F.start - F.pauseT)}`, S / 2, S * .82, S * .048, C.lbl, { w: 800, max: S * .6 });
@@ -281,10 +284,12 @@ const DRAW = {
     if (R.pg) return trStats(g, S, C, R);
     txt(g, clock(R.t), S / 2, S * T.time, S * .065, C.fg, { w: 900 });
     const warn = v === 'lost' ? 'LOST · RECONNECTING' : v === 'refused' ? 'NO CONTROL · OTHER APP' : !L.ctl ? 'POWER ONLY · NO ERG' : paused ? 'PAUSED' : '';
-    txt(g, warn || 'TARGET W', S / 2, S * T.lab, S * .045, warn ? (paused && !(v === 'lost' || v === 'refused' || !L.ctl) ? C.acc : C.bad) : C.lbl, { w: 900, max: S * .6 });
+    const wh = wheelOn(0); // 23.11.7: while the finger turns the target the neighbours take the label's and the step line's places
+    if (!wh) txt(g, warn || 'TARGET W', S / 2, S * T.lab, S * .045, warn ? (paused && !(v === 'lost' || v === 'refused' || !L.ctl) ? C.acc : C.bad) : C.lbl, { w: 900, max: S * .6 });
     txt(g, R.tgt, S / 2, S * T.tgt, S * .25, paused ? C.dim : C.acc, { w: 900, max: S * .46 });
     for (const [x, t] of [[T.mx, '−'], [1 - T.mx, '+']]) { dot(g, S * x, S * T.tgt, S * T.r, C.faint); txt(g, t, S * x, S * T.tgt - S * .006, S * .12, C.fg, { w: 900 }); }
-    txt(g, `±${R.step} W`, S / 2, S * T.step, S * .046, C.lbl, { w: 800 });
+    if (wh) { for (const d of [-1, 1]) { const w = nextTarget(R, d, false); if (w !== R.tgt) txt(g, w, S / 2, S * (d < 0 ? T.wUp : T.wDn), S * WHEEL_PX, C.dim, { w: 800 }); } }
+    else txt(g, `±${R.step} W`, S / 2, S * T.step, S * .046, C.lbl, { w: 800 });
     line(g, S * .12, S * T.sep, S * .88, S * T.sep, C.line, Math.max(2, S * .006));
     [[d.pw, 'WATTS'], [d.cad, 'RPM'], [F.hr || '--', 'BPM']].forEach(([val, l], i) => { const x = S * (.27 + i * .23);
       txt(g, val, x, S * T.val, S * .1, C.fg, { w: 900, max: S * .21 }); if (i === 2) heart(g, x - S * .055, S * T.vl, S * .03, C.hr); txt(g, l, x + (i === 2 ? S * .015 : 0), S * T.vl, S * .04, C.lbl, { w: 800 }); });
@@ -312,12 +317,19 @@ const DRAW = {
       v.forEach((t, i) => { if (t == null) return; const w = txt(g, t, 0, -99, lpx, C.lbl, { w: 800 }) / 2; let x = S * (i ? .735 : .285);
         if (!i && x + w > S / 2 - half) x = S / 2 - half - w; if (i && x - w < S / 2 + half) x = S / 2 + half + w;
         txt(g, t, x, S * .315, lpx, C.lbl, { w: 800 }); }); }
-    if (e.t === 'time') { txt(g, clock(F.reps), S / 2, S * .5, S * .23, C.acc, { w: 900 }); g.fillStyle = C.acc; g.fillRect(S * .36, S * .615, S * .28, S * .016); txt(g, 'hold', S / 2, S * .665, S * .048, C.fg, { w: 700 }); }
+    // 23.11.7: the wheel: while a finger turns a number (and WHEEL_SHOW s after) the values one step below / above it sit small and dim
+    // above / below it (the next higher one below, it comes up with the finger); the column's bar and unit make room
+    const nb = (i, x, px, fmt) => { const hb = px * WHEEL_K, hn = S * WHEEL_PX * WHEEL_K, gap = S * .02, top = S * (.315 + .055 * WHEEL_K) + S * .012; // under the SET row ("SET n" and last time's numbers)
+      for (const d of [-1, 1]) { const v = stepOf(F, i, d, false), y = S * .5 + d * (hb + hn + gap); if (v === (i ? F.reps : F.kg)) continue;
+        if (d < 0 ? y - hn < top : y + hn > S * .75) continue; txt(g, fmt(v), x, y, S * WHEEL_PX, C.dim, { w: 800 }); } };
+    if (e.t === 'time') { const wh = wheelOn(1); txt(g, clock(F.reps), S / 2, S * .5, S * .23, C.acc, { w: 900 });
+      if (wh) nb(1, S / 2, S * .23, clock); else { g.fillStyle = C.acc; g.fillRect(S * .36, S * .615, S * .28, S * .016); txt(g, 'hold', S / 2, S * .665, S * .048, C.fg, { w: 700 }); } }
     else { const bw = e.t === 'bw', val = [bw && !F.kg ? 'BW' : kgTxt(F.kg), String(F.reps)], unit = [bw ? '+kg' : 'kg', 'reps'], xs = [S * .285, S * .735];
       txt(g, '×', S * .515, S * .5, S * .08, C.dim, { w: 600 });
       // a wide value ("102.5") takes the next smaller number size instead of being cut (Monkey C: fontFor HOT / MEDIUM / MILD / LARGE)
-      for (const i of [0, 1]) { const on = F.focus === i, mx = i ? S * .27 : S * .32, px = SET_NUM.map(k => S * k).find(p => txt(g, val[i], 0, -99, p, C.fg, { w: 900 }) <= mx) || S * SET_NUM.at(-1);
+      for (const i of [0, 1]) { const on = F.focus === i, wh = wheelOn(i), mx = i ? S * .27 : S * .32, px = SET_NUM.map(k => S * k).find(p => txt(g, val[i], 0, -99, p, C.fg, { w: 900 }) <= mx) || S * SET_NUM.at(-1);
         txt(g, val[i], xs[i], S * .5, px, on ? C.acc : C.fg, { w: 900 });
+        if (wh) { nb(i, xs[i], px, v => i ? String(v) : bw && !v ? 'BW' : kgTxt(v)); continue; }
         if (on) { g.fillStyle = C.acc; g.fillRect(xs[i] - S * .12, S * .615, S * .24, S * .016); } txt(g, unit[i], xs[i], S * .665, S * .048, on ? C.fg : C.lbl, { w: 700 }); } }
     pill(g, S / 2, S * .815, S * .4, S * .12, C.acc); txt(g, 'DONE', S / 2, S * .817, S * .062, C.ink, { w: 900 });
   },
@@ -388,7 +400,7 @@ function list(g, S, C, items, sel, title, sub, menu = false, count = null) {
 }
 /** 23.11.: the trainer screens' rows (screen fractions; the same in garmin/source/Draw.mc and the tap tables) */
 const TSCAN_LAY = { icon: .24, name: .4, st: .52, l1: .61, l2: .675, pill: .81 };
-const TREC_LAY = { time: .12, lab: .205, tgt: .36, mx: .15, r: .085, step: .5, sep: .56, val: .655, vl: .735, bot: .85 };
+const TREC_LAY = { time: .12, lab: .205, tgt: .36, mx: .15, r: .085, step: .5, sep: .56, val: .655, vl: .735, bot: .85, wUp: .22, wDn: .49 };
 const TSUM_LAY = { st: .15, time: .3, timeL: .395, c1: .52, c1l: .59, c2: .7, c2l: .77, done: .88 };
 const STATS_LAY = { title: .17, time: .3, avg: .41, sep: .48, c1: .58, c1l: .655, c2: .75, c2l: .82 };
 /** three numbers with labels in a row (x 0.27 / 0.5 / 0.73) */
@@ -404,6 +416,11 @@ function trStats(g, S, C, R) {
 }
 /** the set screen: last time's small values (size; they sit on the SET row, y 0.315, like garmin/source/Draw.mc drawSet) */
 const SET_LAY = { lastPx: .05 };
+/** 23.11.7: the wheel's neighbour values: their size; a digit's half height as a part of the text size (Draw.mc: of the font height) */
+const WHEEL_PX = .06, WHEEL_K = .36;
+/** the wheel on screen: { c (column; the trainer's target 0), scr, until (s; Infinity while the finger is down) } (FlowDelegate gWheel...) */
+let wheelUi = { c: -1, scr: '', until: 0 };
+const wheelOn = c => wheelUi.c === c && wheelUi.scr === F.scr && now() < wheelUi.until;
 /** kg / reps: the number sizes from big to small, the first one that fits its column is taken (never cut; Draw.mc drawSet fontFor) */
 const SET_NUM = [.21, .17, .14, .115];
 /** the rest screen's and the summary's rows (screen fractions; the same in garmin/source/Draw.mc) */
@@ -538,17 +555,32 @@ function touch(cv, f) {
   let p0 = null;
   let pillHold = false; // the pause screen's "Hold to finish" pill (touch face): pressed = holdStart, lifted = holdEnd
   const onPill = e => { const r = cv.getBoundingClientRect(), u = (e.clientX - r.left) / r.width, v = (e.clientY - r.top) / r.height; return !f.mip && F.scr === SCR.PAUSE && F.pz && !F.pz.conf && v > PAUSE_LAY.pill - .07 && Math.abs(u - .5) < .27; };
-  cv.addEventListener('pointerdown', e => { p0 = { x: e.clientX, y: e.clientY, y1: e.clientY, drag: false }; cv.setPointerCapture?.(e.pointerId); if (onPill(e)) { pillHold = true; ev('holdStart'); } });
-  // 23.11.: a finger dragged over a list (or the summary) moves it row by row with the finger (FlowDelegate.onDrag on the watch)
-  cv.addEventListener('pointermove', e => { if (!p0 || pillHold || !scrollable()) return; const r = cv.getBoundingClientRect(), k = f.S / r.width, row = f.S * DRAG_ROW, n = Math.trunc((p0.y1 - e.clientY) * k / row);
-    if (n) { p0.y1 -= n * row / k; p0.drag = true; ev('scroll', n); } });
-  cv.addEventListener('pointercancel', () => { if (pillHold) { pillHold = false; ev('holdEnd'); } p0 = null; });
+  cv.addEventListener('pointerdown', e => { p0 = { x: e.clientX, y: e.clientY, y1: e.clientY, mode: '', col: 0 }; cv.setPointerCapture?.(e.pointerId); if (onPill(e)) { pillHold = true; ev('holdStart'); } });
+  // 23.11.7 (FlowDelegate.onDrag on the watch): once the finger has moved DRAG_MIN up or down the drag is decided by where it started:
+  // over the set screen's numbers / the trainer's target the wheel (one step per WHEEL_STEP, finger up = more), on a list the list
+  // (one row per row distance as drawn); the movement is summed (the remainder kept), and the lift after it is no tap and no swipe
+  cv.addEventListener('pointermove', e => { if (!p0 || pillHold || p0.mode === 'none') return; const r = cv.getBoundingClientRect(), k = f.S / r.width;
+    if (!p0.mode) { const dx = Math.abs(e.clientX - p0.x) * k, dy = Math.abs(e.clientY - p0.y) * k; if (Math.max(dx, dy) < f.S * DRAG_MIN) return;
+      const m = dy > dx ? dragMode((p0.x - r.left) / r.width, (p0.y - r.top) / r.height) : null; p0.mode = m ? m[0] : 'none'; if (!m) return; p0.col = m[1];
+      if (p0.mode === 'wheel') { wheelUi = { c: p0.col, scr: F.scr, until: Infinity }; paint(); } }
+    const wh = p0.mode === 'wheel', step = f.S * (wh ? WHEEL_STEP : dragRow(F.scr)), n = Math.trunc((p0.y1 - e.clientY) * k / step);
+    if (n) { p0.y1 -= n * step / k; ev(wh ? 'wheel' : 'scroll', wh ? [p0.col, n] : n); } });
+  const lift = () => { if (p0 && p0.mode === 'wheel') { wheelUi.until = now() + WHEEL_SHOW; setTimeout(paint, WHEEL_SHOW * 1000 + 30); } };
+  cv.addEventListener('pointercancel', () => { if (pillHold) { pillHold = false; ev('holdEnd'); } lift(); p0 = null; });
   cv.addEventListener('pointerup', e => {
     if (pillHold) { pillHold = false; p0 = null; ev('holdEnd'); return; }
-    if (!p0) return; const r = cv.getBoundingClientRect(), k = f.S / r.width, dx = (e.clientX - p0.x) * k, dy = (e.clientY - p0.y) * k, drag = p0.drag; p0 = null; if (drag) return;
+    if (!p0) return; lift(); const r = cv.getBoundingClientRect(), k = f.S / r.width, dx = (e.clientX - p0.x) * k, dy = (e.clientY - p0.y) * k, drag = p0.mode === 'wheel' || p0.mode === 'list'; p0 = null; if (drag) return;
     if (Math.hypot(dx, dy) > f.S * .08) return ev(Math.abs(dx) > Math.abs(dy) ? (dx < 0 ? 'swipeLeft' : 'swipeRight') : (dy < 0 ? 'swipeUp' : 'swipeDown'));
     tapAt((e.clientX - r.left) * k / f.S, (e.clientY - r.top) * k / f.S);
   });
+}
+/** 23.11.7: what a vertical drag that starts at (u, v) does (FlowDelegate.dragModeAt): ['wheel', column] over the set screen's numbers
+ *  (timed: the seconds) or the trainer's target, ['list'] on a list, null = nothing (the lift is a swipe then) */
+function dragMode(u, v) {
+  if (F.flash) return null;
+  if (F.scr === SCR.SET && v > .36 && v < .72) return ['wheel', curEx(F).t === 'time' || u >= .51 ? 1 : 0];
+  if (F.scr === SCR.TREC && F.tr && !F.tr.pg && v > TREC_LAY.lab + .02 && v < TREC_LAY.sep) return ['wheel', 0];
+  return scrollable() ? ['list', 0] : null;
 }
 /** the screens a dragged finger scrolls (FlowDelegate.scrollable) */
 const scrollable = () => ([SCR.PICK, SCR.MENU, SCR.HOME, SCR.MORE, SCR.SMODE, SCR.RPICK, SCR.END, SCR.SAVEQ, SCR.SUM, SCR.TEND].includes(F.scr) || F.scr === SCR.TSCAN && tList()) && !F.flash;
@@ -587,7 +619,8 @@ function keys() {
 
 /* ---- vibration shown on the page: the watch shakes, a ring pulses ---- */
 let buzzT = 0;
-function buzz(kind) { for (const v of views) { v.fig.classList.remove('buzz', 'long'); void v.fig.offsetWidth; v.fig.classList.add('buzz'); if (kind === 'pr' || kind === 'rest') v.fig.classList.add('long'); }
+function buzz(kind) { if (kind === 'tick') { const b = $('#wCue'); if (b) b.textContent = 'Vibration: tick (one wheel step, 20 ms)'; return; } // 23.11.7: too short to shake the preview
+  for (const v of views) { v.fig.classList.remove('buzz', 'long'); void v.fig.offsetWidth; v.fig.classList.add('buzz'); if (kind === 'pr' || kind === 'rest') v.fig.classList.add('long'); }
   clearTimeout(buzzT); buzzT = setTimeout(() => views.forEach(v => v.fig.classList.remove('buzz', 'long')), 1200); const b = $('#wCue'); if (b) { b.textContent = { set: 'Vibration: short (set saved)', pr: 'Vibration: long double (record)', rest: 'Vibration: triple (rest over)', done: 'Vibration: long (finished)', error: 'Vibration: short double (no reps)',
   start: 'Vibration: short (timer started)', stop: 'Vibration: double (paused)', lap: 'Vibration: long (lap)', seg: 'Vibration: double (segment)' }[kind] || ''; } }
 
@@ -596,7 +629,7 @@ function paint() {
   for (const { f, g, dpr } of views) {
     const S = f.S, C = f.C; g.setTransform(dpr, 0, 0, dpr, 0, 0); g.fillStyle = C.bg; g.fillRect(0, 0, S, S);
     g.save(); g.beginPath(); g.arc(S / 2, S / 2, S / 2, 0, Math.PI * 2); g.clip();
-    if (f.id === 'fenix8solar47mm') TXT.length = 0; TXT.on = f.id === 'fenix8solar47mm'; // the texts on the owner's watch face, for the UI test (__watch.texts)
+    if (f.id === 'fenix8solar47mm') { TXT.length = 0; TXT.box.length = 0; } TXT.on = f.id === 'fenix8solar47mm'; // the texts on the owner's watch face, for the UI test (__watch.texts)
     (DRAW[F.scr] || DRAW[SCR.HOME])(g, S, C, f); if (F.flash) (F.flash.k === 'lap' ? lapFlash : prFlash)(g, S, C); TXT.on = false;
     g.restore();
     if (f.mip) { if (light) { g.globalCompositeOperation = 'lighter'; g.fillStyle = '#003355'; g.fillRect(0, 0, S, S); g.globalCompositeOperation = 'source-over'; } snap64(g, S); }

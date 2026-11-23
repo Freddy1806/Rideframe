@@ -23,9 +23,12 @@ const FONT = (w, p) => `${w} ${p}px Archivo, system-ui, sans-serif`;
 export function fit(g, t, max, px, w = 800) { let p = px; g.font = FONT(w, p); while (g.measureText(t).width > max && p > px * .62) { p -= 1; g.font = FONT(w, p); }
   if (g.measureText(t).width <= max) return t; let s = t; while (s.length > 1 && g.measureText(s + '.').width > max) s = s.slice(0, -1); return s.trim() + '.'; }
 /** the texts drawn while TXT.on (the preview turns it on for one face, so the UI test can read the screen) */
-export const TXT = Object.assign([], { on: false });
+export const TXT = Object.assign([], { on: false, box: [] });
+/** 23.11.7: TXT.box = the inked box of every text drawn while TXT.on, [text, x0, y0, x1, y1] in watch pixels (the UI test checks overlaps) */
 export function txt(g, t, x, y, px, col, o = {}) { const w = o.w || 800; t = String(t); if (TXT.on && y > -50) TXT.push(t); if (o.max) t = fit(g, t, o.max, px, w); else g.font = FONT(w, px);
-  g.fillStyle = col; g.textAlign = o.al || 'center'; g.textBaseline = 'middle'; g.fillText(t, x, y); return g.measureText(t).width; }
+  g.fillStyle = col; g.textAlign = o.al || 'center'; g.textBaseline = 'middle'; g.fillText(t, x, y); const m = g.measureText(t);
+  if (TXT.on && y > -50) TXT.box.push([t, x - m.actualBoundingBoxLeft, y - m.actualBoundingBoxAscent, x + m.actualBoundingBoxRight, y + m.actualBoundingBoxDescent]);
+  return m.width; }
 export const pill = (g, x, y, w, h, col, fill = true) => { g.beginPath(); g.roundRect(x - w / 2, y - h / 2, w, h, h / 2); if (fill) { g.fillStyle = col; g.fill(); } else { g.strokeStyle = col; g.lineWidth = 2; g.stroke(); } };
 export const arc = (g, cx, cy, r, a0, a1, col, lw) => { g.beginPath(); g.arc(cx, cy, r, a0, a1); g.strokeStyle = col; g.lineWidth = lw; g.lineCap = 'butt'; g.stroke(); };
 export const line = (g, x0, y0, x1, y1, col, lw) => { g.beginPath(); g.moveTo(x0, y0); g.lineTo(x1, y1); g.strokeStyle = col; g.lineWidth = lw; g.lineCap = 'butt'; g.stroke(); };

@@ -198,6 +198,7 @@ class RideframeApp extends Application.AppBase {
         else if (c == C_REST || c == C_HOLD) { p = [new Attention.VibeProfile(80, 200), new Attention.VibeProfile(0, 120), new Attention.VibeProfile(80, 200), new Attention.VibeProfile(0, 120), new Attention.VibeProfile(80, 200)]; }
         else if (c == C_DONE) { p = [new Attention.VibeProfile(100, 500)]; }
         else if (c == C_ERROR) { p = [new Attention.VibeProfile(50, 100), new Attention.VibeProfile(0, 100), new Attention.VibeProfile(50, 100)]; }
+        else if (c == C_TICK) { p = [new Attention.VibeProfile(30, 20)]; } // 23.11.7: one wheel step, as short as the motor allows
         else if (c == C_STOP || c == C_SEG) { p = [new Attention.VibeProfile(80, 150), new Attention.VibeProfile(0, 120), new Attention.VibeProfile(80, 150)]; }
         else { p = [new Attention.VibeProfile(60, 150)]; } // set, start
         Attention.vibrate(p);

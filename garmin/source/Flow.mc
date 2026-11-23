@@ -13,6 +13,8 @@
 // 23.11.: the indoor trainer (ERG, js/watchflow.js tOpen ... onTRec): HOME -> S_TSCAN (find / connect, Trainer.mc TLink) -> S_TREC (target, - / +,
 // power, cadence, heart rate; a stats page) <-> S_TEND (Resume, Stats page, Finish & save, Discard) -> S_TSUM. E_BLE carries the radio's
 // events (TrainerBle.mc), O_TRAINER keeps the trainer's name and the last target, O_SAVEACT with tsum saves the ride (tbody = the upload).
+// 23.11.7: E_WHEEL (a finger turning kg / reps / the trainer's target, wheel), lists 1:1 with the finger (dragRow), a swipe without drag
+// events moves a list SWIPE_ROWS rows, the six standard workouts (stdWorkouts) after the saved ones.
 import Toybox.Lang;
 import Toybox.Math;
 
@@ -39,8 +41,16 @@ const S_TSCAN = 19;        // 23.11.: the indoor trainer: the trainers nearby, o
 const S_TREC = 20;         // the ERG ride
 const S_TEND = 21;         // its menu (BACK)
 const S_TSUM = 22;         // its summary
-// 23.11.: a finger dragged over a list moves it one row per DRAG_ROW of the screen (js: DRAG_ROW); the list rows: js LIST_LAY
-const DRAG_ROW = 0.1;
+// 23.11.7 (js DRAG_ROW, DRAG_MENU, SWIPE_ROWS): a finger moves a list one row per distance between two rows as drawn (lists 0.2 of the
+// screen, menus 0.17, the start menu HOME_DY), summed over the drag events; a swipe without drag events moves SWIPE_ROWS rows
+const DRAG_ROW = 0.2;
+const DRAG_MENU = 0.17;
+const SWIPE_ROWS = 3;
+// 23.11.7 (js WHEEL_STEP, WHEEL_SHOW, DRAG_MIN): the wheel: a finger dragged over kg / reps (the trainer's target) steps it once per
+// WHEEL_STEP of the screen, finger up = more; the neighbours show until WHEEL_SHOW_MS after the finger lifts; a drag after DRAG_MIN
+const WHEEL_STEP = 0.075;
+const WHEEL_SHOW_MS = 600;
+const DRAG_MIN = 0.03;
 // the start menu (js/watchflow.js HOME_FIT, HOME_LAY): four rows at once; first row y, row step (= touch target) in screen fractions
 const HOME_FIT = 4;
 const HOME_Y0 = 0.27;
@@ -70,6 +80,7 @@ const E_SCROLL = 21;       // 23.11.: a finger dragged over a list or the summar
 const E_DONE = 22;         // 23.11.: the set screen's DONE pill (logs at once; START goes weight -> reps -> logged)
 const E_START_HOLD = 23;   // 23.11.: START held: weight <-> reps
 const E_BLE = 24;          // 23.11.: the trainer's radio (TrainerBle.mc): arg = { "k" => "found" | "conn" | "drop" | "done" | "ind", ... }
+const E_WHEEL = 25;        // 23.11.7: a finger dragged over a number (js 'wheel'), arg = [column (0 kg / 1 reps), steps (+ = finger up = more)]
 // vibration cues
 const C_SET = 1;
 const C_PR = 2;
@@ -81,6 +92,7 @@ const C_STOP = 7;
 const C_LAP = 8;
 const C_SEG = 9;
 const C_HOLD = 10;
+const C_TICK = 11;         // 23.11.7: one wheel step (js 'tick'): a very short vibration
 // requests
 const O_SEND = 1;
 const O_PAIR = 2;
@@ -102,7 +114,7 @@ const M_SYNC = "Sync now";
 const M_PAIR = "Pair with phone";
 const FREE_ROW = "Free";
 // js/watchflow.js VERSION: the menu title shows it
-const RF_VERSION = "23.11.6";
+const RF_VERSION = "23.11.7";
 // pairing states / sum states
 const P_ENTER = 0;
 const P_SENDING = 1;
@@ -217,6 +229,31 @@ function cfgOk(c) as Boolean {
         if (!(s instanceof Dictionary) || !((s as Dictionary)["p"] instanceof Array)) { return false; }
     }
     return true;
+}
+
+// js: STD_W (23.11.7, Freddy: "standard workouts"): six workouts built into the watch, no account or phone needed; items
+// [ex, sets, reps, kg (0 = last time's / the start value), rest, name, type] from the 20 standard exercises; made once, then kept
+var gStd as Array<Dictionary> or Null = null;
+function stdW(id as String, n as String, it as Array) as Dictionary { return { "id" => id, "n" => n, "it" => it, "std" => true } as Dictionary; }
+function stdWorkouts() as Array<Dictionary> {
+    var r = gStd;
+    if (r != null) { return r; }
+    r = [
+        stdW("std-push", "Push day", [["bench", 4, 6, 0, 120, "Bench press", "w"], ["ohp", 3, 8, 0, 120, "Overhead press", "w"], ["incline", 3, 10, 0, 90, "Incline bench press", "w"],
+            ["dip", 3, 10, 0, 90, "Dips", "bw"], ["lateral", 3, 12, 0, 60, "Lateral raise", "w"], ["tri", 3, 12, 0, 60, "Triceps pushdown", "w"]]),
+        stdW("std-pull", "Pull day", [["pull", 4, 6, 0, 120, "Pull-ups", "bw"], ["row", 4, 8, 0, 120, "Barbell row", "w"], ["lat", 3, 10, 0, 90, "Lat pulldown", "w"],
+            ["cable", 3, 12, 0, 90, "Cable row", "w"], ["curl", 3, 12, 0, 60, "Biceps curl", "w"]]),
+        stdW("std-legs", "Leg day", [["squat", 4, 6, 0, 120, "Squat", "w"], ["rdl", 3, 8, 0, 120, "Romanian deadlift", "w"], ["legpress", 3, 10, 0, 90, "Leg press", "w"],
+            ["legcurl", 3, 12, 0, 60, "Leg curl", "w"], ["calf", 3, 15, 0, 60, "Calf raise", "w"]]),
+        stdW("std-upper", "Upper body", [["bench", 3, 8, 0, 120, "Bench press", "w"], ["row", 3, 8, 0, 120, "Barbell row", "w"], ["ohp", 3, 10, 0, 90, "Overhead press", "w"],
+            ["lat", 3, 10, 0, 90, "Lat pulldown", "w"], ["curl", 3, 12, 0, 60, "Biceps curl", "w"], ["tri", 3, 12, 0, 60, "Triceps pushdown", "w"]]),
+        stdW("std-lower", "Lower body", [["frontsquat", 3, 8, 0, 120, "Front squat", "w"], ["dead", 3, 5, 0, 120, "Deadlift", "w"], ["lunge", 3, 10, 0, 90, "Lunges", "w"],
+            ["legcurl", 3, 12, 0, 60, "Leg curl", "w"], ["calf", 3, 15, 0, 60, "Calf raise", "w"]]),
+        stdW("std-full", "Full body", [["squat", 3, 8, 0, 120, "Squat", "w"], ["bench", 3, 8, 0, 120, "Bench press", "w"], ["row", 3, 8, 0, 90, "Barbell row", "w"],
+            ["ohp", 3, 10, 0, 90, "Overhead press", "w"], ["plank", 3, 60, 0, 60, "Plank", "time"]])
+    ] as Array<Dictionary>;
+    gStd = r;
+    return r;
 }
 
 // js: newRec(now): one recording (run, ride, other). Rings instead of growing arrays: p3 (3 s power), p30 (NP).
@@ -415,14 +452,21 @@ class Flow {
         for (var k = 0; k < list.size(); k++) { if (inPlan.indexOf(list[k]) < 0) { r.add([list[k], -1] as Array<Number>); } }
         return r;
     }
-    // js: workouts(F): from the setup, else from the config, only those with exercises
-    function workouts() as Array<Dictionary> {
+    // js: savedW(F): the workouts from the setup, else from the config, only those with exercises
+    function savedW() as Array<Dictionary> {
         var src = setup["workouts"] instanceof Array ? setup["workouts"] : cfg["w"];
         var a = arrOf(src), r = [] as Array<Dictionary>;
         for (var i = 0; i < a.size(); i++) {
             var w = a[i];
             if (w instanceof Dictionary && arrOf((w as Dictionary)["it"]).size() > 0) { r.add(w as Dictionary); }
         }
+        return r;
+    }
+    // js: workouts(F) (23.11.7): the saved ones first, then the standard ones (stdWorkouts); a saved one with a standard one's name hides it
+    function workouts() as Array<Dictionary> {
+        var r = savedW(), nm = [] as Array<String>, st = stdWorkouts();
+        for (var i = 0; i < r.size(); i++) { nm.add(strOf(r[i]["n"]).toLower()); }
+        for (var j = 0; j < st.size(); j++) { if (nm.indexOf(strOf(st[j]["n"]).toLower()) < 0) { r.add(st[j]); } }
         return r;
     }
     // js: HOME and homeItems(F): the sport used last on top
@@ -473,19 +517,50 @@ class Flow {
         return [k, r];
     }
     function prefill() as Void { var v = prefillOf(curEx()); kg = fltOf(v[0]); reps = numOf(v[1]); }
+    // js: stepOf(F, c, d, big): column c (0 kg, 1 reps / seconds) one step on, inside the limits; kg and reps unchanged (the wheel's neighbours)
+    function kgStep(d as Number, big as Boolean) as Float {
+        var v = kg + d * (big ? KG_HOLD : KG_STEP);
+        v = rnd(v * 100.0) / 100.0;
+        return v < 0.0 ? 0.0 : (v > KG_MAX ? KG_MAX : v);
+    }
+    function repStep(d as Number, big as Boolean) as Number {
+        if (isTime(curEx())) {
+            var r = reps + d * (big ? SEC_HOLD : SEC_STEP);
+            return r < 0 ? 0 : (r > SEC_MAX ? SEC_MAX : r);
+        }
+        var r2 = reps + d * (big ? REPS_HOLD : 1);
+        return r2 < 0 ? 0 : (r2 > REPS_MAX ? REPS_MAX : r2);
+    }
     // js: stepValue(F, d, big)
     function stepValue(d as Number, big as Boolean) as Void {
-        if (focus == 0) {
-            var v = kg + d * (big ? KG_HOLD : KG_STEP);
-            v = rnd(v * 100.0) / 100.0;
-            kg = v < 0.0 ? 0.0 : (v > KG_MAX ? KG_MAX : v);
-        } else if (isTime(curEx())) {
-            var r = reps + d * (big ? SEC_HOLD : SEC_STEP);
-            reps = r < 0 ? 0 : (r > SEC_MAX ? SEC_MAX : r);
-        } else {
-            var r = reps + d * (big ? REPS_HOLD : 1);
-            reps = r < 0 ? 0 : (r > REPS_MAX ? REPS_MAX : r);
+        if (focus == 0) { kg = kgStep(d, big); } else { reps = repStep(d, big); }
+    }
+    // js: wheel(F, now, arg) (23.11.7): arg = [column, steps]; S_SET: the column takes the focus (timed: the seconds), steps of UP / DOWN;
+    // S_TREC: the target, steps of the current step size (sent latest wins); a step that changed something: C_TICK
+    function wheel(now as Number, arg) as Void {
+        var a = arrOf(arg);
+        if (a.size() < 2) { return; }
+        var n = numOf(a[1]), d = n < 0 ? -1 : 1, k = n < 0 ? -n : n;
+        if (scr == S_SET) {
+            focus = isTime(curEx()) || numOf(a[0]) != 0 ? 1 : 0;
+            var k0 = kg, r0 = reps;
+            for (var i = 0; i < k; i++) { stepValue(d, false); }
+            if (kg != k0 || reps != r0) { cues.add(C_TICK); }
+        } else if (scr == S_TREC) {
+            var R = tr;
+            if (R == null) { return; }
+            if (R.pg != 0) { return; }
+            var t0 = R.tgt, w = t0;
+            for (var j = 0; j < k; j++) { R.tgt = w; w = R.nextTarget(d, false); }
+            R.tgt = t0;
+            if (w != t0) { tTarget(w, now); cues.add(C_TICK); }
         }
+    }
+    // js: dragRow(s): the finger distance (screen fraction) that moves the list on screen s by one row
+    function dragRow() as Float {
+        if (scr == S_HOME) { return HOME_DY; }
+        if (scr == S_MENU || scr == S_END || scr == S_SAVEQ || scr == S_TEND) { return DRAG_MENU; }
+        return DRAG_ROW;
     }
     function menuFor() as Array<String> {
         if (start != 0) {
@@ -520,10 +595,11 @@ class Flow {
         sel = k < 0 ? 0 : k; scr = S_PICK;
     }
     // js: ensureEx(F, id, n): the setup index of exercise id (added with its name when the setup does not know it)
-    function ensureEx(id as String, nm) as Number {
+    function ensureEx(id as String, nm, t) as Number {
         var l = exList(), i = exIndex(l, id);
         if (i < 0) {
-            l.add({ "id" => id, "n" => nm instanceof String ? nm as String : id, "t" => "w" });
+            var tt = "bw".equals(t) || "time".equals(t) ? t as String : "w";
+            l.add({ "id" => id, "n" => nm instanceof String ? nm as String : id, "t" => tt });
             i = l.size() - 1;
             list.add(i);
         }
@@ -536,13 +612,13 @@ class Flow {
         var x = itAt(p[1]);
         if (x == null) { return; }
         p[2] = 1;
-        choose(ensureEx(strOf(x[0]), x.size() > 5 ? x[5] : null));
+        choose(ensureEx(strOf(x[0]), x.size() > 5 ? x[5] : null, x.size() > 6 ? x[6] : null));
     }
     function startPlan(w as Number, now as Number) as Void {
         plan = [w, 0, 1] as Array<Number>; planSkip = [] as Array<Number>;
         if (start == 0) { start = now; }
         var a = planIts();
-        for (var j = 0; j < a.size(); j++) { var x = arrOf(a[j]); if (x.size() > 0) { ensureEx(strOf(x[0]), x.size() > 5 ? x[5] : null); } }
+        for (var j = 0; j < a.size(); j++) { var x = arrOf(a[j]); if (x.size() > 0) { ensureEx(strOf(x[0]), x.size() > 5 ? x[5] : null, x.size() > 6 ? x[6] : null); } }
         goPlan();
     }
 
@@ -627,13 +703,17 @@ class Flow {
             for (var j = 0; j < n && same; j++) { var x = itAt(j); if (x == null || doneOf(j) != numOf(x[1])) { same = false; } }
             if (same) { return null; }
         }
-        var it = tplOf(), l = exList(), nm = "", room = ws.size() < 30;
+        // 23.11.7: a changed standard workout is saved as a new one under its name; only saved workouts count against the 30
+        var std = false;
+        if (w != null) { if (w["std"] == true) { std = true; } }
+        var it = tplOf(), l = exList(), nm = "", room = savedW().size() < 30;
         for (var i = 0; i < it.size() && i < 2; i++) {
             var k = exIndex(l, it[i][0]), en = k >= 0 ? strOf((l[k] as Dictionary)["n"]) : strOf(it[i][0]);
             nm = i == 0 ? en : nm + " + " + en;
         }
         if (it.size() > 2) { nm = nm + " +" + (it.size() - 2).toString(); }
         if (nm.length() > 40) { nm = nm.substring(0, 40) as String; }
+        if (std) { nm = strOf(w["n"]); w = null; }
         var rows = [] as Array<String>;
         if (w != null) { rows.add("Update " + strOf(w["n"])); if (room) { rows.add("Save as new"); } rows.add("No"); }
         else if (room) { rows.add("Save as workout"); rows.add("No"); }
@@ -1062,13 +1142,16 @@ class Flow {
             return;
         }
         if (flash != null) { flash = null; if (ev != E_MENU) { return; } } // the first touch after a record only clears the flash
+        if (ev == E_WHEEL) { wheel(now, arg); return; }
         if (ev == E_SWIPE_LEFT) { ev = E_MENU; }
         if (ev == E_SWIPE_RIGHT) { ev = E_BACK; }
         var s = scr;
         var isList = s == S_PICK || s == S_MENU || s == S_HOME || s == S_MORE || s == S_SMODE || s == S_RPICK || s == S_END || s == S_SAVEQ || s == S_TEND;
         var paged = isList || s == S_REC || s == S_PAUSE || s == S_SUM || s == S_TSCAN;
         if (s == S_TREC) { onTRec(ev, now, arg); return; } // before the swipe mapping: swipe up / down is the stats page there, UP / DOWN the watts
-        // a list (the data pages, the summary) scrolls with the finger, a number counts up
+        // 23.11.7: a swipe on a list (only when no drag events came: FlowDelegate swallows the swipe that ends a drag) moves it SWIPE_ROWS
+        // rows with the finger, no wrapping; the data pages and the summary a page; a number counts up
+        if ((ev == E_SWIPE_UP || ev == E_SWIPE_DOWN) && (isList || s == S_TSCAN)) { arg = ev == E_SWIPE_UP ? SWIPE_ROWS : -SWIPE_ROWS; ev = E_SCROLL; }
         if (ev == E_SWIPE_UP) { ev = paged ? E_DOWN : E_UP; }
         else if (ev == E_SWIPE_DOWN) { ev = paged ? E_UP : E_DOWN; }
         if (s == S_TSCAN) { onTScan(ev, now, arg); return; }

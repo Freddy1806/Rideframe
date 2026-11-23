@@ -13,7 +13,7 @@
 // 23.11. (second priority after strength): HOME -> TSCAN (find / connect the indoor trainer, js/watchtrainer.js) -> TREC (ERG: target, + / -,
 // power, cadence, heart rate; a stats page) <-> TEND (Resume, Stats, Finish & save, Discard) -> TSUM. Out 'trainer' keeps the trainer's
 // name and the last target, 'saveAct' with sum.sp 'trainer' saves the ride (F.tbody = the upload).
-import { compact, defaults, FIELDS } from './watchfields.js';
+import { compact, defaults, FIELDS, TOP } from './watchfields.js';
 import { newLink, scan as tScan, connect as tConnect, stop as tStop, setTarget, bleEv, linkTick, live, shown, newRide, nextTarget, nextStep, newBlock, rideSec, rideSum, rideBody, W_START, W_MIN, W_MAX, W_PAUSE } from './watchtrainer.js';
 export const SCR = { HOME: 'home', START: 'start', SMODE: 'smode', PICK: 'pick', SET: 'set', REST: 'rest', MENU: 'menu', SUM: 'sum', PAIR: 'pair', GLANCE: 'glance',
   MORE: 'more', READY: 'ready', REC: 'rec', PAUSE: 'pause', RSUM: 'rsum', RPICK: 'rpick', END: 'end', SAVEQ: 'saveq', TSCAN: 'tscan', TREC: 'trec', TEND: 'tend', TSUM: 'tsum' };
@@ -26,7 +26,7 @@ export const TEND_ROWS = ['Resume', 'Stats page', 'Finish & save', 'Discard'];
 /** 23.11.: the strength list: the exercises (free), then the saved workouts (the phone's and those saved on the watch) */
 export const FREE = 'Free';
 /** shown in the menu title on the watch and in the preview, so the user can tell which file is on the watch; raise it with every watch file (garmin/source/Flow.mc VERSION) */
-export const VERSION = '23.11.6';
+export const VERSION = '23.11.7';
 /** BACK from the exercise list once sets are logged: nothing is lost without a second step */
 export const END_ROWS = ['Keep training', 'Finish & save', 'Discard'];
 /** the pause screen (every mode): BACK held this long (or a finger on the "Hold to finish" pill) saves; the short-press hint shows this long */
@@ -35,7 +35,15 @@ export const HOLD_S = 3, HINT_S = 2;
  *  (at least 0.17 S apart around the selected row = 44 px touch targets on the 260 px fenix 8), the selected row's sub line;
  *  menus (3 rows with a pill); a finger dragged over a list moves it one row per DRAG_ROW of the screen */
 export const LIST_LAY = { title: .12, count: .19, rows: [[-1, .3], [0, .5], [1, .72], [2, .845]], sub: .585, menu: [[-1, .33], [0, .5], [1, .67]] };
-export const DRAG_ROW = .1;
+/** 23.11.7 (Freddy: "scrolling works really badly"): the finger moves a list by the distance between two rows as drawn, so the rows
+ *  track the finger 1:1 (lists 0.2 of the screen = 52 px on the 260 px fenix 8, menus 0.17, the start menu HOME_LAY.dy); the movement
+ *  is summed over the drag events (nothing lost between them). A swipe without drag events moves SWIPE_ROWS rows. */
+export const DRAG_ROW = .2, DRAG_MENU = .17, SWIPE_ROWS = 3;
+/** 23.11.7 (Freddy: "like a rotary wheel: over the 9 I move my finger slowly and it shows 10, 11, 12"): a finger dragged up or down over
+ *  the kg or reps number (the trainer's target) steps it once per WHEEL_STEP of the screen (20 px on the fenix 8), finger up = more
+ *  (a picker wheel: the higher value sits below and comes up with the finger); WHEEL_SHOW s after the finger lifts the neighbours go.
+ *  A drag is told from a tap / swipe after DRAG_MIN of the screen. */
+export const WHEEL_STEP = .075, WHEEL_SHOW = .6, DRAG_MIN = .03;
 
 export const e1rm = (kg, r) => kg > 0 && r > 0 ? (r === 1 ? kg : kg * (1 + r / 30)) : 0; // Epley, like kraftlib.js
 const rid = () => Math.random().toString(36).slice(2, 8) + Math.random().toString(36).slice(2, 8);
@@ -61,7 +69,20 @@ export function order(setup) {
   return out;
 }
 /** the workouts from the phone (with the setup, else with the config), only those with exercises */
-export const workouts = F => (F.setup.workouts || F.cfg.w || []).filter(w => w.it && w.it.length);
+export const savedW = F => (F.setup.workouts || F.cfg.w || []).filter(w => w.it && w.it.length);
+/** 23.11.7 (Freddy: "the workouts should be in too, standard workouts"): six workouts built into the watch, no account or phone needed
+ *  (garmin/source/Flow.mc stdWorkouts). Items [ex, sets, reps, kg, rest, name, type] from the 20 standard exercises (watchfields TOP);
+ *  kg 0 = last time's weight (else the start value), as in any workout without a weight. [id, name, [[ex, sets, reps, rest]]] */
+const STD_DEF = [
+  ['std-push', 'Push day', [['bench', 4, 6, 120], ['ohp', 3, 8, 120], ['incline', 3, 10, 90], ['dip', 3, 10, 90], ['lateral', 3, 12, 60], ['tri', 3, 12, 60]]],
+  ['std-pull', 'Pull day', [['pull', 4, 6, 120], ['row', 4, 8, 120], ['lat', 3, 10, 90], ['cable', 3, 12, 90], ['curl', 3, 12, 60]]],
+  ['std-legs', 'Leg day', [['squat', 4, 6, 120], ['rdl', 3, 8, 120], ['legpress', 3, 10, 90], ['legcurl', 3, 12, 60], ['calf', 3, 15, 60]]],
+  ['std-upper', 'Upper body', [['bench', 3, 8, 120], ['row', 3, 8, 120], ['ohp', 3, 10, 90], ['lat', 3, 10, 90], ['curl', 3, 12, 60], ['tri', 3, 12, 60]]],
+  ['std-lower', 'Lower body', [['frontsquat', 3, 8, 120], ['dead', 3, 5, 120], ['lunge', 3, 10, 90], ['legcurl', 3, 12, 60], ['calf', 3, 15, 60]]],
+  ['std-full', 'Full body', [['squat', 3, 8, 120], ['bench', 3, 8, 120], ['row', 3, 8, 90], ['ohp', 3, 10, 90], ['plank', 3, 60, 60]]]];
+export const STD_W = STD_DEF.map(([id, n, l]) => ({ id, n, std: true, it: l.map(([ex, k, r, rest]) => { const e = TOP.find(x => x.id === ex); return [ex, k, r, 0, rest, e.n, e.t]; }) }));
+/** the strength list's workouts: the saved ones (account / watch) first, then the standard ones; a saved one with a standard one's name hides it */
+export const workouts = F => { const s = savedW(F), nm = new Set(s.map(w => String(w.n).toLowerCase())); return [...s, ...STD_W.filter(w => !nm.has(w.n.toLowerCase()))]; };
 /** 23.11.: a workout in progress: plan = { w (index into workouts), i (the item now), on (false while a free exercise is done in between), skip: [items] };
  *  a set logged on a planned item carries its index (pi), so jumping between items and undo keep every count right */
 const planIts = F => F.plan ? (workouts(F)[F.plan.w] || { it: [] }).it : [];
@@ -130,12 +151,31 @@ export function keepLast(setup, sess) {
   const ids = [...by.keys()]; setup.recent = [...ids, ...(Array.isArray(setup.recent) ? setup.recent : []).filter(id => !by.has(id))].slice(0, 8);
   if (!setup.last || !(setup.last.at > sess.start)) setup.last = { at: sess.start, sets: sess.sets.length, n: '' };
 }
-/** UP / DOWN on the focused value: d = +1 / -1, big = held */
-export function stepValue(F, d, big) {
-  if (F.focus === 0) F.kg = clamp(Math.round((F.kg + d * (big ? KG_HOLD : KG_STEP)) * 100) / 100, 0, KG_MAX);
-  else if (curEx(F).t === 'time') F.reps = clamp(F.reps + d * (big ? SEC_HOLD : SEC_STEP), 0, SEC_MAX); // a timed exercise: seconds
-  else F.reps = clamp(F.reps + d * (big ? REPS_HOLD : 1), 0, REPS_MAX);
+/** column c (0 kg, 1 reps / seconds) one step on (d = +1 / -1, big = held), inside the limits; the value, F unchanged (the wheel's neighbours) */
+export function stepOf(F, c, d, big) {
+  if (c === 0) return clamp(Math.round((F.kg + d * (big ? KG_HOLD : KG_STEP)) * 100) / 100, 0, KG_MAX);
+  if (curEx(F).t === 'time') return clamp(F.reps + d * (big ? SEC_HOLD : SEC_STEP), 0, SEC_MAX); // a timed exercise: seconds
+  return clamp(F.reps + d * (big ? REPS_HOLD : 1), 0, REPS_MAX);
 }
+/** UP / DOWN on the focused value: d = +1 / -1, big = held */
+export function stepValue(F, d, big) { const v = stepOf(F, F.focus, d, big); if (F.focus === 0) F.kg = v; else F.reps = v; }
+/** 23.11.7: the wheel (a finger dragged over a number), arg = [column, steps] (+ = finger up = more). SET: column 0 kg, 1 reps (timed:
+ *  the seconds), the column takes the focus, steps of UP / DOWN in their limits; TREC: the target, steps of the current step size (sent
+ *  latest wins). A step that changed something: cue 'tick' (a very short vibration). */
+function wheel(F, now, arg) {
+  const a = Array.isArray(arg) ? arg : [0, 0], n = Math.trunc(+a[1] || 0), d = n < 0 ? -1 : 1;
+  if (F.scr === SCR.SET) {
+    F.focus = curEx(F).t === 'time' || a[0] ? 1 : 0; const was = F.kg + ':' + F.reps;
+    for (let k = 0; k < Math.abs(n); k++) stepValue(F, d, false);
+    if (F.kg + ':' + F.reps !== was) F.cues.push('tick');
+  } else if (F.scr === SCR.TREC && F.tr && !F.tr.pg) {
+    const R = F.tr, t0 = R.tgt; let w = t0;
+    for (let k = 0; k < Math.abs(n); k++) { R.tgt = w; w = nextTarget(R, d, false); } R.tgt = t0;
+    if (w !== t0) { tTarget(F, w, now); F.cues.push('tick'); }
+  }
+}
+/** the finger distance (screen fraction) that moves the list on screen s by one row: the rows as drawn (FlowDelegate.dragRow) */
+export const dragRow = s => s === SCR.HOME ? HOME_LAY.dy : [SCR.MENU, SCR.END, SCR.SAVEQ, SCR.TEND].includes(s) ? DRAG_MENU : DRAG_ROW;
 function menuFor(F) {
   if (F.start) return [MENU.EX, ...(planItem(F) ? [MENU.SKIP] : []), ...(F.sets.length ? [MENU.UNDO] : []), MENU.FIN, MENU.PAUSE];
   return F.paired ? [MENU.SYNC, MENU.PAIR] : [MENU.PAIR];
@@ -149,10 +189,10 @@ function toPick(F, keep) {
   F.sel = Math.max(0, k); F.scr = SCR.PICK;
 }
 /** the setup index of exercise id (added with its name when the setup does not know it) */
-function ensureEx(F, id, n) { let i = F.setup.ex.findIndex(e => e.id === id); if (i < 0) { F.setup.ex.push({ id, n: n || id, t: 'w' }); i = F.setup.ex.length - 1; F.list.push(i); } return i; }
+function ensureEx(F, id, n, t) { let i = F.setup.ex.findIndex(e => e.id === id); if (i < 0) { F.setup.ex.push({ id, n: n || id, t: t === 'bw' || t === 'time' ? t : 'w' }); i = F.setup.ex.length - 1; F.list.push(i); } return i; }
 /** to the planned item now */
-function goPlan(F) { const it = planIts(F)[F.plan.i]; F.plan.on = true; choose(F, ensureEx(F, it[0], it[5])); }
-export function startPlan(F, w, now) { F.plan = { w, i: 0, on: true, skip: [] }; if (!F.start) F.start = now; for (const it of planIts(F)) ensureEx(F, it[0], it[5]); goPlan(F); }
+function goPlan(F) { const it = planIts(F)[F.plan.i]; F.plan.on = true; choose(F, ensureEx(F, it[0], it[5], it[6])); }
+export function startPlan(F, w, now) { F.plan = { w, i: 0, on: true, skip: [] }; if (!F.start) F.start = now; for (const it of planIts(F)) ensureEx(F, it[0], it[5], it[6]); goPlan(F); }
 
 /** set done: stored, record check, rest starts (a workout: on to the next item with sets left; none left = finished) */
 export function completeSet(F, now) {
@@ -187,14 +227,16 @@ export function tplOf(F) {
   }
   return out.slice(0, 20).map(b => [b.ex, clamp(b.n, 1, 10), clamp(b.last.reps, 1, 100), clamp(Math.round(b.last.kg * 4) / 4, 0, 500), clamp(Math.round(b.rest / 5) * 5, 0, 600)]);
 }
-/** what to ask after the summary: null (a saved workout done as planned), else { it, n (name for a new one), w ({ id, n } of the workout done), rows } */
+/** what to ask after the summary: null (a saved or standard workout done as planned), else { it, n (name for a new one), w ({ id, n } of
+ *  the saved workout done), rows }. A changed standard workout is saved as a new one under its name (it then hides the standard one);
+ *  only saved workouts count against the 30. */
 export function saveOffer(F) {
   const w = F.plan ? workouts(F)[F.plan.w] : null, its = planIts(F);
   if (w && !F.plan.skip.length && F.sets.every(s => s.pi != null) && its.every((x, j) => doneOf(F, j) === x[1])) return null;
-  const it = tplOf(F), nm = it.map(x => (F.setup.ex.find(e => e.id === x[0]) || { n: x[0] }).n), room = workouts(F).length < 30;
-  const n = (nm.slice(0, 2).join(' + ') + (nm.length > 2 ? ` +${nm.length - 2}` : '')).slice(0, 40);
-  const rows = w ? ['Update ' + w.n, ...(room ? ['Save as new'] : []), 'No'] : room ? ['Save as workout', 'No'] : null;
-  return rows ? { it, n, w: w ? { id: w.id, n: w.n } : null, rows } : null;
+  const it = tplOf(F), nm = it.map(x => (F.setup.ex.find(e => e.id === x[0]) || { n: x[0] }).n), room = savedW(F).length < 30, sv = w && !w.std ? w : null;
+  const n = w && w.std ? w.n : (nm.slice(0, 2).join(' + ') + (nm.length > 2 ? ` +${nm.length - 2}` : '')).slice(0, 40);
+  const rows = sv ? ['Update ' + sv.n, ...(room ? ['Save as new'] : []), 'No'] : room ? ['Save as workout', 'No'] : null;
+  return rows ? { it, n, w: sv ? { id: sv.id, n: sv.n } : null, rows } : null;
 }
 /** the summary's exercises in the order first done: [{ id, n, t, s: [[kg, reps, pr]] }] */
 function sumEx(F) {
@@ -407,9 +449,11 @@ function onTRec(F, ev, now, arg) {
 
 /** every input: ev = up, down, upHold, downHold, start, startHold (START held: weight <-> reps), done (the set screen's DONE pill), back, menu,
  *  swipeUp, swipeDown, swipeLeft, swipeRight, scroll (a finger dragged over a list or the summary, arg = rows, + = on down the list), tap, item (arg = index),
+ *  wheel (23.11.7: a finger dragged over the set screen's kg / reps or the trainer's target, arg = [column 0 kg / 1 reps, steps, + = finger up = more]),
  *  focus (arg = 0 kg / 1 reps / digit), hr (arg = bpm), tick, sample (arg = one second of movement), seg (arg = segment state),
  *  holdStart / holdEnd (BACK pressed / released, or a finger on the pause screen's "Hold to finish" pill) */
 export function handle(F, ev, now, arg) {
+  const ev0 = ev;
   if (ev === 'hr') { F.hr = arg || 0; if (F.start && arg > 0) { F.hrN++; F.hrSum += arg; F.hrMax = Math.max(F.hrMax, arg); } return; }
   if (ev === 'sample') { sample(F, now, arg || {}); return; }
   if (ev === 'seg') { segment(F, now, arg); return; }
@@ -428,11 +472,15 @@ export function handle(F, ev, now, arg) {
     return;
   }
   if (F.flash) { F.flash = null; if (ev !== 'menu') return; } // the first touch after a record only clears the flash
+  if (ev === 'wheel') { wheel(F, now, arg); return; }
   if (ev === 'swipeLeft') ev = 'menu';
   if (ev === 'swipeRight') ev = 'back';
   const s = F.scr, list = [SCR.PICK, SCR.MENU, SCR.HOME, SCR.MORE, SCR.SMODE, SCR.RPICK, SCR.END, SCR.SAVEQ, SCR.TEND].includes(s), paged = list || s === SCR.REC || s === SCR.PAUSE || s === SCR.SUM || s === SCR.TSCAN;
   if (s === SCR.TREC) { onTRec(F, ev, now, arg); return; } // before the swipe mapping: swipe up / down is the stats page there, UP / DOWN the watts
-  if (ev === 'swipeUp') ev = paged ? 'down' : 'up';     // a list (the data pages, the summary) scrolls with the finger, a number counts up
+  // 23.11.7: a swipe on a list (only when no drag events came: FlowDelegate / watchsim swallow the swipe that ends a drag) moves it
+  // SWIPE_ROWS rows with the finger, no wrapping; the data pages and the summary a page; a number counts up
+  if ((ev === 'swipeUp' || ev === 'swipeDown') && (list || s === SCR.TSCAN)) { ev = 'scroll'; arg = ev0 === 'swipeUp' ? SWIPE_ROWS : -SWIPE_ROWS; }
+  if (ev === 'swipeUp') ev = paged ? 'down' : 'up';
   if (ev === 'swipeDown') ev = paged ? 'up' : 'down';
   if (s === SCR.TSCAN) { onTScan(F, ev, now, arg); return; }
   if (s === SCR.TSUM) { if (ev === 'start' || ev === 'back' || ev === 'tap') { F.sel = 0; F.scr = SCR.HOME; } return; }

@@ -4,6 +4,8 @@
 //   BACK = back (23.11.: on a set or the rest: the exercise list; on the list with sets: Keep / Finish / Discard)
 //   BACK held = menu        swipe left = menu, swipe right = back
 //   tap = the thing under the finger (a list row, a value, DONE (logs at once), a digit); a finger dragged over a list moves it row by row
+//   23.11.7: a finger dragged up / down over kg / reps (the trainer's target) turns it like a wheel, one step per WHEEL_STEP, up = more;
+//   a drag is never also a tap or a swipe
 //   recording: UP / DOWN = page, START = pause, BACK = lap (first it closes the segment popup); swipe up / down = page
 //   ready (run / ride): UP / DOWN or a tap on the route line = the Route choice (RPICK)
 //   pause screen (every mode): START = resume, BACK held 3 s = save (a short BACK only shows the hint), DOWN / tap = Discard (confirm);
@@ -25,6 +27,11 @@ function touchNote(kind as String, xy) as Void {
     gTouch = "touch " + gTouchN.toString() + ": " + t;
     WatchUi.requestUpdate();
 }
+// 23.11.7: the wheel on screen (Draw.wheelOn / wheelNb; js/watchsim.js wheelUi): the column turned (-1 none; the trainer's target 0),
+// on which screen, and when the finger lifted (System.getTimer(); 0 while it is down); the neighbours go WHEEL_SHOW_MS after the lift
+var gWheel as Number = -1;
+var gWheelScr as Number = -1;
+var gWheelEnd as Number = 0;
 
 class FlowDelegate extends WatchUi.BehaviorDelegate {
     var flow as Flow;
@@ -35,9 +42,18 @@ class FlowDelegate extends WatchUi.BehaviorDelegate {
     var holdTimer = null;
     var pillHold as Boolean = false; // a finger on the pause screen's "Hold to finish" pill
     var pillUp as Number = 0;        // when it lifted (a tap right after a hold is not a tap)
-    var dragY as Float = -1.0;       // 23.11.: a finger dragging a list: where it was at the last row step (-1 = none)
-    var dragMoved as Boolean = false;
-    var dragEnd as Number = 0;       // when a drag that moved the list ended (its swipe / tap is swallowed)
+    // 23.11.7 (js/watchsim.js touch): one drag: where it started, the anchor of the next step (moved by whole steps, so no movement is
+    // lost between events), what it does (DM_*), the wheel's column, when it ended (the swipe / tap that ends it is swallowed)
+    var dragOn as Boolean = false;
+    var dragX0 as Float = 0.0;
+    var dragY0 as Float = 0.0;
+    var dragY as Float = 0.0;
+    var dragMode as Number = 0;      // 0 not decided yet, 1 list, 2 wheel, 3 nothing (a swipe, horizontal, or a screen without either)
+    var dragCol as Number = 0;
+    var dragEnd as Number = 0;
+    var wheelTimer = null;
+    var swipedIn as Boolean = false;
+    var dragLast as Number = 0;      // the last drag event (a drag whose STOP never comes stops counting after 1.5 s)
 
     function initialize(f as Flow, a) {
         BehaviorDelegate.initialize();
@@ -93,7 +109,8 @@ class FlowDelegate extends WatchUi.BehaviorDelegate {
     function onSwipe(evt as WatchUi.SwipeEvent) as Boolean {
         var d = evt.getDirection();
         touchNote("swipe " + d.toString(), null);
-        if ((d == WatchUi.SWIPE_UP || d == WatchUi.SWIPE_DOWN) && dragged()) { return true; } // the drag already moved the list
+        if (dragged()) { return true; }   // 23.11.7: the drag already moved the list / turned the wheel: no page change, no menu
+        if (dragOn) { swipedIn = true; }  // a swipe before the drag was decided (a flick): the drag's end adds no rows to it
         if (d == WatchUi.SWIPE_UP) { app.input(E_SWIPE_UP, null); }
         else if (d == WatchUi.SWIPE_DOWN) { app.input(E_SWIPE_DOWN, null); }
         else if (d == WatchUi.SWIPE_LEFT) { app.input(E_SWIPE_LEFT, null); }
@@ -108,22 +125,60 @@ class FlowDelegate extends WatchUi.BehaviorDelegate {
     }
     // 23.11.: the trainer screen shows the list (searching), not one trainer's state (js tList)
     function tList() as Boolean { var v = flow.link.shown(); return v == TL_SCAN || v == TL_OFF; }
-    // a drag that moved the list is running or just ended
-    function dragged() as Boolean { return dragMoved && (dragY >= 0.0 || System.getTimer() - dragEnd < 500); }
-    // 23.11. (js/watchsim.js touch pointermove): the list follows the finger, one row per DRAG_ROW of the screen.
-    // VERIFY (Toybox.WatchUi.InputDelegate.onDrag / DragEvent, API 3.3.0): the fenix 8 sends DRAG_TYPE_START / CONTINUE / STOP
-    // while the finger moves, and onSwipe may still follow at the end (swallowed above). If no drag events come, swipes still step.
-    function onDrag(evt as WatchUi.DragEvent) as Boolean {
-        if (!scrollable()) { dragY = -1.0; return false; }
-        touchNote("drag", evt.getCoordinates());
-        var t = evt.getType(), y = evt.getCoordinates()[1].toFloat(), row = System.getDeviceSettings().screenHeight * DRAG_ROW;
-        if (t == WatchUi.DRAG_TYPE_START) { dragY = y; dragMoved = false; return true; }
-        if (dragY < 0.0) { return false; }
-        var n = ((dragY - y) / row).toNumber();
-        if (n != 0) { dragY = dragY - n * row; dragMoved = true; app.input(E_SCROLL, n); }
-        if (t == WatchUi.DRAG_TYPE_STOP) { dragY = -1.0; dragEnd = System.getTimer(); }
-        return true;
+    // a drag that moved a list or turned a wheel is running or ended less than 500 ms ago: the swipe / tap the system sends after it is no input
+    function dragged() as Boolean {
+        var t = System.getTimer();
+        return (dragMode == 1 || dragMode == 2) && ((dragOn && t - dragLast < 1500) || t - dragEnd < 500);
     }
+    // js/watchsim.js dragMode(u, v): what a vertical drag that starts at (u, v) does: 2 = the wheel over the set screen's numbers (timed: the
+    // seconds; dragCol = the column) or the trainer's target, 1 = a list, 3 = nothing (the swipe that follows counts)
+    function dragModeAt(u as Float, v as Float) as Number {
+        var s = flow.scr;
+        if (flow.flash != null) { return 3; }
+        if (s == S_SET && v > 0.36 && v < 0.72) { dragCol = flow.isTime(flow.curEx()) || u >= 0.51 ? 1 : 0; return 2; }
+        if (s == S_TREC) {
+            var R = flow.tr;
+            if (R != null) { if (R.pg == 0 && v > 0.225 && v < 0.56) { dragCol = 0; return 2; } }
+        }
+        return scrollable() ? 1 : 3;
+    }
+    // 23.11.7 (js/watchsim.js touch pointermove; Freddy: "scrolling works really badly", "like a rotary wheel"): once the finger has moved
+    // DRAG_MIN of the screen, mostly up / down, the drag is decided by where it started: the wheel (one step per WHEEL_STEP, finger up = more)
+    // or the list (one row per row distance as drawn, flow.dragRow()). Every step is measured from an anchor that moves by whole steps, so
+    // slow or sparse events lose nothing (the tactix / fenix 8 sends about 15 a second, fewer on a long drag: forum bug CIQQA-4206).
+    // VERIFY (Toybox.WatchUi.InputDelegate.onDrag / DragEvent, API 3.3.0): DRAG_TYPE_START / CONTINUE / STOP with screen pixel coordinates;
+    // a swipe follows the drag (swallowed in onSwipe while dragged()); without any drag events the swipe moves a list SWIPE_ROWS rows.
+    function onDrag(evt as WatchUi.DragEvent) as Boolean {
+        var xy = evt.getCoordinates(), t = evt.getType(), S = System.getDeviceSettings().screenHeight.toFloat();
+        var x = xy[0].toFloat(), y = xy[1].toFloat();
+        dragLast = System.getTimer();
+        if (t == WatchUi.DRAG_TYPE_START || !dragOn) { dragOn = true; dragX0 = x; dragY0 = y; dragY = y; dragMode = 0; swipedIn = false; }
+        if (dragMode == 0) {
+            var dx = (x - dragX0).abs(), dy = (y - dragY0).abs();
+            if (dy >= S * DRAG_MIN && dy > dx) {
+                dragMode = dragModeAt(dragX0 / S, dragY0 / S);
+                if (dragMode == 2) { gWheel = dragCol; gWheelScr = flow.scr; gWheelEnd = 0; }
+            } else if (dx >= S * DRAG_MIN && dx > dy) { dragMode = 3; }
+        }
+        if (dragMode == 1 || dragMode == 2) {
+            var step = S * (dragMode == 2 ? WHEEL_STEP : flow.dragRow()), n = ((dragY - y) / step).toNumber();
+            if (n != 0 && !swipedIn) {
+                dragY = dragY - n * step;
+                if (dragMode == 2) { app.input(E_WHEEL, [dragCol, n]); } else { app.input(E_SCROLL, n); }
+            }
+        }
+        if (t == WatchUi.DRAG_TYPE_STOP) {
+            dragOn = false; dragEnd = System.getTimer();
+            if (dragMode == 2) { // the neighbours stay WHEEL_SHOW_MS, then one redraw takes them away
+                gWheelEnd = dragEnd;
+                if (wheelTimer == null) { wheelTimer = new Timer.Timer(); } else { wheelTimer.stop(); }
+                wheelTimer.start(method(:onWheelGone), WHEEL_SHOW_MS + 50, false);
+            }
+        }
+        touchNote("drag " + (dragMode == 1 ? "list" : (dragMode == 2 ? "wheel" : "-")), xy); // the diagnostics line (menu): kind and where
+        return dragMode == 1 || dragMode == 2;
+    }
+    function onWheelGone() as Void { WatchUi.requestUpdate(); }
     // the "Hold to finish" pill (js/watchsim.js touch: pointerdown / pointerup on the pill)
     // VERIFY (Toybox.WatchUi.InputDelegate onHold / onRelease, API 1.0 / 3.x): onHold comes after the system's hold delay (so the
     // 3 s run from there), onRelease when the finger lifts, and no onTap follows a hold; if one does, pillUp skips it
