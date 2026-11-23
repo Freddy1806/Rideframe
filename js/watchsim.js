@@ -10,7 +10,7 @@
 // 24.11.: last time's values for the set small above the big numbers; the exercise list's sub line with all of last time's sets;
 // no strength ready screen: Strength on the start menu opens the choice / the exercise list at once.
 import { newFlow, handle, SCR, curEx, setNo, restLeft, clock, sent, paired, setSetup, setConfig, setRoute, setRoutes, routeFace, routeInfo, recPages, homeItems, listItems, workouts, planItem, HOME, HOME_FIT, HOME_LAY, homeTop, holdPart, pausedTime, HOLD_S,
-  LIST_LAY, DRAG_ROW, pickRows, doneOf, prefillOf, lastSet, lastTxt, loading } from './watchflow.js';
+  LIST_LAY, DRAG_ROW, pickRows, doneOf, prefillOf, lastSet, lastTxt, loading, VERSION } from './watchflow.js';
 import { compact, defaults, fieldText, labelOf, TOP } from './watchfields.js';
 import { shown, live as tLive } from './watchtrainer.js';
 import { fakeKickr } from './watchkickr.js';
@@ -258,7 +258,7 @@ const DRAW = {
     txt(g, s.sp === 'other' ? labelOf(s.type) : HOME[s.sp], S / 2, S * .76, S * .05, C.acc, { w: 900, max: S * .6 });
     txt(g, 'DONE', S / 2, S * .86, S * .05, C.lbl, { w: 900 });
   },
-  [SCR.MENU](g, S, C) { list(g, S, C, F.menu, F.sel, 'MENU', null, true); },
+  [SCR.MENU](g, S, C) { list(g, S, C, F.menu, F.sel, 'MENU v' + VERSION, null, true); },
   [SCR.TSCAN](g, S, C) { // 23.11.: the trainers nearby (FTMS first), or the state of the one chosen with START to ride
     C = tint(C, 'ride'); const L = F.link, v = shown(L), T = TSCAN_LAY;
     if (v === 'scan' || v === 'off') {

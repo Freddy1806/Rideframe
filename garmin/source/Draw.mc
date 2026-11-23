@@ -177,7 +177,7 @@ module Draw {
         else if (s == S_PICK) { drawPick(dc, F, S, P); }
         else if (s == S_SMODE) { drawSmode(dc, F, S, P); }
         else if (s == S_MORE) { drawMore(dc, F, S, P); }
-        else if (s == S_MENU) { list(dc, F, S, P, F.menu, "MENU", true, null, null); }
+        else if (s == S_MENU) { list(dc, F, S, P, F.menu, "MENU v" + RF_VERSION, true, null, null); }
         else if (s == S_END) { drawEnd(dc, F, S, P, now); }
         else if (s == S_SAVEQ) { drawSaveq(dc, F, S, P); }
         else if (s == S_SET) { drawSet(dc, F, S, P, now); }
