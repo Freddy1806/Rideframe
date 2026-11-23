@@ -91,7 +91,8 @@ async function boot() {
   document.addEventListener('drop', e => { e.preventDefault(); document.querySelector('.add-card')?.classList.remove('drag'); if (e.dataTransfer.files.length) importFiles([...e.dataTransfer.files]); });
   updateTrainerPill();
   reopenDevices(); // Chrome: the trainer and strap of the last session come back without a chooser (js/rejoin.js)
-  window.addEventListener('online', () => import('./account.js').then(a => a.retryPushes()).catch(() => {})); // rides saved offline go to the account when the line is back
+  window.addEventListener('online', () => { import('./account.js').then(a => a.retryPushes()).catch(() => {}); stravaAuto(); }); // rides saved offline go to the account when the line is back
+  document.addEventListener('visibilitychange', () => { if (!document.hidden) stravaAuto(); }); // back at the laptop: what Garmin / Wahoo sent to Strava meanwhile
   // a ride that did not end (reload, crash, closed tab: js/ridedraft.js): its sheet comes first, even on a ?view=ride link
   const draft = draftOn() && !params.has('auto') ? await db.kvGet(DRAFT_KEY).catch(() => null) : null;
   const v = draftUsable(draft) && params.get('view') === 'ride' ? 'library' : params.get('view');
@@ -110,6 +111,7 @@ async function boot() {
     else if (params.get('join')) groupModal({ code: params.get('join'), startRide });
     else if (/^[0-9a-f]{12}$/.test(params.get('live') || '')) liveJoinById(params.get('live')); /* "Copy link" on the phone's "Riding now" */
   })();
+  setTimeout(stravaAuto, 1500); // owner 23.11.: new Strava activities without a click, after the start has settled (never blocks it)
   db.persist();
   showVersion();
   initRemote(state); // phone remote (js/remotepad.js): keeps its session over a reload, findable by the account
@@ -134,6 +136,25 @@ async function showVersion() {
 async function reload() {
   state.routes = (await db.all('routes')).sort((a, b) => b.createdAt - a.createdAt);
   state.rides = (await db.all('rides')).filter(r => !r.source).sort((a, b) => b.date - a.date); // activities from Strava, files or by hand live in the phone feed (aktivitaeten.html), not in the ride history
+}
+
+/* ---- Strava without a click (owner 23.11.): this browser's own import (js/actimport.js autoImport, at most every 5 min) and what
+   the server imported in the background for the account (tools/strava-auto.mjs, arrives with pullRides); one quiet line, no dialog ---- */
+let stvNews = null, stvBusy = false;
+function newsHTML() { if (!stvNews) return ''; const l = stvNews.names.slice(0, 3).map(esc).join(', ') + (stvNews.names.length > 3 ? ' …' : '');
+  return `<p class="hint stvnew" id="stvNew" role="status">${stvNews.n} new ${stvNews.n === 1 ? 'activity' : 'activities'} from Strava${l ? ': ' + l : ''} · <a href="aktivitaeten.html">Activities ›</a></p>`; }
+async function stravaAuto() {
+  if (stvBusy || state.view === 'ride' || document.querySelector('.ride')) return; stvBusy = true; // never during a ride
+  try {
+    const before = new Set((await db.all('rides').catch(() => [])).map(r => r.id)), a = account() ? await import('./account.js') : null;
+    if (a) await a.pullRides().catch(() => 0);
+    await (await import('./actimport.js')).autoImport(state.settings);
+    const fresh = (await db.all('rides').catch(() => [])).filter(r => !before.has(r.id) && r.source === 'strava').sort((x, y) => y.date - x.date);
+    if (!fresh.length) return;
+    stvNews = { n: fresh.length + (stvNews && Date.now() - stvNews.at < 36e5 ? stvNews.n : 0), names: [...fresh.map(r => r.workout || 'Activity'), ...(stvNews?.names || [])], at: Date.now() };
+    await reload(); const t = `${fresh.length} new ${fresh.length === 1 ? 'activity' : 'activities'} from Strava`;
+    if (state.view === 'history') history(); else toast(t, 4000);
+  } catch {} finally { stvBusy = false; }
 }
 
 /** rides were deleted or changed elsewhere (profile, end screen): reload and redraw the history tab */
@@ -471,7 +492,7 @@ function history() {
   const longest = rides.slice().sort((a, b) => b.distance - a.distance)[0];
   main.innerHTML = `
   <section class="view">
-    <div class="view-head"><div><div class="label">History</div><h1 class="display" style="margin-top:14px">Rides &amp;<br>records</h1></div>
+    <div class="view-head"><div><div class="label">History</div><h1 class="display" style="margin-top:14px">Rides &amp;<br>records</h1>${newsHTML()}</div>
       ${rides[0] ? `<div class="stvbig">${rides[0].strava ? `<a class="btn ghost" href="${esc(rides[0].strava)}" target="_blank" rel="noopener" style="text-decoration:none">Last ride is on Strava ✓</a>` : `<button class="btn strava" id="stvLast" data-id="${rides[0].id}">Upload last ride to Strava</button>`}<div class="hint">${esc(routeName(rides[0].routeId) || 'Ride')} · ${new Date(rides[0].date).toLocaleString('en-GB', { dateStyle: 'short', timeStyle: 'short' })} · ${fmtKm(rides[0].distance)} km</div></div>` : ''}</div>
     <h2 class="section">Training</h2>
     ${dashboardHTML(rides, state.settings)}
@@ -492,6 +513,7 @@ function history() {
       ${rides.map(x => { const pb = x.routeId !== 'pure' && x.routeId !== 'outdoor' && bestRide(x.routeId)?.id === x.id; return `<tr class="${pb ? 'pb' : ''}"><td>${new Date(x.date).toLocaleString('en-GB', { dateStyle: 'short', timeStyle: 'short' })}</td><td>${esc((routeName(x.routeId) || 'Deleted route') + ((x.routeId === 'pure' || x.routeId === 'outdoor') && x.workout ? ' · ' + x.workout : ''))}</td><td>${fmtTime(x.duration)}</td><td>${fmtKm(x.distance)} km</td><td>${fmtNum(x.gain)} m</td><td>${x.avgPower} W</td><td>${fmtNum(x.distance / x.duration * 3.6, 1)}</td><td>${pb ? 'BEST TIME' : x.complete ? '' : '<span style="color:var(--muted)">stopped</span>'}</td><td style="white-space:nowrap">${x.strava ? `<a class="btn ghost small onstrava" style="text-decoration:none" href="${esc(x.strava)}" target="_blank" rel="noopener" title="Open this ride on Strava">On Strava ✓</a>` : `<button class="btn ghost small strava" data-id="${x.id}" title="Upload this ride to Strava">Upload to Strava</button>`} <button class="btn ghost small share" data-id="${x.id}">Share</button> <button class="btn ghost small rimg" data-id="${x.id}" title="Make a picture of the ride">Image</button> <button class="btn ghost small rdel" data-id="${x.id}" title="Delete ride">✕</button></td></tr>`; }).join('')}
     </table>` : '<div class="empty">No rides yet. Pick a route and start riding.</div>'}
   </section>`;
+  stravaAuto(); // opening Rides & records looks for new Strava activities too (at most every 5 min, quietly)
   import('./ivview.js').then(m => m.mountIvHistory(main.querySelector('#ivHist'), rides, { kg: state.settings.riderKg })).catch(() => {}); // ivview.js: the ridden watts per interval kind
   import('./hrpview.js').then(m => m.mountHrpHistory(main.querySelector('#hrpHist'), rides)).catch(e => console.warn('hrp', e)); // hrpview.js: heart rate vs power, recovery index over the rides of a workout
   wireDashboard(main, { state, saveSettings, toast, rerender: history,
@@ -639,6 +661,7 @@ function settings() {
         <div class="field"><div>Strava account<div class="hint" id="stvHint">…</div></div><button class="btn ghost small" id="stvConn">Connect</button></div>
         <label class="field"><div>Upload every ride automatically<div class="hint">Right after you finish and save a ride. The same switch as in the phone app on this device.</div></div><input type="checkbox" class="toggle" id="stvAuto" ${s.autoStrava ? 'checked' : ''}></label>
         <div class="field"><div>Bring my Strava activities into RIDEFRAME<div class="hint" id="stvImpHint">Runs, outdoor rides and everything else you record elsewhere. They show up under Activities in the phone app.</div></div><div style="display:flex;gap:8px"><a class="btn ghost small" href="aktivitaeten.html" style="text-decoration:none">Activities</a><button class="btn ghost small" id="stvImp">Import now</button></div></div>
+        <label class="field"><div>Import new activities automatically<div class="hint">When RIDEFRAME opens and every 15 minutes on the server while you are signed in, also when no RIDEFRAME page is open. The same switch as in the phone app.</div></div><input type="checkbox" class="toggle" id="stvImpAuto" ${s.stravaImport !== false ? 'checked' : ''}></label>
       </div>
       <div class="panel"><h3>Video &amp; data</h3>
         <label class="field"><div>Mute video sound</div><input type="checkbox" class="toggle" id="muteVideo" ${s.muteVideo ? 'checked' : ''}></label>
@@ -715,6 +738,7 @@ function settings() {
     paint();
     $('#stvConn').onclick = async () => { $('#stvHint').textContent = 'Waiting for Strava …'; await su.stravaConnect(!!st.connected); st = await su.stravaStatus(); paint(); };
     $('#stvAuto').onchange = e => { s.autoStrava = e.target.checked; saveSettings(); };
+    $('#stvImpAuto').onchange = e => { s.stravaImport = e.target.checked; saveSettings(); }; // synced to the account: the server's background import reads it too
     $('#stvImp').onclick = async () => { const b = $('#stvImp'), h = $('#stvImpHint'); b.disabled = true; h.textContent = 'Reading Strava …';
       const r = await (await import('./actimport.js')).importStrava({ onState: t => { h.textContent = t; } }); b.disabled = false;
       if (r.connect || r.reconnect) { st = await su.stravaStatus(); paint(); }

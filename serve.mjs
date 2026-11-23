@@ -10,6 +10,7 @@ import { watchApi } from './tools/watch-api.mjs';
 import { workoutsApi } from './tools/workouts-api.mjs';
 import { liveApi } from './tools/live-api.mjs';
 import { remoteApi } from './tools/remote-api.mjs';
+import { stravaLink, startStravaAuto } from './tools/strava-auto.mjs';
 const root = fileURLToPath(new URL('.', import.meta.url));
 const port = +process.env.PORT || 8765;
 const GZ = new Map(); // gzip cache: file -> { etag, buf }
@@ -23,6 +24,7 @@ createServer(async (req, res) => {
   try { p = normalize(decodeURIComponent(new URL(req.url, 'http://x').pathname)).replace(/^(\.\.[/\\])+/, ''); }
   catch { res.writeHead(400); res.end('bad request'); return; } // a broken address (e.g. "/%") used to take the whole server down
   try {
+    if (p.startsWith('/api/strava/')) await stravaLink(req, p).catch(() => {}); // a signed-in browser tells which account its Strava key belongs to (tools/strava-auto.mjs)
     if (p.startsWith('/api/') && (await workoutsApi(req, res, p) || await accountsApi(req, res, p) || await liveApi(req, res, p) || await watchApi(req, res, p) || await remoteApi(req, res, p) || await stravaApi(req, res, p))) return; // "Riding now" (tools/live-api.mjs), direct Strava upload (tools/strava-api.mjs), Garmin watches (tools/watch-api.mjs), phone remote (tools/remote-api.mjs)
   } catch (e) { console.log('API-Fehler:', e?.message || e); if (!res.headersSent) res.writeHead(500); res.end(); return; }
   if (req.method !== 'GET' && req.method !== 'HEAD') { res.writeHead(405); res.end(); return; }
@@ -42,6 +44,7 @@ createServer(async (req, res) => {
     res.end(req.method === 'HEAD' ? undefined : await readFile(file));
   } catch { if (!res.headersSent) res.writeHead(404); res.end('not found'); }
 }).listen(port, '127.0.0.1', () => console.log(`RIDEFRAME läuft auf http://localhost:${port}`));
+startStravaAuto(); // new Strava activities into the linked accounts every 15 min, also while no RIDEFRAME page is open (tools/strava-auto.mjs)
 process.on('unhandledRejection', e => console.log('Fehler (abgefangen):', e?.message || e)); // one bad request must never stop the game for everyone
 // the relay to the Unreal view rides along, so "In Unreal fahren" needs nothing extra to start
 import('./tools/ue-relay.mjs').catch(e => console.log('Unreal-Relay aus:', e.message));

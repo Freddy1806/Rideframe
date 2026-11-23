@@ -106,8 +106,10 @@ async function run({ onState = () => {} } = {}) {
   if (!st.configured) return { added: 0, error: true, text: 'Strava is not set up on this server.' };
   if (!st.connected) return { added: 0, error: true, connect: true, text: 'Connect Strava first.' };
   if (!st.canImport) return { added: 0, error: true, reconnect: true, text: 'Reconnect Strava to import your activities.' };
-  const mem = (await db.kvGet(KV).catch(() => null)) || {}, gone = (await db.kvGet(GONE).catch(() => null)) || [];
+  const mem = (await db.kvGet(KV).catch(() => null)) || {}, acc = await import('./account.js').catch(() => null);
+  let gone = (await db.kvGet(GONE).catch(() => null)) || [];
   await db.kvSet(KV, { ...mem, at: Date.now() }).catch(() => {});
+  if (acc?.account?.()) { const g = await acc.syncStravaGone?.(gone).catch(() => null); if (g?.length > gone.length) { gone = g.slice(-5000); await db.kvSet(GONE, gone).catch(() => {}); } } // deleted on another device: stays away here too (and the host's background import knows this device's)
   // after = the newest start already read, minus 3 days (late syncs from a watch); nothing yet = the server's default, the last 12 months
   let after = mem.cursor ? Math.floor(mem.cursor / 1000) - 3 * 86400 : 0, all = [], done = false, limited = false, ok = false, err = '';
   for (let call = 0; call < 3 && !done && !limited; call++) { // the server reads up to 10 pages per call
@@ -120,7 +122,6 @@ async function run({ onState = () => {} } = {}) {
   }
   const inc = all.map(fromStrava).filter(r => r.start > 0);
   const cursor = ok ? Math.max(mem.cursor || 0, ...inc.map(r => r.start)) : mem.cursor || 0;
-  const acc = await import('./account.js').catch(() => null);
   if (acc?.account?.()) { await acc.pullRides?.().catch(() => {}); await acc.syncKraft?.().catch(() => {}); } // what the watch sent meanwhile is here first, so it is linked, not doubled
   const D = await loadActs(), P = plan(D.acts, inc, gone);
   for (const r of P.add) { await db.put('rides', r).catch(() => {}); acc?.pushRide?.(r); }
@@ -135,9 +136,10 @@ async function run({ onState = () => {} } = {}) {
   if (kraftList) await db.kvSet('kraft', kraftList).catch(() => {});
   await db.kvSet(KV, { cursor, at: Date.now() }).catch(() => {});
   const n = P.add.length, tail = limited ? ' Strava limit reached, the rest follows later.' : err ? ' ' + err : '';
-  return { added: n, linked: P.link.length, error: !n && !!err, text: (n ? `${n} new ${n === 1 ? 'activity' : 'activities'}.` : 'Nothing new.') + tail };
+  return { added: n, linked: P.link.length, names: P.add.slice().sort((a, b) => b.start - a.start).map(r => r.workout), error: !n && !!err, text: (n ? `${n} new ${n === 1 ? 'activity' : 'activities'}.` : 'Nothing new.') + tail };
 }
-/** on app open: at most every 5 minutes, only with the read permission and unless switched off in the settings */
+/** on app open, when the page comes back to the front and when the line is back: at most every 5 minutes, only with the read
+ *  permission and unless switched off in the settings. Never throws, never asks anything; null = nothing done. */
 export async function autoImport(S = {}) {
   if (S.stravaImport === false) return null;
   try {

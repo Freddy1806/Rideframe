@@ -4,7 +4,8 @@ import { toTCX, stravaExport } from './tcx.js';
 
 const KEY = 'rf_strava_key';
 const getKey = () => { try { return localStorage.getItem(KEY) || ''; } catch { return ''; } };
-const hdr = () => ({ 'X-Strava-Key': getKey() });
+const accTok = () => { try { return JSON.parse(localStorage.getItem('rf_account') || 'null')?.token || ''; } catch { return ''; } };
+const hdr = () => { const t = accTok(); return { 'X-Strava-Key': getKey(), ...(t ? { 'X-RF-Token': t } : {}) }; }; // signed in: the host learns this key is the account's, for the background import (tools/strava-auto.mjs)
 
 const PEND = 'rf_strava_claim';
 /** a login that left this page (popup blocked: iPhone after an await, installed home-screen app) comes back through its one-time claim code */

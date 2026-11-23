@@ -213,10 +213,15 @@ async function page(root) {
   };
   draw();
   // strength sessions from another device or the Garmin watch (tools/watch-api.mjs) reach this phone with the strength sync
-  import('./account.js').then(async ac => { if (!ac.account()) return; const before = D.acts.filter(a => a.kraft).map(a => a.id).join();
-    await ac.syncKraft(); D = await loadActs(); if (D.acts.filter(a => a.kraft).map(a => a.id).join() !== before) draw(); }).catch(() => {});
-  import('./stravaup.js').then(async m => { su = m; st = await m.stravaStatus(); draw();
-    if (st.connected && st.canImport) { const r = await (await import('./actimport.js')).autoImport(D.S); if (r?.added) { msg = r.text; await reload(); } } }).catch(() => {});
+  // ... and the account's activities this phone does not have yet: the host's background Strava import (tools/strava-auto.mjs), the laptop's import
+  const pull = () => import('./account.js').then(async ac => { if (!ac.account()) return; const before = D.acts.map(a => a.id).join();
+    const n = await ac.pullRides().catch(() => 0); await ac.syncKraft(); D = await loadActs(); if (n || D.acts.map(a => a.id).join() !== before) draw(); }).catch(() => {});
+  const auto = async () => { if (st?.connected && st.canImport) { const r = await (await import('./actimport.js')).autoImport(D.S); if (r?.added) { msg = r.text.replace('.', ' from Strava.'); await reload(); } } };
+  pull();
+  import('./stravaup.js').then(async m => { su = m; st = await m.stravaStatus(); draw(); await auto(); }).catch(() => {});
+  // back to the front (from Garmin Connect, the Strava app) or back online: look again, quietly (autoImport keeps its 5 minutes)
+  const again = () => { if (document.hidden || !root.isConnected) return; pull(); auto().catch(() => {}); };
+  document.addEventListener('visibilitychange', again); addEventListener('online', again);
 }
 const root = document.getElementById('feed');
 if (root) { await page(root); if ('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js').catch(() => {}); }

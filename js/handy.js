@@ -139,9 +139,11 @@ function settings() {
 }
 let stv = null, stvMsg = ''; const stvHide = () => { try { return localStorage.getItem('rf-strava-hint') === 'off'; } catch { return false; } };
 await load(); render(); nav('home');
-if (acc) import('./account.js').then(async a => { const n = kraft.length; await a.syncKraft(); await load(); if (kraft.length !== n) render(); }).catch(() => {}); // strength from the watch or another device
+const pull = () => acc && import('./account.js').then(async a => { const n = kraft.length, m = await a.pullRides().catch(() => 0); await a.syncKraft(); await load(); if (m || kraft.length !== n) render(); }).catch(() => {}); // strength from the watch or another device, activities the host imported from Strava (tools/strava-auto.mjs)
+pull();
 const stravaIn = async force => { const m = await import('./actimport.js'), r = force ? await m.importStrava() : await m.autoImport(S); if (r?.added) { stvMsg = r.text.replace('.', ' from Strava.'); await load(); render(); } else if (force && r?.text) { stvMsg = r.text; render(); } };
 import('./stravaup.js').then(async su => { stv = await su.stravaStatus(); if (stv.configured && (!stv.connected || !stv.canImport)) render(); else stravaIn(false); }).catch(() => {}); // new Strava activities, at most every 5 min
 document.addEventListener('click', async e => { if (e.target.closest?.('#hStravaX')) { try { localStorage.setItem('rf-strava-hint', 'off'); } catch {} return render(); } if (!e.target.closest?.('#hStrava')) return; const su = await import('./stravaup.js'), ok = await su.stravaConnect(!!stv?.connected); stv = await su.stravaStatus(); render(); if (ok && stv.canImport) stravaIn(true); });
-document.addEventListener('visibilitychange', () => { if (!document.hidden && stv?.canImport) stravaIn(false).catch(() => {}); }); // back from the Strava app: look again
+const again = () => { if (document.hidden) return; pull(); if (stv?.canImport) stravaIn(false).catch(() => {}); }; // back from the Strava app or back online: look again (at most every 5 min)
+document.addEventListener('visibilitychange', again); addEventListener('online', again);
 if ('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js').catch(() => {});

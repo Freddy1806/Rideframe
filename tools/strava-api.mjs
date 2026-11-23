@@ -174,12 +174,12 @@ export async function stravaApi(req, res, path) {
  *  15 minutes and 1000 a day for the whole app) and says so. Only the summary fields the record needs leave the server. */
 const KEEP = ['id', 'name', 'sport_type', 'type', 'start_date', 'elapsed_time', 'moving_time', 'distance', 'total_elevation_gain', 'average_heartrate', 'max_heartrate', 'average_watts',
   'weighted_average_watts', 'device_watts', 'max_watts', 'kilojoules', 'calories', 'trainer', 'external_id'];
-async function activities(key, tok, q) {
+async function activities(key, tok, q, maxPages = 10) {
   const t = (await readJSON(TOK, {}))[key];
   if (!READ.test(t?.scope || '')) return [403, { error: 'Reconnect Strava to import your activities.', reconnect: true }];
   const after = Math.max(0, Math.floor(+q.get('after') || 0)) || Math.floor(Date.now() / 1000) - 365 * 86400, out = [];
   let done = false, rateLimited = false, asc = true, pages = 0, error = null;
-  for (let page = 1; page <= 10; page++) {
+  for (let page = 1; page <= maxPages; page++) {
     if (nearLimit()) { rateLimited = true; break; }
     const r = await fetch(`${API}/athlete/activities?per_page=100&page=${page}&after=${after}`, { headers: { Authorization: 'Bearer ' + tok } }); noteRate(r);
     if (r.status === 429) { rateLimited = true; break; }
@@ -227,6 +227,13 @@ export async function exploreSegs(tok, box, type) {
 /** a segment's detail from the 24 h cache only (no call), or null */
 export const segCached = (key, id) => { const c = segDet.get(key + '|' + id); return c && Date.now() - c.at < 864e5 ? c.v : null; };
 export { segDetail, nearLimit };
+/* ---- the background import (tools/strava-auto.mjs, 23.11.): one page of new activities per connection, read only ---- */
+/** may this key read activities? (the scope it was granted; no call to Strava) */
+export async function stravaCanRead(key) { return READ.test((await readJSON(TOK, {}))[key]?.scope || ''); }
+/** the background leaves most of Strava's app-wide budget to the riders: it stops at 70 % of either limit (or near it) */
+export const rateBusy = () => nearLimit() || (Date.now() - rate.at < 15 * 60e3 && (rate.u15 >= rate.l15 * 0.7 || rate.uDay >= rate.lDay * 0.7));
+/** one page (100, oldest first) of activities started after `after` (Unix s): [status, { activities, done, rateLimited, next, error }] */
+export const stravaNewActs = (key, tok, after) => activities(key, tok, new URLSearchParams({ after: String(after) }), 1);
 
 /** the rider's own Strava routes (Routes sheet on the outdoor page): GET /athletes/{id}/routes, 50 a page, small fields only */
 async function routes(key, tok, q) {

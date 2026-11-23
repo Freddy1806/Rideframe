@@ -17,10 +17,10 @@ const serial = fn => { const run = lock.then(fn); lock = run.catch(() => {}); re
 
 /* ---- the account's Strava connection: Strava keys belong to a browser, so the phone tells the host which one is the account's ---- */
 const linkFile = uid => join(userDir(uid), 'strava-link.json');
-/** phone calls to /api/watch/* carry X-Strava-Key when the phone is connected to Strava: remembered for the account (never sent back) */
+/** phone calls to /api/watch/* (and since 23.11. a signed-in browser's /api/strava/status|activities) carry X-Strava-Key when connected to Strava: remembered for the account (never sent back) */
 export async function linkStrava(req, uid) {
   const k = String(req.headers['x-strava-key'] || ''); if (!k || !(await stravaKnown(k))) return;
-  const f = linkFile(uid), old = await readJSON(f, null); if (old?.key === k && Date.now() - (old.at || 0) < 864e5) return;
+  const f = linkFile(uid), old = await readJSON(f, null); if (old?.key === k && Date.now() - (old.at || 0) < 36e5) return; // hourly: the newest account using a key gets its background import (strava-auto.mjs)
   await serial(() => writeJSON(f, { key: k, at: Date.now() }));
 }
 

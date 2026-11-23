@@ -130,6 +130,18 @@ async function board(a) {
   if (gen === boardGen) boardCache = { at: Date.now(), week: wk, rows }; return rows;
 }
 
+/* ---- Strava ids deleted in this account (23.11.): one list for every device and the server's background import ---- */
+const sidIn = r => r?.stravaId ? String(r.stravaId) : (String(r?.strava || '').match(/activities\/(\d+)/) || [])[1] || ''; // = actimport.js sidOf
+const goneFile = dir => join(dir, 'strava-gone.json');
+const goneOf = async dir => { const g = await readJSON(goneFile(dir), null); return Array.isArray(g?.ids) ? g.ids : []; };
+let glock = Promise.resolve();
+/** adds Strava ids (digits only) to the account's list; returns the whole list (the newest 5000) */
+function noteGone(dir, ids, device = false) { // device: a browser sent its whole list (PUT): from then on the background import may run (tools/strava-auto.mjs)
+  const run = glock.then(async () => { const add = ids.map(String).filter(x => /^\d{1,20}$/.test(x)), f = await readJSON(goneFile(dir), null), old = await goneOf(dir), have = new Set(old);
+    if (!add.some(x => !have.has(x)) && (!device || f?.synced)) return old;
+    const l = [...old, ...add.filter(x => !have.has(x) && have.add(x))].slice(-5000); await writeJSON(goneFile(dir), { ids: l, synced: !!(f?.synced || device) }); return l; });
+  glock = run.catch(() => {}); return run;
+}
 /** the account behind a phone login token (X-RF-Token), for the watch API (tools/watch-api.mjs); null when signed out */
 export async function accountOf(req) {
   const token = String(req.headers['x-rf-token'] || ''), a = await readJSON(ACC, { users: {}, tokens: {} }), t = token && Object.hasOwn(a.tokens, token) ? a.tokens[token] : null;
@@ -137,7 +149,7 @@ export async function accountOf(req) {
 }
 /** the account by its key (lower-case name), or null when it was deleted */
 export async function userByKey(key) { const a = await readJSON(ACC, { users: {} }); return Object.hasOwn(a.users, key) ? a.users[key] : null; }
-export const shared = { DATA, readJSON, writeJSON, send, body, limited, clientIp, userDir, sha, count, MAX_FILES, summary, sums };
+export const shared = { DATA, readJSON, writeJSON, send, body, limited, clientIp, userDir, sha, count, MAX_FILES, summary, sums, full, goneOf, invalidateBoard: () => { boardCache = null; boardGen++; } };
 
 /** returns true when the request was an /api/account call (answered here) */
 export async function accountsApi(req, res, path) {
@@ -237,15 +249,18 @@ export async function accountsApi(req, res, path) {
     if (km) {
       const f = join(dir, 'kraft', km[1] + '.json');
       if (req.method === 'PUT') { if (await count(join(dir, 'kraft')) >= MAX_FILES) return send(res, 507, { error: 'Storage for this account is full.' }); await writeJSON(f, await body(req, 2e6)); return send(res, 200, { ok: true }); }
-      if (req.method === 'DELETE') { await unlink(f).catch(() => {}); return send(res, 200, { ok: true }); }
+      if (req.method === 'DELETE') { await noteGone(dir, [sidIn(await readJSON(f, null))]); await unlink(f).catch(() => {}); return send(res, 200, { ok: true }); }
       const r = await readJSON(f, null); return r ? send(res, 200, r) : send(res, 404, { error: 'not found' });
     }
+    if (op === 'stravagone') { /* Strava ids deleted here (any device): the import never brings them back (js/actimport.js, tools/strava-auto.mjs) */
+      if (req.method === 'PUT') { const b = await body(req, 2e5); return send(res, 200, { ids: await noteGone(dir, Array.isArray(b.ids) ? b.ids : [], true) }); }
+      return send(res, 200, { ids: await goneOf(dir) }); }
     if (op === 'rides') { const f = await readdir(join(dir, 'rides')).catch(() => []); return send(res, 200, { ids: f.filter(x => x.endsWith('.json')).map(x => x.slice(0, -5)) }); }
     const m = op.match(/^rides\/([\w-]{1,64})$/);
     if (m) {
       const f = join(dir, 'rides', m[1] + '.json');
       if (req.method === 'PUT') { if (await full(join(dir, 'rides'))) return send(res, 507, { error: 'Storage for this account is full.' }); await writeJSON(f, await body(req)); boardCache = null; boardGen++; return send(res, 200, { ok: true }); }
-      if (req.method === 'DELETE') { await unlink(f).catch(() => {}); sums.delete(f); boardCache = null; boardGen++; return send(res, 200, { ok: true }); }
+      if (req.method === 'DELETE') { await noteGone(dir, [sidIn(await readJSON(f, null))]); await unlink(f).catch(() => {}); sums.delete(f); boardCache = null; boardGen++; return send(res, 200, { ok: true }); }
       const r = await readJSON(f, null); return r ? send(res, 200, r) : send(res, 404, { error: 'not found' });
     }
     return send(res, 404, { error: 'unknown' });
