@@ -1,2 +1,5 @@
 # RIDEFRAME Strength. Sources in source/, resources in resources/ (the defaults). Build: see README.md.
 project.manifest = manifest.xml
+# 23.11.8: tests/ (ZzSmokeTest.mc, ZzMeasureTest.mc) holds only (:test) code, which monkeyc leaves out of every build except a test
+# build (monkeyc -t / "Monkey C: Run Tests"), so the app itself does not grow.
+base.sourcePath = source;tests

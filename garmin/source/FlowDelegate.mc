@@ -32,6 +32,17 @@ function touchNote(kind as String, xy) as Void {
 var gWheel as Number = -1;
 var gWheelScr as Number = -1;
 var gWheelEnd as Number = 0;
+// a number's size as a Float (one helper for Number and Float; the coordinates come as Number)
+function absF(x) as Float { return x < 0 ? -x.toFloat() : x.toFloat(); }
+// 23.11.8: the row Draw drew nearest to v (within 0.09 of the screen), from gRows ([offset, y / S]); null when none
+function rowAt(v as Float) as Array? {
+    var b = null, bd = 0.09;
+    for (var i = 0; i < gRows.size(); i++) { var r = gRows[i] as Array, d = absF((r[1] as Float) - v); if (d < bd) { b = r; bd = d; } }
+    return b;
+}
+// 23.11.8: one back per gesture. A swipe right is a back (Flow: E_SWIPE_RIGHT = E_BACK); a device that also reports it as the BACK
+// behaviour (onBack) or the BACK key must not step back twice: whichever comes second within BACK_DEDUP_MS is dropped.
+const BACK_DEDUP_MS = 300;
 
 class FlowDelegate extends WatchUi.BehaviorDelegate {
     var flow as Flow;
@@ -54,6 +65,9 @@ class FlowDelegate extends WatchUi.BehaviorDelegate {
     var wheelTimer = null;
     var swipedIn as Boolean = false;
     var dragLast as Number = 0;      // the last drag event (a drag whose STOP never comes stops counting after 1.5 s)
+    var backAt as Number = -100000;  // 23.11.8: when the last back went to the flow (the BACK key or onBack), and the last swipe right
+    var swipeRAt as Number = -100000;
+    var escAt as Number = -100000;   // the BACK key's last press / release (its onBack, if the system still sends one, is the same back)
 
     function initialize(f as Flow, a) {
         BehaviorDelegate.initialize();
@@ -67,7 +81,7 @@ class FlowDelegate extends WatchUi.BehaviorDelegate {
         var k = evt.getKey();
         if (k != WatchUi.KEY_UP && k != WatchUi.KEY_DOWN && k != WatchUi.KEY_ESC && k != WatchUi.KEY_ENTER) { return false; } // LIGHT stays the system's
         downKey = k; downAt = System.getTimer(); held = false;
-        if (k == WatchUi.KEY_ESC) { app.input(E_HOLD_START, downAt); } // the pause screen's hold to finish (the flow ignores it elsewhere)
+        if (k == WatchUi.KEY_ESC) { escAt = downAt; app.input(E_HOLD_START, downAt); } // the pause screen's hold to finish (the flow ignores it elsewhere)
         if (holdTimer == null) { holdTimer = new Timer.Timer(); }
         // VERIFY on the device: START held (KEY_ENTER) reaches the app on the fenix 8 and is not taken by the system
         holdTimer.start(method(:onKeyHold), k == WatchUi.KEY_ESC || k == WatchUi.KEY_ENTER ? 700 : 500, false);
@@ -86,10 +100,10 @@ class FlowDelegate extends WatchUi.BehaviorDelegate {
         if (k != downKey) { return false; }
         if (holdTimer != null) { holdTimer.stop(); }
         downKey = null;
-        if (k == WatchUi.KEY_ESC) { app.input(E_HOLD_END, System.getTimer()); }
+        if (k == WatchUi.KEY_ESC) { escAt = System.getTimer(); app.input(E_HOLD_END, escAt); }
         if (held) { return true; }
         if (k == WatchUi.KEY_ENTER) { app.input(E_START, null); }
-        else if (k == WatchUi.KEY_ESC) { app.input(E_BACK, null); }
+        else if (k == WatchUi.KEY_ESC) { back(); }
         else if (k == WatchUi.KEY_UP) { app.input(E_UP, null); }
         else if (k == WatchUi.KEY_DOWN) { app.input(E_DOWN, null); }
         return true;
@@ -100,7 +114,18 @@ class FlowDelegate extends WatchUi.BehaviorDelegate {
     // returning true here ate every onTap / onSwipe. false lets them through; the keys are handled in onKeyPressed / onKeyReleased.
     // onBack stays true: false would let the system leave the app on BACK.
     function onSelect() as Boolean { touchNote("select", null); return false; }
-    function onBack() as Boolean { return true; }
+    // the BACK behaviour: the key is handled in onKeyPressed / onKeyReleased (its onBack, if one still comes, is dropped); a back that
+    // comes without the key (a device that sends a swipe right as BACK) is one back, unless its swipe already was
+    function onBack() as Boolean {
+        if (System.getTimer() - escAt > 1000) { back(); }
+        return true;
+    }
+    // 23.11.8: one E_BACK per gesture (BACK_DEDUP_MS)
+    function back() as Void {
+        var t = System.getTimer();
+        if (t - swipeRAt < BACK_DEDUP_MS) { return; }
+        backAt = t; app.input(E_BACK, null);
+    }
     function onNextPage() as Boolean { return false; }
     function onPreviousPage() as Boolean { return false; }
     function onMenu() as Boolean { app.input(E_MENU, null); return true; }
@@ -114,7 +139,7 @@ class FlowDelegate extends WatchUi.BehaviorDelegate {
         if (d == WatchUi.SWIPE_UP) { app.input(E_SWIPE_UP, null); }
         else if (d == WatchUi.SWIPE_DOWN) { app.input(E_SWIPE_DOWN, null); }
         else if (d == WatchUi.SWIPE_LEFT) { app.input(E_SWIPE_LEFT, null); }
-        else if (d == WatchUi.SWIPE_RIGHT) { app.input(E_SWIPE_RIGHT, null); }
+        else if (d == WatchUi.SWIPE_RIGHT) { var t = System.getTimer(); if (t - backAt >= BACK_DEDUP_MS) { swipeRAt = t; app.input(E_SWIPE_RIGHT, null); } }
         return true;
     }
     // 23.11.: the screens a dragged finger scrolls (js/watchsim.js scrollable)
@@ -138,7 +163,7 @@ class FlowDelegate extends WatchUi.BehaviorDelegate {
         if (s == S_SET && v > 0.36 && v < 0.72) { dragCol = flow.isTime(flow.curEx()) || u >= 0.51 ? 1 : 0; return 2; }
         if (s == S_TREC) {
             var R = flow.tr;
-            if (R != null) { if (R.pg == 0 && v > 0.225 && v < 0.56) { dragCol = 0; return 2; } }
+            if (R != null) { if (R.pg == 0 && v > gT0 && v < gT1) { dragCol = 0; return 2; } } // the target's zone as drawn (Draw gT0 / gT1)
         }
         return scrollable() ? 1 : 3;
     }
@@ -154,7 +179,7 @@ class FlowDelegate extends WatchUi.BehaviorDelegate {
         dragLast = System.getTimer();
         if (t == WatchUi.DRAG_TYPE_START || !dragOn) { dragOn = true; dragX0 = x; dragY0 = y; dragY = y; dragMode = 0; swipedIn = false; }
         if (dragMode == 0) {
-            var dx = (x - dragX0).abs(), dy = (y - dragY0).abs();
+            var dx = absF(x - dragX0), dy = absF(y - dragY0);
             if (dy >= S * DRAG_MIN && dy > dx) {
                 dragMode = dragModeAt(dragX0 / S, dragY0 / S);
                 if (dragMode == 2) { gWheel = dragCol; gWheelScr = flow.scr; gWheelEnd = 0; }
@@ -185,7 +210,7 @@ class FlowDelegate extends WatchUi.BehaviorDelegate {
     function onPill(evt as WatchUi.ClickEvent) as Boolean {
         var xy = evt.getCoordinates(), S = System.getDeviceSettings().screenWidth.toFloat();
         var u = xy[0] / S, v = xy[1] / S;
-        return flow.scr == S_PAUSE && !flow.pzConf && hasTouch() && v > 0.75 && (u - 0.5).abs() < 0.27;
+        return flow.scr == S_PAUSE && !flow.pzConf && hasTouch() && v > 0.75 && absF(u - 0.5) < 0.27;
     }
     function onHold(evt as WatchUi.ClickEvent) as Boolean {
         touchNote("hold", evt.getCoordinates());
@@ -207,40 +232,33 @@ class FlowDelegate extends WatchUi.BehaviorDelegate {
         if (flow.flash != null) { app.input(E_TAP, null); return true; }
         if (s == S_PAUSE) { // js PAUSE_LAY: confirm: the Discard pill = yes, elsewhere = no; else the Discard row = ask, the top = resume
             if (pillHold || System.getTimer() - pillUp < 400) { return true; }
-            if (flow.pzConf) { app.input((v - 0.68).abs() < 0.06 ? E_START : E_BACK, null); }
-            else if ((v - 0.68).abs() < 0.055) { app.input(E_ITEM, 1); }
+            if (flow.pzConf) { app.input(absF(v - 0.68) < 0.06 ? E_START : E_BACK, null); }
+            else if (absF(v - 0.68) < 0.055) { app.input(E_ITEM, 1); }
             else if (v < 0.62) { app.input(E_ITEM, 0); }
             return true;
         }
         if (s == S_SET) {
-            if (v > 0.72 && (u - 0.5).abs() < 0.24) { app.input(E_DONE, null); } // DONE logs at once (START goes weight -> reps first)
+            if (v > 0.72 && absF(u - 0.5) < 0.24) { app.input(E_DONE, null); } // DONE logs at once (START goes weight -> reps first)
             else if (v > 0.36 && v < 0.72) { app.input(E_FOCUS, u < 0.51 ? 0 : 1); }
             return true;
         }
-        if (s == S_READY && !flow.sp.equals("other") && v > 0.665 && v < 0.74) { app.input(E_DOWN, null); return true; } // the route line
+        if (s == S_READY && !flow.sp.equals("other") && gRouteY > 0 && absF(v - gRouteY) < 0.04) { app.input(E_DOWN, null); return true; } // the route line as drawn
         if (s == S_TREC) { // 23.11. (js TREC_LAY): the stats page: back; - / + (the whole side) and the target (step size); the resume pill
             var R = flow.tr;
             if (R != null && R.pg != 0) { app.input(E_TAP, null); }
-            else if (v > 0.225 && v < 0.56) { app.input(E_ITEM, u < 0.31 ? 0 : (u > 0.69 ? 1 : 2)); }
+            else if (v > gT0 && v < gT1) { app.input(E_ITEM, u < 0.31 ? 0 : (u > 0.69 ? 1 : 2)); }
             else if (v > 0.78 && R != null && R.st != RS_RUN) { app.input(E_START, null); }
             return true;
         }
         if (s == S_TSCAN && !tList()) { app.input(E_TAP, null); return true; } // one trainer's state: like START
         var menu = s == S_MENU || s == S_END || s == S_SAVEQ || s == S_TEND, pick = s == S_PICK || s == S_MORE || s == S_SMODE || s == S_RPICK || s == S_TSCAN;
-        if (s == S_HOME) {
-            // the rows as Draw.drawHome draws them: row r at HOME_Y0 + r * HOME_DY, all four entries at once
-            var hr = ((v - HOME_Y0) / HOME_DY + 0.5).toNumber(), hn = flow.listItems().size(), hi = flow.homeTop(hn) + hr;
-            if (v >= HOME_Y0 - HOME_DY / 2 && hr < HOME_FIT && hi < hn) { app.input(E_ITEM, hi); }
+        if (s == S_HOME) { // 23.11.8: the rows as Draw.drawHome drew them (gRows: [row, y / S])
+            var r = rowAt(v), hn = flow.listItems().size(), hi = r == null ? -1 : flow.homeTop(hn) + (r[0] as Number);
+            if (hi >= 0 && hi < hn) { app.input(E_ITEM, hi); }
             return true;
         }
-        if (menu || pick) {
-            // [offset, y] of the rows as Draw.list draws them (js LIST_LAY); the title and the counter are no row
-            var offs = [-1, 0, 1, 2] as Array<Number>, ys = [0.3, 0.5, 0.72, 0.845] as Array<Float>;
-            if (menu) { offs = [-1, 0, 1] as Array<Number>; ys = [0.33, 0.5, 0.67] as Array<Float>; }
-            else if (v < 0.23) { return true; }
-            var best = 0;
-            for (var i = 1; i < ys.size(); i++) { if ((ys[i] - v).abs() < (ys[best] - v).abs()) { best = i; } }
-            var n = flow.listItems().size(), idx = flow.sel + offs[best];
+        if (menu || pick) { // 23.11.8: the rows as Draw.list drew them (gRows: [offset, y / S]); the title and the counter are no row
+            var r = rowAt(v), n = flow.listItems().size(), idx = r == null ? -1 : flow.sel + (r[0] as Number);
             if (idx >= 0 && idx < n) { app.input(E_ITEM, idx); }
             return true;
         }

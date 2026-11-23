@@ -114,7 +114,7 @@ const M_SYNC = "Sync now";
 const M_PAIR = "Pair with phone";
 const FREE_ROW = "Free";
 // js/watchflow.js VERSION: the menu title shows it
-const RF_VERSION = "23.11.7";
+const RF_VERSION = "23.11.8";
 // pairing states / sum states
 const P_ENTER = 0;
 const P_SENDING = 1;
@@ -542,7 +542,7 @@ class Flow {
         if (a.size() < 2) { return; }
         var n = numOf(a[1]), d = n < 0 ? -1 : 1, k = n < 0 ? -n : n;
         if (scr == S_SET) {
-            focus = isTime(curEx()) || numOf(a[0]) != 0 ? 1 : 0;
+            focus = (isTime(curEx()) || numOf(a[0]) != 0) ? 1 : 0;
             var k0 = kg, r0 = reps;
             for (var i = 0; i < k; i++) { stepValue(d, false); }
             if (kg != k0 || reps != r0) { cues.add(C_TICK); }

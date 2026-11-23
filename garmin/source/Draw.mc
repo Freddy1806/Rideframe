@@ -1,6 +1,9 @@
 // RIDEFRAME on a Garmin watch: drawing of every screen with the plain dc calls, scaled by the screen size (S = dc.getWidth()).
-// Same layout numbers as js/watchsim.js DRAW and js/watchdraw.js (drawPage, pageDots, recRing), so the browser preview is
-// the design reference. Fonts are the device's system fonts, so sizes differ a little from the preview.
+// 23.11.8: js/watchscreens.js is this file in JavaScript, function by function, with the same numbers (tools/watch-layout-test.mjs
+// compares the fractional numbers of both files per function). The layout comes from the watch's own fonts: every text gets its rows
+// from the font's box (dc.getFontHeight, Graphics.getFontAscent), a font falls back to the next smaller one where it does not fit its
+// room (width, rows, the round screen), and a line without room is left out (in the order given per screen), so the fenix 8's font
+// size setting (up to 1.45) never makes texts overlap. tools/watch-layout.mjs checks every screen on the five watches with the real fonts.
 import Toybox.Graphics;
 import Toybox.Lang;
 import Toybox.Math;
@@ -8,16 +11,14 @@ import Toybox.System;
 import Toybox.Time;
 import Toybox.Time.Gregorian;
 
-// colours (js/watchdraw.js FACES): AMOLED (fr265) gets the RIDEFRAME tones on black, MIP (fenix 7 Pro, 64 colours) only
-// palette colours (channels 00 / 55 / AA / FF), field labels white and no dark grey text
-// AMOLED (fr265: the touch face with the "Hold to finish" pill) or MIP (fenix: buttons only, js/watchdraw.js FACES mip)
+// AMOLED (fr265: the touch face) or MIP (fenix: 64 colours)
 function isAmoled() as Boolean {
     var ds = System.getDeviceSettings();
     // VERIFY: DeviceSettings.requiresBurnInProtection (API 3.0) is true on AMOLED watches (doc page Toybox.System.DeviceSettings)
     return (ds has :requiresBurnInProtection) && ds.requiresBurnInProtection;
 }
 // 23.11.: a touchscreen (fr265, fenix 7 Pro / 7X Pro, fenix 8: all of them), not AMOLED, decides the touch-only parts (the "Hold to
-// finish" pill); before, the MIP fenix were taken for button-only watches
+// finish" pill)
 function hasTouch() as Boolean {
     var ds = System.getDeviceSettings();
     // VERIFY (Toybox.System.DeviceSettings.isTouchScreen, API 1.0): true on the fenix 8 Solar 47 mm (and stays true with touch locked)
@@ -40,19 +41,30 @@ class Palette {
         }
         acc = cKraft;
     }
-    // js: C.sp[k]: run, ride, kraft, more / other
-    function sport(k as String) as Number {
-        if (k.equals("run")) { return cRun; }
-        if (k.equals("ride")) { return cRide; }
-        if (k.equals("kraft")) { return cKraft; }
-        return cOther;
-    }
 }
+
+// 23.11.8: where the screen drawn last put its rows (js/watchscreens.js LAY): the list rows [offset, y / S] (the start menu: [row, y / S]),
+// the ready screen's route line (y / S, 0 = none) and the trainer's target zone (gT0 .. gT1, y / S). FlowDelegate.onTap / dragModeAt
+// take them as drawn, so a tap always lands on the row the finger is on, whatever font the watch chose.
+var gRows as Array = [] as Array;
+var gRouteY as Float = 0.0;
+var gT0 as Float = 0.0;
+var gT1 as Float = 0.0;
 
 // The screen constants (S_START ...) are globals from Flow.mc.
 module Draw {
     const VC = Graphics.TEXT_JUSTIFY_CENTER | Graphics.TEXT_JUSTIFY_VCENTER;
     const VL = Graphics.TEXT_JUSTIFY_LEFT | Graphics.TEXT_JUSTIFY_VCENTER;
+    const XT = Graphics.FONT_XTINY;
+    const TI = Graphics.FONT_TINY;
+    const SM = Graphics.FONT_SMALL;
+    const ME = Graphics.FONT_MEDIUM;
+    const LA = Graphics.FONT_LARGE;
+    const NMI = Graphics.FONT_NUMBER_MILD;
+    const NME = Graphics.FONT_NUMBER_MEDIUM;
+    const NHO = Graphics.FONT_NUMBER_HOT;
+    const NTH = Graphics.FONT_NUMBER_THAI_HOT;
+    const R0 = 0.47;     // texts stay inside this circle (fraction of S: 0.5 - the 0.03 S margin)
 
     function clock(s as Number) as String {
         if (s < 0) { s = 0; }
@@ -67,28 +79,18 @@ module Draw {
         if (v >= 10000.0) { return kgTxt(v / 1000.0) + " t"; }
         return v.toNumber().toString();
     }
-    // js/watchsim.js kmTxt
     function kmTxt(m as Float) as String { return (m / 1000.0).format(m >= 10000.0 ? "%.1f" : "%.2f"); }
-    // js/watchsim.js setTxt: the last set of an exercise in the picker
-    function setTxt(t as String, kg as Float, r as Number) as String {
-        if (t.equals("time")) { return clock(r); }
-        return (t.equals("bw") && kg == 0.0 ? "BW" : kgTxt(kg) + " kg") + " x " + r.toString();
-    }
-    // text cut to fit max px (with a dot, the system fonts may have no ellipsis)
-    function fit(dc as Dc, t as String, font, max as Number) as String {
+    // text cut to fit max px (with a dot, the system fonts may have no ellipsis); a space or comma before the dot goes too
+    function fit(dc as Dc, t as String, font, max) as String {
         if (dc.getTextWidthInPixels(t, font) <= max) { return t; }
         var s = t;
         while (s.length() > 1 && dc.getTextWidthInPixels(s + ".", font) > max) { s = s.substring(0, s.length() - 1) as String; }
+        while (s.length() > 1 && (s.substring(s.length() - 1, s.length()).equals(" ") || s.substring(s.length() - 1, s.length()).equals(","))) { s = s.substring(0, s.length() - 1) as String; }
         return s + ".";
-    }
-    // the first font of the list that fits (big numbers shrink instead of being cut)
-    function fontFor(dc as Dc, t as String, fonts as Array, max as Number) {
-        for (var i = 0; i < fonts.size(); i++) { if (dc.getTextWidthInPixels(t, fonts[i]) <= max) { return fonts[i]; } }
-        return fonts[fonts.size() - 1];
     }
     function txt(dc as Dc, x, y, font, t, col as Number) as Void { dc.setColor(col, Graphics.COLOR_TRANSPARENT); dc.drawText(x, y, font, t.toString(), VC); }
     function txtL(dc as Dc, x, y, font, t, col as Number) as Void { dc.setColor(col, Graphics.COLOR_TRANSPARENT); dc.drawText(x, y, font, t.toString(), VL); }
-    function pill(dc as Dc, cx, cy, w, h, col as Number) as Void { dc.setColor(col, Graphics.COLOR_TRANSPARENT); dc.fillRoundedRectangle(cx - w / 2, cy - h / 2, w, h, h / 2); }
+    function pill(dc as Dc, cx, cy, w, h, col as Number) as Void { dc.setColor(col, Graphics.COLOR_TRANSPARENT); dc.fillRoundedRectangle(cx - w / 2.0, cy - h / 2.0, w, h, h / 2.0); }
     function pw(n) as Number { var p = n.toNumber(); return p < 1 ? 1 : p; }
     // the arc that points at the START button (2 o'clock = 30 degrees, counter-clockwise from 3 o'clock)
     function startHint(dc as Dc, S as Number, P as Palette) as Void {
@@ -112,24 +114,24 @@ module Draw {
         var r = s * 0.32; dc.fillCircle(x - r, y - r * 0.4, r); dc.fillCircle(x + r, y - r * 0.4, r);
         dc.fillPolygon([[x - 2 * r, y - r * 0.2], [x + 2 * r, y - r * 0.2], [x, y + s * 0.55]]);
     }
-    // the sport icons of the start menu, drawn with lines (the preview strokes js/theme.js ICONS; bitmaps per size later)
+    // the sport icons of the start menu, drawn with lines
     function icon(dc as Dc, k as String, x, y, s, col as Number) as Void {
         if (k.equals("kraft")) { dumbbell(dc, x, y, s, col); return; }
         dc.setColor(col, Graphics.COLOR_TRANSPARENT); dc.setPenWidth(pw(s * 0.11 + 1));
         if (k.equals("run")) {
             dc.fillCircle(x + s * 0.12, y - s * 0.36, s * 0.1);
-            dc.drawLine(x + s * 0.04, y - s * 0.2, x - s * 0.08, y + s * 0.1);   // body
-            dc.drawLine(x - s * 0.08, y + s * 0.1, x + s * 0.14, y + s * 0.42);  // front leg
-            dc.drawLine(x - s * 0.08, y + s * 0.1, x - s * 0.3, y + s * 0.38);   // back leg
-            dc.drawLine(x - s * 0.26, y - s * 0.08, x + s * 0.02, y - s * 0.16); // arm back
-            dc.drawLine(x + s * 0.02, y - s * 0.16, x + s * 0.3, y - s * 0.02);  // arm front
+            dc.drawLine(x + s * 0.04, y - s * 0.2, x - s * 0.08, y + s * 0.1);
+            dc.drawLine(x - s * 0.08, y + s * 0.1, x + s * 0.14, y + s * 0.42);
+            dc.drawLine(x - s * 0.08, y + s * 0.1, x - s * 0.3, y + s * 0.38);
+            dc.drawLine(x - s * 0.26, y - s * 0.08, x + s * 0.02, y - s * 0.16);
+            dc.drawLine(x + s * 0.02, y - s * 0.16, x + s * 0.3, y - s * 0.02);
         } else if (k.equals("ride")) {
             var r = s * 0.2;
             dc.drawCircle(x - s * 0.27, y + s * 0.16, r); dc.drawCircle(x + s * 0.27, y + s * 0.16, r);
             dc.drawLine(x - s * 0.27, y + s * 0.16, x - s * 0.05, y - s * 0.16);
             dc.drawLine(x - s * 0.05, y - s * 0.16, x + s * 0.27, y + s * 0.16);
             dc.drawLine(x - s * 0.05, y - s * 0.16, x - s * 0.14, y - s * 0.3);
-        } else if (k.equals("trainer")) { // 23.11. (js/theme.js ICONS trainer): a dial on a stand
+        } else if (k.equals("trainer")) {
             var q = s / 24.0;
             dc.drawCircle(x, y - q * 2, q * 7);
             dc.drawLine(x, y - q * 6, x, y - q * 2); dc.drawLine(x, y - q * 2, x + q * 3, y);
@@ -140,7 +142,7 @@ module Draw {
         }
         dc.setPenWidth(1);
     }
-    // a number text in a number font when it only has digits and : . - (VERIFY: the glyphs FONT_NUMBER_* carry), else text fonts
+    // a number text in a number font when it only has digits and : . - (the fenix 7's number fonts have digits only)
     function isNum(t as String) as Boolean {
         var a = t.toCharArray();
         for (var i = 0; i < a.size(); i++) { if ("0123456789:.-".find(a[i].toString()) == null) { return false; } }
@@ -149,35 +151,122 @@ module Draw {
     // the fonts for a value of height px (fraction of S) from big to small
     function valFonts(px as Float, num as Boolean) as Array {
         if (num) {
-            if (px >= 0.28) { return [Graphics.FONT_NUMBER_THAI_HOT, Graphics.FONT_NUMBER_HOT, Graphics.FONT_NUMBER_MEDIUM, Graphics.FONT_NUMBER_MILD]; }
-            if (px >= 0.18) { return [Graphics.FONT_NUMBER_HOT, Graphics.FONT_NUMBER_MEDIUM, Graphics.FONT_NUMBER_MILD]; }
-            if (px >= 0.15) { return [Graphics.FONT_NUMBER_MEDIUM, Graphics.FONT_NUMBER_MILD, Graphics.FONT_MEDIUM]; }
-            return [Graphics.FONT_NUMBER_MILD, Graphics.FONT_MEDIUM, Graphics.FONT_SMALL];
+            if (px >= 0.28) { return [NTH, NHO, NME, NMI]; }
+            if (px >= 0.18) { return [NHO, NME, NMI]; }
+            if (px >= 0.15) { return [NME, NMI, ME]; }
+            return [NMI, ME, SM];
         }
-        if (px >= 0.18) { return [Graphics.FONT_LARGE, Graphics.FONT_MEDIUM, Graphics.FONT_SMALL]; }
-        return [Graphics.FONT_MEDIUM, Graphics.FONT_SMALL, Graphics.FONT_TINY];
+        if (px >= 0.18) { return [LA, ME, SM]; }
+        return [ME, SM, TI];
     }
+    function plural(n as Number, one as String, many as String) as String { return n.toString() + " " + (n == 1 ? one : many); }
 
-    // ---- one function per screen (js/watchsim.js DRAW) ----
+    // ---- 23.11.8: the layout from the watch's own fonts (js/watchscreens.js, same names) ----
+    function gap(S) as Float { return S * 0.008 > 2 ? S * 0.008 : 2.0; }
+    function hasDesc(t as String) as Boolean {
+        var a = t.toCharArray();
+        for (var i = 0; i < a.size(); i++) { if ("gjpqy,;()Q".find(a[i].toString()) != null) { return true; } }
+        return false;
+    }
+    // VERIFY (Toybox.Graphics.getFontAscent, API 3.? / 1.?): the font's ascent in pixels, at the user's font size setting
+    function asc(f) as Float { return Graphics.getFontAscent(f).toFloat(); }
+    // the ink above the y of a VCENTER text (caps) and below it (descenders, else the baseline)
+    function up(dc as Dc, f) as Float { return dc.getFontHeight(f) / 2.0 - 0.16 * asc(f); }
+    function dn(dc as Dc, f, t as String) as Float {
+        var h = dc.getFontHeight(f).toFloat(), a = asc(f);
+        return hasDesc(t) ? a - h / 2.0 + 1.1 * (h - a) : a - h / 2.0 + 1;
+    }
+    // the ink height of a line with descenders
+    function inkH(dc as Dc, f) as Float { return up(dc, f) + dn(dc, f, "g"); }
+    // the first font whose ink is at most h px (else the last)
+    function byInk(dc as Dc, fonts as Array, h) {
+        for (var i = 0; i < fonts.size(); i++) { if (inkH(dc, fonts[i]) <= h) { return fonts[i]; } }
+        return fonts[fonts.size() - 1];
+    }
+    // the first font in which t is at most w wide and whose ink is at most h (else the last)
+    function fontIn(dc as Dc, t as String, fonts as Array, w, h) {
+        for (var i = 0; i < fonts.size(); i++) { if (dc.getTextWidthInPixels(t, fonts[i]) <= w && up(dc, fonts[i]) + dn(dc, fonts[i], t) <= h) { return fonts[i]; } }
+        return fonts[fonts.size() - 1];
+    }
+    // the first font whose t sits inside a pill of height ph centred on its y (else the last)
+    function inPill(dc as Dc, t as String, fonts as Array, w, ph) {
+        for (var i = 0; i < fonts.size(); i++) { if (dc.getTextWidthInPixels(t, fonts[i]) <= w && up(dc, fonts[i]) <= ph / 2.0 - 1 && dn(dc, fonts[i], t) <= ph / 2.0 - 1) { return fonts[i]; } }
+        return fonts[fonts.size() - 1];
+    }
+    // half the width inside the circle of radius r (fraction of S) on the rows y0 .. y1
+    function half(S, y0, y1, r) as Float {
+        var c = S / 2.0, R = S * r, a = y0 - c < 0 ? c - y0 : y0 - c, b = y1 - c < 0 ? c - y1 : y1 - c, d = a > b ? a : b;
+        return d >= R ? 0.0 : Math.sqrt(R * R - d * d).toFloat();
+    }
+    // the width a text centred on x in font f may take inside that circle
+    function roomC(dc as Dc, x, y, f, t as String, r) as Number {
+        var S = dc.getWidth(), h = half(S, y - up(dc, f), y + dn(dc, f, t), r) - (x > S / 2.0 ? x - S / 2.0 : S / 2.0 - x);
+        return h > 0 ? (2 * h).toNumber() : 0;
+    }
+    // the first part of "long|shorter|short"
+    function first(t as String) as String { var i = t.find("|"); return i == null ? t : t.substring(0, i) as String; }
+    // the first of the variants "long|shorter|short" of t at most w wide in font f (else the last); a name (u) is never split
+    function pick(dc as Dc, t as String, f, w, u as Boolean) as String {
+        if (u) { return t; }
+        var r = t, i = r.find("|");
+        while (i != null) {
+            var a = r.substring(0, i) as String;
+            if (dc.getTextWidthInPixels(a, f) <= w) { return a; }
+            r = r.substring(i + 1, r.length()) as String; i = r.find("|");
+        }
+        return r;
+    }
+    // t centred on (x, y) in font f, the variant that fits w and the circle r, cut to it (u: a name the user gave, may be cut)
+    function put(dc as Dc, x, y, f, t as String, w, col as Number, u as Boolean, r) as Void {
+        var m = roomC(dc, x, y, f, first(t), r), mm = w < m ? w : m;
+        txt(dc, x, y, f, fit(dc, pick(dc, t, f, mm, u), f, mm), col);
+    }
+    // t from x on, the variant that fits w and the circle r, cut to it
+    function putL(dc as Dc, x, y, f, t as String, w, col as Number, u as Boolean, r) as Void {
+        var S = dc.getWidth(), m = (S / 2.0 + half(S, y - up(dc, f), y + dn(dc, f, t), r) - x).toNumber(), mm = w < m ? w : m;
+        txtL(dc, x, y, f, fit(dc, pick(dc, t, f, mm, u), f, mm), col);
+    }
+    // the y (at least y0) from which a line t in font f, centred, fits inside the circle r on its upper half
+    function downTo(dc as Dc, f, t as String, y0, r) as Float {
+        var S = dc.getWidth(), R = S * r, hw = dc.getTextWidthInPixels(t, f) / 2.0;
+        if (hw >= R) { return S / 2.0; }
+        var y = S / 2.0 - Math.sqrt(R * R - hw * hw) + up(dc, f);
+        return y > y0 ? y.toFloat() : y0.toFloat();
+    }
+    // the first font in which t, as the line below ink bottom yb (and not above y0), is at most w wide inside the circle and its ink at most h
+    function topFont(dc as Dc, t as String, fonts as Array, w, h, yb, y0) {
+        for (var i = 0; i < fonts.size(); i++) {
+            var f = fonts[i], y = below(dc, yb, f, y0), m = roomC(dc, dc.getWidth() / 2.0, y, f, t, R0);
+            if (dc.getTextWidthInPixels(t, f) <= (w < m ? w : m) && up(dc, f) + dn(dc, f, t) <= h) { return f; }
+        }
+        return fonts[fonts.size() - 1];
+    }
+    // a pill's height: h, or more where XTINY with descenders would not fit (font size setting)
+    function pillH(dc as Dc, h) as Float { var k = inkH(dc, XT) + 4; return k > h ? k : h.toFloat(); }
+    // a, or b when a is wider than w in font f
+    function alt(dc as Dc, a as String, b as String, f, w) as String { return dc.getTextWidthInPixels(a, f) <= w ? a : b; }
+    // the y of a line in font f below ink bottom yb (and not above y0)
+    function below(dc as Dc, yb, f, y0) as Float { var y = yb + gap(dc.getWidth()) + up(dc, f); return y > y0 ? y : y0.toFloat(); }
+    // the y of a line t in font f above ink top yt (and not below y0)
+    function above(dc as Dc, yt, f, t as String, y0) as Float { var y = yt - gap(dc.getWidth()) - dn(dc, f, t); return y < y0 ? y : y0.toFloat(); }
+
+    // ---- one function per screen ----
     function screen(dc as Dc, F as Flow, P as Palette, now as Number, sum) as Void {
         var S = dc.getWidth();
         dc.setColor(Graphics.COLOR_BLACK, Graphics.COLOR_BLACK); dc.clear();
         var s = F.scr;
         P.acc = P.cKraft;
-        if (s == S_MORE) { P.acc = P.cOther; }
-        else if (s == S_READY || s == S_REC || s == S_PAUSE || s == S_RPICK) { P.acc = P.sport(F.sp); }
-        else if (s == S_RSUM) { var r = F.rsum, k = F.sp; if (r != null) { k = strOf(r["sp"]); } P.acc = P.sport(k); }
-        else if (s == S_TSCAN || s == S_TREC || s == S_TEND || s == S_TSUM) { P.acc = P.cRide; }
+        $.gRows = [] as Array; $.gRouteY = 0.0; $.gT0 = 0.0; $.gT1 = 0.0;
         var f = F.flash;
         if (f != null) {
-            if ("lap".equals(f["k"])) { P.acc = P.sport(F.sp); lapFlash(dc, F, S, P, f); } else { prFlash(dc, S, P, f); }
+            if ("lap".equals(f["k"])) { lapFlash(dc, F, S, P, f); } else { prFlash(dc, S, P, f); }
             return;
         }
         if (s == S_HOME) { drawHome(dc, F, S, P, sum); }
         else if (s == S_PICK) { drawPick(dc, F, S, P); }
         else if (s == S_SMODE) { drawSmode(dc, F, S, P); }
         else if (s == S_MORE) { drawMore(dc, F, S, P); }
-        else if (s == S_MENU) { list(dc, F, S, P, F.menu, "MENU v" + RF_VERSION, true, null, null); }
+        else if (s == S_MENU) { list(dc, F, S, P, F.menu, "MENU v" + RF_VERSION, "v" + RF_VERSION, true, null, null, [[gTouch, P.lbl, true]]); }
         else if (s == S_END) { drawEnd(dc, F, S, P, now); }
         else if (s == S_SAVEQ) { drawSaveq(dc, F, S, P); }
         else if (s == S_SET) { drawSet(dc, F, S, P, now); }
@@ -195,43 +284,51 @@ module Draw {
         else if (s == S_TSUM) { drawTSum(dc, F, S, P); }
         else { drawHome(dc, F, S, P, sum); }
     }
-    // RIDE in white, FRAME in the accent, centred on y
+    // RIDE in white, FRAME in the accent, moved down until it fits the circle
     function logo(dc as Dc, S as Number, y, col as Number, P as Palette) as Void {
-        var c = S / 2, wR = dc.getTextWidthInPixels("RIDE", Graphics.FONT_XTINY), wF = dc.getTextWidthInPixels("FRAME", Graphics.FONT_XTINY), x0 = c - (wR + wF) / 2;
-        txtL(dc, x0, y, Graphics.FONT_XTINY, "RIDE", P.fg);
-        txtL(dc, x0 + wR, y, Graphics.FONT_XTINY, "FRAME", col);
+        var c = S / 2, wR = dc.getTextWidthInPixels("RIDE", XT), wF = dc.getTextWidthInPixels("FRAME", XT), x0 = c - (wR + wF) / 2.0;
+        var yy = downTo(dc, XT, "RIDEFRAME", y, R0);
+        txtL(dc, x0, yy, XT, "RIDE", P.fg); txtL(dc, x0 + wR, yy, XT, "FRAME", col);
     }
-    // the start menu (js/watchsim.js DRAW[SCR.HOME]): Run, Ride, Strength, More (the last used on top) all at once, the selected
-    // one as the orange pill, the week points below; rows at HOME_Y0 + r * HOME_DY (the tap table in FlowDelegate.onTap)
+    // the start menu's label: "Indoor trainer" is "Trainer" where it does not fit
+    function homeLab(dc as Dc, F as Flow, k as String, f, w) as String { return k.equals("trainer") ? alt(dc, F.homeLabel(k), "Trainer", f, w) : F.homeLabel(k); }
+    // the start menu: the selected entry as the orange pill (MEDIUM, else the next font that fits the pill), the week points below;
+    // rows at HOME_Y0 + r * HOME_DY (gRows: the tap table in FlowDelegate.onTap)
     function drawHome(dc as Dc, F as Flow, S as Number, P as Palette, sum) as Void {
-        var items = F.homeItems(), n = items.size(), c = S / 2, top = F.homeTop(n);
+        var items = F.homeItems(), n = items.size(), c = S / 2, top = F.homeTop(n), G = gap(S), ph = S * 0.14, w = (S * 0.52).toNumber();
         logo(dc, S, S * 0.12, P.cKraft, P);
+        var yb = downTo(dc, XT, "RIDEFRAME", S * 0.12, R0) + dn(dc, XT, "R");
         for (var r = 0; r < HOME_FIT; r++) {
             var i = top + r;
             if (i >= n) { break; }
-            var k = items[i], y = S * (HOME_Y0 + r * HOME_DY), lab = F.homeLabel(k);
+            var k = items[i] as String, y = S * (HOME_Y0 + r * HOME_DY);
             if (i == F.sel) {
-                // VERIFY: FONT_MEDIUM fits the 0.13 S pill on the 280 px MIP (36 px high); else FONT_SMALL for the selected row there
-                pill(dc, c, y, S * 0.74, S * 0.13, P.acc);
-                icon(dc, k, S * 0.25, y, S * 0.085, P.ink);
-                txtL(dc, S * 0.33, y, Graphics.FONT_MEDIUM, fit(dc, lab, Graphics.FONT_MEDIUM, (S * 0.45).toNumber()), P.ink);
+                pill(dc, c, y, S * 0.74, ph, P.acc); icon(dc, k, S * 0.25, y, S * 0.085, P.ink);
+                var f = inPill(dc, "Ag", [ME, SM, XT], S, ph), lab = homeLab(dc, F, k, f, w);
+                putL(dc, S * 0.33, y, f, lab, w, P.ink, false, R0); yb = y + ph / 2.0;
             } else {
                 icon(dc, k, S * 0.25, y, S * 0.075, P.acc);
-                txtL(dc, S * 0.33, y, Graphics.FONT_SMALL, fit(dc, lab, Graphics.FONT_SMALL, (S * 0.45).toNumber()), P.fg);
+                var f = byInk(dc, [SM, XT], S * HOME_DY - 2 * G - S * 0.01), lab = homeLab(dc, F, k, f, w);
+                putL(dc, S * 0.33, y, f, lab, w, P.fg, false, R0); yb = y + dn(dc, f, lab);
             }
+            $.gRows.add([r, y / S]);
         }
-        if (sum instanceof Dictionary) { points(dc, S, P, sum as Dictionary, S * 0.87); }
+        if (sum instanceof Dictionary) { if ((sum as Dictionary)["pts"] != null) { points(dc, S, P, sum as Dictionary, yb); } }
         if (n > HOME_FIT) { scrollArc(dc, S, P, F.sel, n); }
         startHint(dc, S, P);
     }
-    // "245 pts" and the change against last week (GET /api/watch/summary)
-    function points(g as Dc, S as Number, P as Palette, sum as Dictionary, y) as Void {
-        if (sum["pts"] == null) { return; }
-        var t = rnd(fltOf(sum["pts"])).toString() + " pts", d = rnd(fltOf(sum["delta"]));
-        var tw = g.getTextWidthInPixels(t, Graphics.FONT_SMALL), ad = d < 0 ? -d : d;
-        var dw = d != 0 ? S * 0.07 + ad.toString().length() * S * 0.03 : 0, x = S / 2 - (tw + dw) / 2;
-        txtL(g, x, y, Graphics.FONT_SMALL, t, P.fg);
-        if (d != 0) { tri(g, x + tw + S * 0.035, y, S * 0.018, d > 0, P.good); txtL(g, x + tw + S * 0.06, y, Graphics.FONT_XTINY, ad.toString(), P.good); }
+    // "245 pts" and the change against last week below yb (SMALL, else XTINY; the change goes first when there is no room)
+    function points(g as Dc, S as Number, P as Palette, sum as Dictionary, yb) as Void {
+        var t = rnd(fltOf(sum["pts"])).toString() + " pts", d = rnd(fltOf(sum["delta"])), ad = d < 0 ? -d : d, fonts = [SM, XT];
+        for (var i = 0; i < 2; i++) {
+            var f = fonts[i], y = below(g, yb, f, S * 0.86), tw = g.getTextWidthInPixels(t, f), dw = d != 0 ? S * 0.06 + g.getTextWidthInPixels(ad.toString(), XT) : 0;
+            var m = roomC(g, S / 2, y, f, t, R0);
+            if (y + dn(g, f, t) > S * (0.5 + R0) || (i == 0 && tw + dw > m)) { continue; }
+            var show = tw + dw <= m, x = S / 2.0 - (tw + (show ? dw : 0)) / 2.0;
+            txtL(g, x, y, f, fit(g, t, f, m), P.fg);
+            if (show && d != 0) { tri(g, x + tw + S * 0.025, y, S * 0.018, d > 0, P.good); txtL(g, x + tw + S * 0.05, y, XT, ad.toString(), P.good); }
+            return;
+        }
     }
     // the scroll position on the left edge (150..210 degrees)
     function scrollArc(dc as Dc, S as Number, P as Palette, sel as Number, n as Number) as Void {
@@ -242,14 +339,20 @@ module Draw {
         var p = sel.toFloat() / (n - 1), a = 150 + (p * 51).toNumber();
         dc.setColor(P.acc, Graphics.COLOR_TRANSPARENT); dc.drawArc(c, c, c - S * 0.03, Graphics.ARC_COUNTER_CLOCKWISE, a, a + 9); dc.setPenWidth(1);
     }
-    // js/watchsim.js setShort: one set, short: 80 kg x 8, +5 x 10, 10 reps, 1:00
+    // setShort without spaces and units ("102.5x10", "+10x8", "12", "1:30")
+    function setMini(t as String, kg as Float, r as Number) as String {
+        if (t.equals("time")) { return clock(r); }
+        if (t.equals("bw")) { return kg > 0.0 ? "+" + kgTxt(kg) + "x" + r.toString() : r.toString(); }
+        return kgTxt(kg) + "x" + r.toString();
+    }
+    // one set, short: 80 kg x 8, +5 x 10, 10 reps, 1:00
     function setShort(t as String, kg as Float, r as Number) as String {
         if (t.equals("time")) { return clock(r); }
         if (t.equals("bw")) { return kg > 0.0 ? "+" + kgTxt(kg) + " x " + r.toString() : r.toString() + " reps"; }
         return kgTxt(kg) + " kg x " + r.toString();
     }
-    function plural(n as Number, one as String, many as String) as String { return n.toString() + " " + (n == 1 ? one : many); }
-    // js/watchsim.js pickSub: row k's sub line: a workout item's progress, else this session's sets, else last time's
+    // the exercise list's sub line of row k ("long|short" variants): a workout item's progress, else this session's sets, else all of
+    // last time's (at most 4, then fewer: the list takes the first variant that fits)
     function pickSub(dc as Dc, F as Flow, S as Number, k as Number) as String {
         var rows = F.pickRows();
         if (k < 0 || k >= rows.size()) { return ""; }
@@ -259,17 +362,21 @@ module Draw {
         if (j >= 0) {
             var it = F.itAt(j), d = F.doneOf(j);
             if (it == null) { return ""; }
-            if (d >= numOf(it[1])) { return "Done, " + plural(d, "set", "sets"); }
+            var m = numOf(it[1]), pr = d.toString() + "/" + m.toString() + " sets";
+            if (d >= m) { return "Done, " + plural(d, "set", "sets") + "|Done"; }
             if (F.planSkip.indexOf(j) >= 0) { return "Skipped"; }
-            return d.toString() + "/" + numOf(it[1]).toString() + " sets, " + (t.equals("time") ? clock(numOf(it[2])) : numOf(it[2]).toString() + " reps");
+            return pr + ", " + (t.equals("time") ? clock(numOf(it[2])) : numOf(it[2]).toString() + " reps") + "|" + pr;
         }
-        if (n > 0) { return n.toString() + " done, " + setShort(t, fltOf(mine[n - 1]["kg"]), numOf(mine[n - 1]["reps"])); }
+        if (n > 0) {
+            var kg = fltOf(mine[n - 1]["kg"]), rp = numOf(mine[n - 1]["reps"]), nd = n.toString() + " done";
+            return nd + ", " + setShort(t, kg, rp) + "|" + nd + ", " + setMini(t, kg, rp) + "|" + nd;
+        }
         var s = arrOf(ed["s"]);
         if (s.size() == 0) { return "New"; }
-        // 24.11.: all of last time's sets ("Last 80x8, 8, 6"); too long for the line: as many whole sets as fit, then " ..."
-        var k2 = s.size(), lt = lastTxt(t, s, k2), mw = (S * 0.7).toNumber();
-        while (k2 > 1 && dc.getTextWidthInPixels(lt, Graphics.FONT_XTINY) > mw) { k2--; lt = lastTxt(t, s, k2); }
-        return lt;
+        var lt = "";
+        for (var k2 = s.size() < 4 ? s.size() : 4; k2 >= 1; k2--) { lt = lt + lastTxt(t, s, k2) + "|"; }
+        var p0 = arrOf(s[0]);
+        return lt + (p0.size() >= 2 ? setMini(t, fltOf(p0[0]), numOf(p0[1])) : "");
     }
     // js/watchflow.js lastParts / lastTxt: last session's first k sets, short: a weight only when it changes (80x8, 8, 75x10),
     // bodyweight only reps (+kg when added), timed the clock; fewer than all end with " ..."
@@ -289,157 +396,199 @@ module Draw {
         if (n < s.size()) { return r + " ..."; }
         return t.equals("bw") && bwOnly ? r + " reps" : r;
     }
-    // the exercise list: in a workout its items first with what is done; the counter line is the session so far (js DRAW[SCR.PICK])
     function drawPick(dc as Dc, F as Flow, S as Number, P as Palette) as Void {
-        var items = F.listItems(), n = items.size(), k = F.sets.size(), title = "EXERCISES", p = F.plan, ws = F.workouts();
-        if (n == 0 && F.exCount() == 0) { // 24.11.: the setup is on its way (js DRAW[SCR.PICK] loading)
-            txt(dc, S / 2, S * 0.12, Graphics.FONT_XTINY, title, P.dim);
-            txt(dc, S / 2, S / 2, Graphics.FONT_SMALL, fit(dc, "Loading exercises", Graphics.FONT_SMALL, (S * 0.74).toNumber()), P.fg);
-            txt(dc, S / 2, S * 0.585, Graphics.FONT_XTINY, "from the phone", P.lbl);
+        var items = F.listItems(), n = items.size(), k = F.sets.size(), title = "EXERCISES", tshort = "EXERCISES", p = F.plan, ws = F.workouts();
+        if (n == 0 && F.exCount() == 0) { // the setup is on its way
+            var c = S / 2, f = byInk(dc, [SM, XT], S * 0.13), t = "Loading exercises|Loading";
+            put(dc, c, downTo(dc, XT, "EXERCISES", S * 0.12, R0), XT, "EXERCISES", S, P.dim, false, R0); put(dc, c, c, f, t, (S * 0.8).toNumber(), P.fg, false, R0);
+            put(dc, c, below(dc, c + dn(dc, f, t), XT, 0), XT, "from the phone", (S * 0.8).toNumber(), P.lbl, false, R0);
             return;
         }
-        if (p != null) { if (p[0] >= 0 && p[0] < ws.size()) { title = strOf(ws[p[0]]["n"]).toUpper(); } }
-        var cnt = (F.sel + 1).toString() + "/" + n.toString() + (k > 0 ? ", " + plural(k, "set", "sets") + " done" : "");
-        list(dc, F, S, P, items, title, false, pickSub(dc, F, S, F.sel), cnt);
+        if (p != null) { if (p[0] >= 0 && p[0] < ws.size()) { title = strOf(ws[p[0]]["n"]).toUpper(); tshort = null; } }
+        var nn = (F.sel + 1).toString() + "/" + n.toString(), cnt = nn + (k > 0 ? ", " + plural(k, "set", "sets") + " done" : "");
+        list(dc, F, S, P, items, title, tshort, false, pickSub(dc, F, S, F.sel), cnt + "|" + nn, []);
     }
-    // Exercises or a workout (the phone's, those saved on the watch, then the standard ones)
+    // Free or a workout (the phone's, those saved on the watch, then the standard ones)
     function drawSmode(dc as Dc, F as Flow, S as Number, P as Palette) as Void {
-        var sub = "Choose exercises", ws = F.workouts();
+        var sub = "Choose exercises|Exercises", ws = F.workouts();
         if (F.sel > 0 && F.sel - 1 < ws.size()) {
             var it = arrOf(ws[F.sel - 1]["it"]), n = 0;
             for (var i = 0; i < it.size(); i++) { var x = arrOf(it[i]); if (x.size() > 1) { n += numOf(x[1]); } }
-            sub = plural(it.size(), "exercise", "exercises") + ", " + n.toString() + " sets";
-            if (ws[F.sel - 1]["std"] == true) { sub = "Standard, " + plural(it.size(), "exercise", "exercises"); } // 23.11.7: built into the watch
+            var ne = plural(it.size(), "exercise", "exercises");
+            sub = ne + ", " + n.toString() + " sets|" + ne + "|" + n.toString() + " sets";
+            if (ws[F.sel - 1]["std"] == true) { sub = "Standard, " + ne + "|Standard"; } // 23.11.7: built into the watch
         }
-        list(dc, F, S, P, F.listItems(), "STRENGTH", false, sub, null);
+        list(dc, F, S, P, F.listItems(), "STRENGTH", "STRENGTH", false, sub, null, []);
     }
-    // BACK on the exercise list with sets logged (js DRAW[SCR.END])
+    // BACK on the exercise list with sets logged
     function drawEnd(dc as Dc, F as Flow, S as Number, P as Palette, now as Number) as Void {
-        list(dc, F, S, P, F.listItems(), F.endConf ? "DISCARD?" : "END WORKOUT?", true, null, null);
-        txt(dc, S / 2, S * 0.82, Graphics.FONT_XTINY, plural(F.sets.size(), "set", "sets") + ", " + clock(now - F.start - F.pauseT), P.lbl);
+        var ns = plural(F.sets.size(), "set", "sets");
+        list(dc, F, S, P, F.listItems(), F.endConf ? "DISCARD?" : "END WORKOUT?", F.endConf ? "DISCARD?" : "END?", true, null, null, [[ns + ", " + clock(now - F.start - F.pauseT) + "|" + ns, P.lbl, false]]);
     }
-    // after the summary: save the session as a workout (js DRAW[SCR.SAVEQ])
+    // after the summary: save the session as a workout (its name and size under the rows)
     function drawSaveq(dc as Dc, F as Flow, S as Number, P as Palette) as Void {
         var q = F.saveq;
         if (q == null) { return; }
-        var rows = q["rows"] as Array, it = q["it"] as Array;
-        list(dc, F, S, P, rows as Array<String>, "SAVE AS WORKOUT?", true, null, null);
+        var rows = q["rows"] as Array, it = q["it"] as Array, ex = [] as Array;
         if (F.sel < rows.size() - 1) {
             var nm = q["wid"] != null && F.sel == 0 ? strOf(q["wn"]) : strOf(q["n"]), n = 0;
             for (var i = 0; i < it.size(); i++) { n += numOf((it[i] as Array)[1]); }
-            txt(dc, S / 2, S * 0.81, Graphics.FONT_XTINY, fit(dc, nm, Graphics.FONT_XTINY, (S * 0.62).toNumber()), P.fg);
-            txt(dc, S / 2, S * 0.875, Graphics.FONT_XTINY, fit(dc, plural(it.size(), "exercise", "exercises") + ", " + n.toString() + " sets", Graphics.FONT_XTINY, (S * 0.56).toNumber()), P.lbl);
+            var ne = plural(it.size(), "exercise", "exercises");
+            ex.add([nm, P.fg, true]); ex.add([ne + ", " + n.toString() + " sets|" + ne + "|" + n.toString() + " sets", P.lbl, false]);
         }
+        list(dc, F, S, P, rows, "SAVE AS WORKOUT?", "SAVE?", true, null, null, ex);
     }
     function drawMore(dc as Dc, F as Flow, S as Number, P as Palette) as Void {
         var m = F.moreList(), sub = null;
         if (F.sel < m.size()) { var x = arrOf(m[F.sel]); if (x.size() > 0) { sub = Sports.group(strOf(x[0])); } }
-        list(dc, F, S, P, F.listItems(), "MORE SPORTS", false, sub, null);
-        if (m.size() == 0) {
-            txt(dc, S / 2, S * 0.62, Graphics.FONT_XTINY, fit(dc, "Choose sports in the app:", Graphics.FONT_XTINY, (S * 0.7).toNumber()), P.fg);
-            txt(dc, S / 2, S * 0.69, Graphics.FONT_XTINY, fit(dc, "Settings > Watch > More", Graphics.FONT_XTINY, (S * 0.7).toNumber()), P.fg);
-        }
+        var ex = m.size() > 0 ? [] as Array : [["Choose sports in the app:|Choose in the app:|In the app:", P.fg, false], ["Settings > Watch > More|Watch > More|Watch", P.fg, false]] as Array;
+        list(dc, F, S, P, F.listItems(), "MORE SPORTS", "MORE", false, sub, null, ex);
     }
-    // every list (js/watchflow.js LIST_LAY, 23.11.: rows 0.17 S apart around the selected one = 44 px touch targets on the 260 px fenix 8):
-    // the selected row big in the middle with its sub line, the neighbours smaller and dimmer; a menu has three rows and a pill on the
-    // selected one. count = the line under the title (null: n / N)
-    function list(dc as Dc, F as Flow, S as Number, P as Palette, items as Array<String>, title as String, isMenu as Boolean, sub, count) as Void {
-        var n = items.size(), c = S / 2, sel = F.sel;
-        txt(dc, c, S * 0.12, Graphics.FONT_XTINY, fit(dc, title, Graphics.FONT_XTINY, (S * 0.56).toNumber()), P.dim);
-        if (n == 0) { txt(dc, c, c, Graphics.FONT_SMALL, "Nothing yet", P.dim); return; }
-        // 23.11. diagnostics: what the app last got from a finger (FlowDelegate.touchNote)
-        if (isMenu) { txt(dc, c, S * 0.86, Graphics.FONT_XTINY, fit(dc, gTouch, Graphics.FONT_XTINY, (S * 0.6).toNumber()), P.lbl); }
-        if (!isMenu) {
-            var ct = count instanceof String ? count as String : (sel + 1).toString() + "/" + n.toString();
-            txt(dc, c, S * 0.19, Graphics.FONT_XTINY, fit(dc, ct, Graphics.FONT_XTINY, (S * 0.62).toNumber()), P.dim);
+    // every list: the selected row big in the middle (a menu: in the pill), its sub line under it, the neighbours smaller (one more below);
+    // the rows are stacked from the fonts' real sizes around the selected one, the counter under the title and the far row only where
+    // there is room; title: a fixed one with its short form tshort, or a name (tshort null); count: the counter ("long|short", null: n/N);
+    // extra = lines under the rows ([text ("long|short"), colour, a name]). The rows drawn go to gRows (FlowDelegate.onTap).
+    function list(dc as Dc, F as Flow, S as Number, P as Palette, items as Array, title as String, tshort, isMenu as Boolean, sub, count, extra as Array) as Void {
+        var n = items.size(), c = S / 2, sel = F.sel, G = gap(S);
+        // the title: a fixed one moves down until its short form fits the circle, a name is cut
+        var fixed = tshort != null, tv = fixed ? title + "|" + tshort : title, ty = fixed ? downTo(dc, XT, tshort as String, S * 0.12, R0) : S * 0.12;
+        var trm = roomC(dc, c, ty, XT, "A", R0), tt = pick(dc, tv, XT, trm < (S * 0.62).toNumber() ? trm : (S * 0.62).toNumber(), !fixed);
+        put(dc, c, ty, XT, tt, (S * 0.62).toNumber(), P.dim, !fixed, R0);
+        var tb = ty + dn(dc, XT, tt), yb = 0.0;
+        if (n == 0) { var f0 = byInk(dc, [SM, XT], S * 0.12); put(dc, c, c, f0, "Nothing yet", (S * 0.74).toNumber(), P.dim, false, R0); yb = c + dn(dc, f0, "Nothing yet"); }
+        else {
+            // the selected row
+            var ys = S * 0.5, ph = S * 0.14, st = 0.0, sb = 0.0, ti = items[sel] as String;
+            if (isMenu) {
+                var fm = inPill(dc, "Ag", [ME, SM, XT], S, ph);
+                pill(dc, c, ys, S * 0.78, ph, P.acc); put(dc, c, ys, fm, ti, (S * 0.7).toNumber(), P.ink, true, R0); st = ys - ph / 2.0; sb = ys + ph / 2.0;
+            } else {
+                var fs = fontIn(dc, ti, [ME, SM], (S * 0.74).toNumber(), S * 0.15);
+                dc.setColor(P.acc, Graphics.COLOR_TRANSPARENT); dc.fillRectangle(S * 0.1, ys - S * 0.055, S * 0.012 + 1, S * 0.11);
+                put(dc, c, ys, fs, ti, (S * 0.74).toNumber(), P.fg, true, R0); st = ys - up(dc, fs); sb = ys + dn(dc, fs, ti);
+            }
+            $.gRows.add([0, 0.5]); yb = sb;
+            if (!isMenu && sub instanceof String) { var su = sub as String, yu = below(dc, yb, XT, 0); put(dc, c, yu, XT, su, (S * 0.7).toNumber(), P.acc, false, R0); yb = yu + dn(dc, XT, su); }
+            var side = byInk(dc, [SM, XT], S * 0.11);
+            // the row above, with the counter between it and the title where there is room
+            if (sel > 0) {
+                var ta = items[sel - 1] as String, ya = above(dc, st, side, ta, S * (isMenu ? 0.33 : 0.3));
+                if (ya - up(dc, side) >= tb + G) { put(dc, c, ya, side, ta, (S * 0.74).toNumber(), P.dim, true, R0); $.gRows.add([-1, ya / S]); st = ya - up(dc, side); }
+            }
+            if (!isMenu) {
+                var ct = pick(dc, count != null ? count as String : (sel + 1).toString() + "/" + n.toString(), XT, (S * 0.62).toNumber(), false), yc = below(dc, tb, XT, S * 0.19);
+                if (yc + dn(dc, XT, ct) <= st - G) { put(dc, c, yc, XT, ct, (S * 0.62).toNumber(), P.dim, false, R0); }
+            }
+            // the rows below: the next one, then the far one (non-menu)
+            for (var o = 1; o <= (isMenu ? 1 : 2); o++) {
+                var i = sel + o;
+                if (i >= n) { break; }
+                var f = o > 1 ? XT : side, t = items[i] as String, y = below(dc, yb, f, S * (isMenu ? 0.67 : (o > 1 ? 0.845 : 0.72)));
+                if (y + dn(dc, f, t) > S * (0.5 + R0) || roomC(dc, c, y, f, t, R0) < S * 0.3) { break; }
+                put(dc, c, y, f, t, (S * (o > 1 ? 0.55 : 0.74)).toNumber(), o > 1 ? P.far : P.dim, true, R0); $.gRows.add([o, y / S]); yb = y + dn(dc, f, t);
+            }
         }
-        // rows: [offset, y]; the same y values are the tap table in FlowDelegate.onTap
-        var offs = isMenu ? [-1, 0, 1] as Array<Number> : [-1, 0, 1, 2] as Array<Number>;
-        var ys = isMenu ? [0.33, 0.5, 0.67] as Array<Float> : [0.3, 0.5, 0.72, 0.845] as Array<Float>;
-        var fs = isMenu ? [Graphics.FONT_SMALL, Graphics.FONT_MEDIUM, Graphics.FONT_SMALL] : [Graphics.FONT_SMALL, Graphics.FONT_MEDIUM, Graphics.FONT_SMALL, Graphics.FONT_XTINY];
-        for (var r = 0; r < offs.size(); r++) {
-            var o = offs[r], y = S * ys[r], f = fs[r], i = sel + o;
-            if (i < 0 || i >= n) { continue; }
-            var far = o > 1 || o < -1, w = (S * (far ? 0.55 : 0.74)).toNumber(), t = fit(dc, items[i], f, w);
-            if (o == 0 && isMenu) { pill(dc, c, y, S * 0.78, S * 0.14, P.acc); txt(dc, c, y, f, fit(dc, items[i], f, (S * 0.7).toNumber()), P.ink); continue; }
-            if (o == 0) { dc.setColor(P.acc, Graphics.COLOR_TRANSPARENT); dc.fillRectangle(S * 0.1, y - S * 0.055, S * 0.012 + 1, S * 0.11); }
-            txt(dc, c, y, f, t, o == 0 ? P.fg : (far ? P.far : P.dim)); // far rows: dark grey on AMOLED, light grey on MIP
-            if (o == 0 && sub instanceof String) { txt(dc, c, S * 0.585, Graphics.FONT_XTINY, fit(dc, sub as String, Graphics.FONT_XTINY, (S * 0.7).toNumber()), P.acc); }
+        for (var k = 0; k < extra.size(); k++) {
+            var e = extra[k] as Array, ye = below(dc, yb, XT, 0), m = roomC(dc, c, ye, XT, "g", R0);
+            var te = pick(dc, e[0] as String, XT, m < (S * 0.7).toNumber() ? m : (S * 0.7).toNumber(), e[2] as Boolean);
+            if (ye + dn(dc, XT, te) > S * (0.5 + R0) || m < S * 0.3) { break; }
+            put(dc, c, ye, XT, te, (S * 0.7).toNumber(), e[1] as Number, e[2] as Boolean, R0); yb = ye + dn(dc, XT, te);
         }
-        scrollArc(dc, S, P, sel, n);
+        if (n > 0) { scrollArc(dc, S, P, sel, n); }
         startHint(dc, S, P);
     }
-    // js/watchsim.js hrClock: the heart rate (and the session clock) on one line, centred at y; 23.11.: shown the whole time in strength
-    function hrClock(dc as Dc, F as Flow, S as Number, P as Palette, y, now as Number, hrOnly as Boolean) as Void {
-        var c = S / 2, h = F.hr > 0 ? F.hr.toString() : "--";
-        if (hrOnly) { heart(dc, c - S * 0.07, y, S * 0.045, P.hr); txtL(dc, c - S * 0.035, y, Graphics.FONT_SMALL, h, P.fg); return; }
-        heart(dc, c - S * 0.17, y, S * 0.04, P.hr); txtL(dc, c - S * 0.14, y, Graphics.FONT_XTINY, h, P.fg);
-        txtL(dc, c + S * 0.03, y, Graphics.FONT_XTINY, clock(now - F.start - F.pauseT), P.dim);
+    // the heart rate (and the session clock) on one line, centred at y; the clock goes where there is no room for both
+    function hrClock(dc as Dc, F as Flow, S as Number, P as Palette, y, now as Number, f, withClock as Boolean) as Void {
+        var c = S / 2, h = F.hr > 0 ? F.hr.toString() : "--", ck = clock(now - F.start - F.pauseT), hs = S * 0.045, G = gap(S);
+        var wh = dc.getTextWidthInPixels(h, f), wc = withClock ? dc.getTextWidthInPixels(ck, XT) + S * 0.06 : 0, m = roomC(dc, c, y, f, h, R0);
+        var both = withClock && hs + G + wh + wc <= m, x0 = c - (hs + G + wh + (both ? wc : 0)) / 2.0;
+        heart(dc, x0 + hs / 2.0, y, hs, P.hr); txtL(dc, x0 + hs + G, y, f, h, P.fg);
+        if (both) { txtL(dc, x0 + hs + G + wh + S * 0.06, y, XT, ck, P.dim); }
     }
+    // the set screen: heart rate and clock, the exercise, SET n OF m with last time's numbers left and right (pushed out, never touching it),
+    // kg x reps big (one font for both, the largest that fits the room between), the bar under the focused one and the units, DONE
     function drawSet(dc as Dc, F as Flow, S as Number, P as Palette, now as Number) as Void {
-        var e = F.curEx(), c = S / 2, t = F.exT(e), it = F.planItem();
+        var e = F.curEx(), c = S / 2, t = F.exT(e), it = F.planItem(), G = gap(S), timed = t.equals("time"), bw = t.equals("bw");
         startHint(dc, S, P);
-        hrClock(dc, F, S, P, S * 0.12, now, false);
-        txt(dc, c, S * 0.22, Graphics.FONT_SMALL, fit(dc, strOf(e["n"]), Graphics.FONT_SMALL, (S * 0.74).toNumber()), P.fg);
-        var no = "SET " + F.setNo().toString();
-        if (it != null) { no = no + " OF " + numOf(it[1]).toString(); }
-        txt(dc, c, S * 0.315, Graphics.FONT_XTINY, no, P.acc);
-        // 24.11. (Freddy): last time's same set as small numbers on the SET row above kg / reps, only on the set screen, no label;
-        // white on MIP (P.lbl), first time nothing (js/watchsim.js DRAW[SCR.SET])
-        var lp = lastSet(F, e);
-        if (t.equals("time")) {
-            if (lp != null) { txt(dc, S * 0.735, S * 0.315, Graphics.FONT_XTINY, clock(numOf(lp[1])), P.lbl); }
-            // watch only: while the hold clock runs it counts up, the planned time below; else the planned time
-            var held = F.holdAt > 0, v = held ? clock(now - F.holdAt) : clock(F.reps);
-            var bf = fontFor(dc, v, [Graphics.FONT_NUMBER_HOT, Graphics.FONT_NUMBER_MEDIUM, Graphics.FONT_NUMBER_MILD], (S * 0.6).toNumber());
-            txt(dc, c, S * 0.5, bf, v, P.acc);
-            if (wheelOn(F, 1)) { wheelNb(dc, F, S, P, 1, c, bf, true, false); } // 23.11.7: the wheel's neighbours take the bar's and the label's room
-            else {
-                dc.setColor(P.acc, Graphics.COLOR_TRANSPARENT); dc.fillRectangle(S * 0.36, S * 0.615, S * 0.28, S * 0.016 + 1);
-                txt(dc, c, S * 0.665, Graphics.FONT_XTINY, held ? "of " + clock(F.reps) : "hold", P.fg);
-            }
-        } else {
-            var bw = t.equals("bw");
-            var val = [bw && F.kg == 0.0 ? "BW" : kgTxt(F.kg), F.reps.toString()] as Array<String>, unit = [bw ? "+kg" : "kg", "reps"] as Array<String>;
-            var xs = [S * 0.285, S * 0.735] as Array<Float>, mx = [S * 0.32, S * 0.27] as Array<Float>;
-            txt(dc, S * 0.515, S * 0.5, Graphics.FONT_SMALL, "x", P.dim);
-            if (lp != null) {
-                var lk = fltOf(lp[0]), ls = [bw && lk == 0.0 ? "BW" : kgTxt(lk), numOf(lp[1]).toString()] as Array<String>;
-                var half = dc.getTextWidthInPixels(no, Graphics.FONT_XTINY) / 2 + S * 0.03; // never touches "SET n OF m" in the middle
-                for (var i = 0; i < 2; i++) {
-                    var w = dc.getTextWidthInPixels(ls[i], Graphics.FONT_XTINY) / 2, x = xs[i];
-                    if (i == 0 && x + w > c - half) { x = c - half - w; }
-                    if (i == 1 && x - w < c + half) { x = c + half + w; }
-                    txt(dc, x, S * 0.315, Graphics.FONT_XTINY, ls[i], P.lbl);
-                }
-            }
+        var hf = byInk(dc, [XT], S), hy = S * 0.12;
+        hrClock(dc, F, S, P, hy, now, hf, true);
+        var yb = hy + dn(dc, XT, "0");
+        var nm = strOf(e["n"]), nf = byInk(dc, [SM, XT], S * 0.11), ny = below(dc, yb, nf, S * 0.22);
+        put(dc, c, ny, nf, nm, (S * 0.74).toNumber(), P.fg, true, R0); yb = ny + dn(dc, nf, nm);
+        // SET n OF m (short: SET n/m) with last time's numbers beside it; the numbers go where there is no room
+        var sy = below(dc, yb, XT, S * 0.315), lp = lastSet(F, e), xs = [S * 0.285, S * 0.735] as Array<Float>;
+        var ls = ["", ""] as Array<String>;
+        if (lp != null) {
+            if (timed) { ls = ["", clock(numOf(lp[1]))] as Array<String>; }
+            else { var lk = fltOf(lp[0]); ls = [bw && lk == 0.0 ? "BW" : kgTxt(lk), numOf(lp[1]).toString()] as Array<String>; }
+        }
+        var m = roomC(dc, c, sy, XT, "SET", R0), lw = [dc.getTextWidthInPixels(ls[0], XT), dc.getTextWidthInPixels(ls[1], XT)] as Array<Number>;
+        var no = "SET " + F.setNo().toString() + (it != null ? " OF " + numOf(it[1]).toString() : ""), side = lw[0] > lw[1] ? lw[0] : lw[1];
+        if (dc.getTextWidthInPixels(no, XT) + 2 * (side + S * 0.06) > m) { no = "SET " + F.setNo().toString() + (it != null ? "/" + numOf(it[1]).toString() : ""); }
+        var nw = dc.getTextWidthInPixels(no, XT), lastOn = lp != null && nw + 2 * (side + S * 0.06) <= m;
+        txt(dc, c, sy, XT, no, P.acc);
+        if (lastOn) {
             for (var i = 0; i < 2; i++) {
-                var on = F.focus == i;
-                // number fonts have digits only (VERIFY: which glyphs FONT_NUMBER_* carry), so "BW" takes a text font
-                // a wide kg ("102.5") takes the next smaller font instead of being cut; text fonts last (js/watchsim.js SET_NUM)
-                var f = "BW".equals(val[i]) ? Graphics.FONT_LARGE : fontFor(dc, val[i], [Graphics.FONT_NUMBER_HOT, Graphics.FONT_NUMBER_MEDIUM, Graphics.FONT_NUMBER_MILD, Graphics.FONT_LARGE, Graphics.FONT_MEDIUM], mx[i].toNumber());
-                txt(dc, xs[i], S * 0.5, f, val[i], on ? P.acc : P.fg);
-                if (wheelOn(F, i)) { wheelNb(dc, F, S, P, i, xs[i], f, false, bw); continue; } // 23.11.7: the wheel; its column's bar and unit make room
-                if (on) { dc.setColor(P.acc, Graphics.COLOR_TRANSPARENT); dc.fillRectangle(xs[i] - S * 0.12, S * 0.615, S * 0.24, S * 0.016 + 1); }
-                txt(dc, xs[i], S * 0.665, Graphics.FONT_XTINY, unit[i], on ? P.fg : P.lbl);
+                if (ls[i].length() == 0) { continue; }
+                var x = xs[i], w = lw[i] / 2.0, hw = nw / 2.0 + S * 0.04;
+                if (i == 0 && x + w > c - hw) { x = c - hw - w; }
+                if (i == 1 && x - w < c + hw) { x = c + hw + w; }
+                if (i == 0 && x - w < c - m / 2.0) { x = c - m / 2.0 + w; }
+                if (i == 1 && x + w > c + m / 2.0) { x = c + m / 2.0 - w; }
+                txt(dc, x, sy, XT, ls[i], P.lbl);
             }
         }
-        pill(dc, c, S * 0.815, S * 0.4, S * 0.12, P.acc); txt(dc, c, S * 0.815, Graphics.FONT_SMALL, t.equals("time") && F.holdAt == 0 ? "GO" : "DONE", P.ink);
+        yb = sy + dn(dc, XT, no);
+        // DONE at the bottom, the units (timed: hold / of 10:00) and the focus bar above it
+        var py = S * 0.815, ph = S * 0.12, lab = timed && !(F.holdAt > 0) ? "GO" : "DONE", pf = inPill(dc, lab, [SM, XT], S * 0.36, ph);
+        pill(dc, c, py, S * 0.4, ph, P.acc); put(dc, c, py, pf, lab, (S * 0.36).toNumber(), P.ink, false, R0);
+        var uy = above(dc, py - ph / 2.0, XT, "reps", S * 0.665), bh = S * 0.016 + 1, by = uy - up(dc, XT) - G - bh;
+        // the wheel (a finger on a number): the numbers make room for its neighbours above and below
+        var wh = wheelOn(F, 0) || wheelOn(F, 1), nb = inkH(dc, XT) + G, nbot = py - ph / 2.0 - G - nb;
+        var top = yb + G + (wh ? nb : 0), bot = wh ? (by - G < nbot ? by - G : nbot) : by - G;
+        if (timed) {
+            var held = F.holdAt > 0, v = held ? clock(now - F.holdAt) : clock(F.reps);
+            var bf = numIn(dc, [v], [NHO, NME, NMI, ME], [(S * 0.6).toNumber()], [c], top, bot, R0);
+            var y = numY(dc, bf, top, bot);
+            txt(dc, c, y, bf, v, P.acc);
+            if (wheelOn(F, 1)) { wheelNb(dc, F, S, P, 1, c, y, bf, yb + G, py - ph / 2.0 - G, true, false); }
+            else { dc.setColor(P.acc, Graphics.COLOR_TRANSPARENT); dc.fillRectangle(S * 0.36, by, S * 0.28, bh); put(dc, c, uy, XT, held ? "of " + clock(F.reps) : "hold", (S * 0.5).toNumber(), P.fg, false, R0); }
+        } else {
+            var val = [bw && F.kg == 0.0 ? "BW" : kgTxt(F.kg), F.reps.toString()] as Array<String>, unit = [bw ? "+kg" : "kg", "reps"] as Array<String>;
+            var mx = [(S * 0.34).toNumber(), (S * 0.28).toNumber()] as Array<Number>, isBW = val[0].equals("BW");
+            // one number font for both (BW: a text font, the number fonts have digits only)
+            var nfn = numIn(dc, isBW ? [val[1]] : val, [NHO, NME, NMI, LA, ME, SM], isBW ? [mx[1]] : mx, isBW ? [xs[1]] : xs, top, bot, R0);
+            var bwf = fontIn(dc, "BW", [LA, ME, SM], mx[0], bot - top), y = numY(dc, nfn, top, bot);
+            txt(dc, S * 0.515, y, XT, "x", P.dim);
+            for (var i = 0; i < 2; i++) {
+                var on = F.focus == i, f = val[i].equals("BW") ? bwf : nfn;
+                txt(dc, xs[i], y, f, val[i], on ? P.acc : P.fg);
+                if (wheelOn(F, i)) { wheelNb(dc, F, S, P, i, xs[i], y, f, yb + G, py - ph / 2.0 - G, false, bw); continue; }
+                if (on) { dc.setColor(P.acc, Graphics.COLOR_TRANSPARENT); dc.fillRectangle(xs[i] - S * 0.12, by, S * 0.24, bh); }
+                put(dc, xs[i], uy, XT, unit[i], (S * 0.3).toNumber(), on ? P.fg : P.lbl, false, R0);
+            }
+        }
     }
+    // the first number font in which every v[i] (centred on x[i]) is at most w[i] wide (and inside the circle r) and whose digits fit the rows top..bot
+    function numIn(dc as Dc, v as Array, fonts as Array, w as Array, x as Array, top, bot, r) {
+        for (var i = 0; i < fonts.size(); i++) {
+            var f = fonts[i], y = numY(dc, f, top, bot), ok = up(dc, f) + dn(dc, f, "0") <= bot - top;
+            for (var k = 0; k < v.size() && ok; k++) { var m = roomC(dc, x[k], y, f, "0", r), ww = w[k] < m ? w[k] : m; if (dc.getTextWidthInPixels(v[k] as String, f) > ww) { ok = false; } }
+            if (ok) { return f; }
+        }
+        return fonts[fonts.size() - 1];
+    }
+    // the y that centres the digits of font f in the rows top..bot
+    function numY(dc as Dc, f, top, bot) as Float { return (top + bot) / 2.0 + (up(dc, f) - dn(dc, f, "0")) / 2.0; }
     // 23.11.7 (FlowDelegate gWheel ...): a finger turns column c of the screen now (or lifted less than WHEEL_SHOW_MS ago)
     function wheelOn(F as Flow, c as Number) as Boolean {
         return gWheel == c && gWheelScr == F.scr && (gWheelEnd == 0 || System.getTimer() - gWheelEnd < WHEEL_SHOW_MS);
     }
-    // js/watchsim.js DRAW[SCR.SET] nb: the values one step below / above the number turned, small and dim above / below it (the next higher
-    // one below: it comes up with the finger); placed from the font heights (a digit about 0.72 of a number font's height, 0.6 of FONT_XTINY's);
-    // one without room under the SET row (last time's numbers) or above DONE is left out, never those
-    function wheelNb(dc as Dc, F as Flow, S as Number, P as Palette, c as Number, x, f, timed as Boolean, bw as Boolean) as Void {
-        var hb = dc.getFontHeight(f) * 0.36, hn = dc.getFontHeight(Graphics.FONT_XTINY) * 0.3, gap = S * 0.02; // gap: to the big number
-        var top = S * 0.315 + hn + S * 0.012, bot = S * 0.75;
+    // the wheel's neighbours, one step below / above the number turned (at y in font f), small and dim above / below it (the next higher
+    // one below: it comes up with the finger); one without room between top and bot is left out
+    function wheelNb(dc as Dc, F as Flow, S as Number, P as Palette, c as Number, x, y, f, top, bot, timed as Boolean, bw as Boolean) as Void {
         for (var d = -1; d <= 1; d += 2) {
-            var y = S * 0.5 + d * (hb + hn + gap), t = "";
-            if (d < 0 && y - hn < top) { continue; }
-            if (d > 0 && y + hn > bot) { continue; }
+            var t = "";
             if (c == 0) {
                 var k = F.kgStep(d, false);
                 if (k == F.kg) { continue; }
@@ -449,7 +598,9 @@ module Draw {
                 if (r == F.reps) { continue; }
                 t = timed ? clock(r) : r.toString();
             }
-            txt(dc, x, y, Graphics.FONT_XTINY, t, P.dim);
+            var yy = d < 0 ? above(dc, y - up(dc, f), XT, t, S) : below(dc, y + dn(dc, f, "0"), XT, 0);
+            if (yy - up(dc, XT) < top || yy + dn(dc, XT, t) > bot) { continue; }
+            txt(dc, x, yy, XT, t, P.dim);
         }
     }
     // js/watchflow.js lastSet(F, e): last session's set with the number of the set now (its last one when today goes further): [kg, reps] or null
@@ -460,9 +611,9 @@ module Draw {
         var p = arrOf(n >= 0 && n < s.size() ? s[n] : s[s.size() - 1]);
         return p.size() >= 2 ? p : null;
     }
-    // js/watchsim.js DRAW[SCR.REST] and REST_LAY (23.11.): heart rate, the clock, what this exercise has so far (the last 3 sets), what comes next
+    // the rest: the ring, heart rate, the clock, the exercise, its last sets (as many as fit, at most 3), what comes next, SKIP; all inside the ring
     function drawRest(dc as Dc, F as Flow, S as Number, P as Palette, now as Number) as Void {
-        var left = F.restLeft(now), c = S / 2, r = c - (S * 0.04).toNumber(), e = F.curEx(), t = F.exT(e);
+        var left = F.restLeft(now), c = S / 2, r = c - (S * 0.04).toNumber(), e = F.curEx(), t = F.exT(e), G = gap(S), ri = 0.5 - 0.04 - 0.025 - 0.015;
         var part = F.restLen > 0 ? left.toFloat() / F.restLen : 0.0;
         dc.setPenWidth(pw(S * 0.05)); dc.setColor(P.faint, Graphics.COLOR_TRANSPARENT); dc.drawCircle(c, c, r);
         if (part > 0.0) {
@@ -471,177 +622,232 @@ module Draw {
             else { dc.drawArc(c, c, r, Graphics.ARC_CLOCKWISE, 90, 90 - (part * 360).toNumber()); } // from 12 o'clock, clockwise
         }
         dc.setPenWidth(1);
-        hrClock(dc, F, S, P, S * 0.15, now, true);
-        // the clock no taller than 0.2 S, so the sets below keep their room (VERIFY on the device: NUMBER_MEDIUM on 260 px)
-        var cf = dc.getFontHeight(Graphics.FONT_NUMBER_MEDIUM) <= S * 0.2 ? Graphics.FONT_NUMBER_MEDIUM : Graphics.FONT_NUMBER_MILD;
-        txt(dc, c, S * 0.3, cf, clock(left), left <= 5 ? P.acc : P.fg);
-        txt(dc, c, S * 0.425, Graphics.FONT_XTINY, fit(dc, strOf(e["n"]).toUpper(), Graphics.FONT_XTINY, (S * 0.62).toNumber()), P.acc);
-        var mine = F.setsOf(strOf(e["id"])), k0 = mine.size() > 3 ? mine.size() - 3 : 0, fh = dc.getFontHeight(Graphics.FONT_XTINY) * 0.85;
-        var dy = S * 0.062 > fh ? S * 0.062 : fh; // VERIFY on the device: three XTINY rows fit between the name and NEXT
-        for (var k = k0; k < mine.size(); k++) {
-            var ln = (k + 1).toString() + "   " + setShort(t, fltOf(mine[k]["kg"]), numOf(mine[k]["reps"]));
-            txt(dc, c, S * 0.49 + (k - k0) * dy, Graphics.FONT_XTINY, fit(dc, ln, Graphics.FONT_XTINY, (S * 0.64).toNumber()), P.fg);
-        }
-        // NEXT: the next set of this exercise, or the next exercise of the workout (js nextTxt)
+        // from the bottom: SKIP, the next set, NEXT
         var it = F.planItem(), nx = e;
         if (it != null) { var l = F.exList(), j = exIndex(l, it[0]); nx = j >= 0 ? l[j] as Dictionary : { "id" => strOf(it[0]), "n" => strOf(it[0]), "t" => "w" } as Dictionary; }
-        var v = F.prefillOf(nx), vt = setShort(F.exT(nx), fltOf(v[0]), numOf(v[1])), no = F.setNo().toString(), lab = "", val = vt;
-        if (strOf(nx["id"]).equals(strOf(e["id"]))) { lab = "NEXT: SET " + no + (it != null ? " OF " + numOf(it[1]).toString() : ""); }
-        else { lab = "NEXT: " + strOf(nx["n"]).toUpper(); val = "Set " + no + (it != null ? "/" + numOf(it[1]).toString() : "") + ", " + vt; }
-        txt(dc, c, S * 0.7, Graphics.FONT_XTINY, fit(dc, lab, Graphics.FONT_XTINY, (S * 0.66).toNumber()), P.lbl);
-        txt(dc, c, S * 0.758, Graphics.FONT_XTINY, fit(dc, val, Graphics.FONT_XTINY, (S * 0.66).toNumber()), P.fg);
-        txt(dc, c, S * 0.855, Graphics.FONT_XTINY, "SKIP", P.acc);
+        var v = F.prefillOf(nx), nt = F.exT(nx), vt = setShort(nt, fltOf(v[0]), numOf(v[1])), vm = setMini(nt, fltOf(v[0]), numOf(v[1])), no = F.setNo().toString(), lab = "", val = vt;
+        var same = strOf(nx["id"]).equals(strOf(e["id"]));
+        if (same) { lab = "NEXT: SET " + no + (it != null ? " OF " + numOf(it[1]).toString() : "") + "|NEXT: SET " + no + (it != null ? "/" + numOf(it[1]).toString() : ""); val = vt + "|" + vm; }
+        else { lab = "NEXT: " + strOf(nx["n"]).toUpper(); val = "Set " + no + (it != null ? "/" + numOf(it[1]).toString() : "") + ", " + vt + "|" + vt + "|" + vm; }
+        var ky = S * 0.85; put(dc, c, ky, XT, "SKIP", S, P.acc, false, ri);
+        var vy = above(dc, ky - up(dc, XT), XT, val, S * 0.758); put(dc, c, vy, XT, val, (S * 0.7).toNumber(), P.fg, false, ri);
+        var ly = above(dc, vy - up(dc, XT), XT, lab, S * 0.7); put(dc, c, ly, XT, lab, (S * 0.7).toNumber(), P.lbl, !same, ri);
+        // from the top: heart rate, the clock (NUMBER_MEDIUM, smaller where it does not fit), the exercise
+        var hf = byInk(dc, [SM, XT], S * 0.1), hy = S * 0.15 > up(dc, hf) + S * 0.1 ? S * 0.15 : up(dc, hf) + S * 0.1;
+        hrClock(dc, F, S, P, hy, now, hf, false);
+        var lt = ly - up(dc, XT) - G, ct = clock(left), nm = strOf(e["n"]).toUpper();
+        var cf = fontIn(dc, ct, [NME, NMI, ME], (S * 0.6).toNumber(), (lt - (hy + dn(dc, hf, "0")) - 2 * G) * 0.62), cy = below(dc, hy + dn(dc, hf, "0"), cf, S * 0.3);
+        txt(dc, c, cy, cf, ct, left <= 5 ? P.acc : P.fg);
+        var ny = below(dc, cy + dn(dc, cf, ct), XT, S * 0.425); put(dc, c, ny, XT, nm, (S * 0.62).toNumber(), P.acc, true, ri);
+        // the sets between: the last k that fit
+        var mine = F.setsOf(strOf(e["id"])), dy = up(dc, XT) + dn(dc, XT, "g") + G;
+        var k = ((lt - (ny + dn(dc, XT, nm)) - G) / dy).toNumber();
+        if (k > 3) { k = 3; }
+        if (k > mine.size()) { k = mine.size(); }
+        for (var j2 = 0; j2 < k; j2++) {
+            var q = mine[mine.size() - k + j2], no2 = (mine.size() - k + j2 + 1).toString(), qk = fltOf(q["kg"]), qr = numOf(q["reps"]);
+            var ln = no2 + "   " + setShort(t, qk, qr) + "|" + no2 + "  " + setMini(t, qk, qr);
+            put(dc, c, ny + dn(dc, XT, nm) + G + up(dc, XT) + j2 * dy, XT, ln, (S * 0.64).toNumber(), P.fg, false, ri);
+        }
     }
     function prFlash(dc as Dc, S as Number, P as Palette, f as Dictionary) as Void {
         var c = S / 2, t = strOf(f["t"]), kg = fltOf(f["kg"]), r = numOf(f["reps"]);
+        var v = t.equals("bw") ? r.toString() + " reps" : (t.equals("time") ? clock(r) : kgTxt(kg) + " x " + r.toString());
         dc.setColor(P.acc, Graphics.COLOR_TRANSPARENT); dc.fillCircle(c, c, c);
-        txt(dc, c, S * 0.27, Graphics.FONT_SMALL, "NEW RECORD", P.ink);
-        txt(dc, c, S * 0.5, Graphics.FONT_LARGE, "PR", P.ink); // VERIFY on the device: FONT_LARGE may look small here; a bitmap "PR" would be bigger
-        txt(dc, c, S * 0.72, Graphics.FONT_MEDIUM, t.equals("bw") ? r.toString() + " reps" : (t.equals("time") ? clock(r) : kgTxt(kg) + " x " + r.toString()), P.ink);
+        var a = byInk(dc, [SM, XT], S * 0.12), b = fontIn(dc, "PR", [LA, ME, SM], S, S * 0.2), d = fontIn(dc, v, [ME, SM, XT], (S * 0.74).toNumber(), S * 0.14);
+        put(dc, c, S * 0.27, a, "NEW RECORD", S, P.ink, false, R0); txt(dc, c, S * 0.5, b, "PR", P.ink); put(dc, c, S * 0.72, d, v, (S * 0.74).toNumber(), P.ink, false, R0);
     }
-    // js/watchsim.js lapFlash: the lap banner for 5 s
+    // the lap banner for 5 s
     function lapFlash(dc as Dc, F as Flow, S as Number, P as Palette, f as Dictionary) as Void {
         var c = S / 2, t = numOf(f["t"]), d = fltOf(f["d"]), l = "";
         dc.setColor(P.acc, Graphics.COLOR_TRANSPARENT); dc.fillCircle(c, c, c);
-        txt(dc, c, S * 0.26, Graphics.FONT_MEDIUM, "LAP " + numOf(f["n"]).toString(), P.ink);
-        txt(dc, c, S * 0.47, Graphics.FONT_NUMBER_HOT, clock(t), P.ink);
         if (F.sp.equals("ride")) { l = (t > 0 ? d / t * 3.6 : 0.0).format("%.1f") + " km/h"; }
         else if (F.sp.equals("run")) { l = Fields.pace(t.toFloat(), d) + " /km"; }
         else { l = kmTxt(d) + " km"; }
-        txt(dc, c, S * 0.69, Graphics.FONT_MEDIUM, l, P.ink);
+        var a = byInk(dc, [ME, SM, XT], S * 0.13), ay = S * 0.26, ct = clock(t);
+        put(dc, c, ay, a, "LAP " + numOf(f["n"]).toString(), S, P.ink, false, R0);
+        var lf = fontIn(dc, l, [ME, SM, XT], (S * 0.8).toNumber(), S * 0.13), ly = S * 0.69;
+        var top = ay + dn(dc, a, "LAP") + gap(S), bot = ly - up(dc, lf) - gap(S), nf = numIn(dc, [ct], [NHO, NME, NMI], [(S * 0.84).toNumber()], [c], top, bot, R0);
+        txt(dc, c, numY(dc, nf, top, bot), nf, ct, P.ink); put(dc, c, ly, lf, l, (S * 0.8).toNumber(), P.ink, false, R0);
     }
-    // js/watchsim.js DRAW[SCR.SUM] and SUM_LAY (23.11.): page 0 the totals with the heart rate, then one page per exercise with every set
+    // the summary: page 0 the totals, then one page per exercise with every set (as many as fit, then "+ n more")
     function drawSum(dc as Dc, F as Flow, S as Number, P as Palette) as Void {
-        var s = F.sum, c = S / 2;
+        var s = F.sum, c = S / 2, G = gap(S);
         if (s == null) { return; }
         var exs = arrOf(s["ex"]), pg = F.sel;
         pageDots(dc, S, P, exs.size() + 1, pg);
-        txt(dc, c, S * 0.87, Graphics.FONT_XTINY, "DONE", P.lbl);
+        var dy0 = S * 0.87, bt = dy0 - up(dc, XT) - G;
         if (pg > 0 && pg <= exs.size()) {
-            var ex1 = exs[pg - 1] as Dictionary, t = strOf(ex1["t"]), ss = arrOf(ex1["s"]), vol = 0.0, many = ss.size() > 5;
+            put(dc, c, dy0, XT, "DONE", S, P.lbl, false, R0);
+            var ex1 = exs[pg - 1] as Dictionary, t = strOf(ex1["t"]), ss = arrOf(ex1["s"]), vol = 0.0, nm = strOf(ex1["n"]);
             for (var i = 0; i < ss.size(); i++) { var y0 = arrOf(ss[i]); vol += fltOf(y0[0]) * numOf(y0[1]); }
-            txt(dc, c, S * 0.2, Graphics.FONT_SMALL, fit(dc, strOf(ex1["n"]), Graphics.FONT_SMALL, (S * 0.66).toNumber()), P.acc);
-            txt(dc, c, S * 0.285, Graphics.FONT_XTINY, plural(ss.size(), "set", "sets") + (!t.equals("time") && vol > 0.0 ? ", " + volTxt(vol) + " kg" : ""), P.lbl);
-            var shown = many ? 4 : ss.size();
-            for (var i = 0; i < shown; i++) {
-                var y1 = arrOf(ss[i]), pr = numOf(y1[2]) == 1;
-                var ln = (i + 1).toString() + "   " + setShort(t, fltOf(y1[0]), numOf(y1[1])) + (pr ? "  PR" : "");
-                txt(dc, c, S * (0.38 + i * 0.08), Graphics.FONT_XTINY, fit(dc, ln, Graphics.FONT_XTINY, (S * 0.7).toNumber()), pr ? P.acc : P.fg);
+            var nf = byInk(dc, [SM, XT], S * 0.11), ny = S * 0.2 > up(dc, nf) + S * 0.12 ? S * 0.2 : up(dc, nf) + S * 0.12;
+            put(dc, c, ny, nf, nm, (S * 0.7).toNumber(), P.acc, true, R0);
+            var ns = plural(ss.size(), "set", "sets"), info = ns + (!t.equals("time") && vol > 0.0 ? ", " + volTxt(vol) + " kg|" + ns : ""), iy = below(dc, ny + dn(dc, nf, nm), XT, S * 0.285);
+            put(dc, c, iy, XT, info, (S * 0.7).toNumber(), P.lbl, false, R0);
+            var dy1 = up(dc, XT) + dn(dc, XT, "g") + G, dy = dy1 > S * 0.08 ? dy1 : S * 0.08, ya = below(dc, iy + dn(dc, XT, info), XT, S * 0.38);
+            var k = ((bt - (ya - up(dc, XT))) / dy).toNumber();
+            if (k >= ss.size()) { k = ss.size(); } else { k = k - 1; }
+            if (k < 0) { k = 0; }
+            for (var i = 0; i < k; i++) {
+                var y1 = arrOf(ss[i]), pr = numOf(y1[2]) == 1, kk = fltOf(y1[0]), rr = numOf(y1[1]);
+                var ln = (i + 1).toString() + "   " + setShort(t, kk, rr) + (pr ? "  PR" : "") + "|" + (i + 1).toString() + "  " + setMini(t, kk, rr) + (pr ? " PR" : "");
+                put(dc, c, ya + i * dy, XT, ln, (S * 0.7).toNumber(), pr ? P.acc : P.fg, false, R0);
             }
-            if (many) { txt(dc, c, S * (0.38 + 4 * 0.08), Graphics.FONT_XTINY, "+ " + (ss.size() - 4).toString() + " more", P.lbl); }
+            if (k < ss.size()) { put(dc, c, ya + k * dy, XT, "+ " + (ss.size() - k).toString() + " more", S, P.lbl, false, R0); }
             return;
         }
-        var st = numOf(s["st"]);
-        if (st == ST_SAVED) { txt(dc, c, S * 0.15, Graphics.FONT_SMALL, "SAVED", P.acc); }
-        else if (st == ST_SENDING) { txt(dc, c, S * 0.15, Graphics.FONT_SMALL, "SENDING", P.dim); }
-        else if (st == ST_FAILED) { txt(dc, c, S * 0.15, Graphics.FONT_SMALL, "NOT SAVED", P.acc); }
-        else { txt(dc, c, S * 0.15, Graphics.FONT_XTINY, fit(dc, "Sends when the phone is near", Graphics.FONT_XTINY, (S * 0.6).toNumber()), P.fg); }
-        txt(dc, c, S * 0.3, Graphics.FONT_NUMBER_MILD, clock(numOf(s["dur"])), P.fg);
-        txt(dc, c, S * 0.395, Graphics.FONT_XTINY, "TIME", P.lbl);
+        var st = numOf(s["st"]), sf = byInk(dc, [SM, XT], S * 0.1), sy = S * 0.15 > up(dc, sf) + S * 0.1 ? S * 0.15 : up(dc, sf) + S * 0.1;
+        var stt = "", sc = P.acc;
+        if (st == ST_SAVED) { stt = "SAVED"; } else if (st == ST_SENDING) { stt = "SENDING"; sc = P.dim; } else if (st == ST_FAILED) { stt = "NOT SAVED"; }
+        if (stt.length() > 0) { put(dc, c, sy, sf, stt, S, sc, false, R0); }
+        else { put(dc, c, sy, XT, "Sends when the phone is near|Waiting for the phone|Not sent yet", S, P.fg, false, R0); }
+        var yb = sy + dn(dc, stt.length() > 0 ? sf : XT, "S");
+        // the time, TIME, the three numbers with labels, the heart rate, the records, DONE; TIME, the records, DONE and the heart rate go
+        // (in this order) when there is no room
         var v = [numOf(s["sets"]).toString(), volTxt(fltOf(s["vol"])), numOf(s["exs"]).toString()] as Array<String>, l = ["SETS", "KG", "LIFTS"] as Array<String>;
-        for (var i = 0; i < 3; i++) { var x = S * (0.27 + i * 0.23); txt(dc, x, S * 0.52, fontFor(dc, v[i], [Graphics.FONT_MEDIUM, Graphics.FONT_SMALL], (S * 0.22).toNumber()), v[i], P.fg); txt(dc, x, S * 0.59, Graphics.FONT_XTINY, l[i], P.lbl); }
-        var h = s["hr"];
-        heart(dc, c - S * 0.2, S * 0.69, S * 0.042, P.hr);
-        var ht = h instanceof Dictionary ? numOf((h as Dictionary)["avg"]).toString() + " avg, " + numOf((h as Dictionary)["max"]).toString() + " max" : "no heart rate";
-        txtL(dc, c - S * 0.16, S * 0.69, Graphics.FONT_XTINY, fit(dc, ht, Graphics.FONT_XTINY, (S * 0.44).toNumber()), P.fg);
-        var prs = numOf(s["prs"]);
-        if (prs > 0) { txt(dc, c, S * 0.77, Graphics.FONT_XTINY, prs.toString() + " PR", P.acc); }
+        var h = s["hr"], prs = numOf(s["prs"]), ht = "no heart rate|no HR";
+        if (h instanceof Dictionary) { var ha = numOf((h as Dictionary)["avg"]).toString(); ht = ha + " avg, " + numOf((h as Dictionary)["max"]).toString() + " max|" + ha + " avg"; }
+        var du = clock(numOf(s["dur"])), tf = topFont(dc, du, [NMI, ME, SM], (S * 0.8).toNumber(), S * 0.16, yb, S * 0.3);
+        for (var lvl = 0; lvl < 5; lvl++) {
+            var ty = below(dc, yb, tf, S * 0.3), tl = lvl < 1, py = lvl < 2 && prs > 0, dOn = lvl < 3, hOn = lvl < 4, b0 = dOn ? bt : S * (0.5 + R0);
+            var ly = below(dc, ty + dn(dc, tf, "0"), XT, S * 0.395), cy0 = tl ? ly + dn(dc, XT, "T") : ty + dn(dc, tf, "0"), cb = cols(dc, S, P, v, l, cy0, S * 0.52, b0, [ME, SM, XT], false);
+            var hy = below(dc, cb, XT, S * 0.69), pry = below(dc, hOn ? hy + dn(dc, XT, "g") : cb, XT, S * 0.77);
+            if ((cb < 0 || (py ? pry + dn(dc, XT, "P") : (hOn ? hy + dn(dc, XT, "g") : cb)) > b0) && lvl < 4) { continue; }
+            txt(dc, c, ty, tf, du, P.fg);
+            if (tl) { put(dc, c, ly, XT, "TIME", S, P.lbl, false, R0); }
+            if (dOn) { put(dc, c, dy0, XT, "DONE", S, P.lbl, false, R0); }
+            cols(dc, S, P, v, l, cy0, S * 0.52, b0, [ME, SM, XT], true);
+            if (py) { put(dc, c, pry, XT, prs.toString() + " PR", S, P.acc, false, R0); }
+            if (!hOn) { return; }
+            var hm = roomC(dc, c, hy, XT, "g", R0) - S * 0.07 - 2, h2 = pick(dc, ht, XT, hm, false), hw = dc.getTextWidthInPixels(h2, XT), x0 = c - (hw + S * 0.07) / 2.0;
+            heart(dc, x0 + S * 0.02, hy, S * 0.042, P.hr); putL(dc, x0 + S * 0.07, hy, XT, h2, S, P.fg, false, R0);
+            return;
+        }
     }
+    // pairing: the six digits of the code from the phone (UP / DOWN, START or a tap on a digit)
     function drawPair(dc as Dc, F as Flow, S as Number, P as Palette) as Void {
-        var c = S / 2, bw = S * 0.1, gap = S * 0.018, x0 = c - (6 * bw + 5 * gap) / 2 + bw / 2;
-        txt(dc, c, S * 0.19, Graphics.FONT_SMALL, "PAIR", P.acc);
-        txt(dc, c, S * 0.28, Graphics.FONT_XTINY, "Code from the phone", P.fg);
+        var c = S / 2, bw = S * 0.1, bh = S * 0.14, gp = S * 0.018, x0 = c - (6 * bw + 5 * gp) / 2.0 + bw / 2.0;
+        var tf = byInk(dc, [SM, XT], S * 0.1), ty = S * 0.19; put(dc, c, ty, tf, "PAIR", S, P.acc, false, R0);
+        var hy = below(dc, ty + dn(dc, tf, "P"), XT, S * 0.28), m = roomC(dc, c, hy, XT, "p", R0);
+        put(dc, c, hy, XT, alt(dc, "Code from the phone", "Phone code", XT, m), S, P.fg, false, R0);
+        var df = inPill(dc, "0", [ME, SM, XT], bw - 2, bh);
         for (var i = 0; i < 6; i++) {
-            var x = x0 + i * (bw + gap), on = i == F.pairI;
-            if (on) { dc.setColor(P.acc, Graphics.COLOR_TRANSPARENT); dc.fillRoundedRectangle(x - bw / 2, S * 0.5 - bw * 0.7, bw, bw * 1.4, S * 0.015); }
-            else { dc.setColor(P.faint, Graphics.COLOR_TRANSPARENT); dc.setPenWidth(2); dc.drawRoundedRectangle(x - bw / 2, S * 0.5 - bw * 0.7, bw, bw * 1.4, S * 0.015); dc.setPenWidth(1); }
-            txt(dc, x, S * 0.5, Graphics.FONT_MEDIUM, F.pairD[i], on ? P.ink : (i < F.pairI ? P.fg : P.dim));
-            if (on) { tri(dc, x, S * 0.375, S * 0.022, true, P.acc); tri(dc, x, S * 0.625, S * 0.022, false, P.acc); }
+            var x = x0 + i * (bw + gp), on = i == F.pairI;
+            if (on) { dc.setColor(P.acc, Graphics.COLOR_TRANSPARENT); dc.fillRoundedRectangle(x - bw / 2.0, S * 0.5 - bh / 2.0, bw, bh, S * 0.015); }
+            else { dc.setColor(P.faint, Graphics.COLOR_TRANSPARENT); dc.setPenWidth(2); dc.drawRoundedRectangle(x - bw / 2.0, S * 0.5 - bh / 2.0, bw, bh, S * 0.015); dc.setPenWidth(1); }
+            txt(dc, x, S * 0.5, df, F.pairD[i], on ? P.ink : (i < F.pairI ? P.fg : P.dim));
+            if (on) { tri(dc, x, S * 0.5 - bh / 2.0 - S * 0.03, S * 0.022, true, P.acc); tri(dc, x, S * 0.5 + bh / 2.0 + S * 0.03, S * 0.022, false, P.acc); }
         }
         var st = F.pairSt == P_SENDING ? "Pairing" : (F.pairSt == P_FAIL ? "Wrong code" : (F.pairI == 5 ? "START: pair" : "START: next"));
-        txt(dc, c, S * 0.72, Graphics.FONT_XTINY, st, F.pairSt == P_FAIL ? P.acc : P.dim);
-        txt(dc, c, S * 0.82, Graphics.FONT_XTINY, fit(dc, "Phone: Settings > Devices", Graphics.FONT_XTINY, (S * 0.66).toNumber()), P.dim);
+        var sy = below(dc, S * 0.5 + bh / 2.0 + S * 0.045, XT, S * 0.72); put(dc, c, sy, XT, st, S, F.pairSt == P_FAIL ? P.acc : P.dim, false, R0);
+        var py = below(dc, sy + dn(dc, XT, st), XT, S * 0.82), pm = roomC(dc, c, py, XT, "p", R0), pt = alt(dc, "Phone: Settings > Devices", "Settings > Devices", XT, pm);
+        if (py + dn(dc, XT, pt) <= S * (0.5 + R0) && dc.getTextWidthInPixels(pt, XT) <= pm) { put(dc, c, py, XT, pt, S, P.dim, false, R0); }
     }
 
     /* ---- run, ride, other ---- */
-    // js/watchsim.js DRAW[SCR.PAUSE] and PAUSE_LAY: one screen in every mode: PAUSED, the time, START resume, Hold BACK to finish,
-    // Discard (with a confirm step); while BACK is held an orange ring fills with 3-2-1. Rows: the tap table in FlowDelegate.onTap.
-    // VERIFY on the 280 px MIP: FONT_SMALL at 0.5 and FONT_XTINY at 0.57 do not touch (20 px apart)
+    // the pause screen (every mode): PAUSED, the sport, the time, START resume, Hold BACK to finish, Discard (confirm step); while BACK is
+    // held an orange ring fills with 3-2-1. Discard and the touch pill stay at 0.68 / 0.82 (the tap table); the lines above them are
+    // stacked, the sport, then "Hold BACK to finish" (the touch pill says it too), then "START resume" left out where there is no room.
     function drawPause(dc as Dc, F as Flow, S as Number, P as Palette, now as Number) as Void {
-        var c = S / 2, part = F.holdPart(System.getTimer()), touch = hasTouch();
+        var c = S / 2, ms = System.getTimer(), part = F.holdPart(ms), touch = hasTouch(), G = gap(S);
+        var ri = part >= 0.0 ? 0.5 - 0.035 - 0.025 - 0.015 : R0;
         if (part >= 0.0) {
             var r = c - (S * 0.035).toNumber();
             dc.setPenWidth(pw(S * 0.05)); dc.setColor(P.faint, Graphics.COLOR_TRANSPARENT); dc.drawCircle(c, c, r);
             if (part > 0.01) {
                 dc.setColor(P.acc, Graphics.COLOR_TRANSPARENT);
                 if (part >= 0.99) { dc.drawCircle(c, c, r); }
-                else { var a = 90 - (part * 360).toNumber(); if (a < 0) { a += 360; } dc.drawArc(c, c, r, Graphics.ARC_CLOCKWISE, 90, a); } // from 12 o'clock, clockwise
+                else { var a = 90 - (part * 360).toNumber(); if (a < 0) { a += 360; } dc.drawArc(c, c, r, Graphics.ARC_CLOCKWISE, 90, a); }
             }
             dc.setPenWidth(1);
         }
-        txt(dc, c, S * 0.17, Graphics.FONT_SMALL, "PAUSED", P.acc);
-        txt(dc, c, S * 0.235, Graphics.FONT_XTINY, fit(dc, F.rec != null ? sportName(F) : "Strength", Graphics.FONT_XTINY, (S * 0.5).toNumber()), P.lbl);
+        var tf = byInk(dc, [SM, XT], S * 0.1), ty = S * 0.17 > up(dc, tf) + S * 0.09 ? S * 0.17 : up(dc, tf) + S * 0.09;
+        put(dc, c, ty, tf, "PAUSED", S, P.acc, false, ri);
+        var sp = F.rec != null ? sportName(F) : "Strength";
         if (F.pzConf) {
-            txt(dc, c, S * 0.37, Graphics.FONT_LARGE, "Discard?", P.fg);
-            txt(dc, c, S * 0.5, Graphics.FONT_XTINY, fit(dc, "START yes, BACK no", Graphics.FONT_XTINY, (S * 0.74).toNumber()), P.lbl);
-            pill(dc, c, S * 0.68, S * 0.46, S * 0.1, P.acc); txt(dc, c, S * 0.68, Graphics.FONT_SMALL, "Discard", P.ink);
-            if (touch) { pill(dc, c, S * 0.82, S * 0.4, S * 0.1, P.faint); txt(dc, c, S * 0.82, Graphics.FONT_SMALL, "Keep", P.fg); }
+            var py = S * 0.68, ph = pillH(dc, S * 0.1), qy = S * 0.82, bt = py - ph / 2.0 - G;
+            pill(dc, c, py, S * 0.46, ph, P.acc); put(dc, c, py, inPill(dc, "Discard", [SM, XT], S * 0.42, ph), "Discard", S, P.ink, false, ri);
+            if (touch) { pill(dc, c, qy, S * 0.4, ph, P.faint); put(dc, c, qy, inPill(dc, "Keep", [SM, XT], S * 0.36, ph), "Keep", S, P.fg, false, ri); }
+            var hy = above(dc, bt + G, XT, "yes", S * 0.5), m = roomC(dc, c, hy, XT, "y", ri), ht = alt(dc, "START yes, BACK no", "START: yes", XT, m);
+            put(dc, c, hy, XT, ht, S, P.lbl, false, ri);
+            var qt = hy - up(dc, XT) - G, qf = fontIn(dc, "Discard?", [LA, ME, SM, XT], (S * 0.8).toNumber(), qt - (ty + dn(dc, tf, "P")) - 2 * G);
+            txt(dc, c, (ty + dn(dc, tf, "P") + qt) / 2.0 + (up(dc, qf) - dn(dc, qf, "D")) / 2.0, qf, "Discard?", P.fg);
             return;
         }
-        if (part >= 0.0) { txt(dc, c, S * 0.37, Graphics.FONT_NUMBER_HOT, F.holdCount(System.getTimer()).toString(), P.acc); }
-        else { txt(dc, c, S * 0.37, Graphics.FONT_NUMBER_MEDIUM, clock(F.pausedTime()), P.fg); }
-        txt(dc, c, S * 0.5, Graphics.FONT_SMALL, "START resume", P.fg);
-        txt(dc, c, S * 0.57, Graphics.FONT_XTINY, fit(dc, "Hold BACK to finish", Graphics.FONT_XTINY, (S * 0.72).toNumber()), F.pzHint > now || part >= 0.0 ? P.acc : P.lbl);
-        if (F.pzSel != 0) {
-            var w = S * 0.46, h = S * 0.1;
-            dc.setColor(P.acc, Graphics.COLOR_TRANSPARENT); dc.setPenWidth(2); dc.drawRoundedRectangle(c - w / 2, S * 0.68 - h / 2, w, h, h / 2); dc.setPenWidth(1);
-        }
-        txt(dc, c, S * 0.68, Graphics.FONT_SMALL, "Discard", F.pzSel != 0 ? P.fg : P.dim);
-        if (touch) {
-            var on = part >= 0.0;
-            pill(dc, c, S * 0.82, S * 0.5, S * 0.11, on ? P.acc : P.faint);
-            txt(dc, c, S * 0.82, Graphics.FONT_XTINY, "Hold to finish", on ? P.ink : P.fg);
+        var dy = S * 0.68, dh = pillH(dc, S * 0.1), dt = dy - dh / 2.0 - G;
+        if (F.pzSel != 0) { var w = S * 0.46; dc.setColor(P.acc, Graphics.COLOR_TRANSPARENT); dc.setPenWidth(2); dc.drawRoundedRectangle(c - w / 2.0, dy - dh / 2.0, w, dh, dh / 2.0); dc.setPenWidth(1); }
+        put(dc, c, dy, inPill(dc, "Discard", [SM, XT], S * 0.42, dh), "Discard", S, F.pzSel != 0 ? P.fg : P.dim, false, ri);
+        if (touch) { var on = part >= 0.0, qh = pillH(dc, S * 0.11); pill(dc, c, S * 0.82, S * 0.5, qh, on ? P.acc : P.faint); put(dc, c, S * 0.82, inPill(dc, "Hold", [XT], S * 0.46, qh), "Hold to finish|Hold to end|Hold", S * 0.46, on ? P.ink : P.fg, false, R0); }
+        var tt = part >= 0.0 ? F.holdCount(ms).toString() : clock(F.pausedTime()), hint = F.pzHint > now || part >= 0.0 ? P.acc : P.lbl;
+        var rf = byInk(dc, [SM, XT], S * 0.1);
+        for (var lvl = 0; lvl < 4; lvl++) {
+            var showSp = lvl < 1, showH2 = lvl < 2 || !touch, showH1 = lvl < 3;
+            var yb = ty + dn(dc, tf, "P"), sy = 0.0, h1 = 0.0, h2 = 0.0;
+            if (showSp) { sy = below(dc, yb, XT, S * 0.235); yb = sy + dn(dc, XT, sp); }
+            var room = dt - yb - G - (showH1 ? inkH(dc, rf) + G : 0) - (showH2 ? inkH(dc, XT) + G : 0);
+            var nf = part >= 0.0 ? fontIn(dc, tt, [NHO, NME, NMI, ME], (S * 0.5).toNumber(), room) : fontIn(dc, tt, [NME, NMI, ME], (S * 0.7).toNumber(), room);
+            if (up(dc, nf) + dn(dc, nf, "0") > room && lvl < 3) { continue; }
+            var ny = numY(dc, nf, yb + G, yb + G + room); yb = ny + dn(dc, nf, "0");
+            if (showH1) { h1 = below(dc, yb, rf, 0); yb = h1 + dn(dc, rf, "p"); }
+            if (showH2) { h2 = below(dc, yb, XT, 0); yb = h2 + dn(dc, XT, "g"); }
+            if (showSp) { put(dc, c, sy, XT, sp, (S * 0.5).toNumber(), P.lbl, true, ri); }
+            txt(dc, c, ny, nf, tt, part >= 0.0 ? P.acc : P.fg);
+            if (showH1) { put(dc, c, h1, rf, "START resume", (S * 0.7).toNumber(), P.fg, false, ri); }
+            if (showH2) { var m2 = roomC(dc, c, h2, XT, "g", ri); put(dc, c, h2, XT, alt(dc, "Hold BACK to finish", "Hold BACK: finish", XT, m2), S, hint, false, ri); }
+            return;
         }
     }
     function sportName(F as Flow) as String { return F.sp.equals("other") ? F.tname : F.homeLabel(F.sp); }
+    // run / ride / more: the sport, GPS (or the heart rate), the pages, the route line (UP / DOWN or a tap: RPICK; gRouteY), START
     function drawReady(dc as Dc, F as Flow, S as Number, P as Palette) as Void {
-        var c = S / 2;
+        var c = S / 2, G = gap(S), other = F.sp.equals("other");
         startHint(dc, S, P);
         dc.setColor(P.acc, Graphics.COLOR_TRANSPARENT); dc.fillCircle(c, S * 0.25, S * 0.1);
-        icon(dc, F.sp.equals("other") ? "more" : F.sp, c, S * 0.25, S * 0.12, P.ink);
-        txt(dc, c, S * 0.445, Graphics.FONT_LARGE, fit(dc, sportName(F), Graphics.FONT_LARGE, (S * 0.8).toNumber()), P.fg);
+        icon(dc, other ? "more" : F.sp, c, S * 0.25, S * 0.12, P.ink);
+        var py = S * 0.81, ph = S * 0.13; pill(dc, c, py, S * 0.42, ph, P.acc); put(dc, c, py, inPill(dc, "START", [SM, XT], S * 0.38, ph), "START", S, P.ink, false, R0);
+        var bt = py - ph / 2.0 - G, nm = sportName(F), nf = fontIn(dc, nm, [LA, ME, SM, XT], (S * 0.8).toNumber(), S * 0.13);
+        var ny = below(dc, S * 0.35, nf, S * 0.445); put(dc, c, ny, nf, nm, (S * 0.8).toNumber(), P.fg, true, R0);
+        var yb = ny + dn(dc, nf, nm);
+        var gf = byInk(dc, [SM, XT], S * 0.1), gy = below(dc, yb, gf, S * 0.565);
         if (!Sports.gps(F.sp, F.type)) {
-            heart(dc, c - S * 0.1, S * 0.565, S * 0.045, P.hr);
-            txtL(dc, c - S * 0.06, S * 0.565, Graphics.FONT_SMALL, F.hr > 0 ? F.hr.toString() + " bpm" : "Heart rate", P.fg);
+            var t = F.hr > 0 ? F.hr.toString() + " bpm" : "Heart rate", w = S * 0.07 + dc.getTextWidthInPixels(t, gf), x0 = c - w / 2.0;
+            heart(dc, x0 + S * 0.025, gy, S * 0.045, P.hr); putL(dc, x0 + S * 0.07, gy, gf, t, S, P.fg, false, R0);
         } else {
-            // the real fix quality (Recorder.onPosition), so it can be reported: ready (usable / good), weak (poor / last known), search
-            var col = F.gps >= 2 ? P.good : (F.gps == 1 ? P.acc : P.lbl);
-            dc.setColor(col, Graphics.COLOR_TRANSPARENT); dc.fillCircle(c - S * 0.135, S * 0.565, S * 0.02);
-            txtL(dc, c - S * 0.1, S * 0.565, Graphics.FONT_SMALL, F.gps >= 2 ? "GPS ready" : (F.gps == 1 ? "GPS weak" : "GPS search"), col);
+            // the real fix quality (Recorder.onPosition): ready (usable / good), weak (poor / last known), search
+            var q = F.gps, col = q >= 2 ? P.good : (q == 1 ? P.acc : P.lbl), t = q >= 2 ? "GPS ready" : (q == 1 ? "GPS weak" : "GPS search");
+            var w = S * 0.055 + dc.getTextWidthInPixels(t, gf), x0 = c - w / 2.0;
+            dc.setColor(col, Graphics.COLOR_TRANSPARENT); dc.fillCircle(x0 + S * 0.02, gy, S * 0.02); putL(dc, x0 + S * 0.055, gy, gf, t, S, col, false, R0);
         }
-        var n = F.pages.size(), t = n.toString() + (n == 1 ? " data page" : " data pages") + (F.hasRoutePage() ? " + route" : "");
-        if (F.sp.equals("other")) { txt(dc, c, S * 0.655, Graphics.FONT_XTINY, fit(dc, t, Graphics.FONT_XTINY, (S * 0.62).toNumber()), P.lbl); }
-        else { // 19.11.: the route line; UP / DOWN or a tap on it opens the choice (RPICK). VERIFY on the device: the two XTINY lines do not touch
-            // js/watchsim.js READY: "2 pages, edit on phone", "2 pages + route, on phone" or the short line: the first that fits in full
-            // (", " for the "·" of js, like RPICK)
-            var np = n.toString() + (n == 1 ? " page" : " pages") + (F.hasRoutePage() ? " + route" : ""), mw = (S * 0.62).toNumber();
-            if (dc.getTextWidthInPixels(np + ", edit on phone", Graphics.FONT_XTINY) <= mw) { t = np + ", edit on phone"; }
-            else if (dc.getTextWidthInPixels(np + ", on phone", Graphics.FONT_XTINY) <= mw) { t = np + ", on phone"; }
-            txt(dc, c, S * 0.635, Graphics.FONT_XTINY, fit(dc, t, Graphics.FONT_XTINY, (S * 0.62).toNumber()), P.lbl);
-            var i = F.routeIndex(), l = F.routes, rt = "No route";
-            if (i >= 0) { if (l != null) { rt = F.route != null ? "Route: " + strOf(l[i]["name"]) : "Loading route"; } }
-            txt(dc, c, S * 0.705, Graphics.FONT_XTINY, fit(dc, rt, Graphics.FONT_XTINY, (S * 0.6).toNumber()), i >= 0 ? P.acc : P.fg);
+        yb = gy + dn(dc, gf, "p");
+        var n = F.pages.size(), route = F.hasRoutePage();
+        var np = n.toString() + (n == 1 ? " page" : " pages") + (route ? " + route" : "");
+        if (!other) {
+            var i = F.routeIndex(), l = F.routes, rt = "No route", on = false;
+            if (i >= 0 && l != null) { on = true; rt = F.route != null ? "Route: " + strOf(l[i]["name"]) : "Loading route"; }
+            // the route line first (it can be tapped), the pages line where there is room
+            var ry = below(dc, yb, XT, S * 0.64);
+            if (ry + dn(dc, XT, rt) <= bt) {
+                var y2 = below(dc, ry + dn(dc, XT, rt), XT, S * 0.705), m = roomC(dc, c, y2, XT, "p", R0);
+                var pt = dc.getTextWidthInPixels(np + ", edit on phone", XT) <= m ? np + ", edit on phone" : (dc.getTextWidthInPixels(np + ", on phone", XT) <= m ? np + ", on phone" : np);
+                var two = y2 + dn(dc, XT, pt) <= bt;
+                var y1 = two ? ry : below(dc, yb, XT, S * 0.67);
+                if (two) { put(dc, c, y1, XT, pt, (S * 0.62).toNumber(), P.lbl, false, R0); }
+                var yr = two ? y2 : y1; put(dc, c, yr, XT, rt, (S * 0.6).toNumber(), on ? P.acc : P.fg, true, R0); $.gRouteY = yr / S;
+            }
+        } else {
+            var y = below(dc, yb, XT, S * 0.655), t2 = n.toString() + (n == 1 ? " data page" : " data pages");
+            if (y + dn(dc, XT, t2) <= bt) { put(dc, c, y, XT, t2, (S * 0.62).toNumber(), P.lbl, false, R0); }
         }
-        pill(dc, c, S * 0.81, S * 0.42, S * 0.13, P.acc); txt(dc, c, S * 0.81, Graphics.FONT_SMALL, "START", P.ink);
     }
-    // js/watchsim.js RPICK: None or a route sent from the phone, with its length and climb
+    // None or a route sent from the phone, with its length and climb
     function drawRpick(dc as Dc, F as Flow, S as Number, P as Palette) as Void {
-        var l = F.routes, sub = "Data pages only";
+        var l = F.routes, sub = "Data pages only", ex = [] as Array;
         if (l != null) {
-            if (F.sel > 0 && F.sel - 1 < l.size()) { var r = l[F.sel - 1], cl = rnd(fltOf(r["climb"])); sub = kmTxt(fltOf(r["dist"])) + " km" + (cl > 0 ? ", " + cl.toString() + " m up" : ""); }
+            if (F.sel > 0 && F.sel - 1 < l.size()) { var r = l[F.sel - 1], cl = rnd(fltOf(r["climb"])), km = kmTxt(fltOf(r["dist"])) + " km"; sub = km + (cl > 0 ? ", " + cl.toString() + " m up|" + km : ""); }
+            if (l.size() == 0) { ex = [["Send routes from the phone|Send from the phone|From the phone", P.lbl, false]] as Array; }
         }
-        list(dc, F, S, P, F.listItems(), "ROUTE", false, sub, null);
-        if (l != null) { if (l.size() == 0) { txt(dc, S / 2, S * 0.81, Graphics.FONT_XTINY, fit(dc, "Send routes from the phone", Graphics.FONT_XTINY, (S * 0.62).toNumber()), P.lbl); } }
+        list(dc, F, S, P, F.listItems(), "ROUTE", "ROUTE", false, sub, null, ex);
     }
     function drawRec(dc as Dc, F as Flow, S as Number, P as Palette, now as Number) as Void {
         var R = F.rec;
@@ -652,17 +858,17 @@ module Draw {
         if (i >= F.pages.size()) { routePage(dc, F, S, P); } else { drawPage(dc, S, P, F.sp, F.pages[i], R); }
         recRing(dc, S, P, !R.auto);
         pageDots(dc, S, P, n, i);
-        if (R.auto) { pill(dc, S / 2, S * 0.06, S * 0.36, S * 0.062, P.acc); txt(dc, S / 2, S * 0.061, Graphics.FONT_XTINY, "AUTO PAUSE", P.ink); }
     }
-    // js/watchdraw.js LAY: [x, value y, label y, value size, max width] per field for 1 to 4 fields; h = separator rows, v = the middle line
+    // a data page: [x, value y, label y, value size, max width] per field for 1 to 4 fields between the separators (h rows, v the middle
+    // line); in each cell the label on top, the value with its unit as big as the cell's room allows (auto pause: the first label says so)
     function drawPage(dc as Dc, S as Number, P as Palette, sp as String, ids as Array<String>, R as Rec) as Void {
-        var k = ids.size(), c = S / 2;
+        var k = ids.size(), c = S / 2, G = gap(S);
         if (k == 0) { return; }
         if (k > 4) { k = 4; }
-        var L = [[0.5, 0.53, 0.32, 0.3, 0.84]] as Array<Array<Float>>, h = [] as Array<Float>, v = [] as Array<Float>;
-        if (k == 2) { L = [[0.5, 0.34, 0.2, 0.2, 0.74], [0.5, 0.72, 0.58, 0.2, 0.7]] as Array<Array<Float>>; h = [0.5] as Array<Float>; }
-        else if (k == 3) { L = [[0.5, 0.33, 0.18, 0.2, 0.7], [0.29, 0.7, 0.575, 0.14, 0.37], [0.71, 0.7, 0.575, 0.14, 0.37]] as Array<Array<Float>>; h = [0.48] as Array<Float>; v = [0.48, 0.9] as Array<Float>; }
-        else if (k == 4) { L = [[0.5, 0.255, 0.13, 0.16, 0.6], [0.29, 0.5, 0.405, 0.13, 0.37], [0.71, 0.5, 0.405, 0.13, 0.37], [0.5, 0.765, 0.67, 0.13, 0.5]] as Array<Array<Float>>; h = [0.355, 0.615] as Array<Float>; v = [0.355, 0.615] as Array<Float>; }
+        var L = [[0.5, 0.53, 0.32, 0.3, 0.84]] as Array<Array<Float>>, h = [] as Array<Float>, v = [] as Array<Float>, cb = [1.0] as Array<Float>;
+        if (k == 2) { L = [[0.5, 0.34, 0.2, 0.2, 0.74], [0.5, 0.72, 0.58, 0.2, 0.7]] as Array<Array<Float>>; h = [0.5] as Array<Float>; cb = [0.5, 1.0] as Array<Float>; }
+        else if (k == 3) { L = [[0.5, 0.33, 0.18, 0.2, 0.7], [0.29, 0.7, 0.575, 0.14, 0.37], [0.71, 0.7, 0.575, 0.14, 0.37]] as Array<Array<Float>>; h = [0.48] as Array<Float>; v = [0.48, 0.9] as Array<Float>; cb = [0.48, 1.0, 1.0] as Array<Float>; }
+        else if (k == 4) { L = [[0.5, 0.255, 0.13, 0.16, 0.6], [0.29, 0.5, 0.405, 0.13, 0.37], [0.71, 0.5, 0.405, 0.13, 0.37], [0.5, 0.765, 0.67, 0.13, 0.5]] as Array<Array<Float>>; h = [0.355, 0.615] as Array<Float>; v = [0.355, 0.615] as Array<Float>; cb = [0.355, 0.615, 0.615, 1.0] as Array<Float>; }
         dc.setColor(P.line, Graphics.COLOR_TRANSPARENT); dc.setPenWidth(pw(S * 0.006 > 2 ? S * 0.006 : 2));
         for (var j = 0; j < h.size(); j++) {
             var y = h[j], q = 0.25 - (y - 0.5) * (y - 0.5), hw = Math.sqrt(q > 0 ? q : 0.0) * S - S * 0.05;
@@ -671,29 +877,50 @@ module Draw {
         if (v.size() == 2) { dc.drawLine(c, v[0] * S, c, v[1] * S); }
         dc.setPenWidth(1);
         for (var i = 0; i < k; i++) {
-            var row = L[i], id = ids[i], x = row[0] * S, y = row[1] * S, ly = row[2] * S, px = row[3], mw = (row[4] * S).toNumber();
-            var small = px < 0.15, hrt = id.equals("hr") && !small;
-            var lab = fit(dc, Fields.label(id).toUpper(), Graphics.FONT_XTINY, mw - (hrt ? (S * 0.05).toNumber() : 0));
-            var lx = x + (hrt ? S * 0.022 : 0);
-            txt(dc, lx, ly, Graphics.FONT_XTINY, lab, P.lbl);
-            if (hrt) { heart(dc, lx - dc.getTextWidthInPixels(lab, Graphics.FONT_XTINY) / 2 - S * 0.035, ly, S * 0.034, P.hr); } // the heart before "HEART RATE"
-            valUnit(dc, x, y, Fields.text(id, R), small && k > 1 ? "" : Fields.unit(sp, id), px, mw, P);
+            var row = L[i], id = ids[i], x = row[0] * S, px = row[3], mw = (row[4] * S).toNumber(), small = px < 0.15, hrt = id.equals("hr") && !small;
+            var ct = (i == 0 ? 0 : (k == 4 && i == 3 ? 0.615 : (k == 4 ? 0.355 : (k == 1 ? 0 : (k == 2 ? 0.5 : 0.48))))) * S, cbt = cb[i] * S;
+            var auto = R.auto && i == 0, lt = auto ? "AUTO PAUSE|PAUSED" : Fields.label(id).toUpper() + "|" + shortLab(id);
+            var ly = row[2] * S > ct + G + up(dc, XT) + (ct == 0 ? S * 0.06 : 0) ? row[2] * S : ct + G + up(dc, XT) + (ct == 0 ? S * 0.06 : 0);
+            var lm = roomC(dc, x, ly, XT, "A", R0) - (hrt ? (S * 0.05).toNumber() : 0), lw = mw - (hrt ? (S * 0.05).toNumber() : 0) < lm ? mw - (hrt ? (S * 0.05).toNumber() : 0) : lm;
+            var lab = fit(dc, pick(dc, lt, XT, lw, false), XT, lw), lx = x + (hrt ? S * 0.022 : 0);
+            if (auto) { pill(dc, lx, ly, dc.getTextWidthInPixels(lab, XT) + S * 0.06, inkH(dc, XT) + 4, P.acc); txt(dc, lx, ly, XT, lab, P.ink); }
+            else { txt(dc, lx, ly, XT, lab, P.lbl); }
+            if (hrt) { heart(dc, lx - dc.getTextWidthInPixels(lab, XT) / 2.0 - S * 0.035, ly, S * 0.034, P.hr); }
+            var top = ly + dn(dc, XT, lab) + G, bot = cbt - G - (cb[i] == 1.0 ? S * 0.06 : 0);
+            valUnit(dc, x, row[1] * S, Fields.text(id, R), small && k > 1 ? "" : Fields.unit(sp, id), px, mw, top, bot, P);
         }
     }
-    // js/watchdraw.js valUnit: a value with its unit after it, centred on x and kept inside max (the value shrinks, the unit goes first)
-    function valUnit(dc as Dc, x, y, v as String, u as String, px as Float, max as Number, P as Palette) as Void {
-        var fonts = valFonts(px, isNum(v)), uf = Graphics.FONT_XTINY;
-        var uw = u.length() > 0 ? dc.getTextWidthInPixels(u, uf) + 4 : 0, f = fonts[fonts.size() - 1], vw = 0, found = false;
-        for (var i = 0; i < fonts.size() && !found; i++) {
-            vw = dc.getTextWidthInPixels(v, fonts[i]);
-            if (vw + uw <= max) { f = fonts[i]; found = true; }
-        }
-        if (!found) { uw = 0; f = fontFor(dc, v, fonts, max); vw = dc.getTextWidthInPixels(v, f); }
-        var x0 = x - (vw + uw) / 2;
-        txtL(dc, x0, y, f, v, P.fg);
-        if (uw > 0) { txtL(dc, x0 + vw + 4, y + dc.getFontHeight(f) * 0.22, uf, u, P.lbl); } // VERIFY on the device: the unit sits near the number's baseline
+    // a data field's short label (where the long one does not fit)
+    function shortLab(id as String) as String {
+        var k = ["lapPace", "avgPace", "dist", "lapDist", "lapTime", "hr", "hrZone", "cadence", "power3s", "power", "avgPower", "speed", "avgSpeed"] as Array<String>;
+        var v = ["LAP", "AVG", "DIST", "LAP", "LAP", "HR", "ZONE", "CAD", "3S", "PWR", "AVG", "SPD", "AVG"] as Array<String>;
+        var i = k.indexOf(id);
+        return i >= 0 ? v[i] : Fields.label(id).toUpper();
     }
-    // js/watchdraw.js pageDots: page dots on the left edge, where the UP / DOWN buttons are, the first page on top
+    // a value with its unit after it, centred on x, its digits in the rows top..bot (near y), kept inside max and the circle: the value
+    // shrinks, the unit goes first; the unit on the value's baseline
+    function valUnit(dc as Dc, x, y, v as String, u as String, px as Float, max as Number, top, bot, P as Palette) as Void {
+        var fonts = valFonts(px, isNum(v)), uf = XT;
+        fonts.addAll([LA, ME, SM, XT]);
+        var uw = u.length() > 0 ? dc.getTextWidthInPixels(u, uf) + 4 : 0, f = fonts[fonts.size() - 1], vw = 0, found = false, yy = y;
+        for (var pass = 0; pass < 2 && !found; pass++) {
+            if (pass == 1) { uw = 0; }
+            for (var i = 0; i < fonts.size() && !found; i++) {
+                var g = fonts[i], vu = uw > 0 ? v + u : v, hi = up(dc, g) + dn(dc, g, vu);
+                if (hi > bot - top) { continue; }
+                var yi = y;
+                if (yi - up(dc, g) < top) { yi = top + up(dc, g); }
+                if (yi + dn(dc, g, vu) > bot) { yi = bot - dn(dc, g, vu); }
+                var m = roomC(dc, x, yi, g, vu, R0); vw = dc.getTextWidthInPixels(v, g);
+                if (vw + uw <= (max < m ? max : m)) { f = g; found = true; yy = yi; }
+            }
+        }
+        if (!found) { uw = 0; f = fonts[fonts.size() - 1]; vw = dc.getTextWidthInPixels(v, f); yy = (top + bot) / 2.0; }
+        var x0 = x - (vw + uw) / 2.0;
+        txtL(dc, x0, yy, f, fit(dc, v, f, vw), P.fg);
+        if (uw > 0) { var base = yy - dc.getFontHeight(f) / 2.0 + asc(f); txtL(dc, x0 + vw + 4, base - asc(uf) + dc.getFontHeight(uf) / 2.0, uf, u, P.lbl); }
+    }
+    // page dots on the left edge, where the UP / DOWN buttons are, the first page on top
     function pageDots(dc as Dc, S as Number, P as Palette, n as Number, i as Number) as Void {
         if (n < 2) { return; }
         var r = S / 2 - S * 0.035, a0 = 180 + (n - 1) * 5;
@@ -702,208 +929,305 @@ module Draw {
             dc.setColor(k == i ? P.acc : P.dim, Graphics.COLOR_TRANSPARENT); dc.fillCircle(x, y, S * (k == i ? 0.016 : 0.011));
         }
     }
-    // js/watchdraw.js recRing: the recording ring at the top in the sport's colour (dim while paused)
+    // the recording ring at the top (dim while paused)
     function recRing(dc as Dc, S as Number, P as Palette, on as Boolean) as Void {
         dc.setColor(on ? P.acc : P.dim, Graphics.COLOR_TRANSPARENT); dc.setPenWidth(pw(S * 0.024));
         dc.drawArc(S / 2, S / 2, S / 2 - (S * 0.012).toNumber(), Graphics.ARC_CLOCKWISE, 120, 60);
         dc.setPenWidth(1);
     }
-    // js/watchsim.js RSUM: the summary after Save
+    // three numbers with labels in a row below yb (not above y0): one font for the three (the largest whose row fits the circle and the
+    // room to bot), the labels under them; where no font fits, one line per number; returns the ink bottom, or -1 when it does not fit
+    function cols(dc as Dc, S as Number, P as Palette, v as Array<String>, l as Array<String>, yb, y0, bot, fonts as Array, draw as Boolean) as Float {
+        var c = S / 2;
+        for (var i = 0; i < fonts.size(); i++) {
+            var f = fonts[i], y = below(dc, yb, f, y0), ly = below(dc, y + dn(dc, f, "0"), XT, 0), b = ly + dn(dc, XT, "G");
+            if (b > bot) { continue; }
+            var dx = colDx(dc, S, v, l, f, y, ly, S * 0.03);
+            if (dx < 0) { continue; }
+            if (draw) { for (var j = 0; j < 3; j++) { var x = c + (j - 1) * dx; txt(dc, x, y, f, v[j], P.fg); txt(dc, x, ly, XT, l[j], P.lbl); } }
+            return b;
+        }
+        // the last resort (font size setting): one line per number, "1250 AVG W"
+        var y1 = below(dc, yb, XT, y0), b1 = -1.0;
+        for (var j = 0; j < 3; j++) {
+            var wv = dc.getTextWidthInPixels(v[j], XT), sp = S * 0.025, wl = dc.getTextWidthInPixels(l[j], XT), bb = y1 + dn(dc, XT, "G");
+            if (bb > bot || wv + sp + wl > roomC(dc, c, y1, XT, "G", R0)) { return -1.0; }
+            if (draw) { var x0 = c - (wv + sp + wl) / 2.0; txtL(dc, x0, y1, XT, v[j], P.fg); txtL(dc, x0 + wv + sp, y1, XT, l[j], P.lbl); }
+            b1 = bb; y1 = below(dc, bb, XT, 0);
+        }
+        return b1;
+    }
+    // the distance of three columns (0.23 S, more where wide texts need it) with the values v in font f at y and the labels l at ly: the
+    // outer ones inside the circle, none touching the next; -1 when they do not fit
+    function colDx(dc as Dc, S as Number, v as Array<String>, l as Array<String>, f, y, ly, pad) as Float {
+        var w = 0;
+        for (var j = 0; j < 3; j++) { var a = dc.getTextWidthInPixels(v[j], f), b = dc.getTextWidthInPixels(l[j], XT); if (a > w) { w = a; } if (b > w) { w = b; } }
+        var h1 = half(S, y - up(dc, f), y + dn(dc, f, "0"), R0), h2 = half(S, ly - up(dc, XT), ly + dn(dc, XT, "G"), R0), hw = h1 < h2 ? h1 : h2;
+        var need = w + gap(S) + pad, want = S * 0.23 > need ? S * 0.23 : need, dx = hw - w / 2.0;
+        if (dx > want) { dx = want; }
+        return dx < need ? -1.0 : dx.toFloat();
+    }
     function drawRsum(dc as Dc, F as Flow, S as Number, P as Palette) as Void {
         var s = F.rsum, c = S / 2;
         if (s == null) { return; }
         var sp = strOf(s["sp"]), t = numOf(s["t"]), d = fltOf(s["d"]), kc = rnd(fltOf(s["kcal"]));
-        txt(dc, c, S * 0.16, Graphics.FONT_SMALL, "SAVED", P.acc);
-        txt(dc, c, S * 0.33, Graphics.FONT_NUMBER_MEDIUM, clock(t), P.fg);
-        txt(dc, c, S * 0.435, Graphics.FONT_XTINY, "TIME", P.lbl);
         var v = [kmTxt(d), "", ""] as Array<String>, l = ["KM", "", ""] as Array<String>;
         if (sp.equals("ride")) { v[1] = (t > 0 ? d / t * 3.6 : 0.0).format("%.1f"); l[1] = "KM/H"; v[2] = rnd(fltOf(s["avgPw"])).toString(); l[2] = "AVG W"; }
         else if (sp.equals("run")) { v[1] = Fields.pace(t.toFloat(), d); l[1] = "/KM"; v[2] = kc.toString(); l[2] = "KCAL"; }
         else { v[1] = kc.toString(); l[1] = "KCAL"; v[2] = numOf(s["laps"]).toString(); l[2] = "LAPS"; }
-        for (var i = 0; i < 3; i++) {
-            var x = S * (0.27 + i * 0.23);
-            txt(dc, x, S * 0.59, fontFor(dc, v[i], [Graphics.FONT_MEDIUM, Graphics.FONT_SMALL, Graphics.FONT_XTINY], (S * 0.22).toNumber()), v[i], P.fg);
-            txt(dc, x, S * 0.665, Graphics.FONT_XTINY, l[i], P.lbl);
+        var sf = byInk(dc, [SM, XT], S * 0.1), sy = S * 0.16 > up(dc, sf) + S * 0.1 ? S * 0.16 : up(dc, sf) + S * 0.1; put(dc, c, sy, sf, "SAVED", S, P.acc, false, R0);
+        var dy = S * 0.87, bt = dy - up(dc, XT) - gap(S), nm = sp.equals("other") ? strOf(s["name"]) : F.homeLabel(sp), ct = clock(t);
+        // the time, TIME, three numbers with labels, the sport, DONE: TIME goes first, then DONE, then the time gets smaller, then the sport goes
+        for (var lvl = 0; lvl < 4; lvl++) {
+            var tl = lvl < 1, dn0 = lvl < 2, nmOn = lvl < 3, tf = topFont(dc, ct, lvl < 2 ? [NME, NMI, ME] : [NMI, ME, SM], (S * 0.8).toNumber(), lvl < 2 ? S * 0.2 : S * 0.12, sy + dn(dc, sf, "S"), S * 0.33);
+            var ty = below(dc, sy + dn(dc, sf, "S"), tf, S * 0.33), ly = below(dc, ty + dn(dc, tf, "0"), XT, S * 0.435), lim = dn0 ? bt : S * (0.5 + R0);
+            var cy0 = tl ? ly + dn(dc, XT, "T") : ty + dn(dc, tf, "0"), cb = cols(dc, S, P, v, l, cy0, S * 0.52, lim, [ME, SM, XT], false);
+            var nf = byInk(dc, [SM, XT], S * 0.1), ny = below(dc, cb, nf, S * 0.76);
+            if ((cb < 0 || (nmOn && ny + dn(dc, nf, nm) > lim)) && lvl < 3) { continue; }
+            txt(dc, c, ty, tf, ct, P.fg);
+            if (tl) { put(dc, c, ly, XT, "TIME", S, P.lbl, false, R0); }
+            cols(dc, S, P, v, l, cy0, S * 0.52, lim, [ME, SM, XT], true);
+            if (!nmOn) { return; }
+            put(dc, c, ny, nf, nm, (S * 0.6).toNumber(), P.acc, true, R0);
+            if (dn0) { put(dc, c, dy, XT, "DONE", S, P.lbl, false, R0); }
+            return;
         }
-        var nm = sp.equals("other") ? strOf(s["name"]) : F.homeLabel(sp);
-        txt(dc, c, S * 0.76, Graphics.FONT_SMALL, fit(dc, nm, Graphics.FONT_SMALL, (S * 0.6).toNumber()), P.acc);
-        txt(dc, c, S * 0.86, Graphics.FONT_XTINY, "DONE", P.lbl);
     }
-    /* ---- 23.11.: the indoor trainer (js/watchsim.js DRAW[SCR.TSCAN ... TSUM], TSCAN_LAY, TREC_LAY, TSUM_LAY, STATS_LAY) ---- */
+    /* ---- 23.11.: the indoor trainer ---- */
     // the trainers nearby (FTMS first) while searching, else the state of the one chosen with START to ride
     function drawTScan(dc as Dc, F as Flow, S as Number, P as Palette) as Void {
-        var L = F.link, v = L.shown(), c = S / 2;
+        var L = F.link, v = L.shown(), c = S / 2, G = gap(S);
         if (v == TL_SCAN || v == TL_OFF) {
             var n = L.list.size();
             if (n > 0) {
-                var sub = F.sel < n && L.list[F.sel]["ftms"] == true ? "Smart trainer, ERG" : "Power only, no ERG";
-                list(dc, F, S, P, F.listItems(), "INDOOR TRAINER", false, sub, "Searching, START connects");
+                var sub = F.sel < n && L.list[F.sel]["ftms"] == true ? "Smart trainer, ERG|Smart trainer" : "Power only, no ERG|Power only";
+                list(dc, F, S, P, F.listItems(), "INDOOR TRAINER", "TRAINER", false, sub, "Searching, START connects|Searching", []);
                 return;
             }
-            txt(dc, c, S * 0.12, Graphics.FONT_XTINY, "INDOOR TRAINER", P.dim);
-            dc.setColor(P.acc, Graphics.COLOR_TRANSPARENT); dc.fillCircle(c, S * 0.3, S * 0.07);
-            icon(dc, "trainer", c, S * 0.3, S * 0.085, P.ink);
-            txt(dc, c, S * 0.45, Graphics.FONT_MEDIUM, "Searching", P.fg);
-            txt(dc, c, S * 0.56, Graphics.FONT_XTINY, "Pedal a few turns", P.lbl);
-            txt(dc, c, S * 0.62, Graphics.FONT_XTINY, "to wake the trainer", P.lbl);
+            var tt = alt(dc, "INDOOR TRAINER", "TRAINER", XT, roomC(dc, c, S * 0.12, XT, "I", R0)); put(dc, c, S * 0.12, XT, tt, S, P.dim, false, R0);
+            dc.setColor(P.acc, Graphics.COLOR_TRANSPARENT); dc.fillCircle(c, S * 0.3, S * 0.07); icon(dc, "trainer", c, S * 0.3, S * 0.085, P.ink);
+            var f = byInk(dc, [ME, SM, XT], S * 0.12), y = below(dc, S * 0.37, f, S * 0.45); put(dc, c, y, f, "Searching", S, P.fg, false, R0);
+            var y1 = below(dc, y + dn(dc, f, "g"), XT, S * 0.56); put(dc, c, y1, XT, "Pedal a few turns", S, P.lbl, false, R0);
+            var y2 = below(dc, y1 + dn(dc, XT, "P"), XT, S * 0.62), m = roomC(dc, c, y2, XT, "k", R0);
+            put(dc, c, y2, XT, alt(dc, "to wake the trainer", "to wake it up", XT, m), S, P.lbl, false, R0);
             return;
         }
-        dc.setColor(P.acc, Graphics.COLOR_TRANSPARENT); dc.fillCircle(c, S * 0.24, S * 0.1);
-        icon(dc, "trainer", c, S * 0.24, S * 0.12, P.ink);
-        txt(dc, c, S * 0.4, Graphics.FONT_SMALL, fit(dc, L.name, Graphics.FONT_SMALL, (S * 0.74).toNumber()), P.fg);
+        dc.setColor(P.acc, Graphics.COLOR_TRANSPARENT); dc.fillCircle(c, S * 0.24, S * 0.1); icon(dc, "trainer", c, S * 0.24, S * 0.12, P.ink);
         var a = "", col = P.fg, b = "", d = "";
         if (v == TL_CONN) { a = "Connecting"; b = "Taking control"; }
-        else if (v == TL_READY) { a = "Connected"; col = P.good; b = L.ctl ? "ERG ready" : "Power only, no ERG"; }
-        else if (v == TL_REFUSED) { a = "Refuses control"; col = P.bad; b = "Another app controls it."; d = "Close it, or ride without ERG"; }
-        else if (v == TL_LOST) { a = "Lost, reconnecting"; col = P.bad; b = "Keeps trying"; }
-        txt(dc, c, S * 0.52, Graphics.FONT_MEDIUM, fit(dc, a, Graphics.FONT_MEDIUM, (S * 0.8).toNumber()), col);
-        txt(dc, c, S * 0.61, Graphics.FONT_XTINY, fit(dc, b, Graphics.FONT_XTINY, (S * 0.74).toNumber()), P.fg);
-        if (d.length() > 0) { txt(dc, c, S * 0.675, Graphics.FONT_XTINY, fit(dc, d, Graphics.FONT_XTINY, (S * 0.68).toNumber()), P.lbl); }
-        if (v == TL_READY || v == TL_REFUSED) { startHint(dc, S, P); pill(dc, c, S * 0.81, S * 0.42, S * 0.13, P.acc); txt(dc, c, S * 0.81, Graphics.FONT_SMALL, "START", P.ink); }
-        else { txt(dc, c, S * 0.81, Graphics.FONT_XTINY, "BACK: the list", P.lbl); }
+        else if (v == TL_READY) { a = "Connected"; col = P.good; b = L.ctl ? "ERG ready" : "Power only, no ERG|Power only"; }
+        else if (v == TL_REFUSED) { a = "Refuses control"; col = P.bad; b = "Another app controls it.|Another app has it.|App in use"; d = "Close it, or ride without ERG|Or ride without ERG|Or ride, no ERG"; }
+        else if (v == TL_LOST) { a = "Lost, reconnecting|Lost"; col = P.bad; b = "Keeps trying"; }
+        var start = v == TL_READY || v == TL_REFUSED, py = S * 0.81, ph = S * 0.13, bt = 0.0;
+        if (start) { startHint(dc, S, P); pill(dc, c, py, S * 0.42, ph, P.acc); put(dc, c, py, inPill(dc, "START", [SM, XT], S * 0.38, ph), "START", S, P.ink, false, R0); bt = py - ph / 2.0 - G; }
+        else { var by = S * 0.82; put(dc, c, by, XT, "BACK: the list", S, P.lbl, false, R0); bt = by - up(dc, XT) - G; }
+        var nf = byInk(dc, [SM, XT], S * 0.1), ny = below(dc, S * 0.34, nf, S * 0.4); put(dc, c, ny, nf, L.name, (S * 0.74).toNumber(), P.fg, true, R0);
+        var a0 = first(a), af = topFont(dc, a0, [ME, SM, XT], (S * 0.8).toNumber(), S * 0.13, ny + dn(dc, nf, L.name), S * 0.52), ay = below(dc, ny + dn(dc, nf, L.name), af, S * 0.52);
+        put(dc, c, ay, af, a, (S * 0.8).toNumber(), col, false, R0);
+        var yb = ay + dn(dc, af, a0), lines = [b, d] as Array<String>;
+        for (var i = 0; i < 2; i++) {
+            if (lines[i].length() == 0) { continue; }
+            var y = below(dc, yb, XT, S * (i == 0 ? 0.61 : 0.675)), m = roomC(dc, c, y, XT, "g", R0), t = pick(dc, lines[i], XT, m < (S * 0.74).toNumber() ? m : (S * 0.74).toNumber(), false);
+            if (y + dn(dc, XT, t) > bt) { break; }
+            put(dc, c, y, XT, t, (S * 0.74).toNumber(), i == 0 ? P.fg : P.lbl, false, R0); yb = y + dn(dc, XT, t);
+        }
     }
-    // the ERG ride (like the Wahoo app's ERG page): the target big with - / + beside it, the trainer's power, cadence, heart rate below
+    // the ERG ride: the time, the target big with - / + beside it, the trainer's power, cadence, heart rate below; a stats page.
+    // gT0 .. gT1: the target's zone (the taps on - / + / the target, the wheel)
     function drawTRec(dc as Dc, F as Flow, S as Number, P as Palette, now as Number) as Void {
         var R = F.tr;
         if (R == null) { return; }
-        var L = F.link, v = L.shown(), paused = R.st != RS_RUN, c = S / 2;
+        var L = F.link, v = L.shown(), paused = R.st != RS_RUN, c = S / 2, G = gap(S);
         recRing(dc, S, P, !paused); pageDots(dc, S, P, 2, R.pg);
         if (R.pg != 0) { trStats(dc, S, P, R); return; }
-        txt(dc, c, S * 0.12, Graphics.FONT_NUMBER_MILD, clock(R.t), P.fg);
-        var warn = v == TL_LOST ? "LOST, RECONNECTING" : (v == TL_REFUSED ? "NO CONTROL, OTHER APP" : (!L.ctl ? "POWER ONLY, NO ERG" : (paused ? "PAUSED" : "")));
+        var ct = clock(R.t), tf = fontIn(dc, ct, [NMI, ME, SM, XT], (S * 0.5).toNumber(), S * 0.1), ty = S * 0.13 > up(dc, tf) + S * 0.075 ? S * 0.13 : up(dc, tf) + S * 0.075;
+        put(dc, c, ty, tf, ct, S, P.fg, false, R0);
+        var warn = v == TL_LOST ? "LOST, RECONNECTING|LOST" : (v == TL_REFUSED ? "NO CONTROL, OTHER APP|NO CONTROL" : (!L.ctl ? "POWER ONLY, NO ERG|NO ERG" : (paused ? "PAUSED" : "")));
         var wc = warn.length() == 0 ? P.lbl : (paused && L.ctl && v != TL_LOST && v != TL_REFUSED ? P.acc : P.bad);
-        var wh = wheelOn(F, 0); // 23.11.7 (js TREC_LAY wUp / wDn): while a finger turns the target its neighbours take the label's and the step line's places
-        if (!wh) { txt(dc, c, S * 0.205, Graphics.FONT_XTINY, fit(dc, warn.length() > 0 ? warn : "TARGET W", Graphics.FONT_XTINY, (S * 0.6).toNumber()), wc); }
-        var t = R.tgt.toString();
-        txt(dc, c, S * 0.36, fontFor(dc, t, [Graphics.FONT_NUMBER_THAI_HOT, Graphics.FONT_NUMBER_HOT, Graphics.FONT_NUMBER_MEDIUM], (S * 0.46).toNumber()), t, paused ? P.dim : P.acc);
+        var wh = wheelOn(F, 0), ly = below(dc, ty + dn(dc, tf, "0"), XT, S * 0.205), lp = warn.length() > 0 ? warn : "TARGET W", lm = roomC(dc, c, ly, XT, "W", R0);
+        if (!wh) { put(dc, c, ly, XT, alt(dc, first(lp), pick(dc, lp, XT, 0, false), XT, lm), S, wc, false, R0); }
+        // the bottom: AVG / the resume pill, the three numbers with labels, the separator
+        var by = S * 0.85, bt = 0.0;
+        if (paused) { var ph = S * 0.1; pill(dc, c, by, S * 0.44, ph, P.acc); put(dc, c, by, inPill(dc, "START", [XT], S * 0.4, ph), "START resume|Resume", S * 0.4, P.ink, false, R0); bt = by - ph / 2.0 - G; }
+        else { var ap = "AVG " + R.avgPw().toString(); put(dc, c, by, XT, ap + " W, " + rnd(R.kj).toString() + " kJ|" + ap + " W|" + ap, S, P.lbl, false, R0); bt = by - up(dc, XT) - G; }
+        // the three numbers: the largest font whose row and labels fit 0.2 S and the circle (WATTS is W where it does not)
+        var vals = [L.livePw(now).toString(), L.liveCad(now).toString(), F.hr > 0 ? F.hr.toString() : "--"] as Array<String>, vfs = [NMI, ME, SM, XT], vl = above(dc, bt, XT, "G", S * 0.735);
+        var labs = ["WATTS", "RPM", "BPM"] as Array<String>, vf = XT, vy = 0.0, dx = -1.0, hOn = true;
+        for (var pass = 0; pass < 3 && dx < 0; pass++) {
+            if (pass == 1) { labs = ["W", "RPM", "BPM"] as Array<String>; }
+            if (pass == 2) { hOn = false; }
+            for (var i = 0; i < vfs.size(); i++) {
+                vf = vfs[i]; vy = above(dc, vl - up(dc, XT), vf, "0", S * 0.655);
+                dx = inkH(dc, vf) + G + inkH(dc, XT) <= S * 0.2 || i == vfs.size() - 1 ? colDx(dc, S, vals, labs, vf, vy, vl, hOn ? S * 0.05 : 0) : -1.0;
+                if (dx >= 0) { break; }
+            }
+        }
+        if (dx < 0) { dx = S * 0.18; }
+        var sep = vy - up(dc, vf) - G - 1;
+        for (var i = 0; i < 3; i++) {
+            var x = c + (i - 1) * dx;
+            txt(dc, x, vy, vf, vals[i], P.fg);
+            if (i == 2 && hOn) { heart(dc, x - dc.getTextWidthInPixels("BPM", XT) / 2.0 - S * 0.02, vl, S * 0.03, P.hr); }
+            txt(dc, x + (i == 2 && hOn ? S * 0.015 : 0), vl, XT, labs[i], P.lbl);
+        }
+        dc.setColor(P.line, Graphics.COLOR_TRANSPARENT); dc.setPenWidth(pw(S * 0.006 > 2 ? S * 0.006 : 2)); dc.drawLine(S * 0.12, sep, S * 0.88, sep); dc.setPenWidth(1);
+        // the target between the label and the separator, - / + beside it, the step under it (the wheel: the neighbours instead)
+        var t = R.tgt.toString(), top = (wh ? ty + dn(dc, tf, "0") : ly + dn(dc, XT, "W")) + G, sf = XT;
+        var room = sep - G - top - (wh ? 0 : inkH(dc, sf) + G), gf = numIn(dc, [t], [NTH, NHO, NME, NMI], [(S * 0.46).toNumber()], [c], top, top + room, R0), gy = numY(dc, gf, top, top + room);
+        txt(dc, c, gy, gf, t, paused ? P.dim : P.acc); $.gT0 = top / S; $.gT1 = sep / S;
         var xs = [0.15, 0.85] as Array<Float>;
         for (var i = 0; i < 2; i++) {
-            var x = S * xs[i], y = S * 0.36, h = S * 0.035;
-            dc.setColor(P.faint, Graphics.COLOR_TRANSPARENT); dc.fillCircle(x, y, S * 0.085);
+            var x = S * xs[i], h = S * 0.035;
+            dc.setColor(P.faint, Graphics.COLOR_TRANSPARENT); dc.fillCircle(x, gy, S * 0.085);
             dc.setColor(P.fg, Graphics.COLOR_TRANSPARENT); dc.setPenWidth(pw(S * 0.018));
-            dc.drawLine(x - h, y, x + h, y); if (i == 1) { dc.drawLine(x, y - h, x, y + h); } // drawn: the fonts may have no minus sign
+            dc.drawLine(x - h, gy, x + h, gy); if (i == 1) { dc.drawLine(x, gy - h, x, gy + h); } // drawn: the fonts may have no minus sign
             dc.setPenWidth(1);
         }
         if (wh) {
-            for (var d = -1; d <= 1; d += 2) { var w = R.nextTarget(d, false); if (w != R.tgt) { txt(dc, c, S * (d < 0 ? 0.22 : 0.49), Graphics.FONT_XTINY, w.toString(), P.dim); } }
-        } else { txt(dc, c, S * 0.5, Graphics.FONT_XTINY, "+/- " + R.step.toString() + " W", P.lbl); }
-        dc.setColor(P.line, Graphics.COLOR_TRANSPARENT); dc.setPenWidth(pw(S * 0.006 > 2 ? S * 0.006 : 2));
-        dc.drawLine(S * 0.12, S * 0.56, S * 0.88, S * 0.56); dc.setPenWidth(1);
-        var vals = [L.livePw(now).toString(), L.liveCad(now).toString(), F.hr > 0 ? F.hr.toString() : "--"] as Array<String>, labs = ["WATTS", "RPM", "BPM"] as Array<String>;
-        for (var i = 0; i < 3; i++) {
-            var x = S * (0.27 + i * 0.23);
-            txt(dc, x, S * 0.655, fontFor(dc, vals[i], [Graphics.FONT_NUMBER_MILD, Graphics.FONT_MEDIUM, Graphics.FONT_SMALL], (S * 0.21).toNumber()), vals[i], P.fg);
-            if (i == 2) { heart(dc, x - S * 0.055, S * 0.735, S * 0.03, P.hr); }
-            txt(dc, x + (i == 2 ? S * 0.015 : 0), S * 0.735, Graphics.FONT_XTINY, labs[i], P.lbl);
-        }
-        if (paused) { pill(dc, c, S * 0.85, S * 0.44, S * 0.1, P.acc); txt(dc, c, S * 0.85, Graphics.FONT_XTINY, "START resume", P.ink); }
-        else { txt(dc, c, S * 0.85, Graphics.FONT_XTINY, "AVG " + R.avgPw().toString() + " W, " + rnd(R.kj).toString() + " kJ", P.lbl); }
-    }
-    // three numbers with labels in a row (x 0.27 / 0.5 / 0.73; js cols)
-    function cols(dc as Dc, S as Number, P as Palette, v as Array<String>, l as Array<String>, y as Float, yl as Float) as Void {
-        for (var i = 0; i < 3; i++) {
-            var x = S * (0.27 + i * 0.23);
-            txt(dc, x, S * y, fontFor(dc, v[i], [Graphics.FONT_MEDIUM, Graphics.FONT_SMALL, Graphics.FONT_XTINY], (S * 0.22).toNumber()), v[i], P.fg);
-            txt(dc, x, S * yl, Graphics.FONT_XTINY, l[i], P.lbl);
-        }
+            for (var dd = -1; dd <= 1; dd += 2) {
+                var w = R.nextTarget(dd, false);
+                if (w == R.tgt) { continue; }
+                var yy = dd < 0 ? above(dc, gy - up(dc, gf), XT, "0", S) : below(dc, gy + dn(dc, gf, "0"), XT, 0);
+                if (yy - up(dc, XT) >= ty + dn(dc, tf, "0") + G && yy + dn(dc, XT, "0") <= sep - G) { txt(dc, c, yy, XT, w.toString(), P.dim); }
+            }
+        } else { put(dc, c, below(dc, gy + dn(dc, gf, "0"), sf, 0), sf, "+/- " + R.step.toString() + " W", S, P.lbl, false, R0); }
     }
     function orDash(n as Number) as String { return n > 0 ? n.toString() : "--"; }
     // the ride's second page: this target's block (time, avg power), then the whole ride
     function trStats(dc as Dc, S as Number, P as Palette, R as TRide) as Void {
-        var c = S / 2, bAvg = R.bN > 0 ? rnd(R.bSum.toFloat() / R.bN) : 0, sm = R.sum();
-        txt(dc, c, S * 0.17, Graphics.FONT_SMALL, "AT " + R.tgt.toString() + " W", P.acc);
-        txt(dc, c, S * 0.3, Graphics.FONT_NUMBER_MEDIUM, clock(R.t - R.bT0), P.fg);
-        txt(dc, c, S * 0.41, Graphics.FONT_XTINY, fit(dc, bAvg.toString() + " W avg at this target", Graphics.FONT_XTINY, (S * 0.7).toNumber()), P.lbl);
-        dc.setColor(P.line, Graphics.COLOR_TRANSPARENT); dc.setPenWidth(pw(S * 0.006 > 2 ? S * 0.006 : 2));
-        dc.drawLine(S * 0.12, S * 0.48, S * 0.88, S * 0.48); dc.setPenWidth(1);
-        cols(dc, S, P, [R.avgPw().toString(), R.pwMax.toString(), rnd(R.kj).toString()] as Array<String>, ["AVG W", "MAX W", "KJ"] as Array<String>, 0.58, 0.655);
-        cols(dc, S, P, [orDash(numOf(sm["np"])), orDash(numOf(sm["cad"])), orDash(numOf(sm["hr"]))] as Array<String>, ["NP", "RPM", "AVG HR"] as Array<String>, 0.75, 0.82);
+        var c = S / 2, G = gap(S), bAvg = R.bN > 0 ? rnd(R.bSum.toFloat() / R.bN) : 0, sm = R.sum();
+        var af = byInk(dc, [SM, XT], S * 0.1), ay = S * 0.17 > up(dc, af) + S * 0.09 ? S * 0.17 : up(dc, af) + S * 0.09; put(dc, c, ay, af, "AT " + R.tgt.toString() + " W", S, P.acc, false, R0);
+        var v1 = [R.avgPw().toString(), R.pwMax.toString(), rnd(R.kj).toString()] as Array<String>, v2 = [orDash(numOf(sm["np"])), orDash(numOf(sm["cad"])), orDash(numOf(sm["hr"]))] as Array<String>;
+        // the block's time, its average, the separator, two rows of three: the numbers' font shrinks first, then the time, then the average
+        // goes, then the second row
+        var FS3 = [[ME, SM, XT], [SM, XT], [XT]] as Array<Array>, l1 = ["AVG W", "MAX W", "KJ"] as Array<String>, l2 = ["NP", "RPM", "AVG HR"] as Array<String>, bc = clock(R.t - R.bT0);
+        for (var q = 0; q < 12; q++) {
+            var lvl = q < 9 ? q / 3 : 2, fs = FS3[q % 3], two = q < 9;
+            var tf = fontIn(dc, bc, [NME, NMI, ME, SM], (S * 0.7).toNumber(), lvl == 0 ? S * 0.2 : S * 0.14), ty = below(dc, ay + dn(dc, af, "A"), tf, S * 0.3);
+            var ly = below(dc, ty + dn(dc, tf, "0"), XT, S * 0.41), lt = bAvg.toString() + " W avg at this target|" + bAvg.toString() + " W avg";
+            var sep = (lvl < 2 ? ly + dn(dc, XT, "g") : ty + dn(dc, tf, "0")) + G + 1;
+            var b1 = cols(dc, S, P, v1, l1, sep + 1, S * 0.58, S * (0.5 + R0), fs, false);
+            var b2 = b1 < 0 || !two ? -1.0 : cols(dc, S, P, v2, l2, b1, 0, S * 0.9, fs, false);
+            if ((two ? b2 : b1) < 0 && q < 11) { continue; }
+            txt(dc, c, ty, tf, bc, P.fg);
+            if (lvl < 2) { put(dc, c, ly, XT, lt, S, P.lbl, false, R0); }
+            dc.setColor(P.line, Graphics.COLOR_TRANSPARENT); dc.setPenWidth(pw(S * 0.006 > 2 ? S * 0.006 : 2)); dc.drawLine(S * 0.12, sep, S * 0.88, sep); dc.setPenWidth(1);
+            var c1 = cols(dc, S, P, v1, l1, sep + 1, S * 0.58, S * (0.5 + R0), fs, true);
+            if (c1 > 0 && two) { cols(dc, S, P, v2, l2, c1, 0, S * 0.9, fs, true); }
+            return;
+        }
     }
     // BACK on the ride: Resume, Stats page, Finish & save, Discard (with a confirm step)
     function drawTEnd(dc as Dc, F as Flow, S as Number, P as Palette) as Void {
-        list(dc, F, S, P, F.listItems(), F.tConf ? "DISCARD RIDE?" : "INDOOR TRAINER", true, null, null);
-        var R = F.tr;
-        if (R != null) { txt(dc, S / 2, S * 0.82, Graphics.FONT_XTINY, fit(dc, clock(R.t) + ", " + R.tgt.toString() + " W" + (R.st != RS_RUN ? ", paused" : ""), Graphics.FONT_XTINY, (S * 0.6).toNumber()), P.lbl); }
+        var R = F.tr, ex = [] as Array;
+        if (R != null) { var a = clock(R.t) + ", " + R.tgt.toString() + " W"; ex = [[a + (R.st != RS_RUN ? ", paused" : "") + "|" + a, P.lbl, false]] as Array; }
+        list(dc, F, S, P, F.listItems(), F.tConf ? "DISCARD RIDE?" : "INDOOR TRAINER", F.tConf ? "DISCARD?" : "TRAINER", true, null, null, ex);
     }
-    // the summary: time, avg / max power, kJ, cadence, avg / max heart rate
     function drawTSum(dc as Dc, F as Flow, S as Number, P as Palette) as Void {
-        var s = F.tsum, c = S / 2;
+        var s = F.tsum, c = S / 2, G = gap(S);
         if (s == null) { return; }
-        txt(dc, c, S * 0.15, Graphics.FONT_SMALL, "SAVED", P.acc);
-        txt(dc, c, S * 0.3, Graphics.FONT_NUMBER_MEDIUM, clock(numOf(s["t"])), P.fg);
-        txt(dc, c, S * 0.395, Graphics.FONT_XTINY, "INDOOR RIDE", P.lbl);
-        cols(dc, S, P, [numOf(s["avgPw"]).toString(), numOf(s["maxPw"]).toString(), numOf(s["kj"]).toString()] as Array<String>, ["AVG W", "MAX W", "KJ"] as Array<String>, 0.52, 0.59);
-        cols(dc, S, P, [orDash(numOf(s["cad"])), orDash(numOf(s["hr"])), orDash(numOf(s["maxHr"]))] as Array<String>, ["RPM", "AVG HR", "MAX HR"] as Array<String>, 0.7, 0.77);
-        txt(dc, c, S * 0.88, Graphics.FONT_XTINY, "DONE", P.lbl);
+        var sf = byInk(dc, [SM, XT], S * 0.1), sy = S * 0.15 > up(dc, sf) + S * 0.1 ? S * 0.15 : up(dc, sf) + S * 0.1; put(dc, c, sy, sf, "SAVED", S, P.acc, false, R0);
+        var dy = S * 0.88, bt = dy - up(dc, XT) - G, ct = clock(numOf(s["t"]));
+        var v1 = [numOf(s["avgPw"]).toString(), numOf(s["maxPw"]).toString(), numOf(s["kj"]).toString()] as Array<String>, v2 = [orDash(numOf(s["cad"])), orDash(numOf(s["hr"])), orDash(numOf(s["maxHr"]))] as Array<String>;
+        // the time, INDOOR RIDE, two rows of three, DONE: the numbers' font shrinks first, then the time, then INDOOR RIDE and DONE go, then
+        // the second row
+        var FS3 = [[ME, SM, XT], [SM, XT], [XT]] as Array<Array>, l1 = ["AVG W", "MAX W", "KJ"] as Array<String>, l2 = ["RPM", "AVG HR", "MAX HR"] as Array<String>;
+        for (var q = 0; q < 12; q++) {
+            var lvl = q < 9 ? q / 3 : 2, fs = FS3[q % 3], b0 = lvl < 2 ? bt : S * (0.5 + R0), two = q < 9;
+            var tf = fontIn(dc, ct, [NME, NMI, ME, SM], (S * 0.7).toNumber(), lvl == 0 ? S * 0.2 : S * 0.14), ty = below(dc, sy + dn(dc, sf, "S"), tf, S * 0.3);
+            var ly = below(dc, ty + dn(dc, tf, "0"), XT, S * 0.395), yb = lvl < 1 ? ly + dn(dc, XT, "D") : ty + dn(dc, tf, "0");
+            var b1 = cols(dc, S, P, v1, l1, yb, S * 0.52, b0, fs, false), b2 = b1 < 0 || !two ? -1.0 : cols(dc, S, P, v2, l2, b1, 0, b0, fs, false);
+            if ((two ? b2 : b1) < 0 && q < 11) { continue; }
+            txt(dc, c, ty, tf, ct, P.fg);
+            if (lvl < 1) { put(dc, c, ly, XT, "INDOOR RIDE", S, P.lbl, false, R0); }
+            var c1 = cols(dc, S, P, v1, l1, yb, S * 0.52, b0, fs, true);
+            if (c1 > 0 && two) { cols(dc, S, P, v2, l2, c1, 0, b0, fs, true); }
+            if (lvl < 2) { put(dc, c, dy, XT, "DONE", S, P.lbl, false, R0); }
+            return;
+        }
     }
     function distTxt(m as Float) as String { return m >= 1000.0 ? (m / 1000.0).format("%.1f") + " km" : rnd(m).toString() + " m"; }
-    // js/watchsim.js segScreen: the segment popup: warning before, live delta against the PR, the result for 5 s
+    // the segment popup: warning before, live delta against the PR, the result for 5 s (inside the ring)
     function segScreen(dc as Dc, F as Flow, S as Number, P as Palette, g as Dictionary) as Void {
-        var c = S / 2, k = strOf(g["k"]), len = fltOf(g["len"]), name = strOf(g["name"]), r = c - (S * 0.03).toNumber();
+        var c = S / 2, k = strOf(g["k"]), len = fltOf(g["len"]), name = strOf(g["name"]), r = c - (S * 0.03).toNumber(), ri = 0.5 - 0.03 - 0.015 - 0.015, G = gap(S);
         if (k.equals("warn")) {
             dc.setColor(P.acc, Graphics.COLOR_TRANSPARENT); dc.setPenWidth(pw(S * 0.03)); dc.drawCircle(c, c, r); dc.setPenWidth(1);
-            txt(dc, c, S * 0.22, Graphics.FONT_SMALL, "SEGMENT IN", P.acc);
-            txt(dc, c, S * 0.42, Graphics.FONT_NUMBER_HOT, clock(imax(0, numOf(g["eta"]))), P.fg);
-            txt(dc, c, S * 0.62, Graphics.FONT_SMALL, fit(dc, name, Graphics.FONT_SMALL, (S * 0.74).toNumber()), P.fg);
-            var pr = numOf(g["pr"]), t = distTxt(len) + (pr > 0 ? ", PR " + clock(pr) : "");
-            txt(dc, c, S * 0.72, Graphics.FONT_XTINY, fit(dc, t, Graphics.FONT_XTINY, (S * 0.6).toNumber()), P.lbl);
+            var a = byInk(dc, [SM, XT], S * 0.1), ay = S * 0.22; put(dc, c, ay, a, "SEGMENT IN", S, P.acc, false, ri);
+            var pr = numOf(g["pr"]), t = distTxt(len) + (pr > 0 ? ", PR " + clock(pr) + "|" + distTxt(len) : ""), nf = byInk(dc, [SM, XT], S * 0.1);
+            var ty = S * 0.74, ny = above(dc, ty - up(dc, XT), nf, name, S * 0.62);
+            put(dc, c, ty, XT, t, (S * 0.7).toNumber(), P.lbl, false, ri); put(dc, c, ny, nf, name, (S * 0.74).toNumber(), P.fg, true, ri);
+            var ct = clock(imax(0, numOf(g["eta"]))), top = ay + dn(dc, a, "G") + G, bot = ny - up(dc, nf) - G, f = numIn(dc, [ct], [NHO, NME, NMI, ME], [(S * 0.8).toNumber()], [c], top, bot, ri);
+            txt(dc, c, numY(dc, f, top, bot), f, ct, P.fg);
             return;
         }
         if (k.equals("live")) {
-            var done = fltOf(g["done"]), part = len > 0.0 ? done / len : 0.0, delta = numOf(g["delta"]), ahead = delta <= 0, col = ahead ? P.good : P.bad;
+            var done = fltOf(g["done"]), delta = numOf(g["delta"]), ahead = delta <= 0, col = ahead ? P.good : P.bad, part = len > 0.0 ? done / len : 0.0;
             if (part > 1.0) { part = 1.0; }
             dc.setPenWidth(pw(S * 0.03)); dc.setColor(P.faint, Graphics.COLOR_TRANSPARENT); dc.drawCircle(c, c, r);
             if (part > 0.0) { dc.setColor(P.acc, Graphics.COLOR_TRANSPARENT); if (part >= 0.999) { dc.drawCircle(c, c, r); } else { dc.drawArc(c, c, r, Graphics.ARC_CLOCKWISE, 90, 90 - (part * 360).toNumber()); } }
             dc.setPenWidth(1);
-            txt(dc, c, S * 0.17, Graphics.FONT_XTINY, fit(dc, name, Graphics.FONT_XTINY, (S * 0.6).toNumber()), P.fg);
-            var ref = g.hasKey("ref") ? strOf(g["ref"]) : "PR"; // "PR" | "KOM" | "" (nothing to beat: the time runs)
-            if (ref.length() == 0) {
-                txt(dc, c, S * 0.37, Graphics.FONT_NUMBER_HOT, clock(numOf(g["time"])), P.fg);
-                txt(dc, c, S * 0.505, Graphics.FONT_XTINY, "NO TIME TO BEAT", P.lbl);
-            } else {
-                txt(dc, c, S * 0.37, Graphics.FONT_NUMBER_HOT, (ahead ? "-" : "+") + clock(ahead ? -delta : delta), col);
-                txt(dc, c, S * 0.505, Graphics.FONT_XTINY, (ahead ? "AHEAD OF " : "BEHIND ") + ref, col);
+            var ny = S * 0.17 > up(dc, XT) + S * 0.1 ? S * 0.17 : up(dc, XT) + S * 0.1; put(dc, c, ny, XT, name, (S * 0.6).toNumber(), P.fg, true, ri);
+            var left = len - done, dl = distTxt(left > 0.0 ? left : 0.0), gt = dl + " to go|" + dl, gy = S * 0.8; put(dc, c, gy, XT, gt, S, P.lbl, false, ri);
+            var ref = g.hasKey("ref") ? strOf(g["ref"]) : "PR", top = ny + dn(dc, XT, name) + G; // "PR" | "KOM" | "" (nothing to beat: the time runs)
+            var bot = gy - up(dc, XT) - G, big = "", bc = P.fg, l1 = "", l1c = P.lbl, l2 = "", l3 = "";
+            if (ref.length() == 0) { big = clock(numOf(g["time"])); l1 = "NO TIME TO BEAT"; }
+            else {
+                big = clock(ahead ? -delta : delta); bc = col; l1 = (ahead ? "AHEAD OF " : "BEHIND ") + ref; l1c = col;
                 var need = fltOf(g["need"]);
-                if (need > 0.0) { // js/navroute.js needSpeed; 0 = out of reach
-                    var nt = F.sp.equals("ride") ? (need * 3.6).format("%.1f") + " km/h" : Fields.pace(1000.0 / need, 1000.0) + " /km";
-                    txt(dc, c, S * 0.63, Graphics.FONT_SMALL, fit(dc, "Need " + nt, Graphics.FONT_SMALL, (S * 0.76).toNumber()), P.fg);
-                    txt(dc, c, S * 0.7, Graphics.FONT_XTINY, "FOR " + ref, P.lbl);
-                } else { txt(dc, c, S * 0.655, Graphics.FONT_SMALL, fit(dc, ref + " out of reach", Graphics.FONT_SMALL, (S * 0.7).toNumber()), P.lbl); }
+                if (need > 0.0) { l2 = "Need " + (F.sp.equals("ride") ? (need * 3.6).format("%.1f") + " km/h" : Fields.pace(1000.0 / need, 1000.0) + " /km"); l3 = "FOR " + ref; }
+                else { l2 = ref + " out of reach"; }
             }
-            var left = len - done;
-            txt(dc, c, S * 0.81, Graphics.FONT_XTINY, distTxt(left > 0.0 ? left : 0.0) + " to go", P.lbl);
+            // from the bottom: FOR KOM, Need ..., then the big delta and its line in the rest
+            var f2 = byInk(dc, [SM, XT], S * 0.1);
+            if (l3.length() > 0) { var y3 = above(dc, bot, XT, l3, S * 0.7); put(dc, c, y3, XT, l3, S, P.lbl, false, ri); bot = y3 - up(dc, XT) - G; }
+            if (l2.length() > 0) { var y2 = above(dc, bot, f2, l2, S * 0.63); put(dc, c, y2, f2, l2, (S * 0.76).toNumber(), l3.length() > 0 ? P.fg : P.lbl, false, ri); bot = y2 - up(dc, f2) - G; }
+            var y1 = above(dc, bot, XT, l1, S * 0.505); put(dc, c, y1, XT, l1, S, l1c, false, ri); bot = y1 - up(dc, XT) - G;
+            // the sign in a text font (the fenix 7's number fonts have digits only)
+            var sg = ref.length() == 0 ? "" : (ahead ? "-" : "+"), sw = sg.length() > 0 ? dc.getTextWidthInPixels(sg, LA) + 2 : 0;
+            var f = numIn(dc, [big], [NHO, NME, NMI, ME], [(S * 0.8).toNumber() - sw], [c + sw / 2.0], top, bot, ri), bw = dc.getTextWidthInPixels(big, f), by = numY(dc, f, top, bot), bx = c - (bw + sw) / 2.0;
+            dc.setColor(bc, Graphics.COLOR_TRANSPARENT);
+            if (sw > 0) { dc.drawText(bx, by, LA, sg, VL); }
+            dc.drawText(bx + sw, by, f, big, VL);
             return;
         }
-        var pr2 = g["pr"] == true, dl = numOf(g["delta"]), col2 = pr2 || dl <= 0 ? P.good : P.bad, ink = pr2 ? P.ink : P.fg;
+        var pr2 = g["pr"] == true, dl2 = numOf(g["delta"]), col2 = pr2 || dl2 <= 0 ? P.good : P.bad, ink = pr2 ? P.ink : P.fg;
         if (pr2) { dc.setColor(col2, Graphics.COLOR_TRANSPARENT); dc.fillCircle(c, c, c); }
-        txt(dc, c, S * 0.22, Graphics.FONT_SMALL, pr2 ? "NEW PR" : "SEGMENT DONE", pr2 ? ink : P.acc);
-        txt(dc, c, S * 0.31, Graphics.FONT_XTINY, fit(dc, name, Graphics.FONT_XTINY, (S * 0.66).toNumber()), ink);
-        txt(dc, c, S * 0.5, Graphics.FONT_NUMBER_HOT, clock(numOf(g["time"])), ink);
-        var ref2 = g.hasKey("ref") ? strOf(g["ref"]) : "PR";
-        if (ref2.length() > 0) { txt(dc, c, S * 0.7, Graphics.FONT_MEDIUM, (dl <= 0 ? "-" : "+") + clock(dl < 0 ? -dl : dl) + " vs " + ref2, pr2 ? ink : col2); }
+        var a2 = byInk(dc, [SM, XT], S * 0.1), ay2 = S * 0.2 > up(dc, a2) + S * 0.1 ? S * 0.2 : up(dc, a2) + S * 0.1; put(dc, c, ay2, a2, pr2 ? "NEW PR" : "SEGMENT DONE", S, pr2 ? ink : P.acc, false, R0);
+        var ny2 = below(dc, ay2 + dn(dc, a2, "G"), XT, S * 0.3); put(dc, c, ny2, XT, name, (S * 0.66).toNumber(), ink, true, R0);
+        var ref2 = g.hasKey("ref") ? strOf(g["ref"]) : "PR", vt = (dl2 <= 0 ? "-" : "+") + clock(dl2 < 0 ? -dl2 : dl2) + " vs " + ref2;
+        var bot2 = S * 0.82;
+        if (ref2.length() > 0) { var vf = fontIn(dc, vt, [ME, SM, XT], (S * 0.7).toNumber(), S * 0.12), vy = above(dc, S * 0.82, vf, vt, S * 0.7); put(dc, c, vy, vf, vt, S, pr2 ? ink : col2, false, R0); bot2 = vy - up(dc, vf) - G; }
+        var top2 = ny2 + dn(dc, XT, name) + G, ct2 = clock(numOf(g["time"])), f3 = numIn(dc, [ct2], [NHO, NME, NMI, ME], [(S * 0.8).toNumber()], [c], top2, bot2, R0);
+        txt(dc, c, numY(dc, f3, top2, bot2), f3, ct2, ink);
     }
-    // js/watchsim.js routePage: next turn on top, the line with the position dot, the distance left at the bottom
+    // the route page: next turn on top, the line with the position dot, the distance left at the bottom
     function routePage(dc as Dc, F as Flow, S as Number, P as Palette) as Void {
-        var r = F.route, ri = F.routeInfo();
+        var r = F.route, ri = F.routeInfo(), G = gap(S), c = S / 2;
         if (r == null) { return; }
         if (ri == null) { return; }
-        var turn = ri["turn"], off = numOf(ri["off"]);
-        if (off > 0) { // 19.11.: off the route (Feed.mc RouteTrack: more than 40 m for 8 s)
-            txt(dc, S / 2, S * 0.165, Graphics.FONT_SMALL, "OFF ROUTE", P.bad);
-            txt(dc, S / 2, S * 0.235, Graphics.FONT_XTINY, distTxt(off.toFloat()) + " away", P.fg);
+        var turn = ri["turn"], off = numOf(ri["off"]), tb = S * 0.25;
+        if (off > 0) { // off the route (Feed.mc RouteTrack: more than 40 m for 8 s)
+            var f = byInk(dc, [SM, XT], S * 0.1), y = S * 0.165 > up(dc, f) + S * 0.1 ? S * 0.165 : up(dc, f) + S * 0.1; put(dc, c, y, f, "OFF ROUTE", S, P.bad, false, R0);
+            var y2 = below(dc, y + dn(dc, f, "O"), XT, S * 0.235); put(dc, c, y2, XT, distTxt(off.toFloat()) + " away", S, P.fg, false, R0); tb = y2 + dn(dc, XT, "y");
         } else if (turn instanceof Dictionary) {
             var tn = turn as Dictionary, dir = strOf(tn["dir"]), tin = fltOf(tn["in"]), tt = strOf(tn["txt"]);
             turnArrow(dc, S * 0.28, S * 0.2, S * 0.08, dir.equals("L"), P.acc);
-            var d = tin < 1000.0 ? (rnd(tin / 10.0) * 10).toString() + " m" : (tin / 1000.0).format("%.1f") + " km";
-            txtL(dc, S * 0.37, S * 0.175, Graphics.FONT_MEDIUM, fit(dc, d, Graphics.FONT_MEDIUM, (S * 0.42).toNumber()), P.fg);
+            var d = tin < 1000.0 ? (rnd(tin / 10.0) * 10).toString() + " m" : (tin / 1000.0).format("%.1f") + " km", f = byInk(dc, [ME, SM, XT], S * 0.1), y = S * 0.175 > up(dc, f) + S * 0.1 ? S * 0.175 : up(dc, f) + S * 0.1;
+            putL(dc, S * 0.37, y, f, d, (S * 0.42).toNumber(), P.fg, false, R0);
             if (tt.length() == 0) { tt = dir.equals("L") ? "Turn left" : "Turn right"; }
-            txtL(dc, S * 0.37, S * 0.245, Graphics.FONT_XTINY, fit(dc, tt, Graphics.FONT_XTINY, (S * 0.4).toNumber()), P.lbl);
-        } else {
-            txt(dc, S / 2, S * 0.2, Graphics.FONT_XTINY, "FINISH AHEAD", P.acc);
-        }
-        // the route: points 0..1 in a box (flat u / v, Feed.mc RouteTrack.face); total length, then the part done in the accent up to the position
-        var pu = arrOf(r["u"]), pv = arrOf(r["v"]), bx = S * 0.2, by = S * 0.315, bw = S * 0.6, bh = S * 0.38, n = pu.size();
-        if (n < 2 || pv.size() != n) { return; }
+            var y2 = below(dc, y + dn(dc, f, "m"), XT, S * 0.245);
+            putL(dc, S * 0.37, y2, XT, tt, (S * 0.45).toNumber(), P.lbl, true, R0); tb = y2 + dn(dc, XT, tt);
+        } else { var y = S * 0.2; put(dc, c, y, XT, "FINISH AHEAD", S, P.acc, false, R0); tb = y + dn(dc, XT, "F"); }
+        // the bottom: the km left, TO FINISH where there is room
+        var kf = byInk(dc, [ME, SM, XT], S * 0.1), km = kmTxt(fltOf(ri["left"])), w = dc.getTextWidthInPixels(km, kf), uw = S * 0.07;
+        var fy = S * 0.885, fr = roomC(dc, S / 2, fy, XT, "T", R0), ft = pick(dc, "TO FINISH|TO GO", XT, fr, false);
+        var two = fy - up(dc, XT) - G - inkH(dc, kf) > S * 0.7 && dc.getTextWidthInPixels(ft, XT) <= fr, ky = two ? above(dc, fy - up(dc, XT), kf, "0", S * 0.79) : S * 0.82, x = S / 2.0 - (w + uw) / 2.0;
+        txtL(dc, x, ky, kf, km, P.fg);
+        var base = ky - dc.getFontHeight(kf) / 2.0 + asc(kf); txtL(dc, x + w + S * 0.015, base - asc(XT) + dc.getFontHeight(XT) / 2.0, XT, "km", P.lbl);
+        if (two) { put(dc, c, fy, XT, ft, S, P.lbl, false, R0); }
+        // the route in the box between: points 0..1 (flat u / v, Feed.mc RouteTrack.face); total length, then the part done in the accent
+        var pu = arrOf(r["u"]), pv = arrOf(r["v"]), bx = S * 0.2, bw = S * 0.6, by = tb + G + S * 0.03, bh = ky - up(dc, kf) - G - S * 0.03 - by, n = pu.size();
+        if (n < 2 || pv.size() != n || bh < S * 0.1) { return; }
         var tot = 0.0;
         for (var k = 1; k < n; k++) { tot += segLen(pu, pv, k, bw, bh); }
         dc.setColor(P.path, Graphics.COLOR_TRANSPARENT); dc.setPenWidth(pw(S * 0.014));
@@ -912,30 +1236,26 @@ module Draw {
         dc.setColor(P.acc, Graphics.COLOR_TRANSPARENT); dc.setPenWidth(pw(S * 0.022));
         for (var k = 1; k < n; k++) {
             var l = segLen(pu, pv, k, bw, bh), x0 = rp(pu, k - 1, bx, bw), y0 = rp(pv, k - 1, by, bh), x1 = rp(pu, k, bx, bw), y1 = rp(pv, k, by, bh);
-            if (acc + l >= to) { var f = l > 0.0 ? (to - acc) / l : 0.0; ax = x0 + (x1 - x0) * f; ay = y0 + (y1 - y0) * f; dc.drawLine(x0, y0, ax, ay); break; }
+            if (acc + l >= to) { var q = l > 0.0 ? (to - acc) / l : 0.0; ax = x0 + (x1 - x0) * q; ay = y0 + (y1 - y0) * q; dc.drawLine(x0, y0, ax, ay); break; }
             dc.drawLine(x0, y0, x1, y1); acc += l; ax = x1; ay = y1;
         }
         dc.setPenWidth(1);
-        var fx = rp(pu, n - 1, bx, bw), fy = rp(pv, n - 1, by, bh);
-        dc.setColor(P.fg, Graphics.COLOR_TRANSPARENT); dc.fillRectangle(fx - S * 0.016, fy - S * 0.016, S * 0.032, S * 0.032); // the finish
-        if (F.navOn) { // the watch's real position (off the route it leaves the line; kept inside the screen)
-            var mu = F.navU < -0.2 ? -0.2 : (F.navU > 1.2 ? 1.2 : F.navU), mv = F.navV < -0.4 ? -0.4 : (F.navV > 1.2 ? 1.2 : F.navV);
-            ax = bx + mu * bw; ay = by + mv * bh;
-        }
+        var fx = rp(pu, n - 1, bx, bw), fy2 = rp(pv, n - 1, by, bh);
+        dc.setColor(P.fg, Graphics.COLOR_TRANSPARENT); dc.fillRectangle(fx - S * 0.016, fy2 - S * 0.016, S * 0.032, S * 0.032); // the finish
+        if (F.navOn) { ax = bx + navU(F) * bw; ay = by + navV(F) * bh; } // the watch's real position (off the route it leaves the line)
         dc.setColor(P.acc, Graphics.COLOR_TRANSPARENT); dc.fillCircle(ax, ay, S * 0.034);
         dc.setColor(P.fg, Graphics.COLOR_TRANSPARENT); dc.fillCircle(ax, ay, S * 0.019);
-        var km = kmTxt(fltOf(ri["left"])), w = dc.getTextWidthInPixels(km, Graphics.FONT_MEDIUM), uw = S * 0.07, x = S / 2 - (w + uw) / 2;
-        txtL(dc, x, S * 0.79, Graphics.FONT_MEDIUM, km, P.fg);
-        txtL(dc, x + w + S * 0.015, S * 0.805, Graphics.FONT_XTINY, "km", P.lbl);
-        txt(dc, S / 2, S * 0.875, Graphics.FONT_XTINY, "TO FINISH", P.lbl);
     }
+    // the watch's own position in the route box (Feed.mc RouteTrack), kept inside the screen
+    function navU(F as Flow) as Float { return F.navU < -0.2 ? -0.2 : (F.navU > 1.2 ? 1.2 : F.navU.toFloat()); }
+    function navV(F as Flow) as Float { return F.navV < -0.4 ? -0.4 : (F.navV > 1.2 ? 1.2 : F.navV.toFloat()); }
     // point k of the route on one axis (the flat u or v array), in pixels of the box at o with size w
-    function rp(a as Array, k as Number, o as Float, w as Float) as Float { return o + fltOf(a[k]) * w; }
-    function segLen(pu as Array, pv as Array, k as Number, bw as Float, bh as Float) as Float {
+    function rp(a as Array, k as Number, o, w) as Float { return (o + fltOf(a[k]) * w).toFloat(); }
+    function segLen(pu as Array, pv as Array, k as Number, bw, bh) as Float {
         var dx = (fltOf(pu[k]) - fltOf(pu[k - 1])) * bw, dy = (fltOf(pv[k]) - fltOf(pv[k - 1])) * bh;
         return Math.sqrt(dx * dx + dy * dy).toFloat();
     }
-    // js/watchsim.js turnArrow: an arrow turning left or right (the curve as two lines)
+    // an arrow turning left or right (the curve as two lines)
     function turnArrow(dc as Dc, x, y, s, left as Boolean, col as Number) as Void {
         var k = left ? -1 : 1;
         dc.setColor(col, Graphics.COLOR_TRANSPARENT); dc.setPenWidth(pw(s * 0.3));
