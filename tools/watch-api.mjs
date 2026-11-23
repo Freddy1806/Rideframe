@@ -20,7 +20,7 @@ const clean = (s, n) => String(s ?? '').replace(/[\u0000-\u001f<>]/g, '').trim()
 
 /* ---- what the server knows of the exercises: the catalogue (js/kraftlib.js), the user's own ones (settings.kraftEx) and history ---- */
 let CAT = null;
-async function catalog() { // the browser module, loaded lazily so an old Node without ES module detection only loses the names, never the server
+export async function catalog() { // the browser module, loaded lazily so an old Node without ES module detection only loses the names, never the server
   if (!CAT) CAT = await import('../js/kraftlib.js').then(m => m.CATALOG, () => []);
   return CAT;
 }
@@ -30,7 +30,7 @@ export const shortName = (k, n) => { const s = SHORT[k] || String(n || k).replac
 const e1rm = (kg, r) => kg > 0 && r > 0 ? (r === 1 ? kg : kg * (1 + r / 30)) : 0; // Epley, same as kraftlib.js
 
 const cache = new Map(); // file -> { m, s } compact view of one strength session
-async function sessions(uid) { // every strength session of the account, newest first: { id, start, ex: [{ k, n, t, sets: [[kg, r]] }] }
+export async function sessions(uid) { // every strength session of the account, newest first: { id, start, ex: [{ k, n, t, sets: [[kg, r]] }] }
   const d = join(userDir(uid), 'kraft'), out = [];
   for (const f of (await readdir(d).catch(() => [])).filter(x => x.endsWith('.json'))) {
     const fp = join(d, f), st = await stat(fp).catch(() => null); if (!st) continue;
@@ -47,14 +47,14 @@ const settingsOf = async uid => (await readJSON(join(userDir(uid), 'settings.jso
 /* ---- the watch config (18.11.): data pages per sport, "more" sports, workouts; set up on the phone, one file per account ---- */
 const WFM = () => import('../js/watchfields.js'); // pure browser module, like kraftlib.js
 const cfgFile = uid => join(userDir(uid), 'watch.json');
-async function configOf(uid) { const W = await WFM(), f = await readJSON(cfgFile(uid), null), v = f && W.validate(f.cfg);
+export async function configOf(uid) { const W = await WFM(), f = await readJSON(cfgFile(uid), null), v = f && W.validate(f.cfg);
   return v && v.cfg ? { cfg: v.cfg, at: +f.at || 0, stored: true } : { cfg: W.defaults(), at: 0, stored: false }; }
 
-/** the watch's whole strength setup, kept small (< 8 KB): exercises most recently / often used first, their last sets and best;
- *  since 18.11. also the workouts from the phone, the 20 standard exercises (top) and the recent ones (recent), all of them in ex */
-export async function setup(u) {
-  const S = await settingsOf(u.id), list = await sessions(u.id), cat = await catalog(), info = new Map(), W = await WFM(), C = (await configOf(u.id)).cfg;
-  for (const e of cat) info.set(e.k, { n: e.n, t: e.t });
+/** what the account knows of its exercises: info = id -> { n, t, g, own } (catalogue, own ones, the top 20, whatever a session used),
+ *  use = id -> { last, n, sets, best } from the history (sets of the newest session). Shared by setup() and the Claude connector (tools/mcp-api.mjs) */
+export async function exerciseData(u) {
+  const S = await settingsOf(u.id), list = await sessions(u.id), cat = await catalog(), info = new Map(), W = await WFM();
+  for (const e of cat) info.set(e.k, { n: e.n, t: e.t, g: e.g });
   for (const e of Array.isArray(S.kraftEx) ? S.kraftEx : []) if (e?.k && !info.has(e.k)) info.set(String(e.k), { n: String(e.n || e.k), t: e.t, own: true });
   for (const e of W.TOP) if (!info.has(e.id)) info.set(e.id, { n: e.n, t: e.t });
   const use = new Map(), now = Date.now();
@@ -65,6 +65,13 @@ export async function setup(u) {
     if (now - s.start < 90 * 864e5) m.n++;
     for (const [kg, r, sec] of sets) m.best = Math.max(m.best, x.t === 'time' ? sec : x.t === 'bw' ? r : e1rm(kg, r));
   }
+  return { S, list, info, use, W };
+}
+
+/** the watch's whole strength setup, kept small (< 8 KB): exercises most recently / often used first, their last sets and best;
+ *  since 18.11. also the workouts from the phone, the 20 standard exercises (top) and the recent ones (recent), all of them in ex */
+export async function setup(u) {
+  const { S, list, info, use, W } = await exerciseData(u), C = (await configOf(u.id)).cfg, now = Date.now();
   // recent use counts most: one point per session in the last 90 days, plus up to 10 for having been done in the last days
   const score = k => { const m = use.get(k); return m ? m.n + 10 * Math.max(0, 1 - (now - m.last) / (60 * 864e5)) + 1e-15 * m.last : -1; };
   const top = W.TOP.map(e => e.id), inW = new Set(C.workouts.flatMap(w => w.items.map(i => i.ex)));
@@ -97,6 +104,20 @@ export function saveWatchWorkout(uid, b) {
     const v = W.validate({ ...c.cfg, workouts: list }); if (v.error) return [400, { error: v.error }];
     await writeJSON(cfgFile(uid), { cfg: v.cfg, at: Date.now() });
     return [200, { ok: true, id, new: k < 0 }];
+  });
+  cfgLock = run.catch(() => {}); return run;
+}
+
+/** 23.11. (Claude connector, tools/mcp-api.mjs): change the account's workouts under the same lock as saveWatchWorkout.
+ *  fn(list, W) gets a copy of the workouts and returns { list, ...extra } or { error }; the whole config then goes through
+ *  W.validate (js/watchfields.js, the phone editor's check) before it is written. Returns { cfg, ...extra } or { error } */
+export function editWorkouts(uid, fn) {
+  const run = cfgLock.then(async () => {
+    const W = await WFM(), c = await configOf(uid), r = await fn(c.cfg.workouts.map(w => ({ ...w, items: w.items.map(i => ({ ...i })) })), W);
+    if (!r || r.error) return r || { error: 'Nothing changed.' };
+    const { list, ...extra } = r, v = W.validate({ ...c.cfg, workouts: list }); if (v.error) return { error: v.error };
+    await writeJSON(cfgFile(uid), { cfg: v.cfg, at: Date.now() });
+    return { cfg: v.cfg, ...extra };
   });
   cfgLock = run.catch(() => {}); return run;
 }
