@@ -26,9 +26,9 @@ export const LIM = { sets: [1, 10], reps: [1, 100], kg: [0, 500], rest: [0, 600]
 export const MORE = Object.keys(STRAVA).filter(k => !['ride', 'trainer', 'run', 'kraft', 'swim'].includes(STRAVA[k][0]));
 export { labelOf };
 
-/** the 20 standard exercises of the watch's free mode: [id in js/kraftlib.js, short name, w | bw | time] */
+/** the standard exercises of the watch's free mode (20, front squat added 23.11.): [id in js/kraftlib.js, short name, w | bw | time] */
 export const TOP = [['bench', 'Bench press', 'w'], ['incline', 'Incline bench press', 'w'], ['ohp', 'Overhead press', 'w'], ['dip', 'Dips', 'bw'], ['push', 'Push-ups', 'bw'],
-  ['pull', 'Pull-ups', 'bw'], ['lat', 'Lat pulldown', 'w'], ['row', 'Barbell row', 'w'], ['cable', 'Cable row', 'w'], ['squat', 'Squat', 'w'], ['legpress', 'Leg press', 'w'],
+  ['pull', 'Pull-ups', 'bw'], ['lat', 'Lat pulldown', 'w'], ['row', 'Barbell row', 'w'], ['cable', 'Cable row', 'w'], ['squat', 'Squat', 'w'], ['frontsquat', 'Front squat', 'w'], ['legpress', 'Leg press', 'w'],
   ['dead', 'Deadlift', 'w'], ['rdl', 'Romanian deadlift', 'w'], ['lunge', 'Lunges', 'w'], ['legcurl', 'Leg curl', 'w'], ['calf', 'Calf raise', 'w'], ['curl', 'Biceps curl', 'w'],
   ['tri', 'Triceps pushdown', 'w'], ['lateral', 'Lateral raise', 'w'], ['plank', 'Plank', 'time']].map(([id, n, t]) => ({ id, n, t }));
 

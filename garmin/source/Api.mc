@@ -39,6 +39,8 @@ class Api {
     function config(done as Method) as Void { add(Communications.HTTP_REQUEST_METHOD_GET, "/api/watch/config", null, done); }
     // POST /api/watch/strength { id, start, duration, sets: [{ ex, kg, reps, t }], hr? } -> { ok, id, prs, dup? }
     function session(s as Dictionary, done as Method) as Void { add(Communications.HTTP_REQUEST_METHOD_POST, "/api/watch/strength", s, done); }
+    // 23.11.: POST /api/watch/workout { id, n, it: [[ex, sets, reps, kg, rest]] } -> { ok, id, new }: a workout saved on the watch (the same id = replaced)
+    function workout(w as Dictionary, done as Method) as Void { add(Communications.HTTP_REQUEST_METHOD_POST, "/api/watch/workout", w, done); }
     // POST /api/watch/activity { id, type, start, duration, moving, dist, climb, hr, maxHr, kcal, power?, laps? } -> { ok, id, dup?, merged? }
     function activity(a as Dictionary, done as Method) as Void { add(Communications.HTTP_REQUEST_METHOD_POST, "/api/watch/activity", a, done); }
     // GET /api/watch/segments?lat&lon&type -> { segs: [{ id, n, len, pr, kom, p: [[lat, lon]] }], strava } (at most 8, nearest first)

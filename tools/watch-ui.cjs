@@ -2,7 +2,9 @@
 // one with touch only (that one offline first: queue, then sent), and both sessions show up in the phone's Activities feed.
 // 18.11.: the start menu, a run with data pages, auto lap, route page and the segment popup, a ride, a "more" sport and a guided
 // workout in the demo preview.
-// Starts its own serve.mjs on a free port with a temp data folder. Screenshots of every screen on both faces go to SHOTS.
+// 23.11.: START steps kg -> reps -> logs, lists follow the finger, BACK set -> list -> Keep / Finish / Discard, the rest's NEXT line,
+// the paged summary, "Save as workout?" sent to the account and shown on the phone's strength page, the fenix 8 face too.
+// Starts its own serve.mjs on a free port with a temp data folder. Screenshots of every screen on all three faces go to SHOTS.
 // Usage: NODE_PATH=$(npm root -g) node tools/watch-ui.cjs [shotsDir]
 const { chromium } = require('playwright');
 const { spawn } = require('node:child_process'), fs = require('node:fs'), os = require('node:os'), path = require('node:path'), net = require('node:net');
@@ -40,7 +42,7 @@ let fails = 0; const ok = (c, m) => { console.log(`${c ? '✓' : '✗'} ${m}`); 
       sp: __watch.F.sp, pg: __watch.F.rec?.pg, rec: !!__watch.F.rec, seg: __watch.F.seg?.k || null, flashK: __watch.F.flash?.k || null, last: __watch.F.last }));
     const btn = async (k, n = 1, face = 'fr265') => { for (let i = 0; i < n; i++) { await W.click(`[data-face="${face}"] .wbtn.${k}`); await W.waitForTimeout(60); } };
     const hold = async (k, ms, face = 'fenix7xpro') => { const el = W.locator(`[data-face="${face}"] .wbtn.${k}`), bb = await el.boundingBox(); await W.mouse.move(bb.x + bb.width / 2, bb.y + bb.height / 2); await W.mouse.down(); await W.waitForTimeout(ms); await W.mouse.up(); await W.waitForTimeout(80); };
-    let shot = 0; const snap = async nm => { shot++; if (!SHOTS) return; await W.waitForTimeout(250); for (const f of ['fr265', 'fenix7xpro']) await W.locator(`[data-face="${f}"] .wscale`).screenshot({ path: `${SHOTS}/${f}_${String(shot).padStart(2, '0')}_${nm}.png` }); };
+    let shot = 0; const snap = async nm => { shot++; if (!SHOTS) return; await W.waitForTimeout(250); for (const f of ['fr265', 'fenix7xpro', 'fenix8solar47mm']) await W.locator(`[data-face="${f}"] .wscale`).screenshot({ path: `${SHOTS}/${f}_${String(shot).padStart(2, '0')}_${nm}.png` }); };
     await snap('start_demo');
     await W.click('[data-mode="live"]'); await W.waitForTimeout(200); ok((await F()).scr === 'pair', 'My account without a token: pairing screen');
     // buttons only: UP d times, START; the last digit is shown before START
@@ -55,10 +57,10 @@ let fails = 0; const ok = (c, m) => { console.log(`${c ? '✓' : '✗'} ${m}`); 
     await btn('start'); s = await F(); ok(s.scr === 'pick' && s.ex === 'bench', 'START opens the picker, last used first'); await btn('down'); await btn('up'); await snap('pick');
     await btn('start'); s = await F(); ok(s.scr === 'set' && s.kg === 80 && s.reps === 8, 'bench prefilled 80 x 8 from last session');
     await hold('up', 950); s = await F(); ok(s.kg >= 90, `UP held: 10 kg steps (${s.kg})`); while ((await F()).kg > 82.5) await btn('down');
-    await snap('set'); await btn('start'); s = await F(); ok(s.scr === 'rest' && s.flash, '82.5 x 8 beats 80 x 8: record flash'); await snap('pr');
+    await snap('set'); await btn('start'); s = await F(); ok(s.scr === 'set' && s.focus === 1 && s.sets === 0, 'START on kg: on to reps, nothing logged yet'); await btn('start'); s = await F(); ok(s.scr === 'rest' && s.flash, '82.5 x 8 beats 80 x 8: record flash'); await snap('pr');
     await btn('start'); s = await F(); ok(s.scr === 'rest' && !s.flash, 'first key clears the flash'); await snap('rest');
     await btn('start'); s = await F(); ok(s.scr === 'set' && s.kg === 82.5 && s.reps === 8, 'START skips the rest, set 2 prefilled from set 1');
-    await btn('back'); await btn('down'); s = await F(); ok(s.focus === 1 && s.reps === 7, 'BACK switches to reps, DOWN = 7'); await snap('set_reps');
+    s = await F(); ok(s.focus === 0, 'the next set starts on kg again'); await btn('start'); await btn('down'); s = await F(); ok(s.focus === 1 && s.reps === 7, 'START switches to reps (BACK does not), DOWN = 7'); await snap('set_reps');
     await btn('start'); await btn('back'); s = await F(); ok(s.scr === 'pick', 'BACK in the rest: picker'); const pull = await W.evaluate(() => __watch.F.list.indexOf(__watch.F.setup.ex.findIndex(e => e.id === 'pull')) - __watch.F.sel);
     await btn('down', pull); await btn('start'); s = await F(); ok(s.ex === 'pull' && s.reps === 10 && s.focus === 1, 'pull-ups: bodyweight, reps focused');
     await btn('start'); await btn('start'); await hold('back', 900); s = await F(); ok(s.scr === 'menu', 'BACK held: menu'); await snap('menu');
@@ -75,22 +77,37 @@ let fails = 0; const ok = (c, m) => { console.log(`${c ? '✓' : '✗'} ${m}`); 
     const tap = async (u, v) => { await cv.tap({ position: { x: u * box.width, y: v * box.height } }); await W.waitForTimeout(80); };
     const swipe = async (dir) => { const [a, z] = { up: [[.5, .7], [.5, .3]], down: [[.5, .3], [.5, .7]], left: [[.75, .5], [.25, .5]] }[dir]; await cv.scrollIntoViewIfNeeded(); const b = await cv.boundingBox(), p0 = { x: b.x + a[0] * b.width, y: b.y + a[1] * b.height }, p1 = { x: b.x + z[0] * b.width, y: b.y + z[1] * b.height }; // three faces wrap: the page may have scrolled since the first measurement
       await W.mouse.move(p0.x, p0.y); await W.mouse.down(); await W.mouse.move(p1.x, p1.y, { steps: 6 }); await W.mouse.up(); await W.waitForTimeout(100); };
+    const drag = async (v0, v1) => { await cv.scrollIntoViewIfNeeded(); const b = await cv.boundingBox(); await W.mouse.move(b.x + b.width / 2, b.y + v0 * b.height); await W.mouse.down();
+      await W.mouse.move(b.x + b.width / 2, b.y + v1 * b.height, { steps: 8 }); await W.mouse.up(); await W.waitForTimeout(100); };
     await snap('home_all_rows'); await tap(.5, .27); s = await F(); ok(s.scr === 'start', 'tap the top row: Strength');
     await btn('back'); await tap(.5, .735); s = await F(); ok(s.scr === 'more', 'start menu: the fourth row (More) is visible and tappable without scrolling'); await btn('back'); await tap(.5, .27);
     await tap(.5, .5); s = await F(); ok(s.scr === 'pick', 'tap: picker'); const sel0 = s.sel;
-    await swipe('up'); s = await F(); ok(s.sel === sel0 + 1, 'swipe up scrolls the list down'); for (let i = 0; i < sel0; i++) await swipe('down');
-    s = await F(); ok(s.sel === 1, 'swipe down scrolls back'); await tap(.5, .345); s = await F(); ok(s.scr === 'set' && s.ex === 'bench', 'tap the row above: bench selected');
+    const nRows = await W.evaluate(async () => (await import('/js/watchflow.js')).pickRows(__watch.F).length);
+    await swipe('up'); s = await F(); ok(s.sel === Math.min(sel0 + 4, nRows - 1), `drag up 0.4 of the screen: the list follows the finger, 4 rows (${sel0} -> ${s.sel})`); await snap('pick_dragged');
+    await drag(.3, .7); await drag(.3, .7); s = await F(); ok(s.sel === 0, 'drag down: back to the top, clamped');
+    await drag(.55, .45); s = await F(); ok(s.sel === 1, 'a short drag: one row'); await tap(.5, .3); s = await F(); ok(s.scr === 'set' && s.ex === 'bench', 'tap the row above: bench selected');
     await tap(.72, .5); s = await F(); ok(s.focus === 1, 'tap reps: focused'); await swipe('up'); s = await F(); ok(s.reps === 9, 'swipe up: reps + 1');
     const kg0 = s.kg; ok(kg0 === 82.5, 'prefill from the session just sent (82.5 kg)'); await tap(.3, .5); await swipe('down'); s = await F(); ok(s.focus === 0 && s.kg === kg0 - 2.5, 'tap kg, swipe down: -2.5 kg');
     await tap(.5, .5); s = await F(); ok(s.scr === 'set' && s.sets === 0, 'a stray tap never logs a set');
     await tap(.5, .815); s = await F(); ok(s.scr === 'rest' && s.sets === 1, 'tap DONE: set logged');
     await tap(.5, .5); if ((await F()).flash) await tap(.5, .5); s = await F(); ok(s.scr === 'set', 'tap skips the rest');
     await tap(.5, .815); await tap(.5, .5); await swipe('left'); s = await F(); ok(s.scr === 'menu', 'swipe left: menu');
-    await swipe('up'); await tap(.5, .67); s = await F(); ok(s.scr === 'sum' && s.sum.st === 'queued', 'finish without phone: queued');
+    await drag(.55, .45); await tap(.5, .67); s = await F(); ok(s.scr === 'sum' && s.sum.st === 'queued', 'drag one row, tap Finish: without phone, queued');
     await snap('summary_queued'); ok(/1 session waits/.test(await W.textContent('#wNet')), 'panel shows the waiting session');
     await W.check('#wNear'); for (let i = 0; i < 40 && (await F()).queue; i++) await W.waitForTimeout(100);
     s = await F(); ok(!s.queue && s.sum.st === 'saved', 'phone back: the queue is sent');
-    await tap(.5, .5);
+    // 23.11.: Save as workout? (a free session) -> POST /api/watch/workout -> the account's watch config -> the phone's strength page
+    await tap(.5, .5); s = await F(); ok(s.scr === 'saveq', 'tap the summary: Save as workout?'); await snap('saveq_free');
+    const qn = await W.evaluate(() => __watch.F.saveq.n); await tap(.5, .5); for (let i = 0; i < 40 && (await F()).queue; i++) await W.waitForTimeout(100);
+    s = await F(); ok(s.scr !== 'saveq' && !s.queue, `tap Save as workout: sent ("${qn}")`);
+    const wc = await fetch(BASE + '/api/watch/config', { headers: { 'X-RF-Token': token } }).then(r => r.json()), ww = (wc.config?.workouts || []).find(x => x.name === qn);
+    ok(ww && ww.items[0].ex === 'bench' && ww.items[0].sets === 2, `the account's watch config has it (${ww ? ww.items.map(x => x.ex + ' ' + x.sets + '×' + x.reps).join(', ') : 'missing'})`);
+    await P.goto(BASE + '/kraft.html'); await P.waitForSelector('[data-wtpl]', { timeout: 6000 }).catch(() => {});
+    ok((await P.locator('[data-wtpl]').count()) === 1 && /Watch workouts/.test(await P.textContent('#kraft')), 'phone strength page: "Watch workouts" lists it');
+    if (SHOTS) { await P.locator('[data-wtpl]').scrollIntoViewIfNeeded(); await P.screenshot({ path: `${SHOTS}/phone_kraft_watch_workouts.png` }); }
+    await P.click('[data-wtpl="0"]'); await P.waitForTimeout(300); ok(/Bench press/.test(await P.textContent('#kraft')), 'tap: the workout starts on the phone with its exercises');
+    await btn('start'); s = await F(); if (s.scr === 'start') { await btn('start'); s = await F(); } ok(s.scr === 'smode', 'the watch: Strength now offers Exercises or the saved workout');
+    await btn('back', 3);
 
     // ---- 18.11.: the new flows in the demo preview (no account): run, ride, more, guided workout ----
     const demo = await b.newContext({ viewport: { width: 1280, height: 1150 }, deviceScaleFactor: 2, hasTouch: true }); // fresh storage: demo data, default screens
@@ -98,7 +115,7 @@ let fails = 0; const ok = (c, m) => { console.log(`${c ? '✓' : '✗'} ${m}`); 
     await D.goto(BASE + '/watch.html'); await D.waitForFunction(() => window.__watch?.F);
     const G = () => D.evaluate(() => ({ scr: __watch.F.scr, sp: __watch.F.sp, type: __watch.F.type, pg: __watch.F.rec?.pg, laps: __watch.F.rec?.laps.length, seg: __watch.F.seg?.k || null, flash: __watch.F.flash?.k || null, plan: __watch.F.plan, kg: __watch.F.kg, reps: __watch.F.reps, ex: __watch.F.setup.ex[__watch.F.cur]?.id, restLen: __watch.F.restLen, items: __watch.F.scr ? null : 0 }));
     const dbtn = async (k, n = 1) => { for (let i = 0; i < n; i++) { await D.click(`[data-face="fr265"] .wbtn.${k}`); await D.waitForTimeout(60); } };
-    const dsnap = async nm => { if (!SHOTS) return; await D.waitForTimeout(250); for (const f of ['fr265', 'fenix7xpro']) await D.locator(`[data-face="${f}"] .wscale`).screenshot({ path: `${SHOTS}/new_${f}_${nm}.png` }); };
+    const dsnap = async nm => { if (!SHOTS) return; await D.waitForTimeout(250); for (const f of ['fr265', 'fenix7xpro', 'fenix8solar47mm']) await D.locator(`[data-face="${f}"] .wscale`).screenshot({ path: `${SHOTS}/new_${f}_${nm}.png` }); };
     const until = async (fn, ms = 20000) => { for (let t = 0; t < ms; t += 100) { if (await D.evaluate(fn)) return true; await D.waitForTimeout(100); } return false; };
     let d = await G(); ok(d.scr === 'home', 'demo: the start menu'); ok((await D.evaluate(() => __watch.cfgFrom)) === 'defaults', 'no account: default screens'); await dsnap('01_start_menu');
     await dbtn('start'); d = await G(); ok(d.scr === 'ready' && d.sp === 'run', 'Run: ready screen'); await dsnap('02_run_ready');
@@ -131,14 +148,29 @@ let fails = 0; const ok = (c, m) => { console.log(`${c ? '✓' : '✗'} ${m}`); 
     await dbtn('start'); await dbtn('down'); await dbtn('start'); await dbtn('start');
     // strength: Workout -> Push day, guided
     d = await G(); const home = await D.evaluate(async () => (await import('/js/watchflow.js')).homeItems(__watch.F)); await dbtn('down', home.indexOf('kraft')); await dbtn('start'); await dbtn('start');
-    d = await G(); ok(d.scr === 'smode', 'Strength: workout or free'); await dsnap('16_strength_mode'); await dbtn('start'); d = await G(); ok(d.scr === 'wpick', 'the workouts'); await dsnap('17_workouts');
-    await dbtn('start'); d = await G(); ok(d.scr === 'set' && d.ex === 'bench' && d.kg === 80 && d.reps === 8 && d.plan.n === 0, 'guided: bench 80 kg × 8, set 1'); await dsnap('18_guided_set');
-    await dbtn('start'); d = await G(); if (d.flash) { await dbtn('start'); d = await G(); } ok(d.scr === 'rest' && d.restLen === 120, 'rest from the workout: 2:00'); await dsnap('19_guided_rest');
-    await dbtn('start'); d = await G(); ok(d.scr === 'set' && d.plan.n === 1, 'set 2 of 3'); await D.click('[data-face="fr265"] .wbtn.back'); await D.waitForTimeout(80);
+    const DT = () => D.evaluate(() => __watch.texts.join(' | ')), DM = f => D.evaluate(async f => { const m = await import('/js/watchflow.js'); return m[f](__watch.F); }, f);
+    d = await G(); ok(d.scr === 'smode', 'Strength: Exercises or a saved workout'); ok((await D.evaluate(async () => (await import('/js/watchflow.js')).listItems(__watch.F)))[0] === 'Exercises', 'one list: Exercises first, then the workouts'); await dsnap('16_strength_mode');
+    await dbtn('down'); await dbtn('start'); d = await G(); ok(d.scr === 'set' && d.ex === 'bench' && d.kg === 80 && d.reps === 8 && d.plan.i === 0 && await DM('setNo') === 1, 'Push day: bench 80 kg × 8, set 1'); await dsnap('18_guided_set');
+    ok(/♥|bpm|\d+:\d\d/.test(await DT()), 'set screen: heart rate and clock line');
+    await dbtn('start'); await dbtn('start'); d = await G(); if (d.flash) { await dbtn('start'); d = await G(); } ok(d.scr === 'rest' && d.restLen === 120, 'START, START: logged, rest from the workout: 2:00'); await dsnap('19_guided_rest');
+    ok(/NEXT · SET 2 OF 3/.test(await DT()), 'rest: what comes next (set 2 of 3)');
+    await dbtn('start'); d = await G(); ok(d.scr === 'set' && await DM('setNo') === 2, 'set 2 of 3');
+    await dbtn('back'); d = await G(); ok(d.scr === 'pick' && d.plan?.w === 0, 'BACK in a set: the workout\'s exercise list (not the workout list)'); await dsnap('19b_workout_list');
+    ok(/1\/\d+ · 1 set done|1 set done/.test(await DT()), 'list: status line with the sets done');
+    await dbtn('back'); d = await G(); ok(d.scr === 'end', 'BACK in the list with a set logged: Keep / Finish / Discard'); await dsnap('19c_end');
+    await dbtn('start'); d = await G(); ok(d.scr === 'pick', 'Keep training: back to the list'); await dbtn('start'); d = await G(); ok(d.scr === 'set' && d.ex === 'bench', 'START: bench again');
     await D.evaluate(() => __watch.ev('menu')); await dbtn('down'); await dbtn('start'); d = await G(); ok(d.ex === 'ohp' && d.kg === 45, 'Skip exercise: overhead press 45 kg');
-    await dbtn('back'); await D.evaluate(() => __watch.ev('menu')); const mi = await D.evaluate(() => __watch.F.menu.indexOf('Change exercise')); await dbtn('down', mi); await dbtn('start');
-    d = await G(); ok(d.scr === 'pick' && d.plan === null, 'Change exercise: the free list, the workout is left'); await dsnap('20_free_list');
-    ok((await D.evaluate(async () => (await import('/js/watchflow.js')).listItems(__watch.F).slice(0, 4))).join() === 'Bench press,Squat,Pull-ups,Incline bench press', 'free: recent first, then the top 20');
+    await D.evaluate(() => __watch.ev('menu')); const mi = await D.evaluate(() => __watch.F.menu.indexOf('Change exercise')); await dbtn('down', mi); await dbtn('start');
+    d = await G(); ok(d.scr === 'pick' && d.plan?.w === 0, 'Change exercise: the list, the workout stays on (its exercises first)');
+    await D.evaluate(() => __watch.ev('menu')); const fi = await D.evaluate(() => __watch.F.menu.indexOf('Finish')); await dbtn('down', fi); await dbtn('start'); await D.waitForTimeout(300);
+    d = await G(); ok(d.scr === 'sum', 'Finish: the summary'); await dsnap('20_summary'); ok(/AVG|avg|♥/.test(await DT()), 'summary: heart rate avg / max');
+    await dbtn('down'); await dsnap('20b_summary_ex'); ok(/Bench press|BENCH PRESS/.test(await DT()), 'summary page 2: the first exercise with its sets');
+    await dbtn('start'); d = await G(); ok(d.scr === 'saveq', 'changed workout (skipped one): Save as workout?'); await dsnap('21_saveq');
+    const sq = await D.evaluate(() => __watch.F.saveq.rows); await dbtn('down', sq.length - 1); await dbtn('start'); d = await G(); ok(d.scr === 'home' || d.scr === 'start', `No: nothing saved (${sq.join(' / ')})`);
+    if (d.scr === 'home') { await dbtn('down', (await D.evaluate(async () => (await import('/js/watchflow.js')).homeItems(__watch.F))).indexOf('kraft')); await dbtn('start'); }
+    await dbtn('start'); await dbtn('start'); d = await G(); ok(d.scr === 'pick' && !d.plan, 'Exercises: the free list');
+    const top = await D.evaluate(async () => (await import('/js/watchflow.js')).listItems(__watch.F)); ok(top.includes('Front squat'), `free list has Front squat (${top.slice(0, 6).join(', ')} …)`);
+    await dbtn('back'); d = await G(); ok(d.scr === 'smode', 'BACK in the list with nothing logged: back to Exercises / workouts');
     ok(!derr.length, 'no page errors in the new flows' + (derr.length ? ': ' + derr.join(' | ') : '')); await demo.close();
 
     // ---- pause in every mode, Polar style: BACK held 3 s saves, released early nothing; on the page clock (no real waiting) ----
@@ -200,7 +232,7 @@ let fails = 0; const ok = (c, m) => { console.log(`${c ? '✓' : '✗'} ${m}`); 
     ok(/🏆/.test(det) || (await P.locator('[data-act^="k:watch-"]').count()) === 2, 'record trophy on the first session');
     if (SHOTS) await P.screenshot({ path: `${SHOTS}/phone_activity_watch.png` });
     ok(!perr.length, 'no page errors on the phone' + (perr.length ? ': ' + perr.join(' | ') : ''));
-    console.log(`${shot} screens × 2 faces`);
+    console.log(`${shot} screens × 3 faces`);
   } catch (e) { console.log('✗ ' + e.message); fails++; }
   await b.close(); srv.kill(); fs.rmSync(DATA, { recursive: true, force: true });
   console.log(fails ? `\n${fails} failed` : '\nWatch UI: all good'); process.exit(fails ? 1 : 0);

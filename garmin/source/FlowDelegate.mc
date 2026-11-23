@@ -1,7 +1,9 @@
 // RIDEFRAME Strength: buttons and touch -> Flow events. The same mapping as js/watchsim.js (holdable, tapAt, touch):
-//   START = select / set done / skip rest     UP, DOWN = scroll / change value (held: 10 kg or 5 reps, repeating)
-//   BACK = back; on a set: weight <-> reps     BACK held = menu        swipe left = menu, swipe right = back
-//   tap = the thing under the finger (a list row, a value, DONE, a digit)
+//   START = select / skip rest; on a set: weight -> reps -> set logged; START held = weight <-> reps (23.11.)
+//   UP, DOWN = scroll / change value (held: 10 kg or 5 reps, repeating)
+//   BACK = back (23.11.: on a set or the rest: the exercise list; on the list with sets: Keep / Finish / Discard)
+//   BACK held = menu        swipe left = menu, swipe right = back
+//   tap = the thing under the finger (a list row, a value, DONE (logs at once), a digit); a finger dragged over a list moves it row by row
 //   recording: UP / DOWN = page, START = pause, BACK = lap (first it closes the segment popup); swipe up / down = page
 //   ready (run / ride): UP / DOWN or a tap on the route line = the Route choice (RPICK)
 //   pause screen (every mode): START = resume, BACK held 3 s = save (a short BACK only shows the hint), DOWN / tap = Discard (confirm);
@@ -20,6 +22,9 @@ class FlowDelegate extends WatchUi.BehaviorDelegate {
     var holdTimer = null;
     var pillHold as Boolean = false; // a finger on the pause screen's "Hold to finish" pill
     var pillUp as Number = 0;        // when it lifted (a tap right after a hold is not a tap)
+    var dragY as Float = -1.0;       // 23.11.: a finger dragging a list: where it was at the last row step (-1 = none)
+    var dragMoved as Boolean = false;
+    var dragEnd as Number = 0;       // when a drag that moved the list ended (its swipe / tap is swallowed)
 
     function initialize(f as Flow, a) {
         BehaviorDelegate.initialize();
@@ -34,16 +39,16 @@ class FlowDelegate extends WatchUi.BehaviorDelegate {
         if (k != WatchUi.KEY_UP && k != WatchUi.KEY_DOWN && k != WatchUi.KEY_ESC && k != WatchUi.KEY_ENTER) { return false; } // LIGHT stays the system's
         downKey = k; downAt = System.getTimer(); held = false;
         if (k == WatchUi.KEY_ESC) { app.input(E_HOLD_START, downAt); } // the pause screen's hold to finish (the flow ignores it elsewhere)
-        if (k != WatchUi.KEY_ENTER) {
-            if (holdTimer == null) { holdTimer = new Timer.Timer(); }
-            holdTimer.start(method(:onKeyHold), k == WatchUi.KEY_ESC ? 700 : 500, false);
-        }
+        if (holdTimer == null) { holdTimer = new Timer.Timer(); }
+        // VERIFY on the device: START held (KEY_ENTER) reaches the app on the fenix 8 and is not taken by the system
+        holdTimer.start(method(:onKeyHold), k == WatchUi.KEY_ESC || k == WatchUi.KEY_ENTER ? 700 : 500, false);
         return true;
     }
     function onKeyHold() as Void {
         if (downKey == null) { return; }
         held = true;
         if (downKey == WatchUi.KEY_ESC) { app.input(E_MENU, null); return; }
+        if (downKey == WatchUi.KEY_ENTER) { app.input(E_START_HOLD, null); return; } // the set screen: weight <-> reps (once, no repeat)
         app.input(downKey == WatchUi.KEY_UP ? E_UP_HOLD : E_DOWN_HOLD, null);
         holdTimer.start(method(:onKeyHold), 350, false); // keeps stepping while held
     }
@@ -70,10 +75,31 @@ class FlowDelegate extends WatchUi.BehaviorDelegate {
     // ---- touch ----
     function onSwipe(evt as WatchUi.SwipeEvent) as Boolean {
         var d = evt.getDirection();
+        if ((d == WatchUi.SWIPE_UP || d == WatchUi.SWIPE_DOWN) && dragged()) { return true; } // the drag already moved the list
         if (d == WatchUi.SWIPE_UP) { app.input(E_SWIPE_UP, null); }
         else if (d == WatchUi.SWIPE_DOWN) { app.input(E_SWIPE_DOWN, null); }
         else if (d == WatchUi.SWIPE_LEFT) { app.input(E_SWIPE_LEFT, null); }
         else if (d == WatchUi.SWIPE_RIGHT) { app.input(E_SWIPE_RIGHT, null); }
+        return true;
+    }
+    // 23.11.: the screens a dragged finger scrolls (js/watchsim.js scrollable)
+    function scrollable() as Boolean {
+        var s = flow.scr;
+        return flow.flash == null && (s == S_PICK || s == S_MENU || s == S_HOME || s == S_MORE || s == S_SMODE || s == S_RPICK || s == S_END || s == S_SAVEQ || s == S_SUM);
+    }
+    // a drag that moved the list is running or just ended
+    function dragged() as Boolean { return dragMoved && (dragY >= 0.0 || System.getTimer() - dragEnd < 500); }
+    // 23.11. (js/watchsim.js touch pointermove): the list follows the finger, one row per DRAG_ROW of the screen.
+    // VERIFY (Toybox.WatchUi.InputDelegate.onDrag / DragEvent, API 3.3.0): the fenix 8 sends DRAG_TYPE_START / CONTINUE / STOP
+    // while the finger moves, and onSwipe may still follow at the end (swallowed above). If no drag events come, swipes still step.
+    function onDrag(evt as WatchUi.DragEvent) as Boolean {
+        if (!scrollable()) { dragY = -1.0; return false; }
+        var t = evt.getType(), y = evt.getCoordinates()[1].toFloat(), row = System.getDeviceSettings().screenHeight * DRAG_ROW;
+        if (t == WatchUi.DRAG_TYPE_START) { dragY = y; dragMoved = false; return true; }
+        if (dragY < 0.0) { return false; }
+        var n = ((dragY - y) / row).toNumber();
+        if (n != 0) { dragY = dragY - n * row; dragMoved = true; app.input(E_SCROLL, n); }
+        if (t == WatchUi.DRAG_TYPE_STOP) { dragY = -1.0; dragEnd = System.getTimer(); }
         return true;
     }
     // the "Hold to finish" pill (js/watchsim.js touch: pointerdown / pointerup on the pill)
@@ -82,7 +108,7 @@ class FlowDelegate extends WatchUi.BehaviorDelegate {
     function onPill(evt as WatchUi.ClickEvent) as Boolean {
         var xy = evt.getCoordinates(), S = System.getDeviceSettings().screenWidth.toFloat();
         var u = xy[0] / S, v = xy[1] / S;
-        return flow.scr == S_PAUSE && !flow.pzConf && isAmoled() && v > 0.75 && (u - 0.5).abs() < 0.27;
+        return flow.scr == S_PAUSE && !flow.pzConf && hasTouch() && v > 0.75 && (u - 0.5).abs() < 0.27;
     }
     function onHold(evt as WatchUi.ClickEvent) as Boolean {
         if (!onPill(evt)) { return false; }
@@ -98,6 +124,7 @@ class FlowDelegate extends WatchUi.BehaviorDelegate {
     function onTap(evt as WatchUi.ClickEvent) as Boolean {
         var xy = evt.getCoordinates(), S = System.getDeviceSettings().screenWidth.toFloat();
         var u = xy[0] / S, v = xy[1] / S, s = flow.scr;
+        if (dragged()) { return true; } // the end of a drag is no tap
         if (flow.flash != null) { app.input(E_TAP, null); return true; }
         if (s == S_PAUSE) { // js PAUSE_LAY: confirm: the Discard pill = yes, elsewhere = no; else the Discard row = ask, the top = resume
             if (pillHold || System.getTimer() - pillUp < 400) { return true; }
@@ -107,12 +134,12 @@ class FlowDelegate extends WatchUi.BehaviorDelegate {
             return true;
         }
         if (s == S_SET) {
-            if (v > 0.72 && (u - 0.5).abs() < 0.24) { app.input(E_START, null); }
+            if (v > 0.72 && (u - 0.5).abs() < 0.24) { app.input(E_DONE, null); } // DONE logs at once (START goes weight -> reps first)
             else if (v > 0.36 && v < 0.72) { app.input(E_FOCUS, u < 0.51 ? 0 : 1); }
             return true;
         }
         if (s == S_READY && !flow.sp.equals("other") && v > 0.665 && v < 0.74) { app.input(E_DOWN, null); return true; } // the route line
-        var menu = s == S_MENU || s == S_SMODE, pick = s == S_PICK || s == S_MORE || s == S_WPICK || s == S_RPICK;
+        var menu = s == S_MENU || s == S_END || s == S_SAVEQ, pick = s == S_PICK || s == S_MORE || s == S_SMODE || s == S_RPICK;
         if (s == S_HOME) {
             // the rows as Draw.drawHome draws them: row r at HOME_Y0 + r * HOME_DY, all four entries at once
             var hr = ((v - HOME_Y0) / HOME_DY + 0.5).toNumber(), hn = flow.listItems().size(), hi = flow.homeTop(hn) + hr;
@@ -120,9 +147,10 @@ class FlowDelegate extends WatchUi.BehaviorDelegate {
             return true;
         }
         if (menu || pick) {
-            // [offset, y] of the rows as Draw.list draws them
-            var offs = [-2, -1, 0, 1, 2] as Array<Number>, ys = [0.24, 0.345, 0.5, 0.7, 0.8] as Array<Float>;
+            // [offset, y] of the rows as Draw.list draws them (js LIST_LAY); the title and the counter are no row
+            var offs = [-1, 0, 1, 2] as Array<Number>, ys = [0.3, 0.5, 0.72, 0.845] as Array<Float>;
             if (menu) { offs = [-1, 0, 1] as Array<Number>; ys = [0.33, 0.5, 0.67] as Array<Float>; }
+            else if (v < 0.23) { return true; }
             var best = 0;
             for (var i = 1; i < ys.size(); i++) { if ((ys[i] - v).abs() < (ys[best] - v).abs()) { best = i; } }
             var n = flow.listItems().size(), idx = flow.sel + offs[best];

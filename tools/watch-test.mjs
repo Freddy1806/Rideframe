@@ -72,7 +72,7 @@ test('setup: own exercises, most recent first, last sets and best, short names, 
   const empty = await call('GET', '/api/watch/strength/setup', { bearer: t });
   assert.equal(empty.status, 200); assert.equal(empty.j.rest, 90); assert.equal(empty.j.unit, 'kg'); assert.equal(empty.j.ex[0].id, 'squat', 'nothing done: the catalogue'); assert.equal(empty.j.last, null);
   assert.equal(empty.j.ex.filter(e => e.t === 'time').map(e => e.id).join(), 'plank', 'timed exercises only as one of the top 20 (plank)');
-  assert.equal(empty.j.top.length, 20); assert.ok(empty.j.top.every(id => empty.j.ex.some(e => e.id === id)), 'every top exercise is described in ex'); assert.deepEqual(empty.j.recent, []); assert.deepEqual(empty.j.workouts, []);
+  assert.equal(empty.j.top.length, 21); assert.ok(empty.j.top.every(id => empty.j.ex.some(e => e.id === id)), 'every top exercise is described in ex'); assert.deepEqual(empty.j.recent, []); assert.deepEqual(empty.j.workouts, []);
   const own = [...Array(45)].map((_, i) => ({ k: 'my_' + i, n: 'Thai kick on the heavy bag variant ' + i, t: 'w', g: 'Custom' }));
   assert.equal((await call('PUT', '/api/account/settings', { token: A, body: { settings: { kraftRest: 120, kraftEx: own }, at: now } })).status, 200);
   const sess = (id, ago, ex) => call('PUT', '/api/account/kraft/' + id, { token: A, body: { id, name: 'Push day', start: now - ago * day, date: now - ago * day + 3600e3, dur: 3600, ex } });
@@ -187,7 +187,7 @@ test('config: the watch gets the compact form with its token, the strength setup
   assert.equal((await call('GET', '/api/watch/config', { token: C })).j.config.v, 1, 'the phone still gets the full form');
   const now = Date.now(); await call('PUT', '/api/account/kraft/r1', { token: C, body: { id: 'r1', name: 'Legs', start: now - 864e5, date: now - 864e5 + 3600e3, dur: 3600, ex: [{ k: 'squat', n: 'Squat (barbell)', t: 'w', sets: [{ kg: 100, r: 5, done: true }] }, { k: 'plank', n: 'Plank', t: 'time', sets: [{ s: 90, done: true }] }] } });
   const s = (await call('GET', '/api/watch/strength/setup', { bearer: t })); assert.ok(s.size < 8192, `setup is ${s.size} bytes`); const S = s.j;
-  assert.deepEqual(S.workouts, c.j.w); assert.deepEqual(S.top, ['bench', 'incline', 'ohp', 'dip', 'push', 'pull', 'lat', 'row', 'cable', 'squat', 'legpress', 'dead', 'rdl', 'lunge', 'legcurl', 'calf', 'curl', 'tri', 'lateral', 'plank']);
+  assert.deepEqual(S.workouts, c.j.w); assert.deepEqual(S.top, ['bench', 'incline', 'ohp', 'dip', 'push', 'pull', 'lat', 'row', 'cable', 'squat', 'frontsquat', 'legpress', 'dead', 'rdl', 'lunge', 'legcurl', 'calf', 'curl', 'tri', 'lateral', 'plank']);
   assert.deepEqual(S.recent, ['squat', 'plank'], 'recent: what was done lately');
   for (const id of [...S.top, 'my_9']) assert.ok(S.ex.some(e => e.id === id), id + ' is described in ex');
   assert.equal(S.ex.find(e => e.id === 'my_9').n, 'Thai kick heavy b.'); assert.equal(S.ex.find(e => e.id === 'cable').n, 'Cable row', 'the short top-20 names');
@@ -195,6 +195,22 @@ test('config: the watch gets the compact form with its token, the strength setup
   const r = await call('POST', '/api/watch/strength', { bearer: t, body: { id: 'plank12345', start: nowS() - 600, duration: 500, sets: [{ ex: 'plank', kg: 0, reps: 75, t: 100 }, { ex: 'bench', kg: 80, reps: 8, t: 300 }] } });
   assert.equal(r.status, 200); const w = (await call('GET', '/api/account/kraft/watch-plank12345', { token: C })).j;
   assert.deepEqual(w.ex[0], { k: 'plank', n: 'Plank', t: 'time', sets: [{ kg: '', r: '', s: 75, done: true }] }, 'a timed set keeps its seconds');
+});
+test('23.11. workout saved on the watch: into the account config (phone and watch see it), same id replaces, bad ones refused', async () => {
+  const C = await register('Template Saver'), w = await pairWith(C);
+  const post = b => call('POST', '/api/watch/workout', { bearer: w, body: b });
+  assert.equal((await call('POST', '/api/watch/workout', { body: { id: 'wx' } })).status, 401, 'needs the watch token');
+  const r = await post({ id: 'wab12', n: 'Pull-ups + Front squat', it: [['pull', 3, 10, 0, 90], ['frontsquat', 4, 5, 72.5, 120]] }); assert.equal(r.status, 200); assert.deepEqual(r.j, { ok: true, id: 'wab12', new: true });
+  let ph = await call('GET', '/api/watch/config', { token: C }); assert.deepEqual(ph.j.config.workouts, [{ id: 'wab12', name: 'Pull-ups + Front squat', items: [{ ex: 'pull', sets: 3, reps: 10, kg: 0, rest: 90 }, { ex: 'frontsquat', sets: 4, reps: 5, kg: 72.5, rest: 120 }] }], 'the phone sees it');
+  const st = await call('GET', '/api/watch/strength/setup', { bearer: w }); assert.deepEqual(st.j.workouts, [{ id: 'wab12', n: 'Pull-ups + Front squat', it: [['pull', 3, 10, 0, 90], ['frontsquat', 4, 5, 72.5, 120]] }], 'back to the watch');
+  assert.ok(st.j.ex.some(e => e.id === 'frontsquat' && e.n === 'Front squat'), 'front squat is a standard exercise');
+  ph.j.config.workouts[0].name = 'Leg + pull'; assert.equal((await call('PUT', '/api/watch/config', { token: C, body: ph.j.config })).status, 200);
+  assert.equal((await post({ id: 'wab12', n: 'whatever', it: [['frontsquat', 5, 5, 75, 120]] })).j.new, false);
+  ph = await call('GET', '/api/watch/config', { token: C }); assert.deepEqual(ph.j.config.workouts, [{ id: 'wab12', name: 'Leg + pull', items: [{ ex: 'frontsquat', sets: 5, reps: 5, kg: 75, rest: 120 }] }], 'update: new items, the phone name kept');
+  for (const [b, why] of [[{ id: 'bad id!', n: 'x', it: [['pull', 1, 1, 0, 0]] }, 'id'], [{ id: 'w2', n: 'x', it: [] }, 'no items'], [{ id: 'w2', n: 'x', it: [['pull', 11, 1, 0, 0]] }, 'sets over 10'], [{ id: 'w2', n: 'x', it: [['pull', 1, 1, 0.3, 0]] }, 'kg not in 0.25']])
+    assert.equal((await post(b)).status, 400, why);
+  for (let i = 0; i < 29; i++) assert.equal((await post({ id: 'f' + i, n: 'F' + i, it: [['pull', 1, 5, 0, 60]] })).status, 200);
+  const full = await post({ id: 'f99', n: 'one too many', it: [['pull', 1, 5, 0, 60]] }); assert.equal(full.status, 400, 'full: refused for good (the watch drops it)'); assert.match(full.j.error, /30/);
 });
 test('limits: codes per account, pair tries per address, wrong codes for everyone', async () => {
   const C = await register('Code Spammer');

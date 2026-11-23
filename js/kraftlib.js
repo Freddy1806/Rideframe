@@ -4,7 +4,7 @@ import { fmtNum } from './util.js';
 
 // t: w = weight × reps, bw = body weight (reps, optional extra kg), time = seconds
 export const CATALOG = [
-  ['squat', 'Squat (barbell)', 'w', 'Legs'], ['dead', 'Deadlift', 'w', 'Back'], ['rdl', 'Romanian deadlift', 'w', 'Legs'],
+  ['squat', 'Squat (barbell)', 'w', 'Legs'], ['frontsquat', 'Front squat', 'w', 'Legs'], ['dead', 'Deadlift', 'w', 'Back'], ['rdl', 'Romanian deadlift', 'w', 'Legs'],
   ['bench', 'Bench press', 'w', 'Chest'], ['incline', 'Incline bench press (dumbbell)', 'w', 'Chest'], ['ohp', 'Overhead press', 'w', 'Shoulders'],
   ['row', 'Bent-over row (barbell)', 'w', 'Back'], ['lat', 'Lat pulldown', 'w', 'Back'], ['cable', 'Seated cable row', 'w', 'Back'],
   ['legpress', 'Leg press', 'w', 'Legs'], ['lunge', 'Lunges', 'w', 'Legs'], ['hipthrust', 'Hip thrust', 'w', 'Legs'],

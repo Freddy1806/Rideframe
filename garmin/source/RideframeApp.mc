@@ -123,12 +123,13 @@ class RideframeApp extends Application.AppBase {
             else if (k == O_SAVEACT) { recorder.close(true); queueAct(); } // saved on the watch (Garmin Connect) and queued for RIDEFRAME
             else if (k == O_ROUTES) { loadRoutes(); }
             else if (k == O_ROUTE) { loadRoute(strOf(o["id"])); }
+            else if (k == O_TPL) { keepTpl(); }
         }
         if (flow.routeId == null) { recorder.track = null; }
         recorder.sync();
         if (rec != null && flow.start != 0) { pauseRecording(flow.scr == S_PAUSE && flow.rec == null); } // a paused strength workout stops its timer
         if (flow.scr == S_SUM && rec != null) { stopRecording(true); }
-        if (flow.scr == S_START && flow.start == 0 && rec != null) { stopRecording(false); }
+        else if (flow.start == 0 && rec != null) { stopRecording(false); } // discarded, or back to the choice before a set (23.11.)
         if (!lastKey.equals(flow.last)) { lastKey = flow.last; Application.Storage.setValue("last", lastKey); }
     }
     function saveQueue() as Void {
@@ -179,11 +180,18 @@ class RideframeApp extends Application.AppBase {
         }
         drain(); WatchUi.requestUpdate();
     }
-    // the queue, oldest first, one at a time; kept on any trouble, dropped only when the server refuses a session for good
+    // 23.11.: a workout saved on the watch: the strength list has it at once; setup and cfg keep it until the server sends it back
+    function keepTpl() as Void {
+        if (flow.setup["workouts"] instanceof Array) { store("setup", flow.setup); }
+        store("cfg", flow.cfg);
+    }
+    // the queue, oldest first, one at a time; kept on any trouble, dropped only when the server refuses a session for good.
+    // 23.11.: an entry with "tpl" is a workout saved on the watch (POST /api/watch/workout), the rest are sessions
     function push() as Void {
         if (sending || flow.queue.size() == 0 || !flow.paired) { return; }
         sending = true; lastTry = now();
-        api.session(flow.queue[0], method(:onSent));
+        var q = flow.queue[0] as Dictionary, t = q["tpl"];
+        if (t instanceof Dictionary) { api.workout(t as Dictionary, method(:onSent)); } else { api.session(q, method(:onSent)); }
     }
     function onSent(code as Number, data) as Void {
         sending = false;
