@@ -36,6 +36,8 @@ class RideframeApp extends Application.AppBase {
     var actSending as Boolean = false;
     var actTry as Number = 0;
     var ble = null;             // 23.11.: TrainerBle, the indoor trainer's radio (only once the trainer screen is opened)
+    var hrAt as Number = 0;     // 24.11.: System.getTimer() of the last heart rate a sensor event brought
+    var hrPoll as Number = 0;   // and of the last poll (once a second while the events are silent)
 
     function initialize() { AppBase.initialize(); }
 
@@ -54,8 +56,7 @@ class RideframeApp extends Application.AppBase {
         recorder = new Recorder(f);
         var aq = Application.Storage.getValue("aqueue");
         if (aq instanceof Array) { acts = aq as Array<Dictionary>; }
-        Sensor.setEnabledSensors([Sensor.SENSOR_HEARTRATE]);
-        Sensor.enableSensorEvents(method(:onSensor));
+        sensorsOn();
         timer = new Timer.Timer();
         timer.start(method(:onTick), 200, true);
         if (token != null) { refresh(); push(); pushAct(); }
@@ -97,6 +98,7 @@ class RideframeApp extends Application.AppBase {
         var t = now();
         flow.handle(E_TICK, t, System.getTimer()); // ms for the pause screen's 3 s hold (t has whole seconds)
         recorder.tick(System.getTimer(), t);
+        pollHr(System.getTimer());
         drain();
         // retry the queue every 30 s while the app is open (the phone may be back)
         if (flow.queue.size() > 0 && !sending && t - lastTry >= 30 && flow.paired) { push(); }
@@ -126,7 +128,33 @@ class RideframeApp extends Application.AppBase {
         ble.run(L);
     }
     function onSensor(info as Sensor.Info) as Void {
-        if (info has :heartRate && info.heartRate != null) { flow.handle(E_HR, now(), info.heartRate); }
+        if (flow == null) { return; }
+        if (info has :heartRate && info.heartRate != null) { hrAt = System.getTimer(); flow.handle(E_HR, now(), info.heartRate); }
+    }
+    // 24.11. (no heart rate seen): the heart rate sensors on, the wrist (onboard optical) one too where the API has it (3.2.0)
+    function sensorsOn() as Void {
+        try {
+            Sensor.setEnabledSensors([Sensor.SENSOR_HEARTRATE]);
+            // VERIFY (Sensor.enableSensorType, SENSOR_ONBOARD_HEARTRATE, API 3.2.0): turns the wrist heart rate on for the app
+            if ((Sensor has :enableSensorType) && (Sensor has :SENSOR_ONBOARD_HEARTRATE)) { Sensor.enableSensorType(Sensor.SENSOR_ONBOARD_HEARTRATE); }
+        } catch (e) {
+            System.println("sensors: not enabled");
+        }
+        Sensor.enableSensorEvents(method(:onSensor));
+    }
+    // back in the foreground (API 4.2.3; never called on older firmware): the sensors again (their state cannot change while inactive)
+    function onActive(state as Dictionary or Null) as Void {
+        if (flow != null) { hrAt = 0; sensorsOn(); }
+    }
+    // once a second while no sensor event brought a heart rate for 5 s: the activity's, else the sensor's current value
+    function pollHr(ms as Number) as Void {
+        if (ms - hrPoll < 1000 || ms - hrAt < 5000) { return; }
+        hrPoll = ms;
+        var h = null;
+        var ai = Activity.getActivityInfo(); // VERIFY: currentHeartRate is filled outside a recording session (wrist sensor)
+        if (ai != null && (ai has :currentHeartRate)) { h = ai.currentHeartRate; }
+        if (h == null) { var si = Sensor.getInfo(); if (si has :heartRate) { h = si.heartRate; } }
+        if (h != null) { var b = numOf(h); if (b > 0) { flow.handle(E_HR, now(), b); } }
     }
 
     // ---- what the flow asks for ----
@@ -146,6 +174,7 @@ class RideframeApp extends Application.AppBase {
             else if (k == O_ROUTES) { loadRoutes(); }
             else if (k == O_ROUTE) { loadRoute(strOf(o["id"])); }
             else if (k == O_TPL) { keepTpl(); }
+            else if (k == O_KEEP) { store("setup", flow.setup); } // 24.11.: last time's sets of the session just finished
             else if (k == O_TRAINER) { // the trainer used last and the last target, for the next ride
                 Application.Storage.setValue("trainer", flow.link.want); Application.Storage.setValue("tgt", flow.tTgt);
             }

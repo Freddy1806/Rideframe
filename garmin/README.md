@@ -516,3 +516,32 @@ Nothing of this ran on a watch or in the simulator; the JS mirror and the preten
    power, and once only after Strava passes it on.
 10. **Finish / Discard**: the trainer is free afterwards (the laptop connects); BACK on the app's home closes it, no scan left on.
 11. **Battery** over 60 minutes of ERG (BLE notifications every second, the 200 ms timer, heart rate).
+
+## VERIFY on the device (24.11.: last time on the set screen, GPS on the fenix 8 Solar)
+
+1. **Last time on the set screen** (`Draw.drawSet`, `Draw.lastSet`): last session's kg and reps for this set in `FONT_XTINY` on
+   the "SET n OF m" row (y 0.315 S), above the kg / reps columns, pushed outward so they never touch the SET text; timed: the clock
+   at x 0.735 S. White on MIP (`P.lbl`). They must not touch the big number font (`FONT_NUMBER_HOT`) on 260 px. First time: nothing.
+2. **Exercise list sub line** (`Draw.pickSub` / `lastTxt`): "Last 80x8, 8, 6" with as many whole sets as fit in 0.7 S, then " ...".
+3. **Last time without a phone** (`Flow.keepLast`, `O_KEEP`): finish a session with the phone away, start a new one: the set
+   screen and the list show today's sets; after the upload the server's setup says the same (queued sessions go over a fresh setup).
+4. **GPS on Dynamic SatIQ** (`Recorder.setGps` / `gpsConfig`): the options form `{ :acquisitionType => LOCATION_CONTINUOUS,
+   :configuration => cfg }` (API 3.3.6), in the order `CONFIGURATION_SAT_IQ`, `..._GPS_GLONASS_GALILEO_BEIDOU_L1_L5`, `..._L1`, else
+   the legacy `enableLocationEvents(LOCATION_CONTINUOUS, ...)`; every symbol checked with `has`, an exception falls back to the
+   legacy call. VERIFY: `Position.hasConfigurationSupport(CONFIGURATION_SAT_IQ)` is true on the fenix 8 Solar 47 mm (forum reports
+   say the simulator answers false for some new devices, then L1_L5 / L1 / legacy is used); `CONFIGURATION_GPS*` are documented
+   as not supported on Dynamic SatIQ devices; the fr265 / fenix 7 Pro still compile (the `has` checks) and get a fix.
+5. **Ready screen GPS state** (`Draw.drawReady`, `Recorder.onPosition`): "GPS search" (no callback yet or
+   `QUALITY_NOT_AVAILABLE`), "GPS weak" in orange (`QUALITY_POOR` or `QUALITY_LAST_KNOWN`), "GPS ready" in green (usable / good).
+   GPS goes on as soon as the ready screen of an outdoor sport shows: `RideframeApp.drain` runs `Recorder.sync` after every
+   input and every 200 ms tick, and `sync` wants GPS on `S_READY` or while recording when `Sports.gps(sp, type)`.
+   VERIFY: `Position.Info.accuracy` takes `QUALITY_LAST_KNOWN` before the first real fix (the docs list the constants only).
+6. **No strength ready screen** (24.11.): Strength on the start menu opens Exercises / workouts (or the exercise list) at once and
+   starts the session clock (and the optional native strength activity); BACK there goes to the start menu, which also takes the
+   end of a finished or discarded session. With no setup yet the list says "Loading exercises / from the phone" until it comes.
+7. **Heart rate** (`RideframeApp.sensorsOn`, `pollHr`, `onActive`): `Sensor.setEnabledSensors([SENSOR_HEARTRATE])` plus
+   `Sensor.enableSensorType(SENSOR_ONBOARD_HEARTRATE)` (API 3.2.0, guarded with `has`, in try/catch); sensor events as before; when
+   none brought a heart rate for 5 s, once a second `Activity.getActivityInfo().currentHeartRate`, else `Sensor.getInfo().heartRate`.
+   `onActive` (API 4.2.3) turns the sensors on again when the app is back in the foreground. VERIFY: that the wrist heart rate
+   reaches `onSensor` / `currentHeartRate` on the fenix 8 without a recording session; that defining `onActive` compiles on the
+   older targets (it is simply never called there); whether a strength workout without the native activity gets a heart rate at all.

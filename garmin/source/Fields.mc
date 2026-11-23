@@ -53,7 +53,7 @@ module Fields {
     function defaultCfg() as Dictionary {
         return {
             "v" => 1,
-            "run" => { "p" => [["pace", "dist", "time", "hr"], ["lapPace", "lapDist", "cadence", "hrZone"]], "map" => 1, "seg" => 1, "lap" => 1, "pause" => 0, "vib" => 1 },
+            "run" => { "p" => [["pace", "dist", "time", "hr"], ["lapPace", "lapDist", "avgPace", "hrZone"]], "map" => 1, "seg" => 1, "lap" => 1, "pause" => 0, "vib" => 1 },
             "ride" => { "p" => [["power3s", "speed", "hr", "time"], ["dist", "climb", "avgPower", "cadence"]], "map" => 1, "seg" => 1, "lap" => 1, "pause" => 1, "vib" => 1 },
             "other" => { "p" => [["hr", "time", "clock", "kcal"]] },
             "more" => [["Walk", "Walk"], ["Hike", "Hike"], ["Yoga", "Yoga"], ["Workout", "Workout"]],

@@ -138,15 +138,44 @@ class Recorder {
         if (session != null) { close(keep); }
         if (gpsOn) { setGps(false); }
     }
+    // 24.11. (fenix 8 Solar, Dynamic SatIQ: no fix with the legacy call): the options form of the Connect IQ docs, the best configuration
+    // the device has: SatIQ, else all systems L1 + L5, else all systems L1, else the legacy call (API < 3.3.6: fr265 / fenix 7 on old firmware).
+    // The CONFIGURATION_GPS* ones are documented as not supported on Dynamic SatIQ devices, so SatIQ goes first. Every symbol is checked
+    // with has; an exception (InvalidValueException for a configuration the device refuses) falls back to the legacy call.
     function setGps(on as Boolean) as Void {
         gpsOn = on;
         if (!(Toybox has :Position)) { return; }
-        if (on) { Position.enableLocationEvents(Position.LOCATION_CONTINUOUS, method(:onPosition)); }
-        else { Position.enableLocationEvents(Position.LOCATION_DISABLE, null); flow.gps = 0; }
+        if (!on) { Position.enableLocationEvents(Position.LOCATION_DISABLE, null); flow.gps = 0; fix = false; return; }
+        flow.gps = 0; // "GPS search" until the first callback
+        try {
+            var cfg = gpsConfig();
+            if (cfg != null) {
+                // VERIFY (Position.enableLocationEvents options, API 3.3.6): { :acquisitionType, :configuration } is accepted as documented
+                Position.enableLocationEvents({ :acquisitionType => Position.LOCATION_CONTINUOUS, :configuration => cfg }, method(:onPosition));
+                return;
+            }
+        } catch (e) {
+            System.println("gps: configuration refused, legacy call");
+        }
+        Position.enableLocationEvents(Position.LOCATION_CONTINUOUS, method(:onPosition));
+    }
+    // the first supported configuration in the order SatIQ, multi-GNSS multi-band, multi-GNSS L1; null = none (use the legacy call)
+    function gpsConfig() {
+        if (!(Position has :hasConfigurationSupport)) { return null; }
+        // VERIFY (Position.hasConfigurationSupport): true for CONFIGURATION_SAT_IQ on the fenix 8 Solar 47 mm (the simulator may say false)
+        if (Position has :CONFIGURATION_SAT_IQ) { if (Position.hasConfigurationSupport(Position.CONFIGURATION_SAT_IQ)) { return Position.CONFIGURATION_SAT_IQ; } }
+        if (Position has :CONFIGURATION_GPS_GLONASS_GALILEO_BEIDOU_L1_L5) {
+            if (Position.hasConfigurationSupport(Position.CONFIGURATION_GPS_GLONASS_GALILEO_BEIDOU_L1_L5)) { return Position.CONFIGURATION_GPS_GLONASS_GALILEO_BEIDOU_L1_L5; }
+        }
+        if (Position has :CONFIGURATION_GPS_GLONASS_GALILEO_BEIDOU_L1) {
+            if (Position.hasConfigurationSupport(Position.CONFIGURATION_GPS_GLONASS_GALILEO_BEIDOU_L1)) { return Position.CONFIGURATION_GPS_GLONASS_GALILEO_BEIDOU_L1; }
+        }
+        return null;
     }
     function onPosition(info as Position.Info) as Void {
         var q = info.accuracy; // VERIFY: Position.Info.accuracy is a Position.Quality (QUALITY_* constants)
-        flow.gps = (q == Position.QUALITY_GOOD || q == Position.QUALITY_USABLE) ? 2 : (q == Position.QUALITY_POOR ? 1 : 0);
+        // 2 = "GPS ready" (usable / good), 1 = "GPS weak" (poor, or only the last known fix), 0 = "GPS search" (not available)
+        flow.gps = (q == Position.QUALITY_GOOD || q == Position.QUALITY_USABLE) ? 2 : ((q == Position.QUALITY_POOR || q == Position.QUALITY_LAST_KNOWN) ? 1 : 0);
         var p = info.position;
         if (p == null) { fix = false; return; }
         if (flow.gps < 2) { fix = false; return; }

@@ -53,10 +53,10 @@ let fails = 0; const ok = (c, m) => { console.log(`${c ? '✓' : '✗'} ${m}`); 
     let s = await F(); ok(s.paired && s.scr === 'home' && s.nEx > 0, 'paired with buttons only, setup loaded, the start menu');
     await P.waitForSelector('.wdev', { timeout: 6000 }).catch(() => {}); ok(/Preview \(browser\)/.test(await P.textContent('#tWatch')), 'phone lists the paired watch');
     if (SHOTS) await P.screenshot({ path: `${SHOTS}/phone_settings_paired.png` });
-    await W.waitForTimeout(400); await snap('home'); await btn('down', 3); await btn('start'); s = await F(); ok(s.scr === 'start', 'start menu: Strength'); await snap('start');
+    await W.waitForTimeout(400); await snap('home'); await btn('down', 3); await btn('start'); s = await F(); ok(s.scr === 'pick' && s.ex === 'bench', '24.11.: start menu, Strength: the exercise list at once (no ready screen), last used first'); await snap('home_to_strength');
 
     // ---- session 1: buttons only ----
-    await btn('start'); s = await F(); ok(s.scr === 'pick' && s.ex === 'bench', 'START opens the picker, last used first'); await btn('down'); await btn('up'); await snap('pick');
+ await btn('down'); await btn('up'); await snap('pick');
     await btn('start'); s = await F(); ok(s.scr === 'set' && s.kg === 80 && s.reps === 8, 'bench prefilled 80 x 8 from last session');
     await hold('up', 950); s = await F(); ok(s.kg >= 90, `UP held: 10 kg steps (${s.kg})`); while ((await F()).kg > 82.5) await btn('down');
     await snap('set'); await btn('start'); s = await F(); ok(s.scr === 'set' && s.focus === 1 && s.sets === 0, 'START on kg: on to reps, nothing logged yet'); await btn('start'); s = await F(); ok(s.scr === 'rest' && s.flash, '82.5 x 8 beats 80 x 8: record flash'); await snap('pr');
@@ -81,11 +81,10 @@ let fails = 0; const ok = (c, m) => { console.log(`${c ? '✓' : '✗'} ${m}`); 
       await W.mouse.move(p0.x, p0.y); await W.mouse.down(); await W.mouse.move(p1.x, p1.y, { steps: 6 }); await W.mouse.up(); await W.waitForTimeout(100); };
     const drag = async (v0, v1) => { await cv.scrollIntoViewIfNeeded(); const b = await cv.boundingBox(); await W.mouse.move(b.x + b.width / 2, b.y + v0 * b.height); await W.mouse.down();
       await W.mouse.move(b.x + b.width / 2, b.y + v1 * b.height, { steps: 8 }); await W.mouse.up(); await W.waitForTimeout(100); };
-    await snap('home_all_rows'); await tap(.5, .27); s = await F(); ok(s.scr === 'start', 'tap the top row: Strength');
+    await snap('home_all_rows'); await tap(.5, .27); s = await F(); ok(s.scr === 'pick', 'tap the top row: Strength, the exercise list');
     await btn('back'); await tap(.5, .735); s = await F(); ok(s.scr === 'tscan', 'start menu: the fourth row (Indoor trainer) is visible and tappable without scrolling'); await btn('back'); await W.waitForTimeout(300);
     s = await F(); ok(s.scr === 'home', 'BACK on the trainer list: the start menu'); await drag(.6, .4); await drag(.6, .4); await snap('home_scrolled'); s = await F(); ok(s.sel === 4, 'five entries: a drag scrolls to More');
-    await W.evaluate(() => { __watch.F.sel = 0; }); await tap(.5, .27);
-    await tap(.5, .5); s = await F(); ok(s.scr === 'pick', 'tap: picker'); const sel0 = s.sel;
+    await W.evaluate(() => { __watch.F.sel = 0; }); await tap(.5, .27); s = await F(); ok(s.scr === 'pick', 'tap: picker'); const sel0 = s.sel;
     const nRows = await W.evaluate(async () => (await import('/js/watchflow.js')).pickRows(__watch.F).length);
     await swipe('up'); s = await F(); ok(s.sel === Math.min(sel0 + 4, nRows - 1), `drag up 0.4 of the screen: the list follows the finger, 4 rows (${sel0} -> ${s.sel})`); await snap('pick_dragged');
     await drag(.3, .7); await drag(.3, .7); s = await F(); ok(s.sel === 0, 'drag down: back to the top, clamped');
@@ -151,14 +150,17 @@ let fails = 0; const ok = (c, m) => { console.log(`${c ? '✓' : '✗'} ${m}`); 
     await dbtn('start'); await D.evaluate(() => { for (let i = 0; i < 30; i++) __watch.ev('sample', { dt: 60, v: 0, hr: 112 }); }); d = await G(); ok(d.scr === 'rec', 'Yoga: recording, one page'); await dsnap('15_other_sport');
     await dbtn('start'); await dbtn('down'); await dbtn('start'); await dbtn('start');
     // strength: Workout -> Push day, guided
-    d = await G(); const home = await D.evaluate(async () => (await import('/js/watchflow.js')).homeItems(__watch.F)); await dbtn('down', home.indexOf('kraft')); await dbtn('start'); await dbtn('start');
+    d = await G(); const home = await D.evaluate(async () => (await import('/js/watchflow.js')).homeItems(__watch.F)); await dbtn('down', home.indexOf('kraft')); await dbtn('start');
     const DT = () => D.evaluate(() => __watch.texts.join(' | ')), DM = f => D.evaluate(async f => { const m = await import('/js/watchflow.js'); return m[f](__watch.F); }, f);
+    await D.evaluate(() => { __watch.F.setup.ex.find(e => e.id === 'bench').s = [[80, 8], [77.5, 7], [75, 6]]; }); // 24.11.: last time's bench, set by set
     d = await G(); ok(d.scr === 'smode', 'Strength: Exercises or a saved workout'); ok((await D.evaluate(async () => (await import('/js/watchflow.js')).listItems(__watch.F)))[0] === 'Exercises', 'one list: Exercises first, then the workouts'); await dsnap('16_strength_mode');
     await dbtn('down'); await dbtn('start'); d = await G(); ok(d.scr === 'set' && d.ex === 'bench' && d.kg === 80 && d.reps === 8 && d.plan.i === 0 && await DM('setNo') === 1, 'Push day: bench 80 kg × 8, set 1'); await dsnap('18_guided_set');
     ok(/♥|bpm|\d+:\d\d/.test(await DT()), 'set screen: heart rate and clock line');
+    ok(/SET 1 OF 3 \| 80 \| 8 \| ×/.test(await DT()), 'set 1: last time\'s set 1 small on the SET row (80, 8)');
     await dbtn('start'); await dbtn('start'); d = await G(); if (d.flash) { await dbtn('start'); d = await G(); } ok(d.scr === 'rest' && d.restLen === 120, 'START, START: logged, rest from the workout: 2:00'); await dsnap('19_guided_rest');
     ok(/NEXT · SET 2 OF 3/.test(await DT()), 'rest: what comes next (set 2 of 3)');
-    await dbtn('start'); d = await G(); ok(d.scr === 'set' && await DM('setNo') === 2, 'set 2 of 3');
+    await dbtn('start'); d = await G(); ok(d.scr === 'set' && await DM('setNo') === 2, 'set 2 of 3'); await dsnap('18b_guided_set2_last');
+    ok(/SET 2 OF 3 \| 77\.5 \| 7 \| ×/.test(await DT()), 'set 2: last time\'s set 2 (77.5, 7)');
     await dbtn('back'); d = await G(); ok(d.scr === 'pick' && d.plan?.w === 0, 'BACK in a set: the workout\'s exercise list (not the workout list)'); await dsnap('19b_workout_list');
     ok(/1\/\d+ · 1 set done|1 set done/.test(await DT()), 'list: status line with the sets done');
     await dbtn('back'); d = await G(); ok(d.scr === 'end', 'BACK in the list with a set logged: Keep / Finish / Discard'); await dsnap('19c_end');
@@ -166,15 +168,25 @@ let fails = 0; const ok = (c, m) => { console.log(`${c ? '✓' : '✗'} ${m}`); 
     await D.evaluate(() => __watch.ev('menu')); await dbtn('down'); await dbtn('start'); d = await G(); ok(d.ex === 'ohp' && d.kg === 45, 'Skip exercise: overhead press 45 kg');
     await D.evaluate(() => __watch.ev('menu')); const mi = await D.evaluate(() => __watch.F.menu.indexOf('Change exercise')); await dbtn('down', mi); await dbtn('start');
     d = await G(); ok(d.scr === 'pick' && d.plan?.w === 0, 'Change exercise: the list, the workout stays on (its exercises first)');
+    await D.evaluate(() => __watch.ev('hr', 121)); // a heart rate sample for sure (the page's simulated one comes every 2 s; a fast run could finish before it)
     await D.evaluate(() => __watch.ev('menu')); const fi = await D.evaluate(() => __watch.F.menu.indexOf('Finish')); await dbtn('down', fi); await dbtn('start'); await D.waitForTimeout(300);
     d = await G(); ok(d.scr === 'sum', 'Finish: the summary'); await dsnap('20_summary'); ok(/AVG|avg|♥/.test(await DT()), 'summary: heart rate avg / max');
     await dbtn('down'); await dsnap('20b_summary_ex'); ok(/Bench press|BENCH PRESS/.test(await DT()), 'summary page 2: the first exercise with its sets');
     await dbtn('start'); d = await G(); ok(d.scr === 'saveq', 'changed workout (skipped one): Save as workout?'); await dsnap('21_saveq');
     const sq = await D.evaluate(() => __watch.F.saveq.rows); await dbtn('down', sq.length - 1); await dbtn('start'); d = await G(); ok(d.scr === 'home' || d.scr === 'start', `No: nothing saved (${sq.join(' / ')})`);
     if (d.scr === 'home') { await dbtn('down', (await D.evaluate(async () => (await import('/js/watchflow.js')).homeItems(__watch.F))).indexOf('kraft')); await dbtn('start'); }
-    await dbtn('start'); await dbtn('start'); d = await G(); ok(d.scr === 'pick' && !d.plan, 'Exercises: the free list');
+    await dbtn('start'); d = await G(); ok(d.scr === 'pick' && !d.plan, 'Exercises: the free list');
     const top = await D.evaluate(async () => (await import('/js/watchflow.js')).listItems(__watch.F)); ok(top.includes('Front squat'), `free list has Front squat (${top.slice(0, 6).join(', ')} …)`);
     await dbtn('back'); d = await G(); ok(d.scr === 'smode', 'BACK in the list with nothing logged: back to Exercises / workouts');
+    // 24.11.: last time in the list (all sets) and on the set screen, updated on the watch by the session just finished (no sync)
+    await dbtn('start'); const toEx = id => D.evaluate(async id => { const m = await import('/js/watchflow.js'), F = __watch.F; const k = m.pickRows(F).findIndex(r => F.setup.ex[r[0]].id === id); F.sel = k; return k; }, id);
+    await toEx('bench'); await D.waitForTimeout(250); ok(/Bench press \| Last 80×8 \|/.test(await DT()), 'list: bench shows the guided session just finished (80×8), not the old 77.5');
+    await toEx('pull'); await D.waitForTimeout(250); ok(/Pull-ups \| Last 10 · 9 reps/.test(await DT()), 'list: pull-ups, all of last time\'s sets ("Last 10 · 9 reps")'); await dsnap('22_list_last_all');
+    await D.evaluate(() => __watch.ev('item', __watch.F.sel)); await D.waitForTimeout(250); ok(/SET 1 \| BW \| 10 \| ×/.test(await DT()), 'bodyweight set 1: last time BW, 10'); await dsnap('23_bw_set1_last');
+    for (let i = 0; i < 2; i++) { await D.evaluate(() => { __watch.ev('done'); __watch.F.flash = null; __watch.ev('start'); }); }
+    await D.waitForTimeout(250); ok((await DM('setNo')) === 3 && /SET 3 \| BW \| 9 \| ×/.test(await DT()), 'set 3, last time had 2: its final set (BW, 9)'); await dsnap('24_beyond_last');
+    await D.evaluate(() => __watch.ev('back')); await toEx('legpress'); await D.evaluate(() => __watch.ev('item', __watch.F.sel)); await D.waitForTimeout(250);
+    ok(/Leg press \| SET 1 \| × \|/.test(await DT()), 'first time (leg press): nothing above the numbers'); await dsnap('25_first_time');
     ok(!derr.length, 'no page errors in the new flows' + (derr.length ? ': ' + derr.join(' | ') : '')); await demo.close();
 
     // ---- pause in every mode, Polar style: BACK held 3 s saves, released early nothing; on the page clock (no real waiting) ----
@@ -189,7 +201,7 @@ let fails = 0; const ok = (c, m) => { console.log(`${c ? '✓' : '✗'} ${m}`); 
     const toHome = () => Q.evaluate(() => { __watch.F.scr = 'home'; __watch.F.sel = 0; });
     const pick = k => Q.evaluate(async k => { const m = await import('/js/watchflow.js'); __watch.ev('item', m.homeItems(__watch.F).indexOf(k)); }, k);
     const modes = [['run', async () => { await pick('run'); await qb('start'); }], ['ride', async () => { await pick('ride'); await qb('start'); }],
-      ['more', async () => { await pick('more'); await qb('start'); await qb('start'); }], ['strength', async () => { await pick('kraft'); await qb('start'); await qb('down'); await qb('start'); await qb('start'); await qb('start'); }]];
+      ['more', async () => { await pick('more'); await qb('start'); await qb('start'); }], ['strength', async () => { await pick('kraft'); await qb('down'); await qb('start'); await qb('start'); await qb('start'); }]];
     for (const [k, go] of modes) {
       await toHome(); await go(); await Q.clock.runFor(20000);
       if (k === 'strength') { await Q.evaluate(() => __watch.ev('menu')); const i = await Q.evaluate(() => __watch.F.menu.indexOf('Pause')); await qb('down', i); await qb('start'); } else await qb('start');

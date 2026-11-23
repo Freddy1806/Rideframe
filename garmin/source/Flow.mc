@@ -17,7 +17,7 @@ import Toybox.Lang;
 import Toybox.Math;
 
 // screens (js: SCR)
-const S_START = 0;
+const S_START = 0;          // 24.11.: no longer shown (Strength opens the choice / the list at once); the number stays free
 const S_PICK = 1;
 const S_SET = 2;
 const S_REST = 3;
@@ -91,6 +91,7 @@ const O_ROUTES = 6;
 const O_ROUTE = 7;
 const O_TPL = 8;           // 23.11.: a workout saved on the watch: keep setup and cfg in Storage (it is queued for POST /api/watch/workout)
 const O_TRAINER = 9;       // 23.11.: keep the trainer's name (link.want) and the last target (tTgt) in Storage
+const O_KEEP = 10;         // 24.11.: keep the setup in Storage (a finished session changed last time's sets, js 'keep')
 // menu items (js: MENU)
 const M_EX = "Change exercise";
 const M_SKIP = "Skip exercise";
@@ -175,6 +176,34 @@ function order(s as Dictionary) as Array<Number> {
     for (var k = 0; k < ids.size(); k++) { var i = exIndex(ex, ids[k]); if (i >= 0 && out.indexOf(i) < 0) { out.add(i); } }
     for (var i = 0; i < ex.size(); i++) { if (out.indexOf(i) < 0) { out.add(i); } }
     return out;
+}
+// js: keepLast(setup, sess): a finished session in the cached setup at once (no phone for days, or the server's setup back before the
+// upload): each exercise done gets these sets as its last ("s", at most 6) and the best ("b") raised; "recent" and "last" updated
+function keepLast(st as Dictionary, sess) as Void {
+    if (!(sess instanceof Dictionary)) { return; }
+    var ss = arrOf((sess as Dictionary)["sets"]), ex = arrOf(st["ex"]), ids = [] as Array<String>;
+    if (ss.size() == 0) { return; }
+    for (var i0 = 0; i0 < ss.size(); i0++) { var id = strOf((ss[i0] as Dictionary)["ex"]); if (ids.indexOf(id) < 0) { ids.add(id); } }
+    for (var k = 0; k < ids.size(); k++) {
+        var j = exIndex(ex, ids[k]);
+        if (j < 0) { continue; }
+        var e = ex[j] as Dictionary, t = strOf(e["t"]), l = [] as Array, best = 0.0;
+        for (var i = 0; i < ss.size(); i++) {
+            var x = ss[i] as Dictionary;
+            if (!ids[k].equals(strOf(x["ex"]))) { continue; }
+            var kg = fltOf(x["kg"]), r = numOf(x["reps"]);
+            if (l.size() < 6) { l.add("time".equals(t) ? [0, r] : [kg, r]); }
+            var v = "bw".equals(t) || "time".equals(t) ? r.toFloat() : e1rm(kg, r);
+            if (v > best) { best = v; }
+        }
+        e["s"] = l;
+        if (best > fltOf(e["b"])) { e["b"] = rnd(best * 10.0) / 10.0; }
+    }
+    var rc = ids.slice(0, ids.size()) as Array, old = arrOf(st["recent"]);
+    for (var i2 = 0; i2 < old.size(); i2++) { if (ids.indexOf(strOf(old[i2])) < 0) { rc.add(old[i2]); } }
+    st["recent"] = rc.size() > 8 ? rc.slice(0, 8) : rc;
+    var at = numOf((sess as Dictionary)["start"]), la = st["last"];
+    if (!(la instanceof Dictionary) || numOf((la as Dictionary)["at"]) <= at) { st["last"] = { "at" => at, "sets" => ss.size(), "n" => "" }; }
 }
 // a config from GET /api/watch/config (or the cache) that the flow can use (js: setConfig's check)
 function cfgOk(c) as Boolean {
@@ -639,15 +668,23 @@ class Flow {
         var sess = { "id" => id, "start" => start, "duration" => dur, "sets" => l } as Dictionary, h = null;
         if (hrN > 0) { h = { "avg" => rnd(hrSum.toFloat() / hrN), "max" => hrMax } as Dictionary; sess["hr"] = h; }
         queue.add(sess);
+        keepLast(setup, sess); list = order(setup); // 24.11.: the next session shows these sets as last time's, phone or not
         sum = { "id" => id, "dur" => dur, "sets" => sets.size(), "vol" => volume(), "exs" => distinctEx(), "prs" => prs, "st" => paired ? ST_SENDING : ST_QUEUED,
                 "hr" => h, "ex" => sumEx() } as Dictionary;
         saveq = saveOffer();
         sets = [] as Array<Dictionary>; start = 0; pauseT = 0; restEnd = 0; plan = null; planSkip = [] as Array<Number>; holdAt = 0; hrN = 0; hrSum = 0; hrMax = 0;
-        sel = 0; scr = S_SUM; cues.add(C_DONE); out.add({ "k" => O_SEND } as Dictionary);
+        sel = 0; scr = S_SUM; cues.add(C_DONE); out.add({ "k" => O_KEEP } as Dictionary); out.add({ "k" => O_SEND } as Dictionary);
     }
     function reset() as Void {
         sets = [] as Array<Dictionary>; start = 0; pauseT = 0; pzConf = false; pzHolding = false; restEnd = 0; plan = null; planSkip = [] as Array<Number>;
-        flash = null; sum = null; saveq = null; endConf = false; holdAt = 0; sel = 0; scr = S_START;
+        flash = null; sum = null; saveq = null; endConf = false; holdAt = 0; sel = 0; scr = S_HOME; // 24.11.: the start menu, Strength on top
+    }
+    // js: strength(F, now) (24.11., no strength ready screen): Strength on the start menu opens the choice (Exercises + saved workouts) or,
+    // without saved workouts, the exercise list; the session clock starts here. No setup yet: asked for, the list says it is loading.
+    function strength(now as Number) as Void {
+        start = now; sets = [] as Array<Dictionary>; sum = null; plan = null; last = "kraft"; sel = 0;
+        if (exCount() == 0) { out.add({ "k" => O_SETUP } as Dictionary); }
+        if (workouts().size() > 0) { scr = S_SMODE; } else { toPick(false); }
     }
     // js: saveTpl(F, asNew): on the watch at once (the strength list), for the account through the queue (POST /api/watch/workout)
     function saveTpl(asNew as Boolean, now as Number) as Void {
@@ -694,6 +731,8 @@ class Flow {
     function setSetup(s) as Void {
         if (!(s instanceof Dictionary) || !((s as Dictionary)["ex"] instanceof Array)) { return; }
         var id = strOf(curEx()["id"]);
+        // sessions still in the queue (not on the server yet) go over it, so last time stays the newest (js setSetup)
+        for (var k = 0; k < queue.size(); k++) { if (queue[k]["tpl"] == null) { keepLast(s as Dictionary, queue[k]); } }
         setup = s as Dictionary;
         list = order(setup);
         var i = exIndex(exList(), id);
@@ -1039,17 +1078,9 @@ class Flow {
             if (m >= 0) { var v = sel + d; sel = v < 0 ? 0 : (v > m ? m : v); }
             return;
         }
-        if (ev == E_MENU) { if (s == S_HOME || s == S_START || s == S_PICK || s == S_SET || s == S_REST) { openMenu(); } return; }
+        if (ev == E_MENU) { if (s == S_HOME || s == S_PICK || s == S_SET || s == S_REST) { openMenu(); } return; }
         if (s == S_PAUSE) { if (rec != null || start != 0) { onPause(ev, now, arg); } else { scr = S_HOME; } return; }
         if (s == S_GLANCE) { if (ev == E_START || ev == E_TAP) { sel = 0; scr = paired ? S_HOME : S_PAIR; } return; }
-        if (s == S_START) {
-            if (ev == E_START || ev == E_TAP) {
-                if (exCount() == 0) { out.add({ "k" => O_SETUP } as Dictionary); return; }
-                start = now; sets = [] as Array<Dictionary>; sum = null; plan = null; last = "kraft"; sel = 0;
-                if (workouts().size() > 0) { scr = S_SMODE; } else { toPick(false); }
-            } else if (ev == E_BACK) { sel = 0; scr = S_HOME; }
-            return;
-        }
         if (s == S_READY) {
             if (ev == E_START || ev == E_TAP) { begin(now); }
             else if ((ev == E_UP || ev == E_DOWN) && !"other".equals(sp)) { openRoutes(); }
@@ -1182,7 +1213,7 @@ class Flow {
         else if (s == S_HOME) {
             var k = homeItems()[i];
             sel = 0;
-            if (k.equals("kraft")) { scr = S_START; } else if (k.equals("more")) { scr = S_MORE; } else if (k.equals("trainer")) { tOpen(now); } else { ready(k, "", ""); }
+            if (k.equals("kraft")) { strength(now); } else if (k.equals("more")) { scr = S_MORE; } else if (k.equals("trainer")) { tOpen(now); } else { ready(k, "", ""); }
         }
         else if (s == S_MORE) { var x = arrOf(moreList()[i]); ready("other", x.size() > 0 ? strOf(x[0]) : "", x.size() > 1 ? strOf(x[1]) : ""); }
         else if (s == S_SMODE) { if (start == 0) { start = now; } if (i == 0) { toPick(false); } else { startPlan(i - 1, now); } }

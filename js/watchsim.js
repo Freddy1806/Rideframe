@@ -7,8 +7,10 @@
 // 23.11.: the indoor trainer (TSCAN, TREC, TEND, TSUM) against a pretend KICKR CORE 2 (js/watchkickr.js; the panel: in range, another app).
 // 23.11.: the fenix 8 Solar face, drag scrolling on lists (pointermove), START held (button or Enter, 700 ms), the rest
 // status (last sets, NEXT), END / SAVEQ screens, paged summary; __watch.texts = the fenix 8 face's drawn texts (tests).
+// 24.11.: last time's values for the set small above the big numbers; the exercise list's sub line with all of last time's sets;
+// no strength ready screen: Strength on the start menu opens the choice / the exercise list at once.
 import { newFlow, handle, SCR, curEx, setNo, restLeft, clock, sent, paired, setSetup, setConfig, setRoute, setRoutes, routeFace, routeInfo, recPages, homeItems, listItems, workouts, planItem, HOME, HOME_FIT, HOME_LAY, homeTop, holdPart, pausedTime, HOLD_S,
-  LIST_LAY, DRAG_ROW, pickRows, doneOf, prefillOf } from './watchflow.js';
+  LIST_LAY, DRAG_ROW, pickRows, doneOf, prefillOf, lastSet, lastTxt, loading } from './watchflow.js';
 import { compact, defaults, fieldText, labelOf, TOP } from './watchfields.js';
 import { shown, live as tLive } from './watchtrainer.js';
 import { fakeKickr } from './watchkickr.js';
@@ -136,6 +138,7 @@ function drain() {
     else if (o.k === 'routes') loadRoutes();
     else if (o.k === 'tpl') { if (live()) { store.set('setup', F.setup); if (cfg) store.set('cfg', F.cfg); } else net = 'Saved as a workout on the watch. The watch sends it (POST /api/watch/workout), the demo does not.'; }
     else if (o.k === 'route') { demoAuto = false; loadRoute(o.id); }
+    else if (o.k === 'keep' && live()) store.set('setup', F.setup); // 24.11.: last time's sets of the session just finished, kept for the next start
   }
   if (F.last !== store.get('last', 'run')) store.set('last', F.last);
   autoRoute();
@@ -166,23 +169,13 @@ function dumbbell(g, x, y, s, col) { g.strokeStyle = col; g.lineWidth = s * .13;
 const PAUSE_LAY = { title: .17, sport: .235, time: .37, hint1: .5, hint2: .57, discard: .68, pill: .82 };
 const kgTxt = kg => (Math.round(kg * 10) / 10).toString();
 const volTxt = v => v >= 10000 ? (Math.round(v / 100) / 10) + ' t' : Math.round(v).toLocaleString('en-GB');
-const ago = t => { const d = Math.floor((now() - t) / 86400); return d < 1 ? 'Today' : d < 2 ? 'Yesterday' : new Date(t * 1000).toLocaleDateString('en-GB', { weekday: 'short' }); };
 
 const DRAW = {
-  [SCR.START](g, S, C) {
-    const L = F.setup.last; startHint(g, S, C);
-    let w = txt(g, 'RIDE', 0, -99, S * .055, C.fg, { w: 900 }); const w2 = g.measureText('FRAME').width, x0 = S / 2 - (w + w2) / 2;
-    txt(g, 'RIDE', x0, S * .2, S * .055, C.fg, { al: 'left', w: 900 }); txt(g, 'FRAME', x0 + w, S * .2, S * .055, C.acc, { al: 'left', w: 900 });
-    dumbbell(g, S / 2, S * .31, S * .1, C.acc);
-    txt(g, 'Strength', S / 2, S * .44, S * .13, C.fg, { w: 900, max: S * .8 });
-    txt(g, L ? `${ago(L.at)}, ${L.sets} sets` : F.setup.ex.length ? 'First session' : 'Loading', S / 2, S * .56, S * .06, C.dim, { w: 600, max: S * .7 });
-    if (sum && sum.pts != null) { const t = `${Math.round(sum.pts)} pts`, d = sum.delta || 0; const tw = txt(g, t, 0, -99, S * .058, C.fg, { w: 700 });
-      txt(g, t, S / 2 - S * .04, S * .66, S * .058, C.fg, { w: 700 }); if (d) { tri(g, S / 2 + tw / 2 + S * .01, S * .66, S * .018, d > 0, C.acc); txt(g, Math.abs(Math.round(d)), S / 2 + tw / 2 + S * .035, S * .66, S * .05, C.acc, { al: 'left', w: 700 }); } }
-    pill(g, S / 2, S * .81, S * .42, S * .13, C.acc); txt(g, 'START', S / 2, S * .812, S * .062, C.ink, { w: 900 });
-  },
   [SCR.PICK](g, S, C) { // 23.11.: in a workout its items first with what is done; the counter line is the session so far
     const w = F.plan ? workouts(F)[F.plan.w] : null, n = listItems(F).length, k = F.sets.length;
-    list(g, S, C, listItems(F), F.sel, w ? w.n.toUpperCase() : 'EXERCISES', i => pickSub(i), false, n ? `${F.sel + 1}/${n}${k ? ` · ${k} ${k === 1 ? 'set' : 'sets'} done` : ''}` : '');
+    if (!n && loading(F)) { txt(g, 'EXERCISES', S / 2, S * LIST_LAY.title, S * .045, C.dim, { w: 900 }); txt(g, 'Loading exercises', S / 2, S / 2, S * .07, C.fg, { w: 800, max: S * .74 }); // 24.11.: the setup is on its way
+      txt(g, 'from the phone', S / 2, S * .585, S * .052, C.lbl, { w: 800, max: S * .7 }); return; }
+    list(g, S, C, listItems(F), F.sel, w ? w.n.toUpperCase() : 'EXERCISES', i => pickSub(i, g, S), false, n ? `${F.sel + 1}/${n}${k ? ` · ${k} ${k === 1 ? 'set' : 'sets'} done` : ''}` : '');
   },
   [SCR.SMODE](g, S, C) { list(g, S, C, listItems(F), F.sel, 'STRENGTH', i => { if (!i) return 'Pick as you go'; const w = workouts(F)[i - 1]; return `${w.it.length} exercises · ${w.it.reduce((a, x) => a + x[1], 0)} sets`; }); },
   [SCR.END](g, S, C) { // BACK on the exercise list with sets logged: keep training, finish, or discard (asks once more)
@@ -212,7 +205,8 @@ const DRAW = {
     dot(g, S / 2, S * .25, S * .1, C.acc); icon(g, SPORT_ICON[F.sp], S / 2, S * .25, S * .12, C.ink, 2.6);
     txt(g, F.sp === 'other' ? labelOf(F.type) : HOME[F.sp], S / 2, S * .445, S * .115, C.fg, { w: 900, max: S * .8 });
     if (F.sp === 'other') { heart(g, S / 2 - S * .1, S * .565, S * .045, C.hr); txt(g, F.hr ? `${F.hr} bpm` : 'Heart rate', S / 2 - S * .06, S * .565, S * .055, C.fg, { al: 'left', w: 800 }); }
-    else { dot(g, S / 2 - S * .135, S * .565, S * .02, C.good); txt(g, 'GPS ready', S / 2 - S * .1, S * .565, S * .055, C.good, { al: 'left', w: 800 }); }
+    else { const q = F.gps ?? 2, col = q >= 2 ? C.good : q === 1 ? C.acc : C.lbl; // 24.11.: the watch's fix quality (Recorder.onPosition; the preview has a fix)
+      dot(g, S / 2 - S * .135, S * .565, S * .02, col); txt(g, q >= 2 ? 'GPS ready' : q === 1 ? 'GPS weak' : 'GPS search', S / 2 - S * .1, S * .565, S * .055, col, { al: 'left', w: 800 }); }
     const pg = recPages(F), n = pg.filter(p => p !== 'route').length;
     if (F.sp === 'other') txt(g, `${n} data ${n === 1 ? 'page' : 'pages'}`, S / 2, S * .655, S * .048, C.lbl, { w: 800, max: S * .62 });
     else { // the route line: UP / DOWN or a tap opens the choice (RPICK)
@@ -307,7 +301,14 @@ const DRAW = {
     const e = curEx(F); startHint(g, S, C);
     hrClock(g, S, C, S * .12); // 23.11.: the heart rate the whole time, next to the session clock
     txt(g, e.n, S / 2, S * .22, S * .08, C.fg, { w: 800, max: S * .74 });
-    const it = planItem(F); txt(g, it ? `SET ${setNo(F)} OF ${it[1]}` : 'SET ' + setNo(F), S / 2, S * .315, S * .055, C.acc, { w: 900 });
+    const it = planItem(F), no = it ? `SET ${setNo(F)} OF ${it[1]}` : 'SET ' + setNo(F), nw = txt(g, no, S / 2, S * .315, S * .055, C.acc, { w: 900 });
+    // 24.11.: last session's values for this set, small on the SET row above the kg / reps columns (pushed outward so they never touch
+    // "SET n OF m"; white on MIP); timed: last time's clock on the right; first time: nothing. The same in garmin/source/Draw.mc drawSet.
+    const ls = lastSet(F, e), lpx = S * SET_LAY.lastPx, half = nw / 2 + S * .03;
+    if (ls) { const v = e.t === 'time' ? [null, clock(ls[1])] : [e.t === 'bw' && !ls[0] ? 'BW' : kgTxt(ls[0]), String(ls[1])];
+      v.forEach((t, i) => { if (t == null) return; const w = txt(g, t, 0, -99, lpx, C.lbl, { w: 800 }) / 2; let x = S * (i ? .735 : .285);
+        if (!i && x + w > S / 2 - half) x = S / 2 - half - w; if (i && x - w < S / 2 + half) x = S / 2 + half + w;
+        txt(g, t, x, S * .315, lpx, C.lbl, { w: 800 }); }); }
     if (e.t === 'time') { txt(g, clock(F.reps), S / 2, S * .5, S * .23, C.acc, { w: 900 }); g.fillStyle = C.acc; g.fillRect(S * .36, S * .615, S * .28, S * .016); txt(g, 'hold', S / 2, S * .665, S * .048, C.fg, { w: 700 }); }
     else { const bw = e.t === 'bw', val = [bw && !F.kg ? 'BW' : kgTxt(F.kg), String(F.reps)], unit = [bw ? '+kg' : 'kg', 'reps'], xs = [S * .285, S * .735];
       txt(g, '×', S * .515, S * .5, S * .08, C.dim, { w: 600 });
@@ -396,6 +397,8 @@ function trStats(g, S, C, R) {
   cols(g, S, C, [[R.t ? Math.round(R.pwSum / R.t) : 0, 'AVG W'], [R.pwMax, 'MAX W'], [Math.round(R.kj), 'KJ']], T.c1, T.c1l);
   cols(g, S, C, [[sm.np || '--', 'NP'], [sm.cad || '--', 'RPM'], [sm.hr || '--', 'AVG HR']], T.c2, T.c2l);
 }
+/** the set screen: last time's small values (size; they sit on the SET row, y 0.315, like garmin/source/Draw.mc drawSet) */
+const SET_LAY = { lastPx: .05 };
 /** the rest screen's and the summary's rows (screen fractions; the same in garmin/source/Draw.mc) */
 const REST_LAY = { hr: .15, clock: .3, name: .425, sets: .49, dy: .062, next: .7, skip: .855 };
 const SUM_LAY = { st: .15, time: .3, timeL: .395, cols: .52, colsL: .59, hr: .69, pr: .77, done: .87, name: .2, info: .285, sets: .38, dy: .08 };
@@ -409,12 +412,16 @@ function hrClock(g, S, C, y, hrOnly = false) {
   txt(g, clock(now() - F.start - F.pauseT), S / 2 + S * .03, y, S * .048, C.dim, { al: 'left', w: 700 });
 }
 /** the exercise list's sub line of row k: a workout item's progress, else this session's sets, else last time's */
-function pickSub(k) {
+function pickSub(k, g, S) {
   const [i, j] = pickRows(F)[k], e = F.setup.ex[i], mine = F.sets.filter(s => s.ex === e.id);
   if (j >= 0) { const it = workouts(F)[F.plan.w].it[j], d = doneOf(F, j); if (d >= it[1]) return `Done · ${d} ${d === 1 ? 'set' : 'sets'}`; if (F.plan.skip.includes(j)) return 'Skipped';
     return `${d}/${it[1]} sets · ${e.t === 'time' ? clock(it[2]) : it[2] + ' reps'}`; }
   if (mine.length) return `${mine.length} done · ${setShort(e.t, mine.at(-1).kg, mine.at(-1).reps)}`;
-  return e.s ? 'Last ' + setShort(e.t, e.s[0][0], e.s[0][1]) : 'New';
+  if (!e.s || !e.s.length) return 'New';
+  // 24.11.: all of last time's sets ("Last 80×8 · 8 · 6"); too long for the line: as many whole sets as fit, then " …"
+  g.font = `800 ${S * .052}px Archivo, system-ui, sans-serif`; let k2 = e.s.length, t = lastTxt(e.t, e.s);
+  while (k2 > 1 && g.measureText(t).width > S * .7) t = lastTxt(e.t, e.s, --k2);
+  return t;
 }
 /** the rest screen's NEXT: [label, values]: the next set of this exercise, or the next exercise of the workout */
 function nextTxt() {

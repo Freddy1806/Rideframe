@@ -2,10 +2,10 @@
 // other sports, workouts). The browser preview (watch.html, js/watchsim.js) draws it, and garmin/source/Flow.mc is the same
 // machine in Monkey C, one function per function. Time is in seconds (Monkey C numbers are 32 bit, Unix ms would not fit).
 // Outputs the drawing layer drains: F.cues = vibrations ('set', 'pr', 'rest', 'done', 'start', 'stop', 'lap', 'seg', 'error'),
-// F.out = requests ('send', 'pair', 'setup', 'exit', 'saveAct', 'tpl').
+// F.out = requests ('send', 'pair', 'setup', 'exit', 'saveAct', 'tpl', 'keep' = store the setup: a finished session changed last time's sets).
 // 23.11. (after the first fenix 8 run): START steps kg -> reps -> logs, DONE logs, START held switches; BACK set / rest -> list ->
 // END (Keep / Finish / Discard); one Strength list (Exercises + workouts); paged summary with heart rate; "Save as workout?".
-// Screens: HOME (start menu) -> START (strength ready) -> SMODE (Exercises or a saved workout) -> PICK <-> SET <-> REST -> SUM -> SAVEQ;
+// Screens: HOME (start menu) -> SMODE (Exercises or a saved workout; 24.11.: no START ready screen any more) -> PICK <-> SET <-> REST -> SUM -> SAVEQ -> HOME;
 // 23.11. (Freddy on his fenix 8): BACK goes back (SET / REST -> PICK -> END with sets logged), touch everywhere, the summary, save as workout.
 // HOME -> MORE (other sports) -> READY; HOME -> READY (run / ride) -> REC (data pages, route page) <-> PAUSE -> RSUM.
 // 19.11.: READY (run / ride) -> RPICK (UP / DOWN or a tap on the route line): None or a route sent from the phone
@@ -101,6 +101,33 @@ export function prefillOf(F, e) {
   return [kg, reps];
 }
 export function prefill(F) { [F.kg, F.reps] = prefillOf(F, curEx(F)); }
+/** 24.11. (Freddy on his fenix 8: "I want to see what I did last time"): last session's set for the set being entered, [kg, reps]
+ *  (timed: [0, sec]); past last time's count its final set; null = first time. The set screen shows it small above the big numbers. */
+export function lastSet(F, e = curEx(F)) { const s = Array.isArray(e.s) ? e.s : []; return s.length ? s[Math.min(setNo(F), s.length) - 1] : null; }
+const kgS = kg => String(Math.round(kg * 10) / 10);
+/** last session's sets, short, one string per set (the exercise list's sub line joins them with " · "): a weight is written only when it changes
+ *  (80×8 · 8 · 75×10), bodyweight only reps (+kg when added), timed the clock */
+export function lastParts(t, s) {
+  return (Array.isArray(s) ? s : []).map(([kg, r], i) => t === 'time' ? clock(r) : t === 'bw' ? (kg ? `+${kgS(kg)}×${r}` : String(r)) : i && s[i - 1][0] === kg ? String(r) : `${kgS(kg)}×${r}`);
+}
+/** the sub line from the first k parts: "Last 80×8 · 8 · 6", "Last 10 · 9 reps"; fewer than all end with " …" */
+export function lastTxt(t, s, k = Infinity) {
+  const p = lastParts(t, s); if (!p.length) return ''; const n = Math.max(1, Math.min(k, p.length)), bw = t === 'bw' && s.slice(0, n).every(x => !x[0]);
+  return 'Last ' + p.slice(0, n).join(' · ') + (n < p.length ? ' …' : bw ? ' reps' : '');
+}
+/** a finished session in the cached setup at once (the watch may have no phone for days, and the server's setup may come back before the
+ *  session is uploaded): each exercise done gets these sets as its last (s, at most 6) and the best (b) raised, recent and last updated */
+export function keepLast(setup, sess) {
+  if (!setup || !Array.isArray(setup.ex) || !sess || !Array.isArray(sess.sets) || !sess.sets.length) return;
+  const by = new Map(); for (const x of sess.sets) { if (!by.has(x.ex)) by.set(x.ex, []); by.get(x.ex).push(x); }
+  for (const [id, l] of by) {
+    const e = setup.ex.find(y => y.id === id); if (!e) continue; const tm = e.t === 'time';
+    e.s = l.slice(0, 6).map(x => tm ? [0, x.reps] : [x.kg, x.reps]);
+    const best = Math.max(...l.map(x => e.t === 'bw' || tm ? x.reps : e1rm(x.kg, x.reps))); if (best > (e.b || 0)) e.b = Math.round(best * 10) / 10;
+  }
+  const ids = [...by.keys()]; setup.recent = [...ids, ...(Array.isArray(setup.recent) ? setup.recent : []).filter(id => !by.has(id))].slice(0, 8);
+  if (!setup.last || !(setup.last.at > sess.start)) setup.last = { at: sess.start, sets: sess.sets.length, n: '' };
+}
 /** UP / DOWN on the focused value: d = +1 / -1, big = held */
 export function stepValue(F, d, big) {
   if (F.focus === 0) F.kg = clamp(Math.round((F.kg + d * (big ? KG_HOLD : KG_STEP)) * 100) / 100, 0, KG_MAX);
@@ -178,13 +205,23 @@ export function finish(F, now) {
   if (!F.sets.length) { reset(F); return; }
   const id = F.newId(), dur = Math.max(1, Math.round(now - F.start - F.pauseT)), sess = { id, start: Math.round(F.start), duration: dur, sets: F.sets.map(({ ex, kg, reps, t }) => ({ ex, kg, reps, t })) };
   const hr = F.hrN ? { avg: Math.round(F.hrSum / F.hrN), max: F.hrMax } : null; if (hr) sess.hr = hr;
-  F.queue.push(sess);
+  F.queue.push(sess); keepLast(F.setup, sess); F.list = order(F.setup); // 24.11.: the next session shows these sets as last time's, phone or not
   F.sum = { id, dur, sets: F.sets.length, vol: volume(F.sets), exs: exCount(F.sets), prs: F.sets.filter(s => s.pr).length, st: F.paired ? 'sending' : 'queued', hr, ex: sumEx(F) };
   F.saveq = saveOffer(F);
   F.sets = []; F.start = 0; F.pauseT = 0; F.restEnd = 0; F.plan = null; F.hrN = F.hrSum = F.hrMax = 0;
-  F.sel = 0; F.scr = SCR.SUM; F.cues.push('done'); F.out.push({ k: 'send' });
+  F.sel = 0; F.scr = SCR.SUM; F.cues.push('done'); F.out.push({ k: 'keep' }, { k: 'send' });
 }
-function reset(F) { F.sets = []; F.start = 0; F.pauseT = 0; F.pz = null; F.restEnd = 0; F.plan = null; F.flash = null; F.sum = null; F.saveq = null; F.endConf = false; F.sel = 0; F.scr = SCR.START; }
+/** 24.11.: a finished or discarded session (and BACK out of strength) ends on the start menu, Strength on top (there is no strength ready screen any more) */
+function reset(F) { F.sets = []; F.start = 0; F.pauseT = 0; F.pz = null; F.restEnd = 0; F.plan = null; F.flash = null; F.sum = null; F.saveq = null; F.endConf = false; F.sel = 0; F.scr = SCR.HOME; }
+/** 24.11. (Freddy: "that can come directly when you tap Strength"): Strength on the start menu opens the choice (Exercises + saved workouts)
+ *  or, without saved workouts, the exercise list; the session clock starts here. No setup yet: asked for, the list says it is loading. */
+function strength(F, now) {
+  F.start = now; F.sets = []; F.sum = null; F.plan = null; F.last = 'kraft'; F.sel = 0;
+  if (!F.setup.ex.length) F.out.push({ k: 'setup' });
+  if (workouts(F).length) F.scr = SCR.SMODE; else toPick(F, false);
+}
+/** the exercise list has no exercises because the setup has not come yet */
+export const loading = F => !F.setup.ex.length;
 /** 23.11.: saves the session as a workout: on the watch at once (the strength list), for the account through the queue (POST /api/watch/workout) */
 function saveTpl(F, asNew) {
   const q = F.saveq, w = asNew || !q.w ? { id: 'w' + F.newId(), n: q.n, it: q.it } : { id: q.w.id, n: q.w.n, it: q.it };
@@ -203,7 +240,9 @@ export function paired(F, ok, setup) {
   F.paired = true; F.pair = { d: [0, 0, 0, 0, 0, 0], i: 0, st: 'enter' }; if (setup) setSetup(F, setup);
   F.sel = 0; F.scr = SCR.HOME; F.cues.push('done'); F.out.push({ k: 'setup' }, { k: 'send' });
 }
-export function setSetup(F, setup) { if (setup && Array.isArray(setup.ex)) { const id = curEx(F).id; F.setup = setup; F.list = order(setup); const i = setup.ex.findIndex(e => e.id === id); F.cur = i < 0 ? 0 : i; } }
+/** a setup from the server (or the cache); sessions still in the queue (not on the server yet) go over it, so last time stays the newest */
+export function setSetup(F, setup) { if (setup && Array.isArray(setup.ex)) { const id = curEx(F).id; for (const q of F.queue) if (!q.tpl) keepLast(setup, q);
+  F.setup = setup; F.list = order(setup); const i = setup.ex.findIndex(e => e.id === id); F.cur = i < 0 ? 0 : i; } }
 /** a new config from the phone (GET /api/watch/config); a running recording keeps its pages */
 export function setConfig(F, cfg) { if (cfg && cfg.run && cfg.ride && cfg.other) F.cfg = cfg; }
 
@@ -399,15 +438,9 @@ export function handle(F, ev, now, arg) {
     const d = Math.round(+arg || 0); if (list) F.sel = clamp(F.sel + d, 0, Math.max(0, listItems(F).length - 1)); else if (s === SCR.SUM && F.sum) F.sel = clamp(F.sel + d, 0, F.sum.ex.length);
     return;
   }
-  if (ev === 'menu') { if (s === SCR.HOME || s === SCR.START || s === SCR.PICK || s === SCR.SET || s === SCR.REST) openMenu(F); return; }
+  if (ev === 'menu') { if (s === SCR.HOME || s === SCR.PICK || s === SCR.SET || s === SCR.REST) openMenu(F); return; }
   if (s === SCR.PAUSE) { if (F.pz) onPause(F, ev, now, arg); else F.scr = F.rec ? SCR.REC : SCR.HOME; return; }
   if (s === SCR.GLANCE) { if (ev === 'start' || ev === 'tap') { F.sel = 0; F.scr = F.paired ? SCR.HOME : SCR.PAIR; } return; }
-  if (s === SCR.START) {
-    if (ev === 'start' || ev === 'tap') { if (!F.setup.ex.length) { F.out.push({ k: 'setup' }); return; } F.start = now; F.sets = []; F.sum = null; F.plan = null; F.last = 'kraft';
-      F.sel = 0; if (workouts(F).length) F.scr = SCR.SMODE; else toPick(F, false); }
-    else if (ev === 'back') { F.sel = 0; F.scr = SCR.HOME; }
-    return;
-  }
   if (s === SCR.READY) {
     if (ev === 'start' || ev === 'tap') begin(F, now);
     else if ((ev === 'up' || ev === 'down') && F.sp !== 'other') openRoutes(F);
@@ -494,7 +527,7 @@ function pickItem(F, i, now) {
   const s = F.scr;
   if (s === SCR.PICK) { const [x, j] = pickRows(F)[i]; if (j >= 0) { F.plan.i = j; F.plan.skip = F.plan.skip.filter(k => k !== j); goPlan(F); } else { if (F.plan) F.plan.on = false; choose(F, x); } }
   else if (s === SCR.MENU) act(F, F.menu[i], now);
-  else if (s === SCR.HOME) { const k = homeItems(F)[i]; F.sel = 0; if (k === 'kraft') F.scr = SCR.START; else if (k === 'more') F.scr = SCR.MORE; else if (k === 'trainer') tOpen(F, now); else ready(F, k, ''); }
+  else if (s === SCR.HOME) { const k = homeItems(F)[i]; F.sel = 0; if (k === 'kraft') strength(F, now); else if (k === 'more') F.scr = SCR.MORE; else if (k === 'trainer') tOpen(F, now); else ready(F, k, ''); }
   else if (s === SCR.MORE) ready(F, 'other', F.cfg.more[i][0]);
   else if (s === SCR.SMODE) { if (!F.start) F.start = now; if (i === 0) toPick(F, false); else startPlan(F, i - 1, now); }
   else if (s === SCR.RPICK) chooseRoute(F, i);
