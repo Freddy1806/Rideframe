@@ -15,6 +15,9 @@ const day = t => { const d = Math.floor((Date.now() - t) / 864e5); return d < 1 
 const left = () => Math.max(0, Math.ceil((code.exp - Date.now()) / 1000));
 const mmss = s => `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`;
 
+/** the account's paired watches (the phone's start page shows the watch setup only when there is one); [] signed out, null when unknown */
+export async function pairedWatches() { if (!account()) return []; try { return (await api('devices')).watches || []; } catch { return null; } }
+
 /** fills box (inside the settings sheet); signIn() opens the account dialog */
 export function watchRow(box, signIn) {
   if (!box) return;

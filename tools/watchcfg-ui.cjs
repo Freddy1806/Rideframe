@@ -1,7 +1,8 @@
 // End to end for the watch setup on the phone (Settings → Devices → Watch screens & workouts, js/watchcfg.js): edit a data page
 // (change, remove, add fields, add and remove a page), switches, a workout with a custom exercise, the "more" sports; it saves by
 // itself, survives a reload, keeps an offline edit and sends it the next time; the preview watch (watch.html) shows the result.
-// No sideways scroll at 320 / 390 px, no page errors. Starts its own serve.mjs on a free port with a temp data folder.
+// 23.11.: the start page has "Watch · Screens & workouts" only signed in with a paired watch; Settings has its own WATCH section;
+// signed out a line says what can be set up there after signing in. No sideways scroll at 320 / 390 px, no page errors. Starts its own serve.mjs on a free port with a temp data folder.
 // Usage: NODE_PATH=$(npm root -g) node tools/watchcfg-ui.cjs [shotsDir]
 const { chromium } = require('playwright');
 const { spawn } = require('node:child_process'), fs = require('node:fs'), os = require('node:os'), path = require('node:path'), net = require('node:net');
@@ -22,10 +23,15 @@ let fails = 0; const ok = (c, m) => { console.log(`${c ? '✓' : '✗'} ${m}`); 
     const P = await phone.newPage(); const perr = []; P.on('pageerror', e => perr.push(e.message));
     await P.goto(BASE + '/handy.html');
     // signed out: no editor row, the pairing row asks to sign in
-    await P.click('#hSet'); await P.waitForSelector('#wIn'); ok(!(await P.locator('#wcOpen').count()), 'signed out: no watch editor, the sign-in hint instead'); await P.click('#tOk');
+    await P.click('#hSet'); await P.waitForSelector('#wIn'); ok(!(await P.locator('#wcOpen').count()), 'signed out: no watch editor, the sign-in hint instead');
+    await P.waitForSelector('#wcSignedOut'); ok(/After signing in.*watch screens \(data fields per sport\) and workouts/.test(await P.textContent('#wcSignedOut')) && await P.isVisible('#wcSignedOut'), 'signed out: one line says the watch screens and workouts are set up here after signing in');
+    ok(await P.evaluate(() => { const h = document.querySelector('#tWatchSec'), w = document.querySelector('#tWatch'); return /^watch$/i.test(h?.textContent.trim()) && !!(h.compareDocumentPosition(w) & Node.DOCUMENT_POSITION_FOLLOWING); }), 'Settings: its own WATCH heading above the Garmin watch row');
+    await P.click('#tOk'); ok(!(await P.locator('#hWcfg').count()), 'signed out: no watch card on the start page');
     await P.evaluate(async ([token, name]) => { localStorage.setItem('rf_account', JSON.stringify({ token, name }));
       const { db } = await import('/js/db.js'); await db.kvSet('kraftEx', [{ k: 'my_thai', n: 'Thai kick on the heavy bag', t: 'w', g: 'Eigene' }]); }, [token, name]);
     await P.reload(); await P.waitForSelector('#hSet');
+    await P.waitForResponse(r => /\/api\/watch\/devices$/.test(r.url()), { timeout: 5000 }).catch(() => {}); await P.waitForTimeout(300);
+    ok(!(await P.locator('#hWcfg').count()), 'signed in, no watch paired: the start page stays as it is (no watch card)');
     const state = () => P.textContent('#wcState');
     const open = async () => { await P.click('#hSet'); await P.waitForSelector('#wcOpen'); await P.click('#wcOpen'); await P.waitForFunction(() => /Saved|Defaults|Offline/.test(document.querySelector('#wcState')?.textContent || '')); };
     const saved = () => P.waitForFunction(() => /Saved ✓/.test(document.querySelector('#wcState')?.textContent || ''), null, { timeout: 8000 });
@@ -88,6 +94,18 @@ let fails = 0; const ok = (c, m) => { console.log(`${c ? '✓' : '✗'} ${m}`); 
     ok(pg.w.join() === 'Push day heavy' && pg.more.includes('Basketball') && pg.more.includes('Golf') && !pg.more.includes('Walk'), 'preview: the workout and the more sports from the phone');
     ok(/your account/.test(await W.textContent('#wCfg')), 'the panel says where the screens come from');
     ok(await W.evaluate(() => document.documentElement.scrollWidth) <= 390, 'watch.html: no sideways scroll at 390 px');
+    // a paired watch: the start page has the card, it opens the same editor (23.11.)
+    const { code } = await api('POST', '/api/watch/code', {}, token); ok((await api('POST', '/api/watch/pair', { code, label: 'fenix 8 Solar' })).token, 'a watch paired (API)');
+    await P.setViewportSize({ width: 390, height: 844 }); await P.reload(); await P.waitForSelector('#hWcfg', { timeout: 6000 }).catch(() => {});
+    ok(await P.isVisible('#hWcfg') && /Watch · Screens & workouts/.test(await P.textContent('#hWcfg')) && /fenix 8 Solar/.test(await P.textContent('#hWcfg')), 'paired: "Watch · Screens & workouts" card on the start page, with the watch name');
+    ok(await P.evaluate(() => { const c = document.querySelector('#hWcfg'), m = document.querySelector('.hmodes'), w = document.querySelector('.hmyw'); return !!(m.compareDocumentPosition(c) & Node.DOCUMENT_POSITION_FOLLOWING) && !!(c.compareDocumentPosition(w) & Node.DOCUMENT_POSITION_FOLLOWING); }), 'the card sits under the sport cards, above My workouts');
+    for (const w of [320, 390]) ok(!(await sideways(w)), `start page with the watch card: no sideways scroll at ${w} px`);
+    if (SHOTS) { await P.setViewportSize({ width: 390, height: 844 }); await P.locator('#hWcfg').scrollIntoViewIfNeeded(); await P.screenshot({ path: `${SHOTS}/phone_home_watch_card.png` }); }
+    await P.click('#hWcfg'); await P.waitForFunction(() => /Saved|Defaults|Offline/.test(document.querySelector('#wcState')?.textContent || ''));
+    ok(await P.isVisible('#wcSheet') && await prev() === 'time,avgPace,pace,climb', 'the card opens the watch editor with the account\'s setup');
+    await P.click('#wcDone'); ok(!(await P.locator('#wcSheet').count()), 'Done closes it, back on the start page');
+    await P.route(/\/api\/watch\/devices$/, r => r.abort()); await P.reload(); await P.waitForSelector('#hSet'); await P.waitForTimeout(300);
+    ok(await P.isVisible('#hWcfg'), 'after a reload, server not answering: the card is still there (kept on this phone)'); await P.unroute(/\/api\/watch\/devices$/);
     ok(!werr.length, 'no page errors on watch.html' + (werr.length ? ': ' + werr.join(' | ') : ''));
     ok(!perr.length, 'no page errors on the phone' + (perr.length ? ': ' + perr.join(' | ') : ''));
   } catch (e) { console.log('✗ ' + e.message); fails++; }

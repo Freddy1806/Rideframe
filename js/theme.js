@@ -39,6 +39,7 @@ export const ICONS = {
   gear: '<path d="M4 6h9M17 6h3M4 12h3M11 12h9M4 18h11M19 18h1"/><circle cx="15" cy="6" r="2"/><circle cx="9" cy="12" r="2"/><circle cx="17" cy="18" r="2"/>',
   user: '<circle cx="12" cy="8" r="4"/><path d="M4 21c0-4.4 3.6-7 8-7s8 2.6 8 7"/>',
   home: '<path d="M3 11 12 4l9 7M5 10v10h14V10"/>',
+  watch: '<circle cx="12" cy="12" r="6"/><path d="M12 9.5V12l1.8 1.2M9 6.8 9.6 2h4.8l.6 4.8M9 17.2l.6 4.8h4.8l.6-4.8"/>',
   list: '<path d="M9 6h11M9 12h11M9 18h11"/><circle cx="4.5" cy="6" r="1"/><circle cx="4.5" cy="12" r="1"/><circle cx="4.5" cy="18" r="1"/>',
   chart: '<path d="M4 20h16"/><path d="M7 16v-5M12 16V6M17 16v-8"/>',
 };

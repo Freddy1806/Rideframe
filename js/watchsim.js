@@ -210,7 +210,10 @@ const DRAW = {
     const pg = recPages(F), n = pg.filter(p => p !== 'route').length;
     if (F.sp === 'other') txt(g, `${n} data ${n === 1 ? 'page' : 'pages'}`, S / 2, S * .655, S * .048, C.lbl, { w: 800, max: S * .62 });
     else { // the route line: UP / DOWN or a tap opens the choice (RPICK)
-      txt(g, `${n} data ${n === 1 ? 'page' : 'pages'}${pg.includes('route') ? ' + route' : ''}`, S / 2, S * .64, S * .044, C.lbl, { w: 800, max: S * .62 });
+      // 23.11. (owner could not find the setup): the line says where the pages are changed; the first text that fits at full size
+      const rt = pg.includes('route') ? ' + route' : '', np = `${n} ${n === 1 ? 'page' : 'pages'}${rt}`;
+      const t = [`${np} · edit on phone`, `${np} · on phone`, `${n} data ${n === 1 ? 'page' : 'pages'}${rt}`].find(x => txt(g, x, 0, -99, S * .044, C.lbl, { w: 800 }) <= S * .62);
+      txt(g, t || `${n} data ${n === 1 ? 'page' : 'pages'}${rt}`, S / 2, S * .64, S * .044, C.lbl, { w: 800, max: S * .62 });
       const r = F.routeId && F.routes ? F.routes.find(x => x.id === F.routeId) : null;
       txt(g, r ? (F.route ? 'Route: ' + r.name : 'Loading route') : 'No route', S / 2, S * .7, S * .05, r ? C.acc : C.fg, { w: 900, max: S * .6 });
     }
@@ -312,7 +315,9 @@ const DRAW = {
     if (e.t === 'time') { txt(g, clock(F.reps), S / 2, S * .5, S * .23, C.acc, { w: 900 }); g.fillStyle = C.acc; g.fillRect(S * .36, S * .615, S * .28, S * .016); txt(g, 'hold', S / 2, S * .665, S * .048, C.fg, { w: 700 }); }
     else { const bw = e.t === 'bw', val = [bw && !F.kg ? 'BW' : kgTxt(F.kg), String(F.reps)], unit = [bw ? '+kg' : 'kg', 'reps'], xs = [S * .285, S * .735];
       txt(g, '×', S * .515, S * .5, S * .08, C.dim, { w: 600 });
-      for (const i of [0, 1]) { const on = F.focus === i; txt(g, val[i], xs[i], S * .5, S * .21, on ? C.acc : C.fg, { w: 900, max: i ? S * .27 : S * .32 });
+      // a wide value ("102.5") takes the next smaller number size instead of being cut (Monkey C: fontFor HOT / MEDIUM / MILD / LARGE)
+      for (const i of [0, 1]) { const on = F.focus === i, mx = i ? S * .27 : S * .32, px = SET_NUM.map(k => S * k).find(p => txt(g, val[i], 0, -99, p, C.fg, { w: 900 }) <= mx) || S * SET_NUM.at(-1);
+        txt(g, val[i], xs[i], S * .5, px, on ? C.acc : C.fg, { w: 900 });
         if (on) { g.fillStyle = C.acc; g.fillRect(xs[i] - S * .12, S * .615, S * .24, S * .016); } txt(g, unit[i], xs[i], S * .665, S * .048, on ? C.fg : C.lbl, { w: 700 }); } }
     pill(g, S / 2, S * .815, S * .4, S * .12, C.acc); txt(g, 'DONE', S / 2, S * .817, S * .062, C.ink, { w: 900 });
   },
@@ -399,6 +404,8 @@ function trStats(g, S, C, R) {
 }
 /** the set screen: last time's small values (size; they sit on the SET row, y 0.315, like garmin/source/Draw.mc drawSet) */
 const SET_LAY = { lastPx: .05 };
+/** kg / reps: the number sizes from big to small, the first one that fits its column is taken (never cut; Draw.mc drawSet fontFor) */
+const SET_NUM = [.21, .17, .14, .115];
 /** the rest screen's and the summary's rows (screen fractions; the same in garmin/source/Draw.mc) */
 const REST_LAY = { hr: .15, clock: .3, name: .425, sets: .49, dy: .062, next: .7, skip: .855 };
 const SUM_LAY = { st: .15, time: .3, timeL: .395, cols: .52, colsL: .59, hr: .69, pr: .77, done: .87, name: .2, info: .285, sets: .38, dy: .08 };
