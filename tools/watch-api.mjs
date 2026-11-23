@@ -278,7 +278,7 @@ export async function watchApi(req, res, path) {
       return send(res, ...await saveWatchWorkout(w.u.id, b));
     }
     if (op === 'activity' && M === 'POST') { // a run / ride / more recording (19.11.): one ride record, source 'watch' (watch-feed.mjs)
-      let b; try { b = await body(req, 4e3); } catch (e) { return send(res, e.message === 'too large' ? 413 : 400, { error: e.message === 'too large' ? 'Activity too large.' : 'Body must be JSON.' }); }
+      let b; try { b = await body(req, 8e3); } catch (e) { return send(res, e.message === 'too large' ? 413 : 400, { error: e.message === 'too large' ? 'Activity too large.' : 'Body must be JSON.' }); } // 23.11.: 8 KB (the trainer's series)
       const v = await validateAct(b); if (v.error) return send(res, 400, { error: v.error });
       const r = await storeActivity(w.u.id, v); if (r[0] === 200) sumCache.delete(w.u.id); return send(res, ...r);
     }

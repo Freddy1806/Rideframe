@@ -15,7 +15,7 @@ Target watches: Forerunner 265 / 265S (416 / 360 px round AMOLED, touch + 5 butt
 
 | File | What it is |
 | --- | --- |
-| `manifest.xml` | watch-app, products fr265, fr265s, fenix7xpro, fenix7pro, fenix8solar47mm, minApiLevel 5.0.0, permissions Communications, Sensor, Fit, Positioning |
+| `manifest.xml` | watch-app, products fr265, fr265s, fenix7xpro, fenix7pro, fenix8solar47mm, minApiLevel 5.0.0, permissions Communications, Sensor, Fit, Positioning, FitContributor, BluetoothLowEnergy |
 | `monkey.jungle` | project file (default `source/` and `resources/`) |
 | `resources/settings/properties.xml` | `baseUrl` (default `https://mac-mini-von-gary.tailcde074.ts.net`), `recordActivity` (off) |
 | `resources/settings/settings.xml` | both editable in the Garmin Connect app (app settings) |
@@ -29,6 +29,8 @@ Target watches: Forerunner 265 / 265S (416 / 360 px round AMOLED, touch + 5 butt
 | `source/Feed.mc` | 19.11.: segment timing (`SegFeed`) and route following (`RouteTrack`) on the watch, flat arrays of local metres (= `js/watchfeed.js`, tests: `tools/watchfeed-test.mjs`) |
 | `source/RideframeApp.mc` | app: flow, queues (strength, activities), caches, routes and segments calls, heart rate, vibration, optional strength `ActivityRecording` |
 | `source/Glance.mc` | glance: week points and the change against last week |
+| `source/Trainer.mc` | 23.11.: the indoor trainer as pure state machines: `TLink` (scan, connect, FTMS / Wahoo setup, latest-wins target, lost / refused) and `TRide` (target steps, seconds, NP, the upload's series) (= `js/watchtrainer.js`, tests: `tools/watchtrainer-test.mjs`) |
+| `source/TrainerBle.mc` | 23.11.: the radio: `TLink.act` to `Toybox.BluetoothLowEnergy`, the `BleDelegate` callbacks back as `E_BLE` events (the preview's twin is the pretend KICKR `js/watchkickr.js`) |
 
 One view for all screens on purpose: the flow decides the screen (exactly like the preview), so there is no view
 stack to keep in step with it. BACK on the start screen leaves the app.
@@ -104,6 +106,9 @@ Command Palette → **Monkey C: Run** (pick `fr265`), or `connectiq` (opens the 
   "Up to 30 workouts. Delete one on the phone."). Stored in the account's watch config, so it shows on the phone under
   Settings → Devices → Watch screens & workouts and as **Watch workouts** on the strength page (`js/kraft.js`), and comes
   back to the watch with the next config / setup. Queued like a session (a queue entry with `tpl`); answer `{ ok, id, new }`.
+- 23.11.: `POST /api/watch/activity` takes up to 8 KB now and, for the indoor trainer (`type: "VirtualRide"`), also `maxPower`, `np`,
+  `kj`, `cad` and the series `s: { dt (1..600 s), pw, cad, hr, tgt }` (at most 400 values each). Stored as an indoor ride with
+  power (Activities shows Avg / Max power, Cadence, the power chart from the series); a Strava twin is merged, not doubled.
 
 ## Step 2: start menu, run / ride / more, workouts (18.11., ported to Monkey C, see "Port status" below)
 
@@ -248,6 +253,75 @@ watch:  GET /api/watch/routes → { "routes": [{ "id", "name" (≤ 24), "dist" (
 away ("OFF ROUTE, 120 m away" instead of the next turn), metres along for the distance left and the next turn, the real
 position as the dot. The route page draws the flat `u` / `v` points of `RouteTrack.face` (one scale, north up).
 
+## Indoor trainer (23.11.)
+
+ERG rides on the watch against a smart trainer (the owner's Wahoo KICKR Core 2), like the Wahoo app's ERG page. The flow is
+in `js/watchtrainer.js` + `js/watchflow.js` (tested, `tools/watchtrainer-test.mjs`) and ported to `Trainer.mc` + `Flow.mc`; the
+preview (`watch.html`) runs it against a pretend KICKR (`js/watchkickr.js`, panel: "in range", "Another app controls the trainer").
+
+**Use.** Home → **Indoor trainer** (5th entry, after Ride). The watch searches (FTMS trainers first, then power-only devices
+with Cycling Power and a name); a tap or START connects; the trainer used last connects by itself. States: Searching,
+Connecting, Connected (ERG ready, or "Power only, no ERG"), **Refuses control** (another app has it: close it, or ride without
+ERG), **Lost · reconnecting** (keeps trying the whole ride, the target is sent again when it is back). START rides:
+the target big (start = the last target, default 100 W, 30 to 1000 W), UP / DOWN = ± the step (held: 25 W), a tap on the
+left / right half = − / +, a tap on the target = step 5 / 10 / 25 W; power, cadence, heart rate and the time below. START =
+pause (the clock stops, the trainer goes to 30 W) / resume. Swipe up / down = the stats page (this target's time and
+average, the ride's avg / max / NP / kJ / cadence / heart rate). BACK = the menu (Resume, Stats page, Finish & save,
+Discard with a second step); the menu does not pause. Finish & save: the summary (time, avg / max power, kJ, cadence,
+avg / max heart rate), the trainer is let go (the laptop can take it).
+
+**Recording.** `Recorder.openTrainer`: a native `ActivityRecording` session, `SPORT_CYCLING` / `SUB_SPORT_INDOOR_CYCLING`,
+heart rate from the watch as always, power (`UINT16`, `:nativeNum => 7`), cadence (`UINT8`, `:nativeNum => 4`) and the ERG
+target (`target_power`, a plain developer field) through `FitContributor`, once a second. Limits: Connect IQ cannot pair the
+trainer as a watch sensor, so the watch's own power / cadence fields stay empty; whether Garmin Connect treats the native-number
+fields as its own power and cadence is not confirmed (VERIFY; otherwise they show as the app's charts). No speed or distance
+is recorded. RIDEFRAME gets the ride from the watch itself (`POST /api/watch/activity`, `VirtualRide`, avg / max / NP power,
+kJ, cadence, the series every 10 s, at most 240 values, halved when full), not from the FIT file.
+
+**BLE design** (`TrainerBle.mc`, one GATT operation at a time):
+- Profiles, registered one after the other (a second `registerProfile` before the first answered fails on some watches):
+  FTMS `0x1826` with Indoor Bike Data `0x2AD2` and Control Point `0x2AD9`; Cycling Power `0x1818` with `0x2A63` and the
+  Wahoo control `a026e005-0a7d-4ab3-97fa-f1500f9feb8b`. Each carries the CCCD. 2 of the 3 allowed profiles.
+- Scan (`setScanState`, `onScanResults`): a trainer needs a name and `0x1826` or `0x1818` among its service UUIDs. Connect:
+  `pairDevice(ScanResult)` (the `ScanResult` of this scan, it cannot be stored), then `onConnectedStateChanged`.
+- FTMS setup: notify on `0x2AD2` (`01 00`), indicate on `0x2AD9` (`02 00`), write `0x00` (request control), `0x07` (start),
+  then `0x05` + watts (LE). The answer `0x80 op result`: `0x01` ok, anything else (`0x05` not permitted) = **Refuses control**,
+  asked again every 5 s. No indication within 3 s after the setup = taken as control (VERIFY on the KICKR Core 2).
+  Wahoo fallback: unlock `0x20 0xEE 0xFC`, ERG `0x42` + watts. A power meter without control is only read.
+- Latest wins: a target is never queued; when the line is free and the trainer does not have the newest target, exactly
+  one write goes out. Every write is with response; its `onCharacteristicWrite` / `onDescriptorWrite` frees the line (or 3 s).
+- Lost: the watch may reconnect by itself; if not within 15 s, unpair and pair again from a new scan, the whole ride.
+- Never two controllers: the watch does not fight for the trainer, it shows that another app has it (laptop, Zwift, Wahoo app).
+
+**Monkey C API used** (level from the API docs): `Toybox.BluetoothLowEnergy` 3.1.0 (`registerProfile`, `setScanState`,
+`pairDevice`, `unpairDevice`, `setDelegate`, `cccdUuid`, `stringToUuid`, `BleDelegate.onScanResults` / `onConnectedStateChanged`
+/ `onCharacteristicChanged` / `onCharacteristicWrite` / `onDescriptorWrite` / `onProfileRegister`, `Characteristic.requestWrite`
+with `:writeType`, `Descriptor.requestWrite`, `ScanResult.getDeviceName` / `getServiceUuids` / `getRssi`, `Device.getService`,
+`Service.getCharacteristic`, `Characteristic.getDescriptor`); `ActivityRecording.Session.createField` with `:nativeNum`
+(`FitContributor`, 1.3.0; `:nativeNum` per the Session page); `Activity.SUB_SPORT_INDOOR_CYCLING`. All are below the
+manifest's `minApiLevel` 5.0.0.
+
+Sources:
+- API: [BluetoothLowEnergy](https://developer.garmin.com/connect-iq/api-docs/Toybox/BluetoothLowEnergy.html) (profiles: "the
+  current limit is 3"; `pairDevice` "does not persist across application instances"),
+  [BleDelegate](https://developer.garmin.com/connect-iq/api-docs/Toybox/BluetoothLowEnergy/BleDelegate.html),
+  [Characteristic](https://developer.garmin.com/connect-iq/api-docs/Toybox/BluetoothLowEnergy/Characteristic.html) (more than
+  20 bytes: `InvalidRequestException`), [ScanResult](https://developer.garmin.com/connect-iq/api-docs/Toybox/BluetoothLowEnergy/ScanResult.html),
+  [Device](https://developer.garmin.com/connect-iq/api-docs/Toybox/BluetoothLowEnergy/Device.html),
+  [ActivityRecording.Session](https://developer.garmin.com/connect-iq/api-docs/Toybox/ActivityRecording/Session.html) (`createField`, `:nativeNum`).
+- One operation at a time ("Operation already in progress"):
+  [258434](https://forums.garmin.com/developer/connect-iq/f/discussion/258434/how-to-do-multiple-successive-btle-characteristic-requestwrite),
+  [406309](https://forums.garmin.com/developer/connect-iq/f/discussion/406309/can-t-write-ble-second-message-on-a-edge-530).
+- FTMS notifications that did not arrive: [282112](https://forums.garmin.com/developer/connect-iq/f/discussion/282112/ble-notification-not-appearing-for-ftms-ble).
+- `onProfileRegister` status 2 on back-to-back registrations:
+  [bug report](https://forums.garmin.com/developer/connect-iq/i/bug-reports/vivoactive-4-bledelegate-onprofileregister-returns-status-value-2-on-every-2nd-and-3rd-registerprofile).
+- `onConnectedStateChanged` not called when the device is paired to the phone:
+  [332580](https://forums.garmin.com/developer/connect-iq/f/discussion/332580/onconnectedstatechanged-is-never-called-after-a-ble-pairing-request).
+- A `ScanResult` cannot be kept in Storage: [281789](https://forums.garmin.com/developer/connect-iq/f/discussion/281789/ble-register-and-limit-connections/1353034).
+- FTMS client ideas: [206704](https://forums.garmin.com/developer/connect-iq/f/app-ideas/206704/developing-a-ciq-ble-client-for-treadmill-and-fitness-equipment/971778);
+  an app doing FTMS ERG with native FIT fields on the fenix 8 (author: simulator-tested):
+  [445299](https://forums.garmin.com/developer/connect-iq/f/showcase/445299/free-garmin-indoor-workout-app-structured-bike-and-run-workouts-with-smart-trainer-support).
+
 ## Permissions (manifest.xml)
 
 | Permission | For |
@@ -256,6 +330,8 @@ position as the dot. The route page draws the flat `u` / `v` points of `RouteTra
 | `Sensor` | heart rate between sets (`Sensor.enableSensorEvents`) |
 | `Fit` | `ActivityRecording`: run / ride / more as Garmin activities, the optional strength activity |
 | `Positioning` | GPS for outdoor recordings (`Position.enableLocationEvents`), segment timing and route following |
+| `FitContributor` | 23.11.: the trainer's power, cadence and ERG target in the indoor ride's FIT file (`Session.createField`) |
+| `BluetoothLowEnergy` | 23.11.: the indoor trainer (FTMS / Wahoo) over `Toybox.BluetoothLowEnergy` |
 
 ## Memory
 
@@ -275,13 +351,18 @@ the `(:glance)` app class so the glance does not load it. 19.11.: segments (8 ×
 kept as flat `Array<Float>` (x, y, metres along; the route also u, v), about 3 000 numbers at most; no per-second lists.
 The JSON answers (< 8 KB, < 12 KB) are dropped after they are turned into these arrays.
 
-## VERIFY items (39)
+## VERIFY items (50)
 
 `grep -rn VERIFY source manifest.xml resources`
 
-- **Recorder.mc** (5): `createSession` takes `Activity.SPORT_*` / `SUB_SPORT_*` (and the API 4.1.6 constants in
+- **Recorder.mc** (8): `createSession` takes `Activity.SPORT_*` / `SUB_SPORT_*` (and the API 4.1.6 constants in
   Sports.mc); `Position.Info.accuracy` is a `Position.Quality`; `Activity.Info.currentCadence` on a run is steps per minute;
-  `Position.Location.toDegrees()` gives Doubles; `Position.Info.heading` is radians from north.
+  `Position.Location.toDegrees()` gives Doubles; `Position.Info.heading` is radians from north; 23.11.: FitContributor fields
+  with `:nativeNum` 7 / 4 count as power / cadence in Garmin Connect (2×); `SUB_SPORT_INDOOR_CYCLING`.
+- **Trainer.mc** (3): an FTMS trainer that does not indicate the control request is taken as controlled after 3 s; the watch
+  reconnects a paired trainer by itself after a drop; `Math.pow` result type.
+- **TrainerBle.mc** (5): the `registerProfile` dictionary keys; scanning before the profiles are registered; `onConnectedStateChanged`
+  after `pairDevice`; the KICKR's name in the scan response; `Device.equals`.
 - **Feed.mc** (1): the `d` suffix for Double literals.
 - **Sports.mc** (1): run sub sport `SUB_SPORT_STREET` or `SUB_SPORT_GENERIC` (what the watch's Run app writes).
 - **Fields.mc** (1): `Math.pow` result type for NP.
@@ -408,3 +489,59 @@ Not compiled here; the JS mirror (`js/watchflow.js`, `tools/watchflow-test.mjs`,
    A saved workout done as planned does not ask; with a skipped exercise it offers Update / Save as new / No.
 10. **Front squat** appears in the list and uploads as `frontsquat` (Front squat on the phone).
 
+### Indoor trainer (23.11.), most likely to fail first
+
+Nothing of this ran on a watch or in the simulator; the JS mirror and the pretend KICKR are green.
+
+1. **Build errors in the new files**: `TrainerBle.mc` (the `BleDelegate` method signatures and types, `new [n]b` ByteArray,
+   `Uuid.equals`, the `registerProfile` dictionary, `results.next()` on the scan iterator, `getServiceUuids()` iterator),
+   `Recorder.openTrainer` (`FitContributor.MESG_TYPE_RECORD`, `DATA_TYPE_UINT16`, `:nativeNum`), `Draw.drawTRec` (font lists,
+   `Number` / `Float` mixes), the new `Flow` constructor arguments.
+2. **Profile registration**: both `onProfileRegister` answers are `STATUS_SUCCESS` (`System.println` shows a status otherwise);
+   with a failed one the trainer is not usable.
+3. **Scan**: the KICKR CORE 2 shows by name (not only after a second result; `getDeviceName` may be null at first) and carries
+   `0x1826`. A trainer paired to the phone or the watch's own sensors may hide or refuse (pair it nowhere else while testing).
+4. **Connect**: `pairDevice` then `onConnectedStateChanged(CONNECTED)` within 12 s; `Device.equals` matches the paired device.
+5. **Setup**: the two CCCD writes answer in `onDescriptorWrite`; Indoor Bike Data arrives each second (power, cadence on screen);
+   the control point indicates `80 00 01` and `80 07 01`. If no indication comes, the 3 s fallback still sends targets: check
+   the trainer follows them.
+6. **ERG**: UP / DOWN change the resistance within about a second; quick presses end on the last target (latest wins);
+   pause drops to 30 W, resume goes back.
+7. **Another app**: with the laptop (`pure.html`) or the Wahoo app holding the trainer, the watch shows "Refuses control" and
+   keeps the power reading if it gets it; closing the other app gives control back within about 5 s.
+8. **Lost**: switch the trainer off mid-ride: "LOST, RECONNECTING", the clock goes on; back on: it reconnects (by itself or
+   after the 15 s re-pair) and the target is sent again.
+9. **Saved activity**: Garmin Connect shows an Indoor Cycling activity with heart rate; check whether power and cadence show as
+   native power / cadence (the `:nativeNum` fields) or as app charts; the ride shows in RIDEFRAME Activities as an indoor ride with
+   power, and once only after Strava passes it on.
+10. **Finish / Discard**: the trainer is free afterwards (the laptop connects); BACK on the app's home closes it, no scan left on.
+11. **Battery** over 60 minutes of ERG (BLE notifications every second, the 200 ms timer, heart rate).
+
+## VERIFY on the device (24.11.: last time on the set screen, GPS on the fenix 8 Solar)
+
+1. **Last time on the set screen** (`Draw.drawSet`, `Draw.lastSet`): last session's kg and reps for this set in `FONT_XTINY` on
+   the "SET n OF m" row (y 0.315 S), above the kg / reps columns, pushed outward so they never touch the SET text; timed: the clock
+   at x 0.735 S. White on MIP (`P.lbl`). They must not touch the big number font (`FONT_NUMBER_HOT`) on 260 px. First time: nothing.
+2. **Exercise list sub line** (`Draw.pickSub` / `lastTxt`): "Last 80x8, 8, 6" with as many whole sets as fit in 0.7 S, then " ...".
+3. **Last time without a phone** (`Flow.keepLast`, `O_KEEP`): finish a session with the phone away, start a new one: the set
+   screen and the list show today's sets; after the upload the server's setup says the same (queued sessions go over a fresh setup).
+4. **GPS on Dynamic SatIQ** (`Recorder.setGps` / `gpsConfig`): the options form `{ :acquisitionType => LOCATION_CONTINUOUS,
+   :configuration => cfg }` (API 3.3.6), in the order `CONFIGURATION_SAT_IQ`, `..._GPS_GLONASS_GALILEO_BEIDOU_L1_L5`, `..._L1`, else
+   the legacy `enableLocationEvents(LOCATION_CONTINUOUS, ...)`; every symbol checked with `has`, an exception falls back to the
+   legacy call. VERIFY: `Position.hasConfigurationSupport(CONFIGURATION_SAT_IQ)` is true on the fenix 8 Solar 47 mm (forum reports
+   say the simulator answers false for some new devices, then L1_L5 / L1 / legacy is used); `CONFIGURATION_GPS*` are documented
+   as not supported on Dynamic SatIQ devices; the fr265 / fenix 7 Pro still compile (the `has` checks) and get a fix.
+5. **Ready screen GPS state** (`Draw.drawReady`, `Recorder.onPosition`): "GPS search" (no callback yet or
+   `QUALITY_NOT_AVAILABLE`), "GPS weak" in orange (`QUALITY_POOR` or `QUALITY_LAST_KNOWN`), "GPS ready" in green (usable / good).
+   GPS goes on as soon as the ready screen of an outdoor sport shows: `RideframeApp.drain` runs `Recorder.sync` after every
+   input and every 200 ms tick, and `sync` wants GPS on `S_READY` or while recording when `Sports.gps(sp, type)`.
+   VERIFY: `Position.Info.accuracy` takes `QUALITY_LAST_KNOWN` before the first real fix (the docs list the constants only).
+6. **No strength ready screen** (24.11.): Strength on the start menu opens Exercises / workouts (or the exercise list) at once and
+   starts the session clock (and the optional native strength activity); BACK there goes to the start menu, which also takes the
+   end of a finished or discarded session. With no setup yet the list says "Loading exercises / from the phone" until it comes.
+7. **Heart rate** (`RideframeApp.sensorsOn`, `pollHr`, `onActive`): `Sensor.setEnabledSensors([SENSOR_HEARTRATE])` plus
+   `Sensor.enableSensorType(SENSOR_ONBOARD_HEARTRATE)` (API 3.2.0, guarded with `has`, in try/catch); sensor events as before; when
+   none brought a heart rate for 5 s, once a second `Activity.getActivityInfo().currentHeartRate`, else `Sensor.getInfo().heartRate`.
+   `onActive` (API 4.2.3) turns the sensors on again when the app is back in the foreground. VERIFY: that the wrist heart rate
+   reaches `onSensor` / `currentHeartRate` on the fenix 8 without a recording session; that defining `onActive` compiles on the
+   older targets (it is simply never called there); whether a strength workout without the native activity gets a heart rate at all.

@@ -69,7 +69,7 @@ test('activity: strict validation, size limit, auth', async () => {
   for (const k of ['id', 'type', 'start', 'duration', 'moving', 'dist', 'climb', 'hr', 'maxHr', 'kcal']) { const b = ACT(); delete b[k]; bad.push([b, new RegExp(k)]); }
   for (const [b, re] of bad) { const r = await post(b); assert.equal(r.status, 400, JSON.stringify(b).slice(0, 90)); assert.match(r.j.error, re); }
   assert.equal((await call('POST', '/api/watch/activity', { bearer: t, raw: '{nope' })).status, 400);
-  assert.equal((await call('POST', '/api/watch/activity', { bearer: t, raw: JSON.stringify({ ...ACT(), pad: 'x'.repeat(5000) }) })).status, 413);
+  assert.equal((await call('POST', '/api/watch/activity', { bearer: t, raw: JSON.stringify({ ...ACT(), pad: 'x'.repeat(9000) }) })).status, 413, 'over 8 KB');
   assert.deepEqual((await call('GET', '/api/account/rides', { token: A })).j.ids, [], 'nothing bad was stored');
 });
 test('activity: stored once as a normal ride record (like + Add activity), source watch, in the list and the week points', async () => {
@@ -88,6 +88,28 @@ test('activity: stored once as a normal ride record (like + Add activity), sourc
   const ride = await call('POST', '/api/watch/activity', { bearer: t, body: ACT({ id: 'ride12345', type: 'Ride', start: nowS() - 60000, power: 221 }) });
   assert.equal(ride.status, 200); assert.equal((await call('GET', '/api/account/rides/watch-ride12345', { token: A })).j.avgPower, 221);
   assert.deepEqual((await call('GET', '/api/account/rides', { token: O })).j.ids, [], 'nothing lands in another account');
+});
+test('indoor trainer (23.11.): a VirtualRide with avg / max power, NP, kJ, cadence and the series stored as samples; strict series check', async () => {
+  const A = await register('Trainer Rider'), t = await pairWith(A), post = b => call('POST', '/api/watch/activity', { bearer: t, body: b });
+  const n = 240, s = { dt: 20, pw: [...Array(n)].map((_, i) => 180 + (i % 50)), cad: Array(n).fill(88), hr: Array(n).fill(141), tgt: Array(n).fill(200) };
+  const b = ACT({ id: 'erg1234567', type: 'VirtualRide', start: nowS() - 9000, duration: 4900, moving: 4800, dist: 0, climb: 0, hr: 141, maxHr: 166, kcal: 980, laps: 0, power: 204, maxPower: 412, np: 211, kj: 980, cad: 88, s });
+  const body = JSON.stringify(b); assert.ok(body.length > 3000 && body.length < 8000, `a 240-value series fits under 8 KB (${body.length})`);
+  const r = await post(b); assert.equal(r.status, 200, JSON.stringify(r.j));
+  const w = (await call('GET', '/api/account/rides/watch-erg1234567', { token: A })).j;
+  assert.equal(groupOf(w.sportType), 'trainer', 'the indoor group (Virtual ride)');
+  assert.deepEqual([w.sportType, w.sport, w.source, w.outdoor, w.avgPower, w.maxPower, w.np, w.kj, w.avgCad, w.avgHr, w.maxHr, w.distance], ['VirtualRide', 'ride', 'watch', false, 204, 412, 211, 980, 88, 141, 166, 0]);
+  assert.equal(w.samples.length, n); assert.deepEqual(w.samples[0], [10, 0, 180, 0, 88, 141], '[sec, m, W, km/h, rpm, bpm] at the middle of each 20 s'); assert.equal(w.ergTarget.length, n);
+  for (const [x, re] of [[{ ...s, dt: 0 }, /dt/], [{ ...s, pw: [] }, /pw/], [{ ...s, cad: [1, 2] }, /cad/], [{ ...s, hr: s.hr.map(() => 400) }, /hr/], [{ ...s, x: [] }, /unknown/], [[1, 2], /s:/],
+    [{ dt: 10, pw: Array(401).fill(1) }, /400/], [{ ...s, tgt: s.tgt.map(() => 'a') }, /tgt/]]) {
+    const e = await post({ ...b, id: 'bad1234567', s: x }); assert.equal(e.status, 400, JSON.stringify(x).slice(0, 60)); assert.match(e.j.error, re); }
+  assert.equal((await post({ ...b, id: 'nos1234567', start: nowS() - 30000, s: { dt: 10, pw: [100, 120] } })).status, 200, 'cad / hr / tgt may be left out');
+  assert.equal((await post({ ...b, id: 'bad1234568', maxPower: 5000 })).status, 400);
+  // the same ride from Strava (Garmin Connect passes it on): one entry, the watch's samples and cadence go into it
+  const st = fromStrava({ id: 99777, name: 'Zwift-less ERG', sport_type: 'VirtualRide', start_date: new Date((b.start + 50) * 1000).toISOString(), elapsed_time: 4890, moving_time: 4790, distance: 0, average_watts: 203 });
+  const B = await register('Trainer Strava'), t2 = await pairWith(B); assert.equal((await call('PUT', '/api/account/rides/' + st.id, { token: B, body: st })).status, 200);
+  const m = await call('POST', '/api/watch/activity', { bearer: t2, body: b }); assert.deepEqual(m.j, { ok: true, id: 'st99777', merged: true });
+  const mm = (await call('GET', '/api/account/rides/st99777', { token: B })).j; assert.deepEqual((await call('GET', '/api/account/rides', { token: B })).j.ids, ['st99777']);
+  assert.deepEqual([mm.avgPower, mm.maxPower, mm.np, mm.kj, mm.avgCad, mm.samples.length, mm.watch], [203, 412, 211, 980, 88, n, 'erg1234567'], 'Strava keeps its numbers, the watch adds the rest');
 });
 test('dedupe, Strava first: the watch fills the imported record, one entry, resend stays one', async () => {
   const A = await register('Strava First'), t = await pairWith(A), start = nowS() - 7200;

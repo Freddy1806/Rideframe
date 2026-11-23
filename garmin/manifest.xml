@@ -20,6 +20,10 @@
             <iq:uses-permission id="Fit"/>
             <!-- GPS for outdoor recordings (Position.enableLocationEvents) -->
             <iq:uses-permission id="Positioning"/>
+            <!-- 23.11.: the indoor trainer's power, cadence and target in the FIT file (Session.createField) -->
+            <iq:uses-permission id="FitContributor"/>
+            <!-- 23.11.: the indoor trainer (FTMS / Wahoo over Toybox.BluetoothLowEnergy, API 3.1.0) -->
+            <iq:uses-permission id="BluetoothLowEnergy"/>
         </iq:permissions>
         <iq:languages>
             <iq:language>eng</iq:language>

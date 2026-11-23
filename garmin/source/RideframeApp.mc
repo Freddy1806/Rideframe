@@ -6,6 +6,8 @@
 // aqueue (19.11.: saved runs / rides / more for POST /api/watch/activity, sent like the strength queue).
 // 19.11.: the routes for the ready screen's Route choice (GET /api/watch/routes, /route) and the segments near the watch
 // (GET /api/watch/segments at the start of a run / ride and every 3 km; timed on the watch by Feed.mc).
+// 23.11.: the indoor trainer: TrainerBle.mc (made on the first radio action) carries Flow.link's actions to Bluetooth and its callbacks
+// back as E_BLE; Storage "trainer" (the trainer used last, connected by itself) and "tgt" (the last ERG target).
 import Toybox.Activity;
 import Toybox.ActivityRecording;
 import Toybox.Application;
@@ -33,6 +35,9 @@ class RideframeApp extends Application.AppBase {
     var acts as Array<Dictionary> = [] as Array<Dictionary>;   // saved activities waiting for the phone (Storage "aqueue")
     var actSending as Boolean = false;
     var actTry as Number = 0;
+    var ble = null;             // 23.11.: TrainerBle, the indoor trainer's radio (only once the trainer screen is opened)
+    var hrAt as Number = 0;     // 24.11.: System.getTimer() of the last heart rate a sensor event brought
+    var hrPoll as Number = 0;   // and of the last poll (once a second while the events are silent)
 
     function initialize() { AppBase.initialize(); }
 
@@ -44,14 +49,14 @@ class RideframeApp extends Application.AppBase {
     function getInitialView() {
         var token = Application.Storage.getValue("token");
         var q = Application.Storage.getValue("queue");
-        var f = new Flow(Application.Storage.getValue("setup"), token != null, q instanceof Array ? q : [], Application.Storage.getValue("cfg"), Application.Storage.getValue("last"));
+        var f = new Flow(Application.Storage.getValue("setup"), token != null, q instanceof Array ? q : [], Application.Storage.getValue("cfg"), Application.Storage.getValue("last"),
+            Application.Storage.getValue("trainer"), Application.Storage.getValue("tgt"));
         flow = f; lastKey = f.last;
         api = new Api();
         recorder = new Recorder(f);
         var aq = Application.Storage.getValue("aqueue");
         if (aq instanceof Array) { acts = aq as Array<Dictionary>; }
-        Sensor.setEnabledSensors([Sensor.SENSOR_HEARTRATE]);
-        Sensor.enableSensorEvents(method(:onSensor));
+        sensorsOn();
         timer = new Timer.Timer();
         timer.start(method(:onTick), 200, true);
         if (token != null) { refresh(); push(); pushAct(); }
@@ -76,6 +81,7 @@ class RideframeApp extends Application.AppBase {
             saveActs();
         }
         if (rec != null && rec.isRecording()) { rec.stop(); rec.discard(); rec = null; }
+        if (ble != null) { ble.close(); ble = null; } // no scan left on, the trainer free for the laptop or the Wahoo app
     }
 
     function now() as Number { return Time.now().value(); }
@@ -92,6 +98,7 @@ class RideframeApp extends Application.AppBase {
         var t = now();
         flow.handle(E_TICK, t, System.getTimer()); // ms for the pause screen's 3 s hold (t has whole seconds)
         recorder.tick(System.getTimer(), t);
+        pollHr(System.getTimer());
         drain();
         // retry the queue every 30 s while the app is open (the phone may be back)
         if (flow.queue.size() > 0 && !sending && t - lastTry >= 30 && flow.paired) { push(); }
@@ -103,8 +110,51 @@ class RideframeApp extends Application.AppBase {
         }
         WatchUi.requestUpdate();
     }
+    // 23.11.: an event of the trainer's radio (TrainerBle callbacks)
+    function bleEv(d as Dictionary) as Void {
+        if (flow == null) { return; }
+        flow.handle(E_BLE, now(), d);
+        drain();
+        WatchUi.requestUpdate();
+    }
+    // the link's actions to the radio; TrainerBle is made the first time there is one (it registers the GATT profiles then)
+    function runBle() as Void {
+        var L = flow.link;
+        if (L.act.size() == 0) { return; }
+        if (ble == null) {
+            if (!(Toybox has :BluetoothLowEnergy)) { L.act = [] as Array<Dictionary>; return; } // no radio: the trainer screen stays at Searching
+            ble = new TrainerBle(self);
+        }
+        ble.run(L);
+    }
     function onSensor(info as Sensor.Info) as Void {
-        if (info has :heartRate && info.heartRate != null) { flow.handle(E_HR, now(), info.heartRate); }
+        if (flow == null) { return; }
+        if (info has :heartRate && info.heartRate != null) { hrAt = System.getTimer(); flow.handle(E_HR, now(), info.heartRate); }
+    }
+    // 24.11. (no heart rate seen): the heart rate sensors on, the wrist (onboard optical) one too where the API has it (3.2.0)
+    function sensorsOn() as Void {
+        try {
+            Sensor.setEnabledSensors([Sensor.SENSOR_HEARTRATE]);
+            // VERIFY (Sensor.enableSensorType, SENSOR_ONBOARD_HEARTRATE, API 3.2.0): turns the wrist heart rate on for the app
+            if ((Sensor has :enableSensorType) && (Sensor has :SENSOR_ONBOARD_HEARTRATE)) { Sensor.enableSensorType(Sensor.SENSOR_ONBOARD_HEARTRATE); }
+        } catch (e) {
+            System.println("sensors: not enabled");
+        }
+        Sensor.enableSensorEvents(method(:onSensor));
+    }
+    // back in the foreground (API 4.2.3; never called on older firmware): the sensors again (their state cannot change while inactive)
+    function onActive(state as Dictionary or Null) as Void {
+        if (flow != null) { hrAt = 0; sensorsOn(); }
+    }
+    // once a second while no sensor event brought a heart rate for 5 s: the activity's, else the sensor's current value
+    function pollHr(ms as Number) as Void {
+        if (ms - hrPoll < 1000 || ms - hrAt < 5000) { return; }
+        hrPoll = ms;
+        var h = null;
+        var ai = Activity.getActivityInfo(); // VERIFY: currentHeartRate is filled outside a recording session (wrist sensor)
+        if (ai != null && (ai has :currentHeartRate)) { h = ai.currentHeartRate; }
+        if (h == null) { var si = Sensor.getInfo(); if (si has :heartRate) { h = si.heartRate; } }
+        if (h != null) { var b = numOf(h); if (b > 0) { flow.handle(E_HR, now(), b); } }
     }
 
     // ---- what the flow asks for ----
@@ -124,6 +174,10 @@ class RideframeApp extends Application.AppBase {
             else if (k == O_ROUTES) { loadRoutes(); }
             else if (k == O_ROUTE) { loadRoute(strOf(o["id"])); }
             else if (k == O_TPL) { keepTpl(); }
+            else if (k == O_KEEP) { store("setup", flow.setup); } // 24.11.: last time's sets of the session just finished
+            else if (k == O_TRAINER) { // the trainer used last and the last target, for the next ride
+                Application.Storage.setValue("trainer", flow.link.want); Application.Storage.setValue("tgt", flow.tTgt);
+            }
         }
         if (flow.routeId == null) { recorder.track = null; }
         recorder.sync();
@@ -131,6 +185,7 @@ class RideframeApp extends Application.AppBase {
         if (flow.scr == S_SUM && rec != null) { stopRecording(true); }
         else if (flow.start == 0 && rec != null) { stopRecording(false); } // discarded, or back to the choice before a set (23.11.)
         if (!lastKey.equals(flow.last)) { lastKey = flow.last; Application.Storage.setValue("last", lastKey); }
+        runBle();
     }
     function saveQueue() as Void {
         // VERIFY (Toybox.Application.Storage): the size limit of one value; a queue of a few sessions (~2 KB each) should fit

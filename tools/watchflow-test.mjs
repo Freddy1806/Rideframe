@@ -2,7 +2,7 @@
 // prefill, record detection, queue and retry. Usage: node --test tools/watchflow-test.mjs
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { newFlow, handle, SCR, MENU, END_ROWS, LIST_LAY, DRAG_ROW, curEx, setNo, doneOf, tplOf, saveOffer, pickRows, restLeft, sent, paired, setSetup, clock, homeItems, HOME_FIT, HOME_LAY, homeTop, listItems, recPages, routeInfo, setRoute, setRoutes, routeFace, routeNav, setConfig, order, planItem, LAP_M, HOLD_S, holdPart, pausedTime } from '../js/watchflow.js';
+import { newFlow, handle, SCR, MENU, END_ROWS, LIST_LAY, DRAG_ROW, curEx, setNo, doneOf, tplOf, saveOffer, pickRows, restLeft, sent, paired, setSetup, clock, homeItems, HOME_FIT, HOME_LAY, homeTop, listItems, recPages, routeInfo, setRoute, setRoutes, routeFace, routeNav, setConfig, order, planItem, LAP_M, HOLD_S, holdPart, pausedTime, lastSet, lastParts, lastTxt, keepLast, loading } from '../js/watchflow.js';
 import { FIELDS, defaults, validate, compact, fieldText, zoneOf, MORE, TOP } from '../js/watchfields.js';
 
 const SETUP = { v: 1, unit: 'kg', rest: 90, ex: [
@@ -10,11 +10,11 @@ const SETUP = { v: 1, unit: 'kg', rest: 90, ex: [
   { id: 'squat', n: 'Squat', t: 'w', s: [[100, 5]], b: 120 },
   { id: 'pull', n: 'Pull-ups', t: 'bw', s: [[0, 10]], b: 12 },
   { id: 'curl', n: 'Biceps curls', t: 'w' } ] };
-let n = 0; const mk = (o = {}) => newFlow(structuredClone(SETUP), { id: () => 'sess' + (++n), scr: SCR.START, ...o }); // on the strength screen (HOME -> Strength)
+let n = 0; const mk = (o = {}) => newFlow(structuredClone(SETUP), { id: () => 'sess' + (++n), scr: SCR.HOME, last: 'kraft', ...o }); // 24.11.: on the start menu, Strength on top (START = Strength)
 const go = (F, evs, t = 1000) => { for (const e of evs) Array.isArray(e) ? handle(F, e[0], t, e[1]) : handle(F, e, t); return F; };
 
 test('start -> picker -> set screen, prefilled from last session', () => {
-  const F = mk(); assert.equal(F.scr, SCR.START);
+  const F = mk(); assert.equal(F.scr, SCR.HOME);
   go(F, ['start']); assert.equal(F.scr, SCR.PICK); assert.equal(F.start, 1000);
   go(F, ['start']); assert.equal(F.scr, SCR.SET); assert.equal(curEx(F).id, 'bench');
   assert.deepEqual([F.kg, F.reps, F.focus, setNo(F)], [80, 8, 0, 1]);
@@ -43,7 +43,7 @@ test('23.11. set screen: touch picks the field, START weight -> reps -> logged, 
   go(F, ['start']); assert.equal(F.focus, 0, 'next set: weight first again');
   go(F, ['done']); assert.equal(F.scr, SCR.REST, 'the DONE pill logs from the weight too'); assert.equal(F.sets.length, 2);
   const B = go(mk(), ['start', ['item', 2]]); assert.equal(B.focus, 1); go(B, ['start']); assert.equal(B.scr, SCR.REST, 'bodyweight: one START logs');
-  const T = newFlow({ ex: [{ id: 'plank', n: 'Plank', t: 'time' }] }, { scr: SCR.START }); go(T, ['start', 'start', 'startHold']); assert.equal(T.focus, 1, 'timed: only seconds');
+  const T = newFlow({ ex: [{ id: 'plank', n: 'Plank', t: 'time' }] }, { scr: SCR.HOME, last: 'kraft' }); go(T, ['start', 'start', 'startHold']); assert.equal(T.focus, 1, 'timed: only seconds');
 });
 test('23.11. BACK goes back: set -> exercise list -> another exercise; rest -> list; the list with sets asks before anything is lost', () => {
   const F = go(mk(), ['start', ['item', 2]]); assert.equal(curEx(F).id, 'pull'); go(F, ['done']); assert.equal(F.scr, SCR.REST);
@@ -51,9 +51,9 @@ test('23.11. BACK goes back: set -> exercise list -> another exercise; rest -> l
   go(F, [['item', 0]]); assert.equal(curEx(F).id, 'bench', 'Pull-ups -> Bench press'); go(F, ['back']); assert.equal(F.scr, SCR.PICK, 'BACK on a set: the exercise list'); assert.equal(listItems(F)[F.sel], 'Bench press');
   assert.equal(F.sets.length, 1, 'nothing lost on the way'); go(F, ['back']); assert.equal(F.scr, SCR.END, 'BACK on the list with sets: the end question'); assert.deepEqual(listItems(F), ['Keep training', 'Finish & save', 'Discard']);
   go(F, ['back']); assert.equal(F.scr, SCR.PICK, 'BACK = keep training'); go(F, ['back', 'down', 'down', 'start']); assert.equal(F.scr, SCR.END); assert.deepEqual(listItems(F), ['Keep', 'Discard 1 set'], 'Discard asks once more');
-  go(F, ['back']); assert.equal(F.scr, SCR.END); assert.ok(!F.endConf); assert.equal(F.sel, 2); go(F, ['start', 'down', 'start']); assert.equal(F.scr, SCR.START, 'discarded'); assert.equal(F.queue.length, 0); assert.equal(F.start, 0);
+  go(F, ['back']); assert.equal(F.scr, SCR.END); assert.ok(!F.endConf); assert.equal(F.sel, 2); go(F, ['start', 'down', 'start']); assert.equal(F.scr, SCR.HOME, 'discarded'); assert.equal(F.queue.length, 0); assert.equal(F.start, 0);
   const G = go(mk(), ['start', 'start', 'done', 'back', 'back']); go(G, [['item', 1]]); assert.equal(G.scr, SCR.SUM, 'Finish & save'); assert.equal(G.queue.length, 1);
-  const H = go(mk(), ['start', 'start', 'back']); assert.equal(H.scr, SCR.PICK); go(H, ['back']); assert.equal(H.scr, SCR.START, 'no sets: straight back, nothing to ask'); assert.equal(H.start, 0);
+  const H = go(mk(), ['start', 'start', 'back']); assert.equal(H.scr, SCR.PICK); go(H, ['back']); assert.equal(H.scr, SCR.HOME, 'no sets: straight back, nothing to ask'); assert.equal(H.start, 0);
   const K = go(mk(), ['start', 'start', 'done', 'swipeRight']); assert.equal(K.scr, SCR.PICK, 'swipe right = BACK');
 });
 test('23.11. lists follow a dragged finger (scroll) without wrapping; swipes step; the summary pages too', () => {
@@ -96,8 +96,8 @@ test('menu on BACK hold or swipe left: change exercise, undo, finish', () => {
   assert.equal(F.sets.length, 1); assert.equal(F.scr, SCR.SET); assert.deepEqual([F.kg, F.reps], [80, 8]); assert.equal(setNo(F), 2);
   go(F, ['menu', 'start']); assert.equal(F.scr, SCR.PICK); go(F, ['down', 'start']); assert.equal(curEx(F).id, 'squat'); assert.deepEqual([F.kg, F.reps], [100, 5]);
   const G = go(mk(), ['start', 'start', 'menu']); assert.deepEqual(G.menu, [MENU.EX, MENU.FIN, MENU.PAUSE], 'no undo without sets');
-  go(G, ['down', 'start']); assert.equal(G.scr, SCR.START, 'finish without sets saves nothing'); assert.equal(G.queue.length, 0);
-  const S = go(mk(), ['menu']); assert.deepEqual(S.menu, [MENU.SYNC, MENU.PAIR]); go(S, ['start']); assert.deepEqual(S.out.map(o => o.k), ['setup', 'send']); assert.equal(S.scr, SCR.START);
+  go(G, ['down', 'start']); assert.equal(G.scr, SCR.HOME, 'finish without sets saves nothing'); assert.equal(G.queue.length, 0);
+  const S = go(mk(), ['menu']); assert.deepEqual(S.menu, [MENU.SYNC, MENU.PAIR]); go(S, ['start']); assert.deepEqual(S.out.map(o => o.k), ['setup', 'send']); assert.equal(S.scr, SCR.HOME);
 });
 test('undo of a set of another exercise goes back to that exercise', () => {
   const F = go(mk(), ['start', 'start', 'done', 'back', 'down', 'start']); assert.equal(curEx(F).id, 'squat');
@@ -112,7 +112,7 @@ test('finish: session into the queue with seconds, summary with heart rate and e
   assert.deepEqual(F.out.at(-1), { k: 'send' }); assert.ok(F.cues.includes('done'));
   sent(F, q.id, 'ok'); assert.equal(F.sum.st, 'saved'); assert.equal(F.queue.length, 0);
   handle(F, 'start', 1301); assert.equal(F.scr, SCR.SAVEQ, 'done: save it as a workout?'); assert.deepEqual(listItems(F), ['Save as workout', 'No']);
-  handle(F, 'start', 1302); assert.equal(F.scr, SCR.START); assert.equal(F.sets.length, 0);
+  handle(F, 'start', 1302); assert.equal(F.scr, SCR.HOME); assert.equal(F.sets.length, 0);
   const N = mk(); go(N, ['start', 'start', 'done', 'menu']); go(N, [['item', N.menu.indexOf(MENU.FIN)]]); assert.equal(N.sum.hr, null, 'no heart rate: none in the summary');
 });
 test('queue: no phone -> queued and kept, retried later, refused -> dropped', () => {
@@ -131,10 +131,10 @@ test('pairing: 6 digits with UP / DOWN / START, BACK one digit back, wrong code 
   paired(F, false); assert.equal(F.pair.st, 'fail'); go(F, ['up']); assert.equal(F.pair.st, 'enter'); assert.equal(F.pair.d[5], 2);
   go(F, ['start']); paired(F, true, SETUP); assert.equal(F.scr, SCR.HOME, 'paired: the start menu'); assert.ok(F.paired); assert.deepEqual(F.out.slice(-2).map(o => o.k), ['setup', 'send']);
   const G = newFlow(null, { paired: false }); go(G, ['back']); assert.deepEqual(G.out, [{ k: 'exit' }]);
-  const H = mk(); go(H, ['start']); assert.equal(H.scr, SCR.PICK); const E = newFlow({ ex: [] }, { scr: SCR.START }); go(E, ['start']); assert.equal(E.scr, SCR.START, 'empty setup: ask for it'); assert.deepEqual(E.out, [{ k: 'setup' }]);
+  const H = mk(); go(H, ['start']); assert.equal(H.scr, SCR.PICK); const E = newFlow({ ex: [] }, { scr: SCR.HOME, last: 'kraft' }); go(E, ['start']); assert.equal(E.scr, SCR.PICK, 'empty setup: the list (loading)'); assert.ok(loading(E)); assert.deepEqual(E.out, [{ k: 'setup' }]); setSetup(E, structuredClone(SETUP)); assert.ok(!loading(E)); assert.equal(listItems(E)[0], 'Bench press', 'it fills when the setup comes');
 });
 test('glance opens the app; new setup keeps the current exercise; clock', () => {
-  const F = mk(); F.scr = SCR.GLANCE; go(F, ['tap']); assert.equal(F.scr, SCR.HOME); F.scr = SCR.START;
+  const F = mk(); F.scr = SCR.GLANCE; go(F, ['tap']); assert.equal(F.scr, SCR.HOME); F.sel = 0;
   go(F, ['start', 'down', 'start']); setSetup(F, { ex: [SETUP.ex[1], SETUP.ex[0]], rest: 60 }); assert.equal(curEx(F).id, 'squat'); assert.equal(F.cur, 0);
   assert.equal(clock(65), '1:05'); assert.equal(clock(3725), '1:02:05');
 });
@@ -153,18 +153,19 @@ test('start menu layout: all four rows at once, 64 px touch rows on 416 px, noth
   assert.ok(L.y0 - L.dy / 2 > L.logo + .02 && L.y0 + (HOME_FIT - .5) * L.dy < L.pts - .02, 'logo and week points clear of the rows');
   const hp = Math.sqrt(.25 - (L.pts - .5 + .03) ** 2); assert.ok(hp * 2 > .5, 'the points line has room at its y');
 });
-test('start menu: run, ride, strength, more with the last used on top; BACK leaves the app', () => {
-  const F = fl(); assert.equal(F.scr, SCR.HOME); assert.deepEqual(listItems(F), ['Run', 'Ride', 'Strength', 'More']);
-  const G = fl({ last: 'kraft' }); assert.deepEqual(homeItems(G), ['kraft', 'run', 'ride', 'more']); go(G, ['start']); assert.equal(G.scr, SCR.START, 'Strength: its ready screen');
-  go(G, ['back']); assert.equal(G.scr, SCR.HOME); go(G, ['up']); assert.equal(G.sel, 3, 'wraps'); go(G, ['swipeDown', 'down', 'down']); assert.equal(G.sel, 0);
+test('start menu: run, ride, indoor trainer, strength, more with the last used on top; BACK leaves the app', () => {
+  const F = fl(); assert.equal(F.scr, SCR.HOME); assert.deepEqual(listItems(F), ['Run', 'Ride', 'Indoor trainer', 'Strength', 'More']);
+  const G = fl({ last: 'kraft' }); assert.deepEqual(homeItems(G), ['kraft', 'run', 'ride', 'trainer', 'more']); go(G, ['start']); assert.equal(G.scr, SCR.SMODE, '24.11.: Strength opens the choice at once (no ready screen)'); assert.ok(G.start > 0, 'the session clock runs');
+  go(G, ['back']); assert.equal(G.scr, SCR.HOME); go(G, ['up']); assert.equal(G.sel, 4, 'wraps'); assert.equal(homeTop(G.sel, 5), 1, 'five entries: the list scrolls to the last'); go(G, ['swipeDown', 'down', 'down']); assert.equal(G.sel, 0);
   go(G, ['back']); assert.deepEqual(G.out.at(-1), { k: 'exit' });
-  go(F, [['item', 3]]); assert.equal(F.scr, SCR.MORE); assert.deepEqual(listItems(F), ['Basketball', 'Yoga']); go(F, ['back']); assert.equal(F.scr, SCR.HOME);
+  assert.deepEqual(homeItems(fl({ last: 'trainer' })).slice(0, 2), ['trainer', 'run'], 'the trainer used last is on top');
+  go(F, [['item', 4]]); assert.equal(F.scr, SCR.MORE); assert.deepEqual(listItems(F), ['Basketball', 'Yoga']); go(F, ['back']); assert.equal(F.scr, SCR.HOME);
   go(F, ['menu']); assert.equal(F.scr, SCR.MENU); assert.deepEqual(F.menu, [MENU.SYNC, MENU.PAIR]); go(F, ['back']); assert.equal(F.scr, SCR.HOME);
 });
 test('run: ready, data pages from the config, values tick, UP / DOWN switch pages, auto lap banner', () => {
   const F = fl(); go(F, ['start']); assert.equal(F.scr, SCR.READY); assert.equal(F.sp, 'run');
   go(F, ['back']); assert.equal(F.scr, SCR.HOME); go(F, ['start']); handle(F, 'start', 2000); assert.equal(F.scr, SCR.REC); assert.deepEqual(F.cues, ['start']); assert.equal(F.last, 'run');
-  assert.deepEqual(recPages(F), [['pace', 'dist', 'time', 'hr'], ['lapPace', 'lapDist', 'cadence', 'hrZone']], 'no route loaded: no route page');
+  assert.deepEqual(recPages(F), [['pace', 'dist', 'time', 'hr'], ['lapPace', 'lapDist', 'avgPace', 'hrZone']], 'no route loaded: no route page');
   move(F, 300, 3.125); const R = F.rec; assert.equal(R.t, 300); assert.equal(R.d, 937.5);
   assert.deepEqual(['pace', 'dist', 'time', 'hr', 'avgPace', 'hrZone', 'cadence', 'climb'].map(k => fieldText(k, R, 0)), ['5:20', '0.94', '5:00', '150', '5:20', 'Z3', '170', '30']);
   F.cues = []; move(F, 20, 3.125, {}, 2300); assert.equal(F.rec.laps.length, 1, 'auto lap at 1 km'); assert.equal(F.flash.k, 'lap'); assert.equal(F.flash.n, 1); assert.deepEqual(F.cues, ['lap']);
@@ -193,8 +194,8 @@ const MODES4 = {
   run: () => { const F = fl(); go(F, ['start', 'start']); move(F, 30, 3); return [F, SCR.REC]; },
   ride: () => { const F = fl({ last: 'ride' }); go(F, ['start', 'start']); move(F, 30, 9); return [F, SCR.REC]; },
   more: () => { const F = fl({ last: 'more' }); go(F, ['start', 'start', 'start']); assert.equal(F.sp, 'other'); move(F, 30, 0); return [F, SCR.REC]; },
-  strength: () => { const F = fl({ last: 'kraft' }); go(F, ['start', 'start', 'start', 'start']); assert.equal(F.scr, SCR.SET); go(F, ['done']); assert.equal(F.scr, SCR.REST); return [F, SCR.REST]; },
-  workout: () => { const F = fl({ last: 'kraft' }); go(F, ['start', 'start', 'down', 'start']); assert.ok(F.plan); go(F, ['done']); assert.equal(F.scr, SCR.REST); return [F, SCR.REST]; },
+  strength: () => { const F = fl({ last: 'kraft' }); go(F, ['start', 'start', 'start']); assert.equal(F.scr, SCR.SET); go(F, ['done']); assert.equal(F.scr, SCR.REST); return [F, SCR.REST]; },
+  workout: () => { const F = fl({ last: 'kraft' }); go(F, ['start', 'down', 'start']); assert.ok(F.plan); go(F, ['done']); assert.equal(F.scr, SCR.REST); return [F, SCR.REST]; },
 };
 const doPause = (F, t = 1000) => { if (F.rec) handle(F, 'start', t); else { handle(F, 'menu', t); handle(F, 'item', t, F.menu.indexOf(MENU.PAUSE)); } };
 for (const [k, mk4] of Object.entries(MODES4)) test(`pause in every mode (${k}): resume, early release, hold to finish, discard with confirm`, () => {
@@ -212,7 +213,7 @@ for (const [k, mk4] of Object.entries(MODES4)) test(`pause in every mode (${k}):
   if (strength) { assert.equal(F.scr, SCR.SUM, 'held 3 s: the session is saved'); assert.equal(F.queue.length, 1); assert.equal(F.queue[0].duration, 500, 'its time without the pauses (1000 to 2000, 500 s of it paused)'); }
   else { assert.equal(F.scr, SCR.RSUM, 'held 3 s: saved'); assert.equal(F.out.at(-1).k, 'saveAct'); }
   [F] = mk4(); doPause(F, 3000); handle(F, 'item', 3000, 1); assert.ok(F.pz.conf, 'a tap on Discard asks'); handle(F, 'start', 3000);
-  assert.equal(F.scr, strength ? SCR.START : SCR.HOME, 'discarded'); assert.equal(F.rec, null); assert.equal(F.queue.length, 0); assert.ok(!F.out.some(o => o.k === 'saveAct'));
+  assert.equal(F.scr, strength ? SCR.HOME : SCR.HOME, 'discarded'); assert.equal(F.rec, null); assert.equal(F.queue.length, 0); assert.ok(!F.out.some(o => o.k === 'saveAct'));
 });
 test('route page: only with a route and the switch on; position, distance left, next turn', () => {
   const F = fl(); go(F, ['start', 'start']); assert.equal(routeInfo(F), null);
@@ -236,24 +237,24 @@ test('segment popup: warning, live delta, result for 5 s; BACK closes it first; 
   const H = fl(); handle(H, 'seg', 3000, { k: 'warn', name: 'x', len: 1, eta: 30 }); assert.equal(H.seg, null, 'not recording: nothing');
 });
 test('more: the sports from the phone, one fixed page, no route', () => {
-  const F = fl(); setRoute(F, { len: 1000, pts: [[0, 0], [1, 1]] }); go(F, [['item', 3], 'down', 'start']); assert.equal(F.scr, SCR.READY); assert.deepEqual([F.sp, F.type], ['other', 'Yoga']);
+  const F = fl(); setRoute(F, { len: 1000, pts: [[0, 0], [1, 1]] }); go(F, [['item', 4], 'down', 'start']); assert.equal(F.scr, SCR.READY); assert.deepEqual([F.sp, F.type], ['other', 'Yoga']);
   go(F, ['back']); assert.equal(F.scr, SCR.MORE); go(F, ['start', 'start']); assert.equal(F.scr, SCR.REC); assert.deepEqual(recPages(F), [['hr', 'time', 'clock', 'kcal']]);
   move(F, 600, 0); assert.equal(F.rec.t, 600, 'no auto pause for other sports'); assert.equal(fieldText('time', F.rec, 0), '10:00'); assert.ok(F.rec.kcal > 50);
   assert.equal(F.last, 'more'); go(F, ['start', 'down', 'start', 'start']); assert.deepEqual(homeItems(F)[0], 'more');
-  const E = newFlow(null, { cfg: { ...CFG(), more: [] } }); go(E, [['item', 3]]); assert.equal(E.scr, SCR.MORE); go(E, ['start']); assert.equal(E.scr, SCR.MORE, 'empty list: nothing to start'); go(E, ['back']); assert.equal(E.scr, SCR.HOME);
+  const E = newFlow(null, { cfg: { ...CFG(), more: [] } }); go(E, [['item', 4]]); assert.equal(E.scr, SCR.MORE); go(E, ['start']); assert.equal(E.scr, SCR.MORE, 'empty list: nothing to start'); go(E, ['back']); assert.equal(E.scr, SCR.HOME);
 });
 test('strength: Exercises or a saved workout in one list; free = recent, then top 20, then the rest', () => {
-  const F = fl({ last: 'kraft' }); go(F, ['start', 'start']); assert.equal(F.scr, SCR.SMODE); assert.deepEqual(listItems(F), ['Exercises', 'Push day']);
+  const F = fl({ last: 'kraft' }); go(F, ['start']); assert.equal(F.scr, SCR.SMODE); assert.deepEqual(listItems(F), ['Exercises', 'Push day']);
   go(F, ['start']); assert.equal(F.scr, SCR.PICK); assert.deepEqual(listItems(F), ['Pull-ups', 'Squat', 'Biceps curls', 'Bench press', 'Plank']);
   go(F, ['start']); assert.equal(curEx(F).id, 'pull'); go(F, ['done', 'back']); assert.equal(F.scr, SCR.PICK); assert.equal(F.sel, 0, 'the list opens on the current exercise');
   const G = mk(); go(G, ['start']); assert.equal(G.scr, SCR.PICK, 'no workouts: straight to the exercises');
   assert.deepEqual(order({ ex: [{ id: 'a' }, { id: 'b' }, { id: 'c' }], top: ['c', 'zz'], recent: ['b'] }), [1, 2, 0]);
-  const S = fl({ last: 'kraft' }); go(S, ['start', 'start', 'back']); assert.equal(S.scr, SCR.START, 'BACK on the choice: the strength screen');
-  const T = fl({ last: 'kraft' }); go(T, ['start', 'start', 'start', 'back']); assert.equal(T.scr, SCR.SMODE, 'BACK on the exercises without sets: the choice again (workouts or exercises)'); assert.equal(T.start, 0);
+  const S = fl({ last: 'kraft' }); go(S, ['start', 'back']); assert.equal(S.scr, SCR.HOME, 'BACK on the choice: the start menu, Strength on top'); assert.equal(S.start, 0); assert.equal(listItems(S)[S.sel], 'Strength');
+  const T = fl({ last: 'kraft' }); go(T, ['start', 'start', 'back']); assert.equal(T.scr, SCR.SMODE, 'BACK on the exercises without sets: the choice again (workouts or exercises)'); assert.equal(T.start, 0);
   handle(T, 'item', 2000, 1); assert.equal(T.start, 2000, 'a new start'); assert.ok(T.plan);
 });
 test('workout: guided set by set with its kg, reps and rest, next exercise, timed plank, done at the end', () => {
-  const F = fl({ last: 'kraft' }); go(F, ['start', 'start']); assert.equal(F.scr, SCR.SMODE);
+  const F = fl({ last: 'kraft' }); go(F, ['start']); assert.equal(F.scr, SCR.SMODE);
   handle(F, 'item', 5000, 1); assert.equal(F.scr, SCR.SET); assert.equal(curEx(F).id, 'bench'); assert.deepEqual([F.kg, F.reps, setNo(F)], [85, 6, 1]); assert.equal(F.start, 1000, 'the session started on the strength screen');
   handle(F, 'done', 5060); assert.equal(F.scr, SCR.REST); assert.equal(F.restLen, 120, 'rest from the workout'); assert.deepEqual(F.plan, { w: 0, i: 0, on: true, skip: [] }); assert.equal(F.sets[0].pi, 0);
   handle(F, 'tick', 5180); assert.equal(F.scr, SCR.SET); assert.deepEqual([curEx(F).id, F.kg, F.reps, setNo(F)], ['bench', 85, 6, 2]);
@@ -264,14 +265,14 @@ test('workout: guided set by set with its kg, reps and rest, next exercise, time
   handle(F, 'done', 5350); assert.equal(F.restLen, 45); handle(F, 'start', 5351);
   assert.equal(curEx(F).id, 'plank'); assert.equal(curEx(F).t, 'time'); assert.equal(F.focus, 1); assert.equal(F.reps, 60); go(F, ['up']); assert.equal(F.reps, 65, 'seconds in 5 s steps');
   handle(F, 'start', 5420); assert.equal(F.scr, SCR.SUM, 'the last planned set ends the workout'); assert.equal(F.queue.at(-1).sets.length, 4); assert.deepEqual(F.queue.at(-1).sets.at(-1), { ex: 'plank', kg: 0, reps: 65, t: 4420 });
-  assert.equal(F.saveq, null, 'done as planned: no question'); go(F, ['start']); assert.equal(F.scr, SCR.START);
-  const G = fl({ last: 'kraft' }); go(G, ['start', 'start', 'down', 'start', 'menu']); go(G, ['down', 'start']); assert.equal(curEx(G).id, 'curl', 'skip exercise');
+  assert.equal(F.saveq, null, 'done as planned: no question'); go(F, ['start']); assert.equal(F.scr, SCR.HOME);
+  const G = fl({ last: 'kraft' }); go(G, ['start', 'down', 'start', 'menu']); go(G, ['down', 'start']); assert.equal(curEx(G).id, 'curl', 'skip exercise');
   go(G, ['menu', 'start']); assert.equal(G.scr, SCR.PICK); assert.ok(G.plan, 'change exercise keeps the workout'); assert.deepEqual(listItems(G).slice(0, 3), ['Bench press', 'Biceps curls', 'Plank'], 'its exercises first');
-  const H = newFlow({ ex: [{ id: 'bench', n: 'Bench press', t: 'w' }], workouts: [{ id: 'q', n: 'Q', it: [['my_new', 1, 5, 40, 60, 'Thai kick']] }] }, { scr: SCR.START });
+  const H = newFlow({ ex: [{ id: 'bench', n: 'Bench press', t: 'w' }], workouts: [{ id: 'q', n: 'Q', it: [['my_new', 1, 5, 40, 60, 'Thai kick']] }] }, { scr: SCR.HOME, last: 'kraft' });
   go(H, ['start', 'down', 'start']); assert.equal(curEx(H).id, 'my_new'); assert.equal(curEx(H).n, 'Thai kick', 'unknown exercise: added with its name'); assert.deepEqual([H.kg, H.reps], [40, 5]);
 });
 test('23.11. inside a workout: BACK -> its exercise list (not the workouts), jump to another item, a free exercise in between, back into the plan', () => {
-  const F = fl({ last: 'kraft' }); go(F, ['start', 'start', 'down', 'start']); assert.equal(curEx(F).id, 'bench');
+  const F = fl({ last: 'kraft' }); go(F, ['start', 'down', 'start']); assert.equal(curEx(F).id, 'bench');
   go(F, ['back']); assert.equal(F.scr, SCR.PICK, 'BACK: the exercise list'); assert.deepEqual(pickRows(F).slice(0, 3).map(r => r[1]), [0, 1, 2], 'the workout items first');
   assert.deepEqual(listItems(F), ['Bench press', 'Biceps curls', 'Plank', 'Pull-ups', 'Squat'], 'then the other exercises');
   go(F, [['item', 1]]); assert.equal(curEx(F).id, 'curl'); assert.deepEqual([F.kg, F.reps], [20, 12]); go(F, ['done']); assert.equal(F.sets[0].pi, 1);
@@ -282,22 +283,22 @@ test('23.11. inside a workout: BACK -> its exercise list (not the workouts), jum
   go(F, ['done', 'start', 'done']); assert.equal(F.scr, SCR.REST); assert.equal(planItem(F)[0], 'plank'); go(F, ['start', 'done']);
   assert.equal(F.scr, SCR.SUM, 'every planned set done: finished'); assert.ok(F.saveq, 'a free exercise was added: ask'); assert.deepEqual(F.saveq.rows, ['Update Push day', 'Save as new', 'No']);
   assert.deepEqual(F.saveq.it, [['curl', 1, 12, 20, 45], ['pull', 1, 10, 0, 90], ['bench', 2, 6, 85, 120], ['plank', 1, 60, 0, 90]], 'the session in the order done');
-  const D = fl({ last: 'kraft' }); go(D, ['start', 'start', 'down', 'start', 'done', 'back']); go(D, [['item', 0]]); assert.equal(setNo(D), 2, 'a done set counts when the item is picked again');
+  const D = fl({ last: 'kraft' }); go(D, ['start', 'down', 'start', 'done', 'back']); go(D, [['item', 0]]); assert.equal(setNo(D), 2, 'a done set counts when the item is picked again');
 });
 test('23.11. save as workout: free session -> asked, saved on the watch and queued for the account; unchanged saved workout -> not asked; update and new', () => {
-  const F = fl({ last: 'kraft' }); n = 0; go(F, ['start', 'start', 'start', 'start', 'done', 'start', 'done', 'back', ['item', 1], 'done', 'menu']); go(F, [['item', F.menu.indexOf(MENU.FIN)]]);
+  const F = fl({ last: 'kraft' }); n = 0; go(F, ['start', 'start', 'start', 'done', 'start', 'done', 'back', ['item', 1], 'done', 'menu']); go(F, [['item', F.menu.indexOf(MENU.FIN)]]);
   assert.equal(F.scr, SCR.SUM); assert.deepEqual(F.saveq.rows, ['Save as workout', 'No']); assert.equal(F.saveq.n, 'Pull-ups + Squat');
   assert.deepEqual(F.saveq.it, [['pull', 2, 10, 0, 90], ['squat', 1, 5, 100, 90]]);
-  go(F, ['start']); assert.equal(F.scr, SCR.SAVEQ); const q0 = F.queue.length; go(F, ['start']); assert.equal(F.scr, SCR.START);
+  go(F, ['start']); assert.equal(F.scr, SCR.SAVEQ); const q0 = F.queue.length; go(F, ['start']); assert.equal(F.scr, SCR.HOME);
   assert.equal(F.queue.length, q0 + 1); const t = F.queue.at(-1); assert.ok(t.tpl && /^w/.test(t.tpl.id)); assert.deepEqual({ ...t.tpl, id: 0 }, { id: 0, n: 'Pull-ups + Squat', it: [['pull', 2, 10, 0, 90], ['squat', 1, 5, 100, 90]] });
   assert.deepEqual(F.out.slice(-2), [{ k: 'tpl' }, { k: 'send' }]); assert.deepEqual(listItems({ ...F, scr: SCR.SMODE }), ['Exercises', 'Push day', 'Pull-ups + Squat'], 'on the watch at once');
   go(F, ['start']); handle(F, 'item', 3000, 2); assert.equal(curEx(F).id, 'pull'); go(F, ['done', 'start', 'done']); assert.equal(F.scr, SCR.REST); go(F, ['start', 'start']); assert.equal(curEx(F).id, 'squat'); go(F, ['done']);
-  assert.equal(F.scr, SCR.SUM); assert.equal(F.saveq, null, 'the saved workout done as saved: no question'); go(F, ['start']); assert.equal(F.scr, SCR.START);
-  const U = fl({ last: 'kraft' }); go(U, ['start', 'start', 'down', 'start', 'done', 'menu']); go(U, [['item', U.menu.indexOf(MENU.FIN)]]); assert.deepEqual(U.saveq.rows, ['Update Push day', 'Save as new', 'No'], 'workout ended early: changed');
+  assert.equal(F.scr, SCR.SUM); assert.equal(F.saveq, null, 'the saved workout done as saved: no question'); go(F, ['start']); assert.equal(F.scr, SCR.HOME);
+  const U = fl({ last: 'kraft' }); go(U, ['start', 'down', 'start', 'done', 'menu']); go(U, [['item', U.menu.indexOf(MENU.FIN)]]); assert.deepEqual(U.saveq.rows, ['Update Push day', 'Save as new', 'No'], 'workout ended early: changed');
   go(U, ['start', 'start']); assert.equal(U.queue.at(-1).tpl.id, 'w1', 'Update keeps the id'); assert.equal(U.queue.at(-1).tpl.n, 'Push day'); assert.deepEqual(U.cfg.w[0].it, [['bench', 1, 6, 85, 120]]);
-  const V = fl({ last: 'kraft' }); go(V, ['start', 'start', 'down', 'start', 'done', 'menu']); go(V, [['item', V.menu.indexOf(MENU.FIN)], 'start', 'down', 'start']); assert.notEqual(V.queue.at(-1).tpl.id, 'w1', 'Save as new: a new id'); assert.equal(V.cfg.w.length, 2);
-  const X = fl({ last: 'kraft' }); go(X, ['start', 'start', 'start', 'start', 'done', 'menu']); go(X, [['item', X.menu.indexOf(MENU.FIN)], 'start', 'down', 'start']); assert.equal(X.scr, SCR.START); assert.ok(!X.queue.some(s => s.tpl), 'No: nothing saved');
-  const Y = fl({ last: 'kraft' }); go(Y, ['start', 'start', 'start', 'start', 'done', 'menu']); go(Y, [['item', Y.menu.indexOf(MENU.FIN)], 'start', 'back']); assert.equal(Y.scr, SCR.START, 'BACK on the question = No'); assert.ok(!Y.queue.some(s => s.tpl));
+  const V = fl({ last: 'kraft' }); go(V, ['start', 'down', 'start', 'done', 'menu']); go(V, [['item', V.menu.indexOf(MENU.FIN)], 'start', 'down', 'start']); assert.notEqual(V.queue.at(-1).tpl.id, 'w1', 'Save as new: a new id'); assert.equal(V.cfg.w.length, 2);
+  const X = fl({ last: 'kraft' }); go(X, ['start', 'start', 'start', 'done', 'menu']); go(X, [['item', X.menu.indexOf(MENU.FIN)], 'start', 'down', 'start']); assert.equal(X.scr, SCR.HOME); assert.ok(!X.queue.some(s => s.tpl), 'No: nothing saved');
+  const Y = fl({ last: 'kraft' }); go(Y, ['start', 'start', 'start', 'done', 'menu']); go(Y, [['item', Y.menu.indexOf(MENU.FIN)], 'start', 'back']); assert.equal(Y.scr, SCR.HOME, 'BACK on the question = No'); assert.ok(!Y.queue.some(s => s.tpl));
   const Z = mk(); Z.cfg.w = Array.from({ length: 30 }, (_, i) => ({ id: 'z' + i, n: 'Z' + i, it: [['bench', 1, 5, 50, 60]] })); go(Z, ['start', 'down', 'down', 'down', 'down', 'start', 'done', 'menu']); go(Z, [['item', Z.menu.indexOf(MENU.FIN)]]); assert.equal(Z.saveq, null, '30 workouts: full, not asked');
   const T = tplOf({ ...mk(), sets: [{ ex: 'pull', kg: 0, reps: 140, t: 1 }, { ex: 'bench', kg: 81.3, reps: 5, t: 2 }] }); assert.deepEqual(T, [['pull', 1, 100, 0, 90], ['bench', 1, 5, 81.25, 90]], 'inside the editor limits');
 });
@@ -339,4 +340,49 @@ test('route choice (19.11.): READY asks for the list, UP / DOWN opens it, None o
   go(G, ['down', 'up', 'start']); assert.equal(G.routeId, null); assert.equal(G.route, null); go(G, ['start']); assert.ok(!recPages(G).includes('route'));
   // other sports have no route choice
   const H = newFlow(structuredClone(SETUP), { id: () => 'z' }); H.scr = SCR.READY; H.sp = 'other'; go(H, ['down']); assert.equal(H.scr, SCR.READY);
+});
+
+// 24.11. (Freddy on his fenix 8): last time's sets on the set screen and in the exercise list, kept fresh without a phone
+test('last time: the set with the same number, past the count its final set, first time nothing', () => {
+  const F = go(mk(), ['start', 'start']); assert.equal(curEx(F).id, 'bench');
+  assert.deepEqual(lastSet(F), [80, 8], 'set 1'); go(F, ['start', 'start', 'start']); assert.equal(setNo(F), 2); assert.deepEqual(lastSet(F), [80, 7], 'set 2');
+  go(F, ['start', 'start', 'start']); assert.deepEqual(lastSet(F), [75, 8], 'set 3'); go(F, ['start', 'start', 'start']); assert.equal(setNo(F), 4); assert.deepEqual(lastSet(F), [75, 8], 'set 4: last time had 3, its final one');
+  assert.equal(lastSet(F, F.setup.ex.find(e => e.id === 'curl')), null, 'never done: nothing');
+  assert.deepEqual(lastSet(F, F.setup.ex.find(e => e.id === 'pull')), [0, 10]);
+});
+test('last time, short: a weight only when it changes, bodyweight reps, timed clock, cut at whole sets', () => {
+  assert.deepEqual(lastParts('w', [[80, 8], [80, 8], [75, 10], [75, 9]]), ['80×8', '8', '75×10', '9']);
+  assert.deepEqual(lastParts('w', [[82.5, 8], [102.25, 3]]), ['82.5×8', '102.3×3']);
+  assert.deepEqual(lastParts('bw', [[0, 10], [5, 8], [5, 6]]), ['10', '+5×8', '+5×6']);
+  assert.deepEqual(lastParts('time', [[0, 60], [0, 45]]), ['1:00', '0:45']);
+  assert.deepEqual(lastParts('w', undefined), []);
+  assert.equal(lastTxt('w', [[80, 8], [80, 8], [80, 6]]), 'Last 80×8 · 8 · 6');
+  assert.equal(lastTxt('bw', [[0, 10], [0, 9]]), 'Last 10 · 9 reps');
+  assert.equal(lastTxt('bw', [[0, 10], [5, 9]]), 'Last 10 · +5×9');
+  assert.equal(lastTxt('time', [[0, 60]]), 'Last 1:00');
+  assert.equal(lastTxt('w', [[80, 8], [75, 10], [70, 12]], 2), 'Last 80×8 · 75×10 …', 'fewer than all: the dots');
+  assert.equal(lastTxt('w', [[80, 8], [75, 10]], 0), 'Last 80×8 …', 'at least one set');
+  assert.equal(lastTxt('w', []), '');
+});
+test('a finished session is last time at once: setup updated, kept (out keep), best raised, recent and last', () => {
+  const F = go(mk(), ['start', 'start']); F.kg = 85; F.reps = 6; go(F, ['start', 'start'], 1100); go(F, ['start'], 1200); F.kg = 85; F.reps = 5; go(F, ['start', 'start'], 1300);
+  go(F, ['back', ['item', 2]], 1400); assert.equal(curEx(F).id, 'pull'); F.reps = 13; go(F, ['start'], 1500);
+  go(F, ['menu'], 1600); go(F, [['item', F.menu.indexOf(MENU.FIN)]], 1600); assert.equal(F.scr, SCR.SUM);
+  assert.ok(F.out.some(o => o.k === 'keep'), 'the app stores the setup');
+  const ex = id => F.setup.ex.find(e => e.id === id);
+  assert.deepEqual(ex('bench').s, [[85, 6], [85, 5]], "today's sets replace last time's"); assert.equal(ex('bench').b, 110, 'best kept (85 × 6 = 102 < 110)');
+  assert.deepEqual(ex('pull').s, [[0, 13]]); assert.equal(ex('pull').b, 13, 'best raised (13 reps)');
+  assert.deepEqual(ex('squat').s, [[100, 5]], 'not done: unchanged'); assert.deepEqual(F.setup.recent.slice(0, 2), ['bench', 'pull']); assert.deepEqual(F.setup.last, { at: 1000, sets: 3, n: '' });
+  assert.equal(F.list[0], F.setup.ex.findIndex(e => e.id === 'bench'), 'the free list: done just now first');
+  // the next session, no phone: set 1 shows today's first set
+  go(F, ['back']); if (F.scr === SCR.SAVEQ) go(F, ['back']); assert.equal(F.scr, SCR.HOME); go(F, ['start', 'start'], 2000); assert.equal(curEx(F).id, 'bench'); assert.deepEqual(lastSet(F), [85, 6]); assert.deepEqual([F.kg, F.reps], [85, 6], 'prefilled from it');
+});
+test('a setup from the server that does not have a queued session yet: the queued sets stay last time', () => {
+  const sess = { id: 'q1', start: 5000, duration: 600, sets: [{ ex: 'squat', kg: 110, reps: 4, t: 10 }, { ex: 'squat', kg: 110, reps: 3, t: 200 }] };
+  const F = mk({ queue: [sess, { id: 't1', tpl: { id: 'w1', n: 'X', it: [['squat', 1, 1, 0, 60]] } }] });
+  assert.deepEqual(F.setup.ex.find(e => e.id === 'squat').s, [[110, 4], [110, 3]], 'at start (the cached setup)');
+  setSetup(F, structuredClone(SETUP)); assert.deepEqual(F.setup.ex.find(e => e.id === 'squat').s, [[110, 4], [110, 3]], 'a fresh server setup: still the queued session');
+  sent(F, 'q1', 'ok'); setSetup(F, structuredClone(SETUP)); assert.deepEqual(F.setup.ex.find(e => e.id === 'squat').s, [[100, 5]], 'once sent, the server is the truth');
+  const st = { ex: [{ id: 'plank', n: 'Plank', t: 'time', s: [[0, 30]], b: 30 }] }; keepLast(st, { start: 1, sets: [{ ex: 'plank', kg: 0, reps: 75 }, { ex: 'nope', kg: 1, reps: 1 }] });
+  assert.deepEqual(st.ex[0].s, [[0, 75]]); assert.equal(st.ex[0].b, 75); assert.deepEqual(st.recent, ['plank', 'nope']);
 });

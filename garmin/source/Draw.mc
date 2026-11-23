@@ -129,18 +129,16 @@ module Draw {
             dc.drawLine(x - s * 0.27, y + s * 0.16, x - s * 0.05, y - s * 0.16);
             dc.drawLine(x - s * 0.05, y - s * 0.16, x + s * 0.27, y + s * 0.16);
             dc.drawLine(x - s * 0.05, y - s * 0.16, x - s * 0.14, y - s * 0.3);
+        } else if (k.equals("trainer")) { // 23.11. (js/theme.js ICONS trainer): a dial on a stand
+            var q = s / 24.0;
+            dc.drawCircle(x, y - q * 2, q * 7);
+            dc.drawLine(x, y - q * 6, x, y - q * 2); dc.drawLine(x, y - q * 2, x + q * 3, y);
+            dc.drawLine(x - q * 8, y + q * 8, x + q * 8, y + q * 8);
         } else {
             var r = s * 0.09;
             dc.fillCircle(x - s * 0.3, y, r); dc.fillCircle(x, y, r); dc.fillCircle(x + s * 0.3, y, r);
         }
         dc.setPenWidth(1);
-    }
-    function ago(at as Number) as String {
-        var d = (Time.now().value() - at) / 86400;
-        if (d < 1) { return "Today"; }
-        if (d < 2) { return "Yesterday"; }
-        var info = Gregorian.info(new Time.Moment(at), Time.FORMAT_MEDIUM); // VERIFY: day_of_week is a String with FORMAT_MEDIUM (Toybox.Time.Gregorian.info)
-        return info.day_of_week.toString();
     }
     // a number text in a number font when it only has digits and : . - (VERIFY: the glyphs FONT_NUMBER_* carry), else text fonts
     function isNum(t as String) as Boolean {
@@ -169,13 +167,13 @@ module Draw {
         if (s == S_MORE) { P.acc = P.cOther; }
         else if (s == S_READY || s == S_REC || s == S_PAUSE || s == S_RPICK) { P.acc = P.sport(F.sp); }
         else if (s == S_RSUM) { var r = F.rsum, k = F.sp; if (r != null) { k = strOf(r["sp"]); } P.acc = P.sport(k); }
+        else if (s == S_TSCAN || s == S_TREC || s == S_TEND || s == S_TSUM) { P.acc = P.cRide; }
         var f = F.flash;
         if (f != null) {
             if ("lap".equals(f["k"])) { P.acc = P.sport(F.sp); lapFlash(dc, F, S, P, f); } else { prFlash(dc, S, P, f); }
             return;
         }
         if (s == S_HOME) { drawHome(dc, F, S, P, sum); }
-        else if (s == S_START) { drawStart(dc, F, S, P, sum); }
         else if (s == S_PICK) { drawPick(dc, F, S, P); }
         else if (s == S_SMODE) { drawSmode(dc, F, S, P); }
         else if (s == S_MORE) { drawMore(dc, F, S, P); }
@@ -191,6 +189,10 @@ module Draw {
         else if (s == S_PAUSE) { drawPause(dc, F, S, P, now); }
         else if (s == S_RSUM) { drawRsum(dc, F, S, P); }
         else if (s == S_RPICK) { drawRpick(dc, F, S, P); }
+        else if (s == S_TSCAN) { drawTScan(dc, F, S, P); }
+        else if (s == S_TREC) { drawTRec(dc, F, S, P, now); }
+        else if (s == S_TEND) { drawTEnd(dc, F, S, P); }
+        else if (s == S_TSUM) { drawTSum(dc, F, S, P); }
         else { drawHome(dc, F, S, P, sum); }
     }
     // RIDE in white, FRAME in the accent, centred on y
@@ -240,28 +242,6 @@ module Draw {
         var p = sel.toFloat() / (n - 1), a = 150 + (p * 51).toNumber();
         dc.setColor(P.acc, Graphics.COLOR_TRANSPARENT); dc.drawArc(c, c, c - S * 0.03, Graphics.ARC_COUNTER_CLOCKWISE, a, a + 9); dc.setPenWidth(1);
     }
-    function drawStart(dc as Dc, F as Flow, S as Number, P as Palette, sum) as Void {
-        startHint(dc, S, P);
-        var c = S / 2;
-        logo(dc, S, S * 0.2, P.acc, P);
-        dumbbell(dc, c, S * 0.31, S * 0.1, P.acc);
-        txt(dc, c, S * 0.44, Graphics.FONT_LARGE, "Strength", P.fg);
-        var L = F.setup["last"], line = F.exCount() == 0 ? "Loading" : "First session";
-        if (L instanceof Dictionary) { var l = L as Dictionary; line = ago(numOf(l["at"])) + ", " + numOf(l["sets"]).toString() + " sets"; }
-        txt(dc, c, S * 0.56, Graphics.FONT_SMALL, fit(dc, line, Graphics.FONT_SMALL, (S * 0.7).toNumber()), P.dim);
-        if (sum instanceof Dictionary) {
-            var sd = sum as Dictionary;
-            if (sd["pts"] != null) {
-                var t = rnd(fltOf(sd["pts"])).toString() + " pts", d = rnd(fltOf(sd["delta"])), tw = dc.getTextWidthInPixels(t, Graphics.FONT_SMALL);
-                txt(dc, c - S * 0.04, S * 0.66, Graphics.FONT_SMALL, t, P.fg);
-                if (d != 0) {
-                    tri(dc, c + tw / 2 + S * 0.01, S * 0.66, S * 0.018, d > 0, P.acc);
-                    txtL(dc, c + tw / 2 + S * 0.035, S * 0.66, Graphics.FONT_XTINY, (d > 0 ? d : -d).toString(), P.acc);
-                }
-            }
-        }
-        pill(dc, c, S * 0.81, S * 0.42, S * 0.13, P.acc); txt(dc, c, S * 0.81, Graphics.FONT_SMALL, "START", P.ink);
-    }
     // js/watchsim.js setShort: one set, short: 80 kg x 8, +5 x 10, 10 reps, 1:00
     function setShort(t as String, kg as Float, r as Number) as String {
         if (t.equals("time")) { return clock(r); }
@@ -270,7 +250,7 @@ module Draw {
     }
     function plural(n as Number, one as String, many as String) as String { return n.toString() + " " + (n == 1 ? one : many); }
     // js/watchsim.js pickSub: row k's sub line: a workout item's progress, else this session's sets, else last time's
-    function pickSub(F as Flow, k as Number) as String {
+    function pickSub(dc as Dc, F as Flow, S as Number, k as Number) as String {
         var rows = F.pickRows();
         if (k < 0 || k >= rows.size()) { return ""; }
         var l = F.exList(), e = l[rows[k][0]], j = rows[k][1];
@@ -285,15 +265,42 @@ module Draw {
         }
         if (n > 0) { return n.toString() + " done, " + setShort(t, fltOf(mine[n - 1]["kg"]), numOf(mine[n - 1]["reps"])); }
         var s = arrOf(ed["s"]);
-        if (s.size() > 0) { var p = arrOf(s[0]); if (p.size() >= 2) { return "Last " + setShort(t, fltOf(p[0]), numOf(p[1])); } }
-        return "New";
+        if (s.size() == 0) { return "New"; }
+        // 24.11.: all of last time's sets ("Last 80x8, 8, 6"); too long for the line: as many whole sets as fit, then " ..."
+        var k2 = s.size(), lt = lastTxt(t, s, k2), mw = (S * 0.7).toNumber();
+        while (k2 > 1 && dc.getTextWidthInPixels(lt, Graphics.FONT_XTINY) > mw) { k2--; lt = lastTxt(t, s, k2); }
+        return lt;
+    }
+    // js/watchflow.js lastParts / lastTxt: last session's first k sets, short: a weight only when it changes (80x8, 8, 75x10),
+    // bodyweight only reps (+kg when added), timed the clock; fewer than all end with " ..."
+    function lastTxt(t as String, s as Array, k as Number) as String {
+        var n = k < s.size() ? k : s.size(), r = "Last ", pk = -1.0, bwOnly = true;
+        if (n < 1) { n = 1; }
+        for (var i = 0; i < n; i++) {
+            var p = arrOf(s[i]);
+            if (p.size() < 2) { continue; }
+            var kg = fltOf(p[0]), x = numOf(p[1]), one = "";
+            if (t.equals("time")) { one = clock(x); }
+            else if (t.equals("bw")) { if (kg > 0.0) { one = "+" + kgTxt(kg) + "x" + x.toString(); bwOnly = false; } else { one = x.toString(); } }
+            else { one = i > 0 && kg == pk ? x.toString() : kgTxt(kg) + "x" + x.toString(); }
+            pk = kg;
+            r = r + (i > 0 ? ", " : "") + one;
+        }
+        if (n < s.size()) { return r + " ..."; }
+        return t.equals("bw") && bwOnly ? r + " reps" : r;
     }
     // the exercise list: in a workout its items first with what is done; the counter line is the session so far (js DRAW[SCR.PICK])
     function drawPick(dc as Dc, F as Flow, S as Number, P as Palette) as Void {
         var items = F.listItems(), n = items.size(), k = F.sets.size(), title = "EXERCISES", p = F.plan, ws = F.workouts();
+        if (n == 0 && F.exCount() == 0) { // 24.11.: the setup is on its way (js DRAW[SCR.PICK] loading)
+            txt(dc, S / 2, S * 0.12, Graphics.FONT_XTINY, title, P.dim);
+            txt(dc, S / 2, S / 2, Graphics.FONT_SMALL, fit(dc, "Loading exercises", Graphics.FONT_SMALL, (S * 0.74).toNumber()), P.fg);
+            txt(dc, S / 2, S * 0.585, Graphics.FONT_XTINY, "from the phone", P.lbl);
+            return;
+        }
         if (p != null) { if (p[0] >= 0 && p[0] < ws.size()) { title = strOf(ws[p[0]]["n"]).toUpper(); } }
         var cnt = (F.sel + 1).toString() + "/" + n.toString() + (k > 0 ? ", " + plural(k, "set", "sets") + " done" : "");
-        list(dc, F, S, P, items, title, false, pickSub(F, F.sel), cnt);
+        list(dc, F, S, P, items, title, false, pickSub(dc, F, S, F.sel), cnt);
     }
     // Exercises or a saved workout (the phone's and those saved on the watch)
     function drawSmode(dc as Dc, F as Flow, S as Number, P as Palette) as Void {
@@ -374,7 +381,11 @@ module Draw {
         var no = "SET " + F.setNo().toString();
         if (it != null) { no = no + " OF " + numOf(it[1]).toString(); }
         txt(dc, c, S * 0.315, Graphics.FONT_XTINY, no, P.acc);
+        // 24.11. (Freddy): last time's same set as small numbers on the SET row above kg / reps, only on the set screen, no label;
+        // white on MIP (P.lbl), first time nothing (js/watchsim.js DRAW[SCR.SET])
+        var lp = lastSet(F, e);
         if (t.equals("time")) {
+            if (lp != null) { txt(dc, S * 0.735, S * 0.315, Graphics.FONT_XTINY, clock(numOf(lp[1])), P.lbl); }
             // watch only: while the hold clock runs it counts up, the planned time below; else the planned time
             var held = F.holdAt > 0, v = held ? clock(now - F.holdAt) : clock(F.reps);
             txt(dc, c, S * 0.5, fontFor(dc, v, [Graphics.FONT_NUMBER_HOT, Graphics.FONT_NUMBER_MEDIUM, Graphics.FONT_NUMBER_MILD], (S * 0.6).toNumber()), v, P.acc);
@@ -385,6 +396,16 @@ module Draw {
             var val = [bw && F.kg == 0.0 ? "BW" : kgTxt(F.kg), F.reps.toString()] as Array<String>, unit = [bw ? "+kg" : "kg", "reps"] as Array<String>;
             var xs = [S * 0.285, S * 0.735] as Array<Float>, mx = [S * 0.32, S * 0.27] as Array<Float>;
             txt(dc, S * 0.515, S * 0.5, Graphics.FONT_SMALL, "x", P.dim);
+            if (lp != null) {
+                var lk = fltOf(lp[0]), ls = [bw && lk == 0.0 ? "BW" : kgTxt(lk), numOf(lp[1]).toString()] as Array<String>;
+                var half = dc.getTextWidthInPixels(no, Graphics.FONT_XTINY) / 2 + S * 0.03; // never touches "SET n OF m" in the middle
+                for (var i = 0; i < 2; i++) {
+                    var w = dc.getTextWidthInPixels(ls[i], Graphics.FONT_XTINY) / 2, x = xs[i];
+                    if (i == 0 && x + w > c - half) { x = c - half - w; }
+                    if (i == 1 && x - w < c + half) { x = c + half + w; }
+                    txt(dc, x, S * 0.315, Graphics.FONT_XTINY, ls[i], P.lbl);
+                }
+            }
             for (var i = 0; i < 2; i++) {
                 var on = F.focus == i;
                 // number fonts have digits only (VERIFY: which glyphs FONT_NUMBER_* carry), so "BW" takes a text font
@@ -395,6 +416,14 @@ module Draw {
             }
         }
         pill(dc, c, S * 0.815, S * 0.4, S * 0.12, P.acc); txt(dc, c, S * 0.815, Graphics.FONT_SMALL, t.equals("time") && F.holdAt == 0 ? "GO" : "DONE", P.ink);
+    }
+    // js/watchflow.js lastSet(F, e): last session's set with the number of the set now (its last one when today goes further): [kg, reps] or null
+    function lastSet(F as Flow, e as Dictionary) as Array? {
+        var s = arrOf(e["s"]);
+        if (s.size() == 0) { return null; }
+        var n = F.setNo() - 1;
+        var p = arrOf(n >= 0 && n < s.size() ? s[n] : s[s.size() - 1]);
+        return p.size() >= 2 ? p : null;
     }
     // js/watchsim.js DRAW[SCR.REST] and REST_LAY (23.11.): heart rate, the clock, what this exercise has so far (the last 3 sets), what comes next
     function drawRest(dc as Dc, F as Flow, S as Number, P as Palette, now as Number) as Void {
@@ -550,10 +579,10 @@ module Draw {
             heart(dc, c - S * 0.1, S * 0.565, S * 0.045, P.hr);
             txtL(dc, c - S * 0.06, S * 0.565, Graphics.FONT_SMALL, F.hr > 0 ? F.hr.toString() + " bpm" : "Heart rate", P.fg);
         } else {
-            // watch only: the real fix quality (the preview always shows "GPS ready")
-            var ok = F.gps >= 2, col = ok ? P.good : P.lbl;
+            // the real fix quality (Recorder.onPosition), so it can be reported: ready (usable / good), weak (poor / last known), search
+            var col = F.gps >= 2 ? P.good : (F.gps == 1 ? P.acc : P.lbl);
             dc.setColor(col, Graphics.COLOR_TRANSPARENT); dc.fillCircle(c - S * 0.135, S * 0.565, S * 0.02);
-            txtL(dc, c - S * 0.1, S * 0.565, Graphics.FONT_SMALL, ok ? "GPS ready" : "GPS search", col);
+            txtL(dc, c - S * 0.1, S * 0.565, Graphics.FONT_SMALL, F.gps >= 2 ? "GPS ready" : (F.gps == 1 ? "GPS weak" : "GPS search"), col);
         }
         var n = F.pages.size(), t = n.toString() + (n == 1 ? " data page" : " data pages") + (F.hasRoutePage() ? " + route" : "");
         if (F.sp.equals("other")) { txt(dc, c, S * 0.655, Graphics.FONT_XTINY, fit(dc, t, Graphics.FONT_XTINY, (S * 0.62).toNumber()), P.lbl); }
@@ -659,6 +688,110 @@ module Draw {
         var nm = sp.equals("other") ? strOf(s["name"]) : F.homeLabel(sp);
         txt(dc, c, S * 0.76, Graphics.FONT_SMALL, fit(dc, nm, Graphics.FONT_SMALL, (S * 0.6).toNumber()), P.acc);
         txt(dc, c, S * 0.86, Graphics.FONT_XTINY, "DONE", P.lbl);
+    }
+    /* ---- 23.11.: the indoor trainer (js/watchsim.js DRAW[SCR.TSCAN ... TSUM], TSCAN_LAY, TREC_LAY, TSUM_LAY, STATS_LAY) ---- */
+    // the trainers nearby (FTMS first) while searching, else the state of the one chosen with START to ride
+    function drawTScan(dc as Dc, F as Flow, S as Number, P as Palette) as Void {
+        var L = F.link, v = L.shown(), c = S / 2;
+        if (v == TL_SCAN || v == TL_OFF) {
+            var n = L.list.size();
+            if (n > 0) {
+                var sub = F.sel < n && L.list[F.sel]["ftms"] == true ? "Smart trainer, ERG" : "Power only, no ERG";
+                list(dc, F, S, P, F.listItems(), "INDOOR TRAINER", false, sub, "Searching, START connects");
+                return;
+            }
+            txt(dc, c, S * 0.12, Graphics.FONT_XTINY, "INDOOR TRAINER", P.dim);
+            dc.setColor(P.acc, Graphics.COLOR_TRANSPARENT); dc.fillCircle(c, S * 0.3, S * 0.07);
+            icon(dc, "trainer", c, S * 0.3, S * 0.085, P.ink);
+            txt(dc, c, S * 0.45, Graphics.FONT_MEDIUM, "Searching", P.fg);
+            txt(dc, c, S * 0.56, Graphics.FONT_XTINY, "Pedal a few turns", P.lbl);
+            txt(dc, c, S * 0.62, Graphics.FONT_XTINY, "to wake the trainer", P.lbl);
+            return;
+        }
+        dc.setColor(P.acc, Graphics.COLOR_TRANSPARENT); dc.fillCircle(c, S * 0.24, S * 0.1);
+        icon(dc, "trainer", c, S * 0.24, S * 0.12, P.ink);
+        txt(dc, c, S * 0.4, Graphics.FONT_SMALL, fit(dc, L.name, Graphics.FONT_SMALL, (S * 0.74).toNumber()), P.fg);
+        var a = "", col = P.fg, b = "", d = "";
+        if (v == TL_CONN) { a = "Connecting"; b = "Taking control"; }
+        else if (v == TL_READY) { a = "Connected"; col = P.good; b = L.ctl ? "ERG ready" : "Power only, no ERG"; }
+        else if (v == TL_REFUSED) { a = "Refuses control"; col = P.bad; b = "Another app controls it."; d = "Close it, or ride without ERG"; }
+        else if (v == TL_LOST) { a = "Lost, reconnecting"; col = P.bad; b = "Keeps trying"; }
+        txt(dc, c, S * 0.52, Graphics.FONT_MEDIUM, fit(dc, a, Graphics.FONT_MEDIUM, (S * 0.8).toNumber()), col);
+        txt(dc, c, S * 0.61, Graphics.FONT_XTINY, fit(dc, b, Graphics.FONT_XTINY, (S * 0.74).toNumber()), P.fg);
+        if (d.length() > 0) { txt(dc, c, S * 0.675, Graphics.FONT_XTINY, fit(dc, d, Graphics.FONT_XTINY, (S * 0.68).toNumber()), P.lbl); }
+        if (v == TL_READY || v == TL_REFUSED) { startHint(dc, S, P); pill(dc, c, S * 0.81, S * 0.42, S * 0.13, P.acc); txt(dc, c, S * 0.81, Graphics.FONT_SMALL, "START", P.ink); }
+        else { txt(dc, c, S * 0.81, Graphics.FONT_XTINY, "BACK: the list", P.lbl); }
+    }
+    // the ERG ride (like the Wahoo app's ERG page): the target big with - / + beside it, the trainer's power, cadence, heart rate below
+    function drawTRec(dc as Dc, F as Flow, S as Number, P as Palette, now as Number) as Void {
+        var R = F.tr;
+        if (R == null) { return; }
+        var L = F.link, v = L.shown(), paused = R.st != RS_RUN, c = S / 2;
+        recRing(dc, S, P, !paused); pageDots(dc, S, P, 2, R.pg);
+        if (R.pg != 0) { trStats(dc, S, P, R); return; }
+        txt(dc, c, S * 0.12, Graphics.FONT_NUMBER_MILD, clock(R.t), P.fg);
+        var warn = v == TL_LOST ? "LOST, RECONNECTING" : (v == TL_REFUSED ? "NO CONTROL, OTHER APP" : (!L.ctl ? "POWER ONLY, NO ERG" : (paused ? "PAUSED" : "")));
+        var wc = warn.length() == 0 ? P.lbl : (paused && L.ctl && v != TL_LOST && v != TL_REFUSED ? P.acc : P.bad);
+        txt(dc, c, S * 0.205, Graphics.FONT_XTINY, fit(dc, warn.length() > 0 ? warn : "TARGET W", Graphics.FONT_XTINY, (S * 0.6).toNumber()), wc);
+        var t = R.tgt.toString();
+        txt(dc, c, S * 0.36, fontFor(dc, t, [Graphics.FONT_NUMBER_THAI_HOT, Graphics.FONT_NUMBER_HOT, Graphics.FONT_NUMBER_MEDIUM], (S * 0.46).toNumber()), t, paused ? P.dim : P.acc);
+        var xs = [0.15, 0.85] as Array<Float>;
+        for (var i = 0; i < 2; i++) {
+            var x = S * xs[i], y = S * 0.36, h = S * 0.035;
+            dc.setColor(P.faint, Graphics.COLOR_TRANSPARENT); dc.fillCircle(x, y, S * 0.085);
+            dc.setColor(P.fg, Graphics.COLOR_TRANSPARENT); dc.setPenWidth(pw(S * 0.018));
+            dc.drawLine(x - h, y, x + h, y); if (i == 1) { dc.drawLine(x, y - h, x, y + h); } // drawn: the fonts may have no minus sign
+            dc.setPenWidth(1);
+        }
+        txt(dc, c, S * 0.5, Graphics.FONT_XTINY, "+/- " + R.step.toString() + " W", P.lbl);
+        dc.setColor(P.line, Graphics.COLOR_TRANSPARENT); dc.setPenWidth(pw(S * 0.006 > 2 ? S * 0.006 : 2));
+        dc.drawLine(S * 0.12, S * 0.56, S * 0.88, S * 0.56); dc.setPenWidth(1);
+        var vals = [L.livePw(now).toString(), L.liveCad(now).toString(), F.hr > 0 ? F.hr.toString() : "--"] as Array<String>, labs = ["WATTS", "RPM", "BPM"] as Array<String>;
+        for (var i = 0; i < 3; i++) {
+            var x = S * (0.27 + i * 0.23);
+            txt(dc, x, S * 0.655, fontFor(dc, vals[i], [Graphics.FONT_NUMBER_MILD, Graphics.FONT_MEDIUM, Graphics.FONT_SMALL], (S * 0.21).toNumber()), vals[i], P.fg);
+            if (i == 2) { heart(dc, x - S * 0.055, S * 0.735, S * 0.03, P.hr); }
+            txt(dc, x + (i == 2 ? S * 0.015 : 0), S * 0.735, Graphics.FONT_XTINY, labs[i], P.lbl);
+        }
+        if (paused) { pill(dc, c, S * 0.85, S * 0.44, S * 0.1, P.acc); txt(dc, c, S * 0.85, Graphics.FONT_XTINY, "START resume", P.ink); }
+        else { txt(dc, c, S * 0.85, Graphics.FONT_XTINY, "AVG " + R.avgPw().toString() + " W, " + rnd(R.kj).toString() + " kJ", P.lbl); }
+    }
+    // three numbers with labels in a row (x 0.27 / 0.5 / 0.73; js cols)
+    function cols(dc as Dc, S as Number, P as Palette, v as Array<String>, l as Array<String>, y as Float, yl as Float) as Void {
+        for (var i = 0; i < 3; i++) {
+            var x = S * (0.27 + i * 0.23);
+            txt(dc, x, S * y, fontFor(dc, v[i], [Graphics.FONT_MEDIUM, Graphics.FONT_SMALL, Graphics.FONT_XTINY], (S * 0.22).toNumber()), v[i], P.fg);
+            txt(dc, x, S * yl, Graphics.FONT_XTINY, l[i], P.lbl);
+        }
+    }
+    function orDash(n as Number) as String { return n > 0 ? n.toString() : "--"; }
+    // the ride's second page: this target's block (time, avg power), then the whole ride
+    function trStats(dc as Dc, S as Number, P as Palette, R as TRide) as Void {
+        var c = S / 2, bAvg = R.bN > 0 ? rnd(R.bSum.toFloat() / R.bN) : 0, sm = R.sum();
+        txt(dc, c, S * 0.17, Graphics.FONT_SMALL, "AT " + R.tgt.toString() + " W", P.acc);
+        txt(dc, c, S * 0.3, Graphics.FONT_NUMBER_MEDIUM, clock(R.t - R.bT0), P.fg);
+        txt(dc, c, S * 0.41, Graphics.FONT_XTINY, fit(dc, bAvg.toString() + " W avg at this target", Graphics.FONT_XTINY, (S * 0.7).toNumber()), P.lbl);
+        dc.setColor(P.line, Graphics.COLOR_TRANSPARENT); dc.setPenWidth(pw(S * 0.006 > 2 ? S * 0.006 : 2));
+        dc.drawLine(S * 0.12, S * 0.48, S * 0.88, S * 0.48); dc.setPenWidth(1);
+        cols(dc, S, P, [R.avgPw().toString(), R.pwMax.toString(), rnd(R.kj).toString()] as Array<String>, ["AVG W", "MAX W", "KJ"] as Array<String>, 0.58, 0.655);
+        cols(dc, S, P, [orDash(numOf(sm["np"])), orDash(numOf(sm["cad"])), orDash(numOf(sm["hr"]))] as Array<String>, ["NP", "RPM", "AVG HR"] as Array<String>, 0.75, 0.82);
+    }
+    // BACK on the ride: Resume, Stats page, Finish & save, Discard (with a confirm step)
+    function drawTEnd(dc as Dc, F as Flow, S as Number, P as Palette) as Void {
+        list(dc, F, S, P, F.listItems(), F.tConf ? "DISCARD RIDE?" : "INDOOR TRAINER", true, null, null);
+        var R = F.tr;
+        if (R != null) { txt(dc, S / 2, S * 0.82, Graphics.FONT_XTINY, fit(dc, clock(R.t) + ", " + R.tgt.toString() + " W" + (R.st != RS_RUN ? ", paused" : ""), Graphics.FONT_XTINY, (S * 0.6).toNumber()), P.lbl); }
+    }
+    // the summary: time, avg / max power, kJ, cadence, avg / max heart rate
+    function drawTSum(dc as Dc, F as Flow, S as Number, P as Palette) as Void {
+        var s = F.tsum, c = S / 2;
+        if (s == null) { return; }
+        txt(dc, c, S * 0.15, Graphics.FONT_SMALL, "SAVED", P.acc);
+        txt(dc, c, S * 0.3, Graphics.FONT_NUMBER_MEDIUM, clock(numOf(s["t"])), P.fg);
+        txt(dc, c, S * 0.395, Graphics.FONT_XTINY, "INDOOR RIDE", P.lbl);
+        cols(dc, S, P, [numOf(s["avgPw"]).toString(), numOf(s["maxPw"]).toString(), numOf(s["kj"]).toString()] as Array<String>, ["AVG W", "MAX W", "KJ"] as Array<String>, 0.52, 0.59);
+        cols(dc, S, P, [orDash(numOf(s["cad"])), orDash(numOf(s["hr"])), orDash(numOf(s["maxHr"]))] as Array<String>, ["RPM", "AVG HR", "MAX HR"] as Array<String>, 0.7, 0.77);
+        txt(dc, c, S * 0.88, Graphics.FONT_XTINY, "DONE", P.lbl);
     }
     function distTxt(m as Float) as String { return m >= 1000.0 ? (m / 1000.0).format("%.1f") + " km" : rnd(m).toString() + " m"; }
     // js/watchsim.js segScreen: the segment popup: warning before, live delta against the PR, the result for 5 s

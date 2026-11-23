@@ -25,7 +25,23 @@ export async function linkStrava(req, uid) {
 }
 
 /* ---- POST /api/watch/activity: a run / ride / more recording, stored like a manual "+ Add activity" entry ---- */
-const ACT = { id: 1, type: 1, start: 1, duration: 1, moving: 1, dist: 1, climb: 1, hr: 1, maxHr: 1, kcal: 1, power: 0, laps: 0 }; // 1 = required
+const ACT = { id: 1, type: 1, start: 1, duration: 1, moving: 1, dist: 1, climb: 1, hr: 1, maxHr: 1, kcal: 1, power: 0, laps: 0, maxPower: 0, np: 0, kj: 0, cad: 0, s: 0 }; // 1 = required
+/** 23.11. (the indoor trainer): s = { dt (s per value), pw, cad, hr, tgt (W) }: one value per dt seconds, at most 400 each, all the same length */
+const SER = { pw: 3000, cad: 250, hr: 250, tgt: 2000 }, SER_MAX = 400;
+function series(s) {
+  if (s == null) return null;
+  if (typeof s !== 'object' || Array.isArray(s)) throw new Error('s: { dt, pw, cad, hr, tgt }.');
+  for (const k of Object.keys(s)) if (k !== 'dt' && !Object.hasOwn(SER, k)) throw new Error(`s: unknown key "${clean(k, 20)}".`);
+  if (!Number.isInteger(s.dt) || s.dt < 1 || s.dt > 600) throw new Error('s.dt: 1 to 600 s.');
+  const n = Array.isArray(s.pw) ? s.pw.length : -1; if (n < 1 || n > SER_MAX) throw new Error(`s.pw: 1 to ${SER_MAX} values.`);
+  const out = { dt: s.dt };
+  for (const [k, hi] of Object.entries(SER)) {
+    const a = s[k] ?? (k === 'pw' ? null : Array(n).fill(0)); if (!Array.isArray(a) || a.length !== n) throw new Error(`s.${k}: ${n} values like s.pw.`);
+    if (a.some(v => typeof v !== 'number' || !Number.isFinite(v) || v < 0 || v > hi)) throw new Error(`s.${k}: 0 to ${hi}.`);
+    out[k] = a.map(Math.round);
+  }
+  return out;
+}
 /** strict check of the watch's JSON: { error } or the normalised values */
 export async function validateAct(b) {
   if (!b || typeof b !== 'object' || Array.isArray(b)) return { error: 'Body must be a JSON object.' };
@@ -39,7 +55,8 @@ export async function validateAct(b) {
     if (start < 1e11) start *= 1000; start = Math.round(start); // Unix seconds from the watch (32-bit numbers); ms are taken too
     const now = Date.now(); if (start > now + 10 * 60e3 || start < now - 60 * 864e5) return { error: 'start is not within the last 60 days.' };
     const v = { id, type: b.type, start, duration: num('duration', 1, 86400), moving: num('moving', 0, 86400), dist: num('dist', 0, 1e6), climb: num('climb', 0, 20000),
-      hr: num('hr', 0, 250), maxHr: num('maxHr', 0, 250), kcal: num('kcal', 0, 20000), power: num('power', 0, 3000), laps: num('laps', 0, 1000) };
+      hr: num('hr', 0, 250), maxHr: num('maxHr', 0, 250), kcal: num('kcal', 0, 20000), power: num('power', 0, 3000), laps: num('laps', 0, 1000),
+      maxPower: num('maxPower', 0, 3000), np: num('np', 0, 3000), kj: num('kj', 0, 20000), cad: num('cad', 0, 250), s: series(b.s) };
     if (v.moving > v.duration + 60) return { error: 'moving: at most the duration.' };
     if (v.hr && v.hr < 25) v.hr = 0; if (v.maxHr && v.maxHr < 25) v.maxHr = 0; // a sensor that is not worn
     return v;
@@ -48,10 +65,16 @@ export async function validateAct(b) {
 /** the ride record, the same shape as js/addact.js saves a manual entry (js/actimport.js fromEntry), source 'watch' */
 export async function toActivity(v) {
   const { fromEntry } = await AI();
-  const r = fromEntry({ sportType: v.type, start: v.start, duration: v.moving || v.duration, elapsed: v.duration, distance: v.dist, gain: v.climb, avgHr: v.hr, maxHr: Math.max(v.maxHr, v.hr), kcal: v.kcal, avgPower: v.power }, 'watch', 'watch-' + v.id);
+  const r = fromEntry({ sportType: v.type, start: v.start, duration: v.moving || v.duration, elapsed: v.duration, distance: v.dist, gain: v.climb, avgHr: v.hr, maxHr: Math.max(v.maxHr, v.hr), kcal: v.kcal, avgPower: v.power,
+    maxPower: Math.max(v.maxPower, v.power), np: v.np, kj: v.kj, samples: samplesOf(v.s) }, 'watch', 'watch-' + v.id);
+  if (v.cad) r.avgCad = v.cad;
+  if (v.s) r.ergTarget = v.s.tgt; // the trainer's ERG target per sample (23.11.)
+  if (v.type === 'VirtualRide') r.outdoor = false; // the indoor trainer: never a track
   if (v.laps) r.nLaps = v.laps; // a count (rides keep their laps as a list in laps) if (v.dist > 0 && v.type !== 'VirtualRide' && v.type !== 'VirtualRun') r.outdoor = true;
   return r;
 }
+/** the series as ride samples [sec, metres, watts, km/h, cadence, bpm] (js/actfile.js), one per dt seconds, at the middle of its span */
+const samplesOf = s => s ? s.pw.map((pw, i) => [Math.round((i + .5) * s.dt), 0, pw, 0, s.cad[i], s.hr[i]]) : null;
 /** the account's rides around a start (± 1 day), full records; the leaderboard's summary cache keeps this cheap */
 async function ridesNear(uid, start) {
   const rd = join(userDir(uid), 'rides'), out = [];
@@ -72,7 +95,7 @@ export async function storeActivity(uid, v) {
     const rec = await toActivity(v), near = await ridesNear(uid, v.start), { sameAct, mergeAct } = await AI();
     const merged = near.find(x => x.r.watch === v.id); if (merged) return [200, { ok: true, id: merged.r.id, dup: true, merged: true }];
     const twin = near.find(x => x.r.source === 'strava' && sameAct(rec, x.r));
-    if (twin) { const m = { ...mergeAct(twin.r, rec), watch: v.id }; await writeJSON(twin.f, m); return [200, { ok: true, id: m.id, merged: true }]; }
+    if (twin) { const m = { ...mergeAct(twin.r, rec), watch: v.id }; if (!twin.r.samples?.length && rec.samples?.length) { m.samples = rec.samples; if (rec.avgCad && !m.avgCad) m.avgCad = rec.avgCad; } await writeJSON(twin.f, m); return [200, { ok: true, id: m.id, merged: true }]; }
     if (await count(dir) >= MAX_FILES) return [507, { error: 'Storage for this account is full.' }];
     await writeJSON(f, rec); return [200, { ok: true, id: rec.id }];
   });

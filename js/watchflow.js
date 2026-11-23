@@ -2,21 +2,27 @@
 // other sports, workouts). The browser preview (watch.html, js/watchsim.js) draws it, and garmin/source/Flow.mc is the same
 // machine in Monkey C, one function per function. Time is in seconds (Monkey C numbers are 32 bit, Unix ms would not fit).
 // Outputs the drawing layer drains: F.cues = vibrations ('set', 'pr', 'rest', 'done', 'start', 'stop', 'lap', 'seg', 'error'),
-// F.out = requests ('send', 'pair', 'setup', 'exit', 'saveAct', 'tpl').
+// F.out = requests ('send', 'pair', 'setup', 'exit', 'saveAct', 'tpl', 'keep' = store the setup: a finished session changed last time's sets).
 // 23.11. (after the first fenix 8 run): START steps kg -> reps -> logs, DONE logs, START held switches; BACK set / rest -> list ->
 // END (Keep / Finish / Discard); one Strength list (Exercises + workouts); paged summary with heart rate; "Save as workout?".
-// Screens: HOME (start menu) -> START (strength ready) -> SMODE (Exercises or a saved workout) -> PICK <-> SET <-> REST -> SUM -> SAVEQ;
+// Screens: HOME (start menu) -> SMODE (Exercises or a saved workout; 24.11.: no START ready screen any more) -> PICK <-> SET <-> REST -> SUM -> SAVEQ -> HOME;
 // 23.11. (Freddy on his fenix 8): BACK goes back (SET / REST -> PICK -> END with sets logged), touch everywhere, the summary, save as workout.
 // HOME -> MORE (other sports) -> READY; HOME -> READY (run / ride) -> REC (data pages, route page) <-> PAUSE -> RSUM.
 // 19.11.: READY (run / ride) -> RPICK (UP / DOWN or a tap on the route line): None or a route sent from the phone
 // (GET /api/watch/routes; out 'routes' asks for the list, out 'route' for one route, setRoutes / setRoute answer).
+// 23.11. (second priority after strength): HOME -> TSCAN (find / connect the indoor trainer, js/watchtrainer.js) -> TREC (ERG: target, + / -,
+// power, cadence, heart rate; a stats page) <-> TEND (Resume, Stats, Finish & save, Discard) -> TSUM. Out 'trainer' keeps the trainer's
+// name and the last target, 'saveAct' with sum.sp 'trainer' saves the ride (F.tbody = the upload).
 import { compact, defaults, FIELDS } from './watchfields.js';
+import { newLink, scan as tScan, connect as tConnect, stop as tStop, setTarget, bleEv, linkTick, live, shown, newRide, nextTarget, nextStep, newBlock, rideSec, rideSum, rideBody, W_START, W_MIN, W_MAX, W_PAUSE } from './watchtrainer.js';
 export const SCR = { HOME: 'home', START: 'start', SMODE: 'smode', PICK: 'pick', SET: 'set', REST: 'rest', MENU: 'menu', SUM: 'sum', PAIR: 'pair', GLANCE: 'glance',
-  MORE: 'more', READY: 'ready', REC: 'rec', PAUSE: 'pause', RSUM: 'rsum', RPICK: 'rpick', END: 'end', SAVEQ: 'saveq' };
+  MORE: 'more', READY: 'ready', REC: 'rec', PAUSE: 'pause', RSUM: 'rsum', RPICK: 'rpick', END: 'end', SAVEQ: 'saveq', TSCAN: 'tscan', TREC: 'trec', TEND: 'tend', TSUM: 'tsum' };
 export const KG_STEP = 2.5, KG_HOLD = 10, KG_MAX = 500, REPS_HOLD = 5, REPS_MAX = 100, SEC_STEP = 5, SEC_HOLD = 15, SEC_MAX = 600, REST_STEP = 15, PR_SECS = 3;
 export const LAP_M = { run: 1000, ride: 5000, other: 1000 }, LAP_SECS = 5, SEG_SECS = 5, PAUSE_MS = .7; // auto lap distance, banner and result seconds, auto pause below 0.7 m/s
 export const MENU = { EX: 'Change exercise', SKIP: 'Skip exercise', UNDO: 'Undo last set', FIN: 'Finish', PAUSE: 'Pause', SYNC: 'Sync now', PAIR: 'Pair with phone' };
-export const HOME = { run: 'Run', ride: 'Ride', kraft: 'Strength', more: 'More' };
+export const HOME = { run: 'Run', ride: 'Ride', trainer: 'Indoor trainer', kraft: 'Strength', more: 'More' };
+/** 23.11.: the trainer ride's menu (BACK): it does not pause (a stray BACK must not drop the watts), START pauses */
+export const TEND_ROWS = ['Resume', 'Stats page', 'Finish & save', 'Discard'];
 /** 23.11.: the strength list: the exercises (free), then the saved workouts (the phone's and those saved on the watch) */
 export const FREE = 'Exercises';
 /** BACK from the exercise list once sets are logged: nothing is lost without a second step */
@@ -38,7 +44,8 @@ export function newFlow(setup, o = {}) {
   const F = { setup: { ex: [], rest: 90 }, list: [], cfg: o.cfg && o.cfg.run ? o.cfg : compact(defaults()), last: HOME[o.last] ? o.last : 'run', paired: o.paired !== false, queue: o.queue || [], newId: o.id || rid,
     scr: o.scr || SCR.HOME, back: SCR.HOME, sel: 0, menu: [], cur: 0, focus: 0, kg: 0, reps: 0, sets: [], start: 0, restEnd: 0, restLen: 0, plan: null, endConf: false, saveq: null,
     flash: null, sum: null, pz: null, pauseT: 0, hr: 0, hrN: 0, hrSum: 0, hrMax: 0, pair: { d: [0, 0, 0, 0, 0, 0], i: 0, st: 'enter' }, cues: [], out: [],
-    sp: 'run', type: '', rec: null, seg: null, route: null, rsum: null, routes: null, routeId: null, nav: null };
+    sp: 'run', type: '', rec: null, seg: null, route: null, rsum: null, routes: null, routeId: null, nav: null,
+    link: newLink(o.trainer || ''), tr: null, tsum: null, tbody: null, tTgt: o.tgt >= W_MIN && o.tgt <= W_MAX ? o.tgt : W_START, tConf: false };
   setSetup(F, setup);
   if (!F.paired) F.scr = SCR.PAIR;
   return F;
@@ -94,6 +101,33 @@ export function prefillOf(F, e) {
   return [kg, reps];
 }
 export function prefill(F) { [F.kg, F.reps] = prefillOf(F, curEx(F)); }
+/** 24.11. (Freddy on his fenix 8: "I want to see what I did last time"): last session's set for the set being entered, [kg, reps]
+ *  (timed: [0, sec]); past last time's count its final set; null = first time. The set screen shows it small above the big numbers. */
+export function lastSet(F, e = curEx(F)) { const s = Array.isArray(e.s) ? e.s : []; return s.length ? s[Math.min(setNo(F), s.length) - 1] : null; }
+const kgS = kg => String(Math.round(kg * 10) / 10);
+/** last session's sets, short, one string per set (the exercise list's sub line joins them with " · "): a weight is written only when it changes
+ *  (80×8 · 8 · 75×10), bodyweight only reps (+kg when added), timed the clock */
+export function lastParts(t, s) {
+  return (Array.isArray(s) ? s : []).map(([kg, r], i) => t === 'time' ? clock(r) : t === 'bw' ? (kg ? `+${kgS(kg)}×${r}` : String(r)) : i && s[i - 1][0] === kg ? String(r) : `${kgS(kg)}×${r}`);
+}
+/** the sub line from the first k parts: "Last 80×8 · 8 · 6", "Last 10 · 9 reps"; fewer than all end with " …" */
+export function lastTxt(t, s, k = Infinity) {
+  const p = lastParts(t, s); if (!p.length) return ''; const n = Math.max(1, Math.min(k, p.length)), bw = t === 'bw' && s.slice(0, n).every(x => !x[0]);
+  return 'Last ' + p.slice(0, n).join(' · ') + (n < p.length ? ' …' : bw ? ' reps' : '');
+}
+/** a finished session in the cached setup at once (the watch may have no phone for days, and the server's setup may come back before the
+ *  session is uploaded): each exercise done gets these sets as its last (s, at most 6) and the best (b) raised, recent and last updated */
+export function keepLast(setup, sess) {
+  if (!setup || !Array.isArray(setup.ex) || !sess || !Array.isArray(sess.sets) || !sess.sets.length) return;
+  const by = new Map(); for (const x of sess.sets) { if (!by.has(x.ex)) by.set(x.ex, []); by.get(x.ex).push(x); }
+  for (const [id, l] of by) {
+    const e = setup.ex.find(y => y.id === id); if (!e) continue; const tm = e.t === 'time';
+    e.s = l.slice(0, 6).map(x => tm ? [0, x.reps] : [x.kg, x.reps]);
+    const best = Math.max(...l.map(x => e.t === 'bw' || tm ? x.reps : e1rm(x.kg, x.reps))); if (best > (e.b || 0)) e.b = Math.round(best * 10) / 10;
+  }
+  const ids = [...by.keys()]; setup.recent = [...ids, ...(Array.isArray(setup.recent) ? setup.recent : []).filter(id => !by.has(id))].slice(0, 8);
+  if (!setup.last || !(setup.last.at > sess.start)) setup.last = { at: sess.start, sets: sess.sets.length, n: '' };
+}
 /** UP / DOWN on the focused value: d = +1 / -1, big = held */
 export function stepValue(F, d, big) {
   if (F.focus === 0) F.kg = clamp(Math.round((F.kg + d * (big ? KG_HOLD : KG_STEP)) * 100) / 100, 0, KG_MAX);
@@ -171,13 +205,23 @@ export function finish(F, now) {
   if (!F.sets.length) { reset(F); return; }
   const id = F.newId(), dur = Math.max(1, Math.round(now - F.start - F.pauseT)), sess = { id, start: Math.round(F.start), duration: dur, sets: F.sets.map(({ ex, kg, reps, t }) => ({ ex, kg, reps, t })) };
   const hr = F.hrN ? { avg: Math.round(F.hrSum / F.hrN), max: F.hrMax } : null; if (hr) sess.hr = hr;
-  F.queue.push(sess);
+  F.queue.push(sess); keepLast(F.setup, sess); F.list = order(F.setup); // 24.11.: the next session shows these sets as last time's, phone or not
   F.sum = { id, dur, sets: F.sets.length, vol: volume(F.sets), exs: exCount(F.sets), prs: F.sets.filter(s => s.pr).length, st: F.paired ? 'sending' : 'queued', hr, ex: sumEx(F) };
   F.saveq = saveOffer(F);
   F.sets = []; F.start = 0; F.pauseT = 0; F.restEnd = 0; F.plan = null; F.hrN = F.hrSum = F.hrMax = 0;
-  F.sel = 0; F.scr = SCR.SUM; F.cues.push('done'); F.out.push({ k: 'send' });
+  F.sel = 0; F.scr = SCR.SUM; F.cues.push('done'); F.out.push({ k: 'keep' }, { k: 'send' });
 }
-function reset(F) { F.sets = []; F.start = 0; F.pauseT = 0; F.pz = null; F.restEnd = 0; F.plan = null; F.flash = null; F.sum = null; F.saveq = null; F.endConf = false; F.sel = 0; F.scr = SCR.START; }
+/** 24.11.: a finished or discarded session (and BACK out of strength) ends on the start menu, Strength on top (there is no strength ready screen any more) */
+function reset(F) { F.sets = []; F.start = 0; F.pauseT = 0; F.pz = null; F.restEnd = 0; F.plan = null; F.flash = null; F.sum = null; F.saveq = null; F.endConf = false; F.sel = 0; F.scr = SCR.HOME; }
+/** 24.11. (Freddy: "that can come directly when you tap Strength"): Strength on the start menu opens the choice (Exercises + saved workouts)
+ *  or, without saved workouts, the exercise list; the session clock starts here. No setup yet: asked for, the list says it is loading. */
+function strength(F, now) {
+  F.start = now; F.sets = []; F.sum = null; F.plan = null; F.last = 'kraft'; F.sel = 0;
+  if (!F.setup.ex.length) F.out.push({ k: 'setup' });
+  if (workouts(F).length) F.scr = SCR.SMODE; else toPick(F, false);
+}
+/** the exercise list has no exercises because the setup has not come yet */
+export const loading = F => !F.setup.ex.length;
 /** 23.11.: saves the session as a workout: on the watch at once (the strength list), for the account through the queue (POST /api/watch/workout) */
 function saveTpl(F, asNew) {
   const q = F.saveq, w = asNew || !q.w ? { id: 'w' + F.newId(), n: q.n, it: q.it } : { id: q.w.id, n: q.w.n, it: q.it };
@@ -196,7 +240,9 @@ export function paired(F, ok, setup) {
   F.paired = true; F.pair = { d: [0, 0, 0, 0, 0, 0], i: 0, st: 'enter' }; if (setup) setSetup(F, setup);
   F.sel = 0; F.scr = SCR.HOME; F.cues.push('done'); F.out.push({ k: 'setup' }, { k: 'send' });
 }
-export function setSetup(F, setup) { if (setup && Array.isArray(setup.ex)) { const id = curEx(F).id; F.setup = setup; F.list = order(setup); const i = setup.ex.findIndex(e => e.id === id); F.cur = i < 0 ? 0 : i; } }
+/** a setup from the server (or the cache); sessions still in the queue (not on the server yet) go over it, so last time stays the newest */
+export function setSetup(F, setup) { if (setup && Array.isArray(setup.ex)) { const id = curEx(F).id; for (const q of F.queue) if (!q.tpl) keepLast(setup, q);
+  F.setup = setup; F.list = order(setup); const i = setup.ex.findIndex(e => e.id === id); F.cur = i < 0 ? 0 : i; } }
 /** a new config from the phone (GET /api/watch/config); a running recording keeps its pages */
 export function setConfig(F, cfg) { if (cfg && cfg.run && cfg.ride && cfg.other) F.cfg = cfg; }
 
@@ -310,6 +356,53 @@ function onPause(F, ev, now, arg) {
   else if (ev === 'back') P.hint = now + HINT_S;
 }
 
+/* ---- 23.11.: the indoor trainer (ERG). The link (js/watchtrainer.js) finds, connects and controls the trainer; the ride counts one
+ *      second at a time on the tick (not while paused) and keeps the series for the upload. ---- */
+function tOpen(F, now) { F.sel = 0; F.scr = SCR.TSCAN; if (F.link.st === 'off') tScan(F.link, now); }
+function tBegin(F, now) { F.tr = newRide(now, F.tTgt); F.tsum = null; F.tbody = null; F.tConf = false; setTarget(F.link, F.tr.tgt, now); F.last = 'trainer'; F.scr = SCR.TREC; F.cues.push('start'); }
+/** a new target: shown at once, sent when the line is free (latest wins); while paused it waits for the resume */
+function tTarget(F, w, now) { const R = F.tr; if (w === R.tgt) return; R.tgt = w; F.tTgt = w; newBlock(R); if (R.st === 'run') setTarget(F.link, w, now); }
+/** pause: the clock stops and the trainer goes down to W_PAUSE (easy to spin, no ERG spiral when the legs start again); resume: the target again */
+function tPause(F, now) { F.tr.st = 'pause'; setTarget(F.link, W_PAUSE, now); F.cues.push('stop'); }
+function tResume(F, now) { F.tr.st = 'run'; setTarget(F.link, F.tr.tgt, now); F.cues.push('start'); }
+function tFinish(F, now) {
+  const R = F.tr; if (!R.t) { tDiscard(F); return; }
+  const sum = rideSum(R); F.tbody = rideBody(R, sum, F.newId(), now); F.tsum = { ...sum, name: F.link.name };
+  F.out.push({ k: 'saveAct', sum: { sp: 'trainer', ...sum } }, { k: 'trainer' }); tStop(F.link); F.tr = null; F.sel = 0; F.scr = SCR.TSUM; F.cues.push('done');
+}
+function tDiscard(F) { tStop(F.link); F.tr = null; F.tConf = false; F.sel = 0; F.scr = SCR.HOME; }
+/** the ride's seconds up to now (at most 5 at once, a longer gap is not made up) */
+function tSecs(F, now) {
+  const R = F.tr; if (!R) return; if (now - R.ts > 5) R.ts = Math.floor(now) - 5;
+  while (R.ts + 1 <= now) { R.ts++; if (R.st === 'run') { const d = live(F.link, now); rideSec(R, d.pw, d.cad, F.hr); } }
+}
+/** TSCAN: the list while searching (UP / DOWN, drag, START or a tap connects), else the state with START to ride */
+function onTScan(F, ev, now, arg) {
+  const L = F.link, v = shown(L), n = L.list.length;
+  if (v === 'scan' || v === 'off') {
+    if (ev === 'scroll') { F.sel = clamp(F.sel + Math.round(+arg || 0), 0, Math.max(0, n - 1)); return; }
+    if (ev === 'back') { tStop(L); F.sel = 0; F.scr = SCR.HOME; return; }
+    if (!n) return;
+    if (ev === 'up') F.sel = (F.sel + n - 1) % n; else if (ev === 'down') F.sel = (F.sel + 1) % n;
+    else if (ev === 'start' || ev === 'tap' || ev === 'item') tConnect(L, L.list[clamp(ev === 'item' ? arg | 0 : F.sel, 0, n - 1)].name, now);
+    return;
+  }
+  if (ev === 'start' || ev === 'tap') { if (v === 'ready' || v === 'refused') tBegin(F, now); } // refused: ride anyway, the power is recorded
+  else if (ev === 'back') { tStop(L); L.want = ''; tScan(L, now); F.sel = 0; } // cancel: back to the list, no automatic connect this time
+}
+/** TREC: UP / DOWN (and the - / + zones, item 0 / 1) = a step, held = 25 W; a tap on the target (item 2) = step size 5 / 10 / 25;
+ *  START = pause / resume; BACK (BACK held, swipe left / right) = the menu; swipe up / down = the stats page */
+function onTRec(F, ev, now, arg) {
+  const R = F.tr; if (!R) { F.scr = SCR.HOME; return; }
+  const plus = ev === 'up' || ev === 'upHold' || (ev === 'item' && arg === 1), minus = ev === 'down' || ev === 'downHold' || (ev === 'item' && arg === 0);
+  if (plus || minus) tTarget(F, nextTarget(R, plus ? 1 : -1, ev === 'upHold' || ev === 'downHold'), now);
+  else if (ev === 'item') R.step = nextStep(R.step);
+  else if (ev === 'start') { if (R.st === 'run') tPause(F, now); else tResume(F, now); }
+  else if (ev === 'swipeUp' || ev === 'swipeDown') R.pg = 1 - R.pg;
+  else if (ev === 'tap') R.pg = 0; // the stats page: a tap goes back to the ERG page
+  else if (ev === 'back' || ev === 'menu') { F.tConf = false; F.sel = 0; F.scr = SCR.TEND; }
+}
+
 /** every input: ev = up, down, upHold, downHold, start, startHold (START held: weight <-> reps), done (the set screen's DONE pill), back, menu,
  *  swipeUp, swipeDown, swipeLeft, swipeRight, scroll (a finger dragged over a list or the summary, arg = rows, + = on down the list), tap, item (arg = index),
  *  focus (arg = 0 kg / 1 reps / digit), hr (arg = bpm), tick, sample (arg = one second of movement), seg (arg = segment state),
@@ -318,12 +411,14 @@ export function handle(F, ev, now, arg) {
   if (ev === 'hr') { F.hr = arg || 0; if (F.start && arg > 0) { F.hrN++; F.hrSum += arg; F.hrMax = Math.max(F.hrMax, arg); } return; }
   if (ev === 'sample') { sample(F, now, arg || {}); return; }
   if (ev === 'seg') { segment(F, now, arg); return; }
+  if (ev === 'ble') { const w = F.link.want; bleEv(F.link, now, arg); if (F.link.want && F.link.want !== w) F.out.push({ k: 'trainer' }); return; } // the trainer's radio (js/watchtrainer.js)
   if (ev === 'holdStart' || ev === 'holdEnd') { // BACK pressed / released (and the touch pill): only the pause screen listens
     const P = F.scr === SCR.PAUSE && F.pz; if (!P || P.conf) return;
     if (ev === 'holdStart') P.hold = now; else if (P.hold) { P.hold = 0; P.hint = now + HINT_S; } // released early: nothing, the hint
     return;
   }
   if (ev === 'tick') {
+    linkTick(F.link, now); tSecs(F, now);
     if (F.scr === SCR.PAUSE && F.pz && F.pz.hold && now - F.pz.hold >= HOLD_S) { endPaused(F, now); return; }
     if (F.flash && now >= F.flash.until) F.flash = null;
     if (F.seg && F.seg.k === 'end' && now >= F.seg.until) F.seg = null;
@@ -333,22 +428,19 @@ export function handle(F, ev, now, arg) {
   if (F.flash) { F.flash = null; if (ev !== 'menu') return; } // the first touch after a record only clears the flash
   if (ev === 'swipeLeft') ev = 'menu';
   if (ev === 'swipeRight') ev = 'back';
-  const s = F.scr, list = [SCR.PICK, SCR.MENU, SCR.HOME, SCR.MORE, SCR.SMODE, SCR.RPICK, SCR.END, SCR.SAVEQ].includes(s), paged = list || s === SCR.REC || s === SCR.PAUSE || s === SCR.SUM;
+  const s = F.scr, list = [SCR.PICK, SCR.MENU, SCR.HOME, SCR.MORE, SCR.SMODE, SCR.RPICK, SCR.END, SCR.SAVEQ, SCR.TEND].includes(s), paged = list || s === SCR.REC || s === SCR.PAUSE || s === SCR.SUM || s === SCR.TSCAN;
+  if (s === SCR.TREC) { onTRec(F, ev, now, arg); return; } // before the swipe mapping: swipe up / down is the stats page there, UP / DOWN the watts
   if (ev === 'swipeUp') ev = paged ? 'down' : 'up';     // a list (the data pages, the summary) scrolls with the finger, a number counts up
   if (ev === 'swipeDown') ev = paged ? 'up' : 'down';
+  if (s === SCR.TSCAN) { onTScan(F, ev, now, arg); return; }
+  if (s === SCR.TSUM) { if (ev === 'start' || ev === 'back' || ev === 'tap') { F.sel = 0; F.scr = SCR.HOME; } return; }
   if (ev === 'scroll') { // the finger dragged: the list follows it row by row (no wrapping)
     const d = Math.round(+arg || 0); if (list) F.sel = clamp(F.sel + d, 0, Math.max(0, listItems(F).length - 1)); else if (s === SCR.SUM && F.sum) F.sel = clamp(F.sel + d, 0, F.sum.ex.length);
     return;
   }
-  if (ev === 'menu') { if (s === SCR.HOME || s === SCR.START || s === SCR.PICK || s === SCR.SET || s === SCR.REST) openMenu(F); return; }
+  if (ev === 'menu') { if (s === SCR.HOME || s === SCR.PICK || s === SCR.SET || s === SCR.REST) openMenu(F); return; }
   if (s === SCR.PAUSE) { if (F.pz) onPause(F, ev, now, arg); else F.scr = F.rec ? SCR.REC : SCR.HOME; return; }
   if (s === SCR.GLANCE) { if (ev === 'start' || ev === 'tap') { F.sel = 0; F.scr = F.paired ? SCR.HOME : SCR.PAIR; } return; }
-  if (s === SCR.START) {
-    if (ev === 'start' || ev === 'tap') { if (!F.setup.ex.length) { F.out.push({ k: 'setup' }); return; } F.start = now; F.sets = []; F.sum = null; F.plan = null; F.last = 'kraft';
-      F.sel = 0; if (workouts(F).length) F.scr = SCR.SMODE; else toPick(F, false); }
-    else if (ev === 'back') { F.sel = 0; F.scr = SCR.HOME; }
-    return;
-  }
   if (s === SCR.READY) {
     if (ev === 'start' || ev === 'tap') begin(F, now);
     else if ((ev === 'up' || ev === 'down') && F.sp !== 'other') openRoutes(F);
@@ -376,6 +468,7 @@ export function handle(F, ev, now, arg) {
       else if (s === SCR.PICK) pickBack(F);
       else if (s === SCR.END) { if (F.endConf) { F.endConf = false; F.sel = 2; } else toPick(F, true); } // BACK = keep training
       else if (s === SCR.SAVEQ) reset(F); // = No
+      else if (s === SCR.TEND) { if (F.tConf) { F.tConf = false; F.sel = 3; } else F.scr = SCR.TREC; } // BACK = resume
       else reset(F); // SMODE: the strength screen
     }
     return;
@@ -426,19 +519,27 @@ export function listItems(F) {
   if (s === SCR.RPICK) return ['None', ...(F.routes || []).map(r => r.name)];
   if (s === SCR.END) return F.endConf ? ['Keep', `Discard ${F.sets.length} ${F.sets.length === 1 ? 'set' : 'sets'}`] : END_ROWS;
   if (s === SCR.SAVEQ) return F.saveq ? F.saveq.rows : [];
+  if (s === SCR.TEND) return F.tConf ? ['Keep riding', 'Discard ride'] : TEND_ROWS.map((r, i) => i === 1 && F.tr && F.tr.pg ? 'ERG page' : r);
+  if (s === SCR.TSCAN) return F.link.list.map(x => x.name);
   return [];
 }
 function pickItem(F, i, now) {
   const s = F.scr;
   if (s === SCR.PICK) { const [x, j] = pickRows(F)[i]; if (j >= 0) { F.plan.i = j; F.plan.skip = F.plan.skip.filter(k => k !== j); goPlan(F); } else { if (F.plan) F.plan.on = false; choose(F, x); } }
   else if (s === SCR.MENU) act(F, F.menu[i], now);
-  else if (s === SCR.HOME) { const k = homeItems(F)[i]; F.sel = 0; if (k === 'kraft') F.scr = SCR.START; else if (k === 'more') F.scr = SCR.MORE; else ready(F, k, ''); }
+  else if (s === SCR.HOME) { const k = homeItems(F)[i]; F.sel = 0; if (k === 'kraft') strength(F, now); else if (k === 'more') F.scr = SCR.MORE; else if (k === 'trainer') tOpen(F, now); else ready(F, k, ''); }
   else if (s === SCR.MORE) ready(F, 'other', F.cfg.more[i][0]);
   else if (s === SCR.SMODE) { if (!F.start) F.start = now; if (i === 0) toPick(F, false); else startPlan(F, i - 1, now); }
   else if (s === SCR.RPICK) chooseRoute(F, i);
   else if (s === SCR.END) {
     if (F.endConf) { if (i === 1) reset(F); else { F.endConf = false; F.sel = 2; } } // the second step: Discard for real, or keep
     else if (i === 0) toPick(F, true); else if (i === 1) finish(F, now); else { F.endConf = true; F.sel = 0; }
+  }
+  else if (s === SCR.TEND) {
+    if (F.tConf) { if (i === 1) tDiscard(F); else { F.tConf = false; F.sel = 3; } } // the second step: Discard for real, or keep riding
+    else if (i === 0) { F.scr = SCR.TREC; if (F.tr.st !== 'run') tResume(F, now); }
+    else if (i === 1) { F.tr.pg = 1 - F.tr.pg; F.scr = SCR.TREC; }
+    else if (i === 2) tFinish(F, now); else { F.tConf = true; F.sel = 0; }
   }
   else if (s === SCR.SAVEQ) { const q = F.saveq, k = q.rows.length - 1; if (i < k) saveTpl(F, !q.w || i === 1); reset(F); } // the last row is No
 }

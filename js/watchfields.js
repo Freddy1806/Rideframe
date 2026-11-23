@@ -35,7 +35,7 @@ export const TOP = [['bench', 'Bench press', 'w'], ['incline', 'Incline bench pr
 const sport = (pages, x = {}) => ({ pages: pages.map(fields => ({ fields })), map: true, segWarn: true, autoLap: true, autoPause: false, vibrate: true, ...x });
 /** what the watch uses while nothing is stored */
 export function defaults() {
-  return { v: 1, sports: { run: sport([['pace', 'dist', 'time', 'hr'], ['lapPace', 'lapDist', 'cadence', 'hrZone']]), ride: sport([['power3s', 'speed', 'hr', 'time'], ['dist', 'climb', 'avgPower', 'cadence']], { autoPause: true }),
+  return { v: 1, sports: { run: sport([['pace', 'dist', 'time', 'hr'], ['lapPace', 'lapDist', 'avgPace', 'hrZone']]), ride: sport([['power3s', 'speed', 'hr', 'time'], ['dist', 'climb', 'avgPower', 'cadence']], { autoPause: true }),
     other: { pages: [{ fields: ['hr', 'time', 'clock', 'kcal'] }] } }, more: ['Walk', 'Hike', 'Yoga', 'Workout'], workouts: [] };
 }
 

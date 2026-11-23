@@ -112,6 +112,17 @@ test('session: validated, stored once as a strength record with records, shows i
   const other = await call('GET', '/api/account/kraft', { token: B }); assert.deepEqual(other.j.ids, [], 'nothing lands in another account');
 });
 
+test('setup after a watch session: last time is the newest session, also one from earlier the same day', async () => {
+  const t = await pairWith(A), ex = async id => (await call('GET', '/api/watch/strength/setup', { bearer: t })).j.ex.find(e => e.id === id);
+  assert.deepEqual((await ex('bench')).s, [[85, 8], [80, 8]], 'the watch session above (an hour ago) beats the phone one from 2 days ago, sets in the order done');
+  const r = await call('POST', '/api/watch/strength', { bearer: t, body: { id: 'sameday01', start: nowS() - 600, duration: 300, sets: [{ ex: 'bench', kg: 87.5, reps: 5, t: 30 }, { ex: 'bench', kg: 87.5, reps: 4, t: 200 }] } });
+  assert.equal(r.status, 200);
+  assert.deepEqual((await ex('bench')).s, [[87.5, 5], [87.5, 4]], 'a second session today: the newer one');
+  await call('POST', '/api/watch/strength', { bearer: t, body: { id: 'sameday00', start: nowS() - 5000, duration: 300, sets: [{ ex: 'bench', kg: 50, reps: 20, t: 30 }] } });
+  assert.deepEqual((await ex('bench')).s, [[87.5, 5], [87.5, 4]], 'an older one uploaded late does not take over');
+  const S = (await call('GET', '/api/watch/strength/setup', { bearer: t })).j; assert.equal(S.recent[0], 'bench'); assert.ok(Math.abs(S.last.at - (nowS() - 600)) < 3, 'last: the newest session');
+});
+
 test('summary: week points, change, sessions, streak', async () => {
   const t = await pairWith(A), r = await call('GET', '/api/watch/summary', { bearer: t });
   assert.equal(r.status, 200); assert.equal(typeof r.j.pts, 'number'); assert.ok(r.j.pts >= 30, 'the 45 min watch session counts (45 points per hour)'); assert.equal(r.j.delta, r.j.pts - r.j.prev);
@@ -143,7 +154,7 @@ test('config: phone needs a login, defaults until saved, saved per account with 
   assert.equal((await call('GET', '/api/watch/config')).status, 401); assert.equal((await call('PUT', '/api/watch/config', { body: CFG() })).status, 401);
   assert.equal((await call('GET', '/api/watch/config', { token: 'nope' })).status, 401);
   const d = await call('GET', '/api/watch/config', { token: C }); assert.equal(d.status, 200); assert.equal(d.j.stored, false);
-  assert.deepEqual(d.j.config.sports.run.pages.map(p => p.fields), [['pace', 'dist', 'time', 'hr'], ['lapPace', 'lapDist', 'cadence', 'hrZone']]);
+  assert.deepEqual(d.j.config.sports.run.pages.map(p => p.fields), [['pace', 'dist', 'time', 'hr'], ['lapPace', 'lapDist', 'avgPace', 'hrZone']]);
   assert.deepEqual(d.j.config.sports.ride.pages.map(p => p.fields), [['power3s', 'speed', 'hr', 'time'], ['dist', 'climb', 'avgPower', 'cadence']]);
   assert.deepEqual(d.j.config.sports.other.pages[0].fields, ['hr', 'time', 'clock', 'kcal']); assert.deepEqual(d.j.config.workouts, []);
   const p = await call('PUT', '/api/watch/config', { token: C, body: CFG() }); assert.equal(p.status, 200, JSON.stringify(p.j)); assert.ok(p.j.at > 0);
@@ -177,7 +188,7 @@ test('config: the watch gets the compact form with its token, the strength setup
   const C = await register('Config Watch'), t = await pairWith(C);
   assert.equal((await call('GET', '/api/watch/config', { bearer: 'rfw_' + 'y'.repeat(43) })).status, 401, 'a wrong watch token is not taken for the phone');
   const d = await call('GET', '/api/watch/config', { bearer: t }); assert.equal(d.status, 200);
-  assert.deepEqual(d.j.run, { p: [['pace', 'dist', 'time', 'hr'], ['lapPace', 'lapDist', 'cadence', 'hrZone']], map: 1, seg: 1, lap: 1, pause: 0, vib: 1 }); assert.deepEqual(d.j.w, []); assert.equal(d.j.at, 0);
+  assert.deepEqual(d.j.run, { p: [['pace', 'dist', 'time', 'hr'], ['lapPace', 'lapDist', 'avgPace', 'hrZone']], map: 1, seg: 1, lap: 1, pause: 0, vib: 1 }); assert.deepEqual(d.j.w, []); assert.equal(d.j.at, 0);
   await call('PUT', '/api/account/settings', { token: C, body: { settings: { kraftEx: [{ k: 'my_9', n: 'Thai kick heavy bag combo', t: 'w', g: 'Custom' }] }, at: Date.now() } });
   await call('PUT', '/api/watch/config', { token: C, body: CFG() });
   const c = await call('GET', '/api/watch/config', { bearer: t }); assert.ok(c.size < 4096, `compact config is ${c.size} bytes`);
