@@ -27,6 +27,18 @@ Wichtig: **Chrome oder Edge** verwenden (Safari kann kein Web Bluetooth). Immer 
 | F | Vollbild |
 | Q / E (oder , / .) | Virtuell leichter / schwerer schalten |
 | Gamepad LB / RB | Virtuell schalten, Start = Pause |
+| X / Gamepad D-Pad → | Workout: nächster Schritt (wie die Lap-Taste am Radcomputer) |
+
+## Eigene Workouts (Workout-Builder)
+
+Profil → **My workouts** → **New workout**, oder auf einer Strecke **Customise** bei einem Standard-Workout. Der Builder arbeitet wie die Workout-Editoren bekannter Radcomputer-Plattformen:
+
+- **Schritte** mit Typ (Warm up, Bike, Recover, Rest, Cool down, Other; farbige Karten), **Dauer** (Zeit als `mm:ss` oder `h:mm:ss`, Distanz, Lap-Taste, Kalorien, Puls über/unter, Leistung über/unter) und **Ziel** (keins, Leistungszone, Watt-Bereich, % FTP mit Rampe, Pulszone, Puls-Bereich, Trittfrequenz, Tempo). Dazu ein zweites Anzeige-Ziel (Puls, Trittfrequenz, Tempo) und eine Notiz pro Schritt.
+- **Wiederholungen** (× 1–99, eine Ebene, bis 20 Schritte im Block) mit „letzte Erholung auslassen“. Schritte per Griff (Maus, Touch, Pfeiltasten ↑ ↓) in einen Block hinein- und herausziehen, ganze Blöcke verschieben.
+- Zusammenfassung und Diagramm laufen live mit; Löschen lässt sich per Toast rückgängig machen. Höchstens 200 Schritte nach dem Ausklappen der Wiederholungen.
+- Neues Workout: Warm up bis Lap-Taste, 10:00 Bike, Cool down bis Lap-Taste, alles ohne Ziel.
+
+Beim Fahren: ERG nur bei Leistungszielen (Zone/Bereich: Mitte des Bereichs). Puls-, Trittfrequenz- und Tempoziele werden nur angezeigt (Band, „zu hoch / im Bereich“). Offene Schritte (Lap, Distanz, Kalorien, Puls, Leistung) enden live; **Next step** in der Leiste, Taste X, Gamepad → oder die Handy-Fernbedienung beenden jeden Schritt sofort. Für Gesamtzeit und Diagramm werden offene Schritte geschätzt (`~`): Lap 5 min, Puls 5 min, Leistung 3 min, Distanz bei 30 km/h, Kalorien aus den Watt des Schritts (1 kcal ≈ 1 kJ mechanisch). Puls/Leistung beenden einen Schritt, wenn der Wert 2 s über/unter der Grenze bleibt. Alte Workouts (ohne Versionsfeld) laden unverändert, gespeichert wird im neuen Format (`v: 2`).
 
 ## Schaltung
 

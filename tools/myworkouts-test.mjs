@@ -247,3 +247,164 @@ test('customising the long coach workout keeps every step (Freddy 20.11.: the la
   const cut = { ...v.w, steps: v.w.steps.slice(8) }, v2 = MW.validateWorkout(cut); assert.ifError(v2.error); // the start deleted
   assert.equal(MW.toRide(v2.w).steps.filter(s => /· \d+\/13$/.test(s.label)).length, 39, '3 × 13 efforts are still there');
 });
+
+/* ---------------- v2: the builder's step model (owner 24.11.: like a bike-computer workout builder) ---------------- */
+import { runInit, runTick, runNext, runView, endInfo, tgtInfo, setFtp, KCAL_PER_KJ, HOLD_S } from '../js/workouts.js';
+const S2 = (type, dur, target = { kind: 'none' }, o = {}) => ({ type, dur, target, ...o });
+const T = sec => ({ kind: 'time', sec });
+const V2 = (steps, o = {}) => ({ v: 2, id: 'pw_v2test', name: 'Bike Workout', notes: '', steps, ...o });
+
+test('v2 validation: every duration and target kind is accepted and normalised', () => {
+  const v = MW.validateWorkout(V2([
+    S2('warmup', { kind: 'lap' }), S2('work', T('600'), { kind: 'powerZone', zone: '4' }, { note: ' hold\u0007 it ', target2: { kind: 'cadence', lo: 95, hi: 85 } }),
+    S2('work', { kind: 'distance', m: 5000.4 }, { kind: 'power', lo: 260, hi: 240 }), S2('work', { kind: 'calories', kcal: 99.6 }, { kind: 'ftp', pct: 90.4 }),
+    S2('recover', { kind: 'hr', op: 'lt', bpm: 120 }, { kind: 'hrZone', zone: 2 }), S2('work', { kind: 'power', op: 'gt', w: 300 }, { kind: 'hr', lo: 150, hi: 165 }),
+    S2('other', T(90), { kind: 'speed', lo: 30.04, hi: 33 }), S2('rest', T(60), { kind: 'ftp', pct: 40, pct2: 60 }),
+    { repeat: 3, steps: [S2('work', T(300), { kind: 'ftp', pct: 110 }), S2('recover', T(120), { kind: 'ftp', pct: 50 })], skipLast: true },
+    S2('cooldown', { kind: 'lap' }, { kind: 'none', pct: 45 })], { name: '  My  build ', notes: 'line 1\n\n\n\nline 2 <b>' }));
+  assert.ifError(v.error); const w = v.w;
+  assert.equal(w.v, 2); assert.equal(w.name, 'My build'); assert.equal(w.notes, 'line 1\n\nline 2 b'); assert.equal(w.sport, 'bike');
+  assert.deepEqual(w.steps[1], { type: 'work', dur: { kind: 'time', sec: 600 }, target: { kind: 'powerZone', zone: 4 }, target2: { kind: 'cadence', lo: 85, hi: 95 }, note: 'hold it' }, 'lo / hi in order, note cleaned');
+  assert.deepEqual(w.steps[2].dur, { kind: 'distance', m: 5000 }); assert.deepEqual(w.steps[2].target, { kind: 'power', lo: 240, hi: 260 });
+  assert.deepEqual(w.steps[3].dur, { kind: 'calories', kcal: 100 }); assert.deepEqual(w.steps[3].target, { kind: 'ftp', pct: 90 });
+  assert.deepEqual(w.steps[6].target, { kind: 'speed', lo: 30, hi: 33 });
+  assert.deepEqual(w.steps[7].target, { kind: 'ftp', pct: 40, pct2: 60 }, 'a ramp on a timed step');
+  assert.equal(w.steps[8].skipLast, true); assert.equal(MW.countSteps(w.steps), 9 + 5);
+});
+test('v2 validation: out of range, unknown kinds, nested repeats and too many steps are refused', () => {
+  const bad = [
+    [S2('sprint', T(60))], [S2('work', T(4))], [S2('work', T(21601))], [S2('work', { kind: 'distance', m: 10 })], [S2('work', { kind: 'calories', kcal: 0 })],
+    [S2('work', { kind: 'hr', op: 'eq', bpm: 150 })], [S2('work', { kind: 'hr', op: 'gt', bpm: 250 })], [S2('work', { kind: 'power', op: 'lt', w: 5 })], [S2('work', { kind: 'swim' })],
+    [S2('work', T(60), { kind: 'powerZone', zone: 8 })], [S2('work', T(60), { kind: 'hrZone', zone: 6 })], [S2('work', T(60), { kind: 'ftp', pct: 250 })], [S2('work', T(60), { kind: 'ftp', pct: 90, pct2: 20 })],
+    [S2('work', T(60), { kind: 'power', lo: 10, hi: 200 })], [S2('work', T(60), { kind: 'cadence', lo: 80, hi: 300 })], [S2('work', T(60), { kind: 'zap' })],
+    [S2('work', T(60), { kind: 'none' }, { target2: { kind: 'power', lo: 200, hi: 220 } })],
+    [{ repeat: 0, steps: [S2('work', T(60))] }], [{ repeat: 100, steps: [S2('work', T(60))] }], [{ repeat: 2, steps: [] }],
+    [{ repeat: 2, steps: [{ repeat: 2, steps: [S2('work', T(60))] }] }], [{ repeat: 99, steps: [S2('work', T(60)), S2('recover', T(60)), S2('work', T(60))] }], [],
+  ];
+  for (const st of bad) assert.ok(MW.validateWorkout(V2(st)).error, JSON.stringify(st).slice(0, 90));
+  assert.ok(!MW.validateWorkout(V2([{ repeat: 99, steps: [S2('work', T(60)), S2('recover', T(60))] }])).error, '99 × 2 = 198 steps is fine');
+  assert.ok(MW.validateWorkout(V2([S2('work', T(60)), S2('work', T(60)), S2('work', T(60)), { repeat: 99, steps: [S2('work', T(60)), S2('recover', T(60))] }])).error, '201 with the repeats counted');
+  assert.equal(MW.validateWorkout(V2([S2('work', { kind: 'distance', m: 1000 }, { kind: 'ftp', pct: 80, pct2: 90 })])).w.steps[0].target.pct2, undefined, 'a ramp needs a time: dropped on a distance step');
+  assert.equal(MW.validateWorkout(V2([{ repeat: 2, steps: [S2('work', T(60)), S2('work', T(60))], skipLast: true }])).w.steps[0].skipLast, undefined, 'skip last only for a recovery / rest at the end');
+});
+test('v2: old workouts convert to steps without loss, the ride sees the same workout', () => {
+  const olds = [W(), W({ steps: [RAMP, { min: 3.33, pct: 118, label: 'VO2' }, { min: 20, pct: 100, label: 'Test', free: true }] }), ...WORKOUTS.filter(b => !b.coach).map(b => MW.validateWorkout(MW.fromBuiltin(b)).w)];
+  for (const o of olds) {
+    const n = MW.toV2(o), v = MW.validateWorkout(n); assert.ifError(v.error);
+    const a = MW.toRide(o).steps, b = MW.toRide(v.w).steps;
+    assert.deepEqual(b.map(x => [x.dur, x.pct, x.pct2 ?? null, !!x.free, x.label]), a.map(x => [x.dur, x.pct, x.pct2 ?? null, !!x.free, x.label]), o.name);
+    for (const t of [0, 100, 700, 1500]) assert.deepEqual(workoutAt(MW.toRide(v.w), t, 250).target, workoutAt(MW.toRide(o), t, 250).target);
+  }
+  assert.equal(MW.toV2(W()).steps[0].type, 'warmup'); assert.equal(MW.toV2(W()).steps[2].type, 'recover'); assert.equal(MW.toV2(W()).base, 'vo2_5x3');
+  assert.deepEqual(MW.toV2(W({ steps: [{ min: 20, pct: 100, free: true }] })).steps[0].target, { kind: 'none', pct: 100 }, 'a free step keeps its % as the hint');
+});
+test('v2: a built-in becomes steps with its interval sets as repeat blocks, the ride is the same', () => {
+  for (const bw of WORKOUTS) {
+    const d = MW.fromBuiltin2(bw), v = MW.validateWorkout(d); assert.ifError(v.error, bw.id); setFtp(250);
+    const r = MW.toRide(v.w).steps;
+    assert.deepEqual(r.map(x => [x.dur, Math.round(x.pct), x.pct2 ?? null, !!x.free]), bw.steps.map(x => [x.dur, Math.round(Math.min(MW.LIM.maxPct, x.pct)), x.pct2 ?? null, !!x.free]), bw.id);
+  }
+  const v = MW.fromBuiltin2(WORKOUTS.find(b => b.id === 'vo2_5x3')), rep = v.steps.find(x => x.repeat);
+  assert.equal(rep.repeat, 5); assert.equal(rep.skipLast, true); assert.deepEqual(rep.steps.map(s => [s.type, s.label, s.dur.sec, s.target.pct]), [['work', 'VO2max', 180, 120], ['recover', 'Rest', 180, 50]]);
+  assert.deepEqual(MW.toRide(v).steps.filter(s => /^VO2max/.test(s.label)).map(s => s.label), ['VO2max 1/5', 'VO2max 2/5', 'VO2max 3/5', 'VO2max 4/5', 'VO2max 5/5'], 'the sets are numbered like before');
+  const c = MW.fromBuiltin2(workoutById('c_30_15_3x13')); assert.equal(c.steps.filter(x => x.repeat === 13 && x.skipLast).length, 3, 'three sets of 13 (30 s on, 15 s off, no float after the 13th)'); assert.equal(MW.countSteps(c.steps), workoutById('c_30_15_3x13').steps.length);
+  assert.deepEqual(c.steps.find(x => x.repeat === 13).steps[0].target, { kind: 'power', lo: 340, hi: 340 }, 'steps in watts stay watts');
+});
+test('v2: expansion, estimates and the summary', () => {
+  const st = [S2('warmup', { kind: 'lap' }), { repeat: 3, steps: [S2('work', T(300), { kind: 'ftp', pct: 110 }), S2('recover', T(120), { kind: 'ftp', pct: 50 })], skipLast: true }, S2('cooldown', T(300), { kind: 'ftp', pct: 50 })];
+  const f = MW.flatSteps(st); assert.equal(f.length, 1 + 5 + 1); assert.deepEqual(f.map(x => x.path), ['0', '1.0', '1.1', '1.0', '1.1', '1.0', '2']);
+  assert.deepEqual(f[3].rep, { at: 1, k: 2, n: 3 });
+  const sm = MW.summary2(st, 250); assert.equal(sm.sec, MW.EST.lap + 3 * 300 + 2 * 120 + 300); assert.equal(sm.exact, false); assert.equal(sm.steps, 7);
+  assert.equal(sm.avg, Math.round((3 * 300 * 110 + 2 * 120 * 50 + 300 * 50) / (900 + 240 + 300)), 'the open warm-up has no power target');
+  assert.equal(MW.estSec(S2('work', { kind: 'distance', m: 10000 }, { kind: 'speed', lo: 35, hi: 45 })), Math.round(10000 / (40 / 3.6)), 'distance at the speed target');
+  assert.equal(MW.estSec(S2('work', { kind: 'distance', m: 30000 }, { kind: 'ftp', pct: 70 }), 250), 3600, '30 km/h at 70 % FTP');
+  assert.equal(MW.estSec(S2('work', { kind: 'calories', kcal: 300 }, { kind: 'ftp', pct: 100 }), 250), 1200, '300 kcal ≈ 300 kJ at 250 W = 20 min');
+  assert.equal(MW.estSec(S2('work', { kind: 'hr', op: 'gt', bpm: 160 })), MW.EST.hr); assert.equal(MW.estSec(S2('work', { kind: 'power', op: 'lt', w: 100 })), MW.EST.power);
+  assert.equal(MW.summary2([S2('work', { kind: 'distance', m: 4000 })]).mExact, true);
+  assert.match(MW.chartSVG(st), /wbHatch.*data-p="0"[^>]*url\(#wbHatch\)/s, 'the open step hatched'); assert.equal((MW.chartSVG(st).match(/data-p=/g) || []).length, 7);
+  assert.equal(MW.describe2(st), 'Warm up lap, 3 × (Bike 5:00 110 % FTP / Recover 2:00 50 % FTP), Cool down 5:00 50 % FTP');
+});
+test('v2: time entry mm:ss and h:mm:ss', () => {
+  for (const [t, s] of [['10:00', 600], ['1:30', 90], ['1:02:03', 3723], ['90', 5400], ['45s', 45], ['1h5m', 3900], ['0:05', 5]]) assert.equal(MW.parseDur(t), s, t);
+  for (const t of ['', 'x', '1:75', '1:2:3:4']) assert.ok(Number.isNaN(MW.parseDur(t)), t);
+  assert.equal(MW.fmtDur(3723), '1:02:03'); assert.equal(MW.fmtDur(90), '1:30');
+});
+
+/* ---------------- the ride engine for every duration and target kind (js/workouts.js runTick / runView) ---------------- */
+const ride2 = steps => MW.toRide(MW.validateWorkout(V2(steps)).w);
+/** rides w for `sec` seconds in 1 s ticks with sample(t) -> { d, kj, hr, power }; returns the run and the states */
+const rideFor = (w, sec, sample = () => ({}), run = runInit(), t0 = 0, ftp = 250) => { const out = [];
+  for (let t = t0; t <= t0 + sec; t++) { const s = sample(t); runTick(w, run, t, s); out.push(workoutState(runView(w, run, t), t, ftp)); } return { run, out, last: out.at(-1) }; };
+test('ride: time steps end on the clock, exactly as before', () => {
+  const w = ride2([S2('work', T(60), { kind: 'ftp', pct: 100 }), S2('recover', T(30), { kind: 'ftp', pct: 50 })]);
+  const { run, out } = rideFor(w, 100); assert.equal(out[59].i, 0); assert.equal(out[60].i, 1); assert.equal(out[90].done, true); assert.deepEqual(run.durs, [60, 30]); assert.equal(run.same, true);
+  assert.equal(out[57].countdown, 3, 'a timed step counts down');
+});
+test('ride: a lap-button step stays open until Next (lap), the clock of the steps after it moves with it', () => {
+  const w = ride2([S2('warmup', { kind: 'lap' }, { kind: 'ftp', pct: 55 }), S2('work', T(60), { kind: 'ftp', pct: 100 })]);
+  const run = runInit(); let st;
+  for (let t = 0; t <= 900; t++) { runTick(w, run, t); st = workoutState(runView(w, run, t), t, 250); }
+  assert.equal(st.i, 0, 'still on the lap step after 15 min (its estimate is 5)'); assert.equal(st.open, true); assert.equal(st.countdown, 0); assert.equal(st.target, Math.round(0.55 * 250));
+  assert.deepEqual(endInfo(st.step, run), { kind: 'lap', text: 'Lap', sub: 'press Next', frac: null });
+  assert.ok(runNext(w, run, 900.4)); const a = workoutState(runView(w, run, 901), 901, 250); assert.equal(a.i, 1); assert.equal(a.target, 250); assert.ok(Math.abs(a.left - 59.4) < 0.01);
+  runTick(w, run, 960.4); assert.equal(workoutState(runView(w, run, 960.4), 960.4, 250).done, true, 'then the timed step runs its 60 s');
+  assert.deepEqual(run.durs.map(Math.round), [900, 60]);
+});
+test('ride: a distance step ends by the metres ridden, calories by the work done (kcal ≈ kJ)', () => {
+  const w = ride2([S2('work', { kind: 'distance', m: 2000 }, { kind: 'ftp', pct: 80 }), S2('work', { kind: 'calories', kcal: 50 }, { kind: 'ftp', pct: 100 }), S2('cooldown', T(60))]);
+  const r = rideFor(w, 400, t => ({ d: t * 10, kj: t * 0.25 })); // 10 m/s, 250 W
+  const at = k => r.out.findIndex(s => s.i === k);
+  assert.equal(at(1), 200, 'the 2 km are done after 200 s at 36 km/h'); assert.equal(at(2), 200 + Math.ceil(50 / KCAL_PER_KJ / 0.25), '50 kcal at 250 W: 200 s more');
+  const mid = workoutState(runView(w, rideFor(w, 100, t => ({ d: t * 10 })).run, 100), 100, 250);
+  assert.equal(mid.open, true); assert.deepEqual([endInfo(mid.step, runInit(), { d: 1500 }).text, endInfo(mid.step, runInit(), { d: 1500 }).sub, endInfo(mid.step, runInit(), { d: 1500 }).frac], ['500', 'm to go', 0.75]); assert.deepEqual([endInfo(mid.step, runInit(), { d: 500 }).text, endInfo(mid.step, runInit(), { d: 500 }).sub], ['1.50', 'km to go']);
+});
+test('ride: heart-rate and power durations end once the value stays across the limit', () => {
+  const w = ride2([S2('work', { kind: 'hr', op: 'gt', bpm: 160 }, { kind: 'ftp', pct: 105 }), S2('recover', { kind: 'hr', op: 'lt', bpm: 120 }), S2('work', { kind: 'power', op: 'lt', w: 100 }), S2('cooldown', T(30))]);
+  const hr = t => t < 100 ? 140 : t < 102 ? 165 : t < 103 ? 150 : t < 200 ? 170 : t < 300 ? 130 : 110;
+  const r = rideFor(w, 600, t => ({ hr: hr(t), power: t < 400 ? 200 : 80 }));
+  const first = k => r.out.findIndex(s => s.i === k);
+  assert.equal(first(1), 103 + HOLD_S, 'a 2 s spike over 160 does not count, the next rise held for 2 s does');
+  assert.equal(first(2), 300 + HOLD_S, 'recovery ends when HR stays below 120'); assert.equal(first(3), 400 + HOLD_S, 'power below 100 W'); assert.equal(r.last.done, true);
+  assert.equal(endInfo(w.steps[0], runInit()).text, '>160');
+  assert.equal(rideFor(w, 300, () => ({ hr: 0 })).last.i, 0, 'no heart-rate signal: the step stays open (Next ends it)');
+});
+test('ride: power zone, custom power and % FTP drive ERG (range: the middle, the band shown); the others are free', () => {
+  const w = ride2([S2('work', T(60), { kind: 'powerZone', zone: 4 }), S2('work', T(60), { kind: 'power', lo: 240, hi: 260 }), S2('work', T(60), { kind: 'ftp', pct: 60, pct2: 80 }),
+    S2('work', T(60)), S2('work', T(60), { kind: 'hrZone', zone: 3 }), S2('work', T(60), { kind: 'hr', lo: 140, hi: 150 }), S2('work', T(60), { kind: 'cadence', lo: 85, hi: 95 }, { target2: { kind: 'hr', lo: 130, hi: 160 } }), S2('work', T(60), { kind: 'speed', lo: 30, hi: 35 })]);
+  const at = t => workoutState(w, t, 300);
+  const z = at(10); assert.equal(z.target, Math.round(98 / 100 * 300)); assert.deepEqual([z.lo, z.hi, z.range], [Math.round(0.91 * 300), Math.round(1.05 * 300), true]); assert.ok(!z.step.free);
+  setFtp(300); const p = at(70); assert.equal(p.target, 250, 'custom 240–260 W: ERG at 250 W, whatever the FTP'); assert.deepEqual([p.lo, p.hi], [240, 260]);
+  setFtp(200); assert.equal(workoutState(w, 70, 200).target, 250, 'still 250 W at another FTP');
+  const r = at(150); assert.equal(r.target, Math.round(0.7 * 300), '% FTP ramp halfway'); assert.equal(r.ramp, 'step');
+  for (const t of [190, 250, 310, 370, 430]) assert.ok(at(t).step.free, `step at ${t} s: no ERG`);
+  assert.equal(at(190).step.tgt, undefined, 'no target: nothing to show');
+  assert.deepEqual(tgtInfo(at(250).step.tgt, { hr: 150 }, { hrMax: 200 }), { kind: 'hrZone', name: 'Heart rate', lo: 140, hi: 160, unit: 'bpm', val: 150, state: 'ok', text: 'Heart rate zone 3 · 140–160 bpm' });
+  assert.equal(tgtInfo(at(250).step.tgt, { hr: 150 }).state, null, 'zone without a max HR: no verdict');
+  assert.equal(tgtInfo(at(310).step.tgt, { hr: 155 }).state, 'hi'); assert.equal(tgtInfo(at(370).step.tgt, { cad: 80 }).state, 'lo'); assert.equal(tgtInfo(at(370).step.tgt2, { hr: 140 }).state, 'ok');
+  assert.equal(tgtInfo(at(430).step.tgt, { kmh: 32.44 }).val, 32.4); assert.equal(tgtInfo(at(430).step.tgt, {}).state, null, 'no signal: no verdict');
+});
+test('ride: Next on a timed step ends it early, the view keeps the real times for the saved ride', () => {
+  const w = ride2([S2('work', T(300), { kind: 'ftp', pct: 100 }), S2('recover', T(60), { kind: 'ftp', pct: 50 })]), run = runInit();
+  runTick(w, run, 100); runNext(w, run, 100); const v = runView(w, run, 120);
+  assert.deepEqual(v.steps.map(s => s.dur), [100, 60]); assert.equal(run.same, false); assert.equal(workoutState(v, 120, 250).i, 1);
+  assert.equal(runNext(w, run, 130), true); assert.equal(runNext(w, run, 140), false, 'nothing after the last step');
+});
+test('ride: Next pressed twice within a second moves two steps on, the clock and the steps stay together', () => {
+  const w = ride2([S2('warmup', { kind: 'lap' }, { kind: 'ftp', pct: 50 }), S2('work', T(40), { kind: 'ftp', pct: 100 }), S2('recover', T(20), { kind: 'ftp', pct: 50 }), S2('work', T(40), { kind: 'ftp', pct: 100 })]), run = runInit();
+  runNext(w, run, 2.57); runNext(w, run, 2.98); runNext(w, run, 2.98);
+  assert.equal(run.i, 3); assert.equal(workoutState(runView(w, run, 3.1), 3.1, 250).i, 3, 'the HUD shows the step the run is on');
+});
+test('ride: a repeat block runs expanded, skipping its last recovery', () => {
+  const w = ride2([{ repeat: 3, steps: [S2('work', T(60), { kind: 'ftp', pct: 120 }), S2('recover', { kind: 'lap' }, { kind: 'ftp', pct: 50 })], skipLast: true }]);
+  assert.deepEqual(w.steps.map(s => s.label), ['Bike 1/3', 'Recover', 'Bike 2/3', 'Recover', 'Bike 3/3']);
+  const run = runInit(); let t = 0; const seen = [];
+  for (; t < 1000; t++) { runTick(w, run, t); const s = workoutState(runView(w, run, t), t, 250); if (seen.at(-1) !== s.i) seen.push(s.i); if (s.done) break; if (s.open && t % 100 === 99) runNext(w, run, t); }
+  assert.deepEqual(seen, [0, 1, 2, 3, 4, 5]); assert.equal(workoutState(w, 0, 250).hardCount, 3, 'counted as 3 intervals');
+});
+test('API: a v2 workout with repeats is stored and read back, a bad one refused', async () => {
+  const body = V2([S2('warmup', { kind: 'lap' }), { repeat: 4, steps: [S2('work', T(240), { kind: 'powerZone', zone: 5 }), S2('recover', T(120))] }, S2('cooldown', { kind: 'lap' })], { notes: 'Tuesday' });
+  const p = await call('PUT', '/api/account/workouts/pw_v2api', { token: A, body }); assert.equal(p.status, 200, JSON.stringify(p.j));
+  const g = (await call('GET', '/api/account/workouts/pw_v2api', { token: A })).j.workout; assert.equal(g.v, 2); assert.equal(g.steps[1].repeat, 4); assert.equal(g.notes, 'Tuesday');
+  assert.equal((await call('PUT', '/api/account/workouts/pw_v2bad', { token: A, body: V2([{ repeat: 2, steps: [{ repeat: 2, steps: [S2('work', T(60))] }] }]) })).status, 400);
+  assert.equal((await call('DELETE', '/api/account/workouts/pw_v2api', { token: A })).status, 200);
+});

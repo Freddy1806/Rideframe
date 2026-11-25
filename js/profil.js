@@ -63,7 +63,7 @@ function render() {
   $('#fSet').onclick = dataSheet;
   const fb = $('#fFtp'); if (fb) fb.onclick = async () => { await save({ ftp: P.ftpEst.w }); render(); };
   $('#fExport').onclick = exportAll;
-  import('./myworkouts-ui.js').then(m => m.profileSection($('#mwProf'), { ftp: () => S.ftp, setFtp: async v => { await save({ ftp: v }); render(); } })).catch(() => {}); // personal workouts + FTP (js/myworkouts-ui.js)
+  import('./myworkouts-ui.js').then(m => m.profileSection($('#mwProf'), { ftp: () => S.ftp, hrMax: () => S.hrMax || 0, setFtp: async v => { await save({ ftp: v }); render(); } })).catch(() => {}); // personal workouts + FTP (js/myworkouts-ui.js)
 }
 /** fitness (line) and form (bars up/down) of the last 90 days */
 function pmChart(pm) {

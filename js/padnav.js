@@ -38,9 +38,9 @@ function better(src, a, b, dir) { // a beats b (the focus finder of Android: sam
 const across = (src, d, dir) => horiz(dir) ? Math.max(0, d.top - src.bottom, src.top - d.bottom) : Math.max(0, d.left - src.right, src.left - d.right);
 /** index of the rect in cands that is next from src in dir, or -1. Rects: { left, top, right, bottom }.
  *  Left / right stay near the row (at most 48 px above or below): at the end of a row nothing happens, no jump to the top bar. */
-export function pickInDir(src, cands, dir) {
+export function pickInDir(src, cands, dir, maxAcross = 48) {
   let best = -1;
-  cands.forEach((c, i) => { if (c === src || !isCandidate(src, c, dir) || (horiz(dir) && across(src, c, dir) > 48)) return; if (best < 0 || better(src, c, cands[best], dir)) best = i; });
+  cands.forEach((c, i) => { if (c === src || !isCandidate(src, c, dir) || (horiz(dir) && across(src, c, dir) > maxAcross)) return; if (best < 0 || better(src, c, cands[best], dir)) best = i; });
   return best;
 }
 /** key repeat for a held direction: fires on press, after `delay` ms once, then every `rate` ms */
@@ -171,7 +171,8 @@ function move(dir, wasActive = active) {
   const c = candidates(scope()), rect = e => { const r = e.getBoundingClientRect(); return { left: r.left, top: r.top, right: r.right, bottom: r.bottom }; };
   const OPP = { up: 'down', down: 'up', left: 'right', right: 'left' };
   if (trail && trail.to === el && trail.dir === OPP[dir] && c.includes(trail.from)) { const t = trail.from; trail = { from: el, to: t, dir }; setCur(t); return; } // straight back: where you came from, not the nearest
-  const rs = c.map(rect), me = rect(el), i = pickInDir(me, rs, dir);
+  const rs = c.map(rect), me = rect(el); let i = pickInDir(me, rs, dir);
+  if (i < 0 && horiz(dir) && el.closest('[data-pnwide]')) i = pickInDir(me, rs, dir, Infinity); // a screen of columns (the workout builder): at the end of a row, across to the nearest control of the next column
   if (i >= 0) { trail = { from: el, to: c[i], dir }; setCur(c[i]); }
 }
 function select(wasActive = active) {

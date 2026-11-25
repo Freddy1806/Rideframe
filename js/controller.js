@@ -9,7 +9,7 @@ const CANDIDATES = [
   'a026ee01-0a7d-4ab3-97fa-f1500f9feb8b', 'a026e005-0a7d-4ab3-97fa-f1500f9feb8b',
 ];
 // what each gamepad button does during a ride (standard mapping; same numbers as js/ride.js _pollPad)
-export const PAD_MAP = [['L / R', 'Gears: easier / harder · ERG (workout or free ride): −5 / +5 W'], ['L2 / R2', 'ERG: −1 / +1 W'], ['D-pad ↓ / ↑', 'The same as L / R'],
+export const PAD_MAP = [['L / R', 'Gears: easier / harder · ERG (workout or free ride): −5 / +5 W'], ['L2 / R2', 'ERG: −1 / +1 W'], ['D-pad ↓ / ↑', 'The same as L / R'], ['D-pad →', 'Workout: next step (like the lap key of a bike computer)'],
   ['A', 'Accept challenge'], ['B', 'Switch display'], ['X', 'Photo'], ['Y', 'Switch camera'], ['Select (−)', 'Shifting: on the bike / virtual / auto / ERG'],
   ['Start (+) / Home', 'Pause menu (D-pad to choose, A ok, B back; camera, bars, view, music and voice are in Options)']];
 // the same pad outside the ride, in every menu and window (js/padnav.js)
@@ -77,7 +77,7 @@ export function openControllerTest() {
     <p id="ctPad" class="hint" style="margin-top:8px"></p>
     <details style="margin:6px 0 10px"><summary style="cursor:pointer"><b>Gamepad buttons during a ride</b> (e.g. 8BitDo Micro, switch on the back set to D on a Mac, S if D does not work)</summary>
       <table style="margin-top:8px;border-collapse:collapse">${PAD_MAP.map(([k, v]) => `<tr><td style="padding:2px 14px 2px 0;white-space:nowrap"><b>${k}</b></td><td>${v}</td></tr>`).join('')}</table>
-      <p style="margin-top:8px"><b>Keyboard in a workout</b>: W / S target +5 / −5 W (Shift 1 W); with a trainer connected the arrow keys ↑ / ↓ move it 1 W (Shift 5 W) and never set test watts. Hard intervals and easy parts keep their own offset. L switches the interval display (big / compact / focus).</p>
+      <p style="margin-top:8px"><b>Keyboard in a workout</b>: W / S target +5 / −5 W (Shift 1 W); with a trainer connected the arrow keys ↑ / ↓ move it 1 W (Shift 5 W) and never set test watts. Hard intervals and easy parts keep their own offset. L switches the interval display (big / compact / focus). X ends the step running now (next step).</p>
       <p style="margin-top:8px"><b>Zwift Click + / −</b>: Gear harder / easier (connect it in Settings → Trainer)</p></details>
     <details style="margin:0 0 10px"><summary style="cursor:pointer"><b>Gamepad in the menus</b> (everywhere outside the ride, like a TV remote)</summary>
       <table style="margin-top:8px;border-collapse:collapse">${MENU_MAP.map(([k, v]) => `<tr><td style="padding:2px 14px 2px 0;white-space:nowrap"><b>${k}</b></td><td>${v}</td></tr>`).join('')}</table></details>

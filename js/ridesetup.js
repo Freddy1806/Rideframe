@@ -87,7 +87,7 @@ export function setWorkout(r, w, again = false) {
   if (old) r._wName = old.name + (r.wDone ? '' : ' (ended early)');
   const wasErg = old && r.erg && !r.wDone;
   r.workout = w || null; r.wNow = null; r.wDone = false; r._wi = undefined; r._wT = 0; r._wbh = 0;
-  if (w) { r._wDef = w; r._wId = w.id; r._wT0 = r.elapsed; r.wAdj = 0; r.wAdjE = 0; r._adjAcc = 0; r._adjT = 0; r._stepAdj = []; r._wName = ''; }
+  if (w) { r._wDef = w; r._wId = w.id; r._wT0 = r.elapsed; r._wRun = { i: 0, t0: 0, d0: 0, k0: 0, durs: [], holdT: null, same: true }; /* js/workouts.js runInit */ r.wAdj = 0; r.wAdjE = 0; r._adjAcc = 0; r._adjT = 0; r._stepAdj = []; r._wName = ''; }
   if (sourceOf(r) === 'pm') r.erg = false; // targets shown only
   if (wasErg && !(w && r.erg)) { t.setPower(null); r._ergSpan(false); }
   r.q('#hWork')?.remove(); r.el.classList.toggle('wk', !!w); r.q('.metric.power')?.classList.remove('z-lo', 'z-ok', 'z-hi');
