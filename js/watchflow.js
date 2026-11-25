@@ -87,6 +87,8 @@ const STD_DEF = [
     ['oap_asst_l', 3, 3, 120, 'OA assisted left', 'bw'], ['oap_asst_r', 3, 3, 120, 'OA assisted right', 'bw']]],
   ['std-oapush', 'One-arm push-up', [['push', 2, 10, 60, 'Push-ups', 'bw'], ['oapu_inc_l', 4, 4, 120, 'OA incline left', 'bw'], ['oapu_inc_r', 4, 4, 120, 'OA incline right', 'bw'],
     ['archer_pu', 3, 4, 90, 'Archer push-ups', 'bw'], ['oapu_neg_l', 3, 5, 90, 'OA negative left', 'time'], ['oapu_neg_r', 3, 5, 90, 'OA negative right', 'time']]]];
+/** the standard workouts' exercises that are not in TOP: { k, n, t }, for the server's exercise table (tools/watch-api.mjs catalog) */
+export const STD_EX = [...new Map(STD_DEF.flatMap(([, , l]) => l.filter(x => x[4] && !TOP.some(e => e.id === x[0])).map(x => [x[0], { k: x[0], n: x[4], t: x[5], g: /^oapu|archer/.test(x[0]) ? 'Chest' : 'Back' }]))).values()];
 export const STD_W = STD_DEF.map(([id, n, l]) => ({ id, n, std: true, it: l.map(([ex, k, r, rest, nm, t]) => { const e = nm ? { n: nm, t } : TOP.find(x => x.id === ex); return [ex, k, r, 0, rest, e.n, e.t]; }) }));
 /** the strength list's workouts: the saved ones (account / watch) first, then the standard ones; a saved one with a standard one's name hides it */
 export const workouts = F => { const s = savedW(F), nm = new Set(s.map(w => String(w.n).toLowerCase())); return [...s, ...STD_W.filter(w => !nm.has(w.n.toLowerCase()))]; };

@@ -457,3 +457,12 @@ test('standard workouts: unchanged = not asked; changed = saved under its name, 
   const Z = mk(); Z.cfg.w = Array.from({ length: 29 }, (_, i) => ({ id: 'z' + i, n: 'Z' + i, it: [['bench', 1, 5, 50, 60]] })); go(Z, ['start']); assert.equal(workouts(Z).length, 37);
   go(Z, ['start', 'start', 'done', 'menu']); go(Z, [['item', Z.menu.indexOf(MENU.FIN)]]); assert.deepEqual(Z.saveq.rows, ['Save as workout', 'No'], '29 saved + 6 standard: room for one more');
 });
+test('standard workouts: the server knows every exercise by name and type (a hold stays seconds)', async () => {
+  const { catalog, toRecord } = await import('./watch-api.mjs');
+  const info = new Map((await catalog()).map(e => [e.k, e]));
+  for (const w of STD_W) for (const it of w.it) {
+    const r = toRecord({ start: 1, sets: [{ ex: it[0], kg: 0, reps: it[2], t: 1 }] }, info, []), x = r.ex[0];
+    assert.equal(x.t, it[6], `${w.n}: ${it[0]} type`); assert.notEqual(x.n, it[0], `${w.n}: ${it[0]} has a name`);
+    if (it[6] === 'time') assert.equal(x.sets[0].s, it[2], 'seconds'); else assert.equal(x.sets[0].r, it[2], 'reps');
+  }
+});

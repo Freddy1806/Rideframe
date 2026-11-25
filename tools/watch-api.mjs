@@ -21,10 +21,16 @@ const clean = (s, n) => String(s ?? '').replace(/[\u0000-\u001f<>]/g, '').trim()
 /* ---- what the server knows of the exercises: the catalogue (js/kraftlib.js), the user's own ones (settings.kraftEx) and history ---- */
 let CAT = null;
 export async function catalog() { // the browser module, loaded lazily so an old Node without ES module detection only loses the names, never the server
-  if (!CAT) CAT = await import('../js/kraftlib.js').then(m => m.CATALOG, () => []);
+  if (!CAT) { CAT = (await import('../js/kraftlib.js').then(m => m.CATALOG, () => [])).slice();
+    // 25.11.: plus the guided workouts' exercises (js/kraftguide.js, one per arm, timed) and the watch's standard workouts' own ones
+    // (js/watchflow.js STD_EX), so a set the watch sends for them keeps its name and type (a hold is seconds, not 0 kg x reps)
+    const more = [...await import('../js/kraftguide.js').then(m => m.GUIDE_EX, () => []), ...await import('../js/watchflow.js').then(m => m.STD_EX, () => [])];
+    for (const e of more) if (!CAT.some(x => x.k === e.k)) CAT.push(e); }
   return CAT;
 }
-const SHORT = { squat: 'Squat', rdl: 'Romanian DL', incline: 'Incline DB press', row: 'Barbell row', tri: 'Tri pushdown', lateral: 'Lateral raise', legraise: 'Hanging leg raise' };
+const SHORT = { squat: 'Squat', rdl: 'Romanian DL', incline: 'Incline DB press', row: 'Barbell row', tri: 'Tri pushdown', lateral: 'Lateral raise', legraise: 'Hanging leg raise',
+  oap_neg_l: 'OA negative left', oap_neg_r: 'OA negative right', oapu_neg_l: 'OA negative left', oapu_neg_r: 'OA negative right',
+  oap_hold_l: 'OA lock-off left', oap_hold_r: 'OA lock-off right', oapu_hold_l: 'OA hold left', oapu_hold_r: 'OA hold right' };
 /** ≤ 18 characters for the watch: own short form, else without the "(barbell)" part, else cut */
 export const shortName = (k, n) => { const s = SHORT[k] || String(n || k).replace(/\s*\(.*?\)\s*/g, ' ').trim(); return s.length <= 18 ? s : s.slice(0, 17).trim() + '.'; };
 const e1rm = (kg, r) => kg > 0 && r > 0 ? (r === 1 ? kg : kg * (1 + r / 30)) : 0; // Epley, same as kraftlib.js
