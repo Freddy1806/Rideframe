@@ -56,6 +56,7 @@ function render() {
       <p class="hint">Estimates from your own data, not a lab test. The more hard sessions, the more accurate.</p></section>
 
     <div id="mwProf"></div>
+    <a class="hrow hlink slink" href="body.html" style="--mc:#f5d33d;--mcl:#8a6d00">${icon('user', 'rico')}<div><b>Body &amp; weight</b><small>Weigh-ins from your scale, trend, goal</small></div><i>›</i></a>
     <a class="hrow hlink slink" href="statistik.html" style="--mc:var(--accent);--mcl:var(--accent)">${icon('chart', 'rico')}<div><b>Bests, totals, weeks</b><small>All your numbers on the Stats page</small></div><i>›</i></a>
     <div class="pfoot col" style="margin-top:8px"><button class="btn ghost" id="fExport">Export all my data</button></div>`;
   $('#fPic').onclick = () => $('#fFile').click();
@@ -79,7 +80,7 @@ function shrink(file) { return new Promise((ok, no) => { const im = new Image();
 function dataSheet() {
   const s = document.createElement('div'); s.className = 'psheet'; document.body.append(s);
   const f = (id, l, v, u, ph = '') => `<label class="prow"><span>${l}</span><input id="${id}" type="number" inputmode="decimal" value="${v ?? ''}" placeholder="${ph}"><span>${u}</span></label>`;
-  s.innerHTML = `<div class="psheetin"><div class="label">My data</div><p class="hint">These values apply everywhere in the app: zones, target watts, calories and the fitness calculation.</p>
+  s.innerHTML = `<div class="psheetin"><div class="label">My data</div><p class="hint">These values apply everywhere in the app: zones, target watts, calories and the fitness calculation. Your weight follows your newest weigh-in on the Body page (switch that off there).</p>
     ${f('dKg', 'Weight', S.riderKg || '', 'kg', '75')}${f('dFtp', 'FTP', S.ftp || '', 'W', 'e.g. 250')}${f('dMax', 'Max HR', S.hrMax || '', '', 'auto')}${f('dRest', 'Resting HR', S.hrRest || '', '', '60')}
     <div class="pfoot"><button class="btn ghost" id="dX">Cancel</button><button class="btn" id="dOk">Save</button></div></div>`;
   const n = (id, lo, hi) => { const v = +$(id, s).value; return v >= lo && v <= hi ? v : undefined; };
@@ -89,6 +90,7 @@ function dataSheet() {
 }
 async function exportAll() {
   const out = { exported: new Date().toISOString(), app: 'RIDEFRAME', settings: S, rides: await db.all('rides').catch(() => []), kraft: (await db.kvGet('kraft').catch(() => null)) || [], kraftExercises: (await db.kvGet('kraftEx').catch(() => null)) || [] };
+  const body = await import('./bodycard.js').then(m => m.exportBody()).catch(() => null); if (body) out.body = body; // 25.11.: weigh-ins from the account (tools/body-api.mjs)
   const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([JSON.stringify(out)], { type: 'application/json' })); a.download = `RIDEFRAME_Daten_${new Date().toISOString().slice(0, 10)}.json`; a.click(); setTimeout(() => URL.revokeObjectURL(a.href), 5000);
 }
 await load(); render(); nav('profile');

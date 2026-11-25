@@ -39,6 +39,7 @@ function render() {
     ${installEvt && !window.__rfNative ? `<button class="btn ghost" id="hInstall">Install as app</button>` : ''}
     <section class="hweek"><div class="hwhead"><span class="label">This week</span><span class="wdl">▲▼ vs last week</span></div><div class="kstats">
       ${weekStat(nb(R2.cur), nb(R2.prev), 'Rides')}${weekStat(nr(R2.cur), nr(R2.prev), 'Runs')}${weekStat(km(R2.cur), km(R2.prev), 'km')}${weekStat(K2.cur.length, K2.prev.length, 'Strength')}</div></section>
+    <div id="hBody"></div>
     <nav class="hmodes">${['ride', 'run', 'trainer', 'world', 'kraft'].map(card).join('')}</nav>
     <div id="hWatch">${watchCard()}</div>
     <section class="hmyw"><h3 class="ksec">My workouts</h3>${myW.slice(0, 4).map(w => `<a class="hrow hlink" href="pure.html?workout=${encodeURIComponent(w.id)}" style="${mcs('trainer')}"><div><b>${esc(w.name)}</b><small>${w.min} min · indoor trainer</small></div><i>›</i></a>`).join('')}
@@ -49,6 +50,7 @@ function render() {
   $('#hAcc').onclick = async () => { const a = await import('./account.js'); await a.accountModal({ settings: S }, async () => { await load(); render(); }); };
   $('#hSet').onclick = settings;
   liveStrip(); wireWatch(); checkWatch();
+  import('./bodycard.js').then(m => m.mountWeightCard($('#hBody'))).catch(() => {}); // 25.11.: the weight card (js/bodycard.js), signed in only
   const ib = $('#hInstall'); if (ib) ib.onclick = async () => { installEvt.prompt(); await installEvt.userChoice.catch(() => {}); installEvt = null; render(); };
 }
 /* the watch card on the start page: only signed in with a paired watch; opens the same editor as Settings → Watch */
@@ -132,8 +134,10 @@ function settings() {
       <p class="phint">Click v2: open it in the Zwift app once a day, or it drops after a minute.</p>
       <h3 class="ksec" id="tWatchSec">Watch</h3>
       <div id="tWatch"></div><div id="tWcfg"></div><div id="tMcp"></div>
+      <h3 class="ksec">Bathroom scale</h3><div id="tScale"></div>
       <h3 class="ksec">More</h3>
       <a class="hrow hlink" href="profil.html"><div><b>My data</b><small>Weight, FTP, heart rate, export</small></div><i>›</i></a>
+      <a class="hrow hlink" href="body.html"><div><b>Body &amp; weight</b><small>Weigh-ins, trend, goal</small></div><i>›</i></a>
       <a class="hrow hlink" href="datenschutz.html"><div><b>Privacy</b></div><i>›</i></a>
       <div class="pfoot"><button class="btn" id="tOk">Done</button></div></div>`;
     $('#tSt', s).onchange = e => { S.autoStrava = e.target.checked; save(); };
@@ -158,6 +162,7 @@ function settings() {
     import('./watchpair.js').then(m => m.watchRow($('#tWatch', s), async () => { s.remove(); watchAsk = 0; const a = await import('./account.js'); await a.accountModal({ settings: S }, async () => { await load(); render(); }); })).catch(() => {});
     import('./watchcfg.js').then(m => m.cfgRow($('#tWcfg', s))).catch(() => {}); // Watch screens & workouts (signed in only)
     import('./mcplink.js').then(m => m.mcpRow($('#tMcp', s))).catch(() => {}); // Claude connector (signed in only, tools/mcp-api.mjs)
+    import('./scaleset.js').then(m => m.scaleSection($('#tScale', s), { signIn: async () => { s.remove(); const a = await import('./account.js'); await a.accountModal({ settings: S }, async () => { await load(); render(); }); } })).catch(() => {}); // 25.11.: the household scale (js/scaleset.js)
     $('#tOk', s).onclick = () => { s.remove(); watchAsk = 0; checkWatch(); }; // a watch paired or removed in Settings shows on the start page right away
   };
   s.onclick = e => { if (e.target === s) { s.remove(); watchAsk = 0; checkWatch(); } }; draw();
