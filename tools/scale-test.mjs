@@ -9,6 +9,8 @@ import assert from 'node:assert/strict';
 import * as D from './scale-decode.mjs';
 import { assign, reference } from './body-assign.mjs';
 import * as B from '../js/bodylib.js';
+import { replayLines } from './scale-bridge/replay.mjs';
+import { readFileSync } from 'node:fs';
 
 const raw = (company, payloadHex) => Buffer.from([company & 255, company >> 8]).toString('hex') + payloadHex; // as macOS hands it over
 const close = (a, b, e = 1e-9) => assert.ok(Math.abs(a - b) <= e, `${a} ≈ ${b}`);
@@ -158,4 +160,10 @@ test('CSV: EufyLife-style export, generic "date;kg", US dates, pounds', () => {
   assert.equal(new Date(eufy.rows[1].t).getHours(), 7);
   const g = B.parseCsv('25.11.2026 07:12;82,4\n26.11.2026;82,1\nnonsense;x'); assert.equal(g.rows.length, 2); assert.equal(g.skipped, 1); close(g.rows[0].kg, 82.4); assert.equal(new Date(g.rows[0].t).getDate(), 25);
   const us = B.parseCsv('date,weight (lb)\n11/25/2026 7:12 AM,180'); close(us.rows[0].kg, 81.65, 0.01); assert.equal(new Date(us.rows[0].t).getMonth(), 10);
+});
+
+test('--replay of a recorded file (real C20 and P2 Pro frames, tools/fixtures/scale-replay.jsonl): two weigh-ins, the speaker ignored', () => {
+  const lines = readFileSync(new URL('./fixtures/scale-replay.jsonl', import.meta.url), 'utf8').trim().split('\n').map(l => JSON.parse(l));
+  const w = replayLines(lines).filter(e => e.weighIn);
+  assert.deepEqual(w.map(e => [e.model, e.weighIn.kg, e.weighIn.hr || null]), [['T9130', 100.1, null], ['T9149', 105.1, 81]]);
 });

@@ -20,7 +20,7 @@
 <main class="doc">
   <div class="label">RIDEFRAME</div>
   <h1 class="display">Datenschutz</h1>
-  <p>Stand: 16. November 2026. RIDEFRAME ist eine private, nicht-kommerzielle App zum Radfahren (Rollentrainer und draußen) und für Krafttraining. Sie zeigt keine Werbung, nutzt keine Analyse- oder Tracking-Dienste und verkauft keine Daten.</p>
+  <p>Stand: 25. November 2026. RIDEFRAME ist eine private, nicht-kommerzielle App zum Radfahren (Rollentrainer und draußen) und für Krafttraining. Sie zeigt keine Werbung, nutzt keine Analyse- oder Tracking-Dienste und verkauft keine Daten.</p>
 
   <h2>Verantwortlich</h2>
   <p>[NAME, ANSCHRIFT]<br>E-Mail: [KONTAKT-E-MAIL]</p>
@@ -31,6 +31,7 @@
     <li><b>Fahrten:</b> Zeit, Strecke, Tempo, Höhe und – bei Fahrten draußen – deine GPS-Positionen, dazu Werte deiner Sensoren (Puls, Leistung, Trittfrequenz).</li>
     <li><b>Krafttraining:</b> Übungen, Sätze, Gewichte und Wiederholungen.</li>
     <li><b>Einstellungen:</b> z. B. Gewicht, FTP, Aussehen deines Fahrers.</li>
+    <li><b>Körperdaten (freiwillig):</b> Gewicht und, wenn die Waage sie liefert, weitere Körperwerte (siehe unten).</li>
   </ul>
   <p>Ohne Konto bleiben alle Daten nur auf deinem Gerät. Mit Konto werden sie zusätzlich auf unserem Server in Deutschland gespeichert, damit sie auf all deinen Geräten verfügbar sind. Andere angemeldete Fahrer sehen in der Rangliste nur deinen Namen, dein Fahrer-Aussehen und Summen (Kilometer, Höhenmeter, Fahrtage), nie deine GPS-Strecken oder deine E-Mail.</p>
 
@@ -38,7 +39,7 @@
   <p>Nur wenn du unter „Draußen fahren“ eine Aufzeichnung startest, nutzt die App deinen Standort, um Strecke, Tempo und Höhenmeter aufzuzeichnen. In der Android-App läuft das auch weiter, wenn der Bildschirm aus ist; du siehst dann eine dauerhafte Benachrichtigung „RIDEFRAME zeichnet auf“. Sobald du die Fahrt pausierst oder beendest, wird der Standort nicht mehr abgefragt. Außerhalb einer Aufzeichnung wird kein Standort erfasst.</p>
 
   <h2>Bluetooth</h2>
-  <p>Bluetooth wird nur genutzt, um Sensoren zu verbinden, die du selbst auswählst (Pulsgurt, Powermeter, Trittfrequenz- und Tempo-Sensoren, Smart-Trainer). Es werden keine anderen Geräte gesucht oder gespeichert, außer den von dir verbundenen.</p>
+  <p>Bluetooth wird nur genutzt, um Sensoren zu verbinden, die du selbst auswählst (Pulsgurt, Powermeter, Trittfrequenz- und Tempo-Sensoren, Smart-Trainer). Es werden keine anderen Geräte gesucht oder gespeichert, außer den von dir verbundenen. Ausnahme: die Waagen-Brücke auf dem Server-Rechner (siehe „Körperdaten und Personenwaage“).</p>
 
   <h2>Schnell eintragen per Sprache (freiwillig)</h2>
   <p>Tippst du bei „Schnell eintragen“ auf das Mikrofon, wandelt dein Browser die Sprache in Text um. Je nach Browser geschieht das bei dessen Anbieter (bei Chrome bei Google). Den Text wertet die App auf deinem Gerät aus. Nur wenn du einen eigenen KI-Schlüssel hinterlegst, wird der Text direkt von deinem Gerät an Anthropic (Claude) gesendet. Der Schlüssel wird nur auf deinem Gerät gespeichert, nicht bei uns.</p>
@@ -48,6 +49,10 @@
 
   <h2>Garmin-Uhr (freiwillig)</h2>
   <p>Koppelst du eine Garmin-Uhr (Settings → Devices → Garmin watch), bekommt die Uhr einen eigenen Zugangsschlüssel. Er wird auf der Uhr gespeichert, bei uns nur als nicht umkehrbarer Hash, zusammen mit dem Namen der Uhr und dem Zeitpunkt der Kopplung und der letzten Nutzung. Die Uhr lädt deine Übungsliste mit den letzten Gewichten und deine Wochenpunkte und sendet fertige Krafttrainings (Übungen, Gewichte, Wiederholungen, Zeiten und, falls gemessen, Puls) über die Garmin-Connect-App deines Handys an unseren Server, wo sie wie deine anderen Trainings in deinem Konto gespeichert werden. Unter „Remove“ trennst du eine Uhr jederzeit, ihr Schlüssel gilt dann nicht mehr.</p>
+
+  <h2>Körperdaten und Personenwaage (freiwillig)</h2>
+  <p>Auf der Seite „Body“ kannst du dein Gewicht von Hand eintragen, eine CSV-Datei (z. B. den Export der EufyLife-App) importieren oder deine Bluetooth-Waage verbinden. Gespeichert werden je Messung Zeitpunkt, Gewicht und Quelle, dazu nur die Werte, die Waage oder Import liefern (z. B. Körperfett, Wasser, Muskel, Knochen, BMI, Impedanz, Puls), sowie dein Zielgewicht und deine Größe, wenn du sie einträgst. Die Daten liegen in deinem Konto auf unserem Server und sind nur für dich sichtbar; dein Profilgewicht übernimmt auf Wunsch die neueste Messung (abschaltbar).</p>
+  <p>Die Waage: Ein kleines Programm auf dem Rechner, auf dem RIDEFRAME läuft, empfängt über Bluetooth die Signale von eufy-Waagen in Reichweite und gibt sie nur an diesen Server weiter (nicht ins Internet). Erkannt und gespeichert werden nur Waagen, die jemand ausdrücklich zu einem „Haushalt“ hinzugefügt hat; von anderen Bluetooth-Geräten wird nichts gespeichert. Einem Haushalt trittst du nur mit einem 6-stelligen Code bei, den der Einrichtende erzeugt (10 Minuten gültig, einmal nutzbar; gespeichert wird nur ein Hash). Wer auf der Waage stand, ermittelt der Server aus dem Gewicht und den letzten Messungen der Haushaltsmitglieder. Ist das nicht eindeutig, sehen alle Mitglieder für höchstens 48 Stunden die Frage „War das du?“ mit diesem einen Gewicht und der Uhrzeit; deine Antwort und wem die Messung zugeordnet wurde, sieht niemand sonst. Die Gewichte und Verläufe der anderen Mitglieder siehst du nie. Verlässt du den Haushalt, bleiben deine Messungen in deinem Konto; mit dem Konto werden sie gelöscht. Im Export „Export all my data“ (Profil) sind sie enthalten.</p>
 
   <h2>Claude-Connector (freiwillig)</h2>
   <p>Erstellst du unter Settings → Devices → Claude connector einen Link und trägst ihn in Claude (Anthropic) als Connector ein, kann Claude über diesen Link deine Übungsliste mit den letzten Sätzen und Bestwerten und deine Krafttrainings (Datum, Name, Übungen, Gewichte, Wiederholungen, Zeiten) lesen und deine Uhr-Workouts anlegen, ändern und löschen. Mehr nicht: keine Fahrten, keine Kontodaten. Was Claude so liest, landet in deinem Chat bei Anthropic; dort gilt deren Datenschutzerklärung. Der Link selbst ist der Schlüssel: Wir speichern ihn nur als nicht umkehrbaren Hash, mit dem Zeitpunkt der Erstellung und der letzten Nutzung. Wer den Link kennt, kann deine Uhr-Workouts ändern. Unter „Remove“ schaltest du ihn jederzeit ab.</p>

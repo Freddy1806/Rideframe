@@ -95,7 +95,7 @@ export function changes(list, now = Date.now()) {
 export function changeWords(d) {
   if (d == null) return { arrow: '', text: 'not enough data yet', cls: '' };
   const a = Math.abs(d); if (a < 0.15) return { arrow: '→', text: 'about the same', cls: 'flat' };
-  return { arrow: d < 0 ? '↓' : '↑', text: `${d < 0 ? 'down' : 'up'} ${fmtKg(a, 1)} kg`, cls: d < 0 ? 'down' : 'up' };
+  return { arrow: d < 0 ? '↓' : '↑', text: `${d < 0 ? 'down' : 'up'} ${a.toFixed(1)} kg`, cls: d < 0 ? 'down' : 'up' };
 }
 /** kg as text: the scale's own resolution (82.45 stays 82.45, 82.4 stays 82.4), at least `min` decimals */
 export function fmtKg(v, min = 1) {

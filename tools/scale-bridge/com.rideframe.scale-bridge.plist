@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!-- LaunchAgent for the scale bridge: starts at login, restarts when it stops. NOT installed automatically.
+     Replace USER (and the paths if RIDEFRAME or its data folder live elsewhere), then:
+       cp com.rideframe.scale-bridge.plist ~/Library/LaunchAgents/
+       launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/com.rideframe.scale-bridge.plist
+     Stop / remove:  launchctl bootout gui/$(id -u)/com.rideframe.scale-bridge -->
+<plist version="1.0">
+<dict>
+  <key>Label</key><string>com.rideframe.scale-bridge</string>
+  <key>ProgramArguments</key>
+  <array>
+    <string>/Users/USER/RIDEFRAME/tools/scale-bridge/RideframeScaleBridge.app/Contents/MacOS/scale-bridge</string>
+    <string>--server</string><string>http://127.0.0.1:8765</string>
+    <string>--data</string><string>/Users/USER/RIDEFRAME_data</string>
+  </array>
+  <key>RunAtLoad</key><true/>
+  <key>KeepAlive</key><true/>
+  <key>ThrottleInterval</key><integer>30</integer>
+  <key>ProcessType</key><string>Background</string>
+  <key>StandardOutPath</key><string>/Users/USER/Library/Logs/rideframe-scale-bridge.log</string>
+  <key>StandardErrorPath</key><string>/Users/USER/Library/Logs/rideframe-scale-bridge.log</string>
+</dict>
+</plist>
