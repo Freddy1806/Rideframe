@@ -50,8 +50,11 @@ function render() {
   $('#hAcc').onclick = async () => { const a = await import('./account.js'); await a.accountModal({ settings: S }, async () => { await load(); render(); }); };
   $('#hSet').onclick = settings;
   liveStrip(); wireWatch(); checkWatch();
-  import('./bodycard.js').then(m => m.mountWeightCard($('#hBody'))).catch(() => {}); // 25.11.: the weight card (js/bodycard.js), signed in only
-  import('./healthcard.js').then(m => m.mountHealthCard($('#hHealth'))).catch(() => {}); // 25.11.: the watch's recovery values (js/healthcard.js), signed in only
+  // 25.11. (Freddy: the cards squeezed into the old start page are not it; the start page is being rethought as a whole): off unless
+  // localStorage rfStartCards = '1' (the UI tests set it); the body page stays reachable from Settings and the profile
+  const startCards = (() => { try { return localStorage.getItem('rfStartCards') === '1'; } catch { return false; } })();
+  if (startCards) import('./bodycard.js').then(m => m.mountWeightCard($('#hBody'))).catch(() => {}); // 25.11.: the weight card (js/bodycard.js), signed in only
+  if (startCards) import('./healthcard.js').then(m => m.mountHealthCard($('#hHealth'))).catch(() => {}); // 25.11.: the watch's recovery values (js/healthcard.js), signed in only
   const ib = $('#hInstall'); if (ib) ib.onclick = async () => { installEvt.prompt(); await installEvt.userChoice.catch(() => {}); installEvt = null; render(); };
 }
 /* the watch card on the start page: only signed in with a paired watch; opens the same editor as Settings → Watch */

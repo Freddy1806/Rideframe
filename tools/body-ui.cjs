@@ -37,6 +37,7 @@ const layout = P => P.evaluate(() => {
     const reg = name => api('POST', '/api/account/register', { name, email: name.replace(/\W/g, '') + '@example.org', password: 'secret-pw-1', password2: 'secret-pw-1' });
     const F = await reg('Freddy'), R = await reg('Riley'), SECRET = fs.readFileSync(path.join(DATA, 'scale-bridge.secret'), 'utf8').trim();
     const phone = await b.newContext({ viewport: { width: 360, height: 740 }, deviceScaleFactor: 2, isMobile: true, hasTouch: true });
+    await phone.addInitScript(() => { try { localStorage.setItem('rfStartCards', '1'); } catch {} }); // the start page cards are off by default until the new start page
     const P = await phone.newPage(), perr = []; P.on('pageerror', e => perr.push(e.message));
     const shot = async (nm, full = false) => { if (SHOTS) await P.screenshot({ path: `${SHOTS}/${nm}.png`, fullPage: full }); };
     const lay = async what => { const l = await layout(P); ok(!l.length, `${what}: no overlap, nothing sideways${l.length ? ': ' + l.slice(0, 4).join(' | ') : ''}`); };

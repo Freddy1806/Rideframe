@@ -28,6 +28,7 @@ const pad = n => String(n).padStart(2, '0'), dk = t => { const d = new Date(t); 
     await api('POST', '/api/body', { t: now - 3600e3, kg: 74.2 }, { 'X-RF-Token': A.token });
 
     const ctx = await b.newContext({ viewport: { width: 360, height: 800 }, deviceScaleFactor: 2, isMobile: true, hasTouch: true });
+    await ctx.addInitScript(() => { try { localStorage.setItem('rfStartCards', '1'); } catch {} }); // off by default until the new start page
     const P = await ctx.newPage(); const perr = []; P.on('pageerror', e => perr.push(e.message));
     await P.goto(BASE + '/handy.html'); await P.waitForSelector('#hSet'); await wait(500);
     ok(!(await P.locator('.hcard').count()), 'signed out: no recovery card');
