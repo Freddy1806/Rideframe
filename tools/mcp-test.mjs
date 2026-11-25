@@ -6,7 +6,7 @@
 import test, { before, after } from 'node:test';
 import assert from 'node:assert/strict';
 import { spawn } from 'node:child_process';
-import { mkdtemp, readFile, rm } from 'node:fs/promises';
+import { mkdtemp, readFile, writeFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import net from 'node:net';
@@ -47,7 +47,7 @@ test('links: signed in only, token shown once, only a hash stored, up to 3, remo
   const A = await register('Link Lena'), B = await register('Link Bert');
   assert.equal((await call('GET', '/api/account/mcp')).status, 401);
   assert.equal((await call('POST', '/api/account/mcp', { token: 'nope', body: {} })).status, 401);
-  assert.deepEqual((await call('GET', '/api/account/mcp', { token: A })).j, { links: [], max: 3 });
+  assert.deepEqual((await call('GET', '/api/account/mcp', { token: A })).j, { links: [], max: 3, notice: false });
   const l1 = await newLink(A);
   assert.match(l1.token, /^[A-Za-z0-9_-]{43}$/, '32 random bytes, base64url'); assert.equal(l1.path, '/mcp/' + l1.token); assert.equal(l1.link.label, 'Claude');
   const M = await readFile(join(DATA, 'mcp.json'), 'utf8'); assert.ok(!M.includes(l1.token), 'only a hash of the token is stored');
@@ -98,7 +98,7 @@ test('lifecycle (legacy): initialize negotiates, initialized 202, ping, version 
     assert.equal(r.status, 200); assert.equal(r.j.result.protocolVersion, v, 'the same version back'); }
   const i = await rpc(path, 'initialize', { protocolVersion: '2024-11-05', capabilities: {}, clientInfo: { name: 't', version: '1' } }, { v: null });
   assert.equal(i.j.result.protocolVersion, '2025-11-25', 'unknown: the newest legacy version');
-  assert.deepEqual(i.j.result.capabilities, { tools: { listChanged: false } }); assert.equal(i.j.result.serverInfo.name, 'rideframe-workouts'); assert.match(i.j.result.instructions, /list_exercises/);
+  assert.deepEqual(i.j.result.capabilities, { tools: { listChanged: false } }); assert.equal(i.j.result.serverInfo.name, 'rideframe-workouts'); assert.match(i.j.result.instructions, /list_exercises/); assert.match(i.j.result.instructions, /coach/); assert.match(i.j.result.instructions, /get_health/);
   assert.equal(i.h.get('content-type'), 'application/json'); assert.equal(i.h.get('mcp-session-id'), null, 'stateless: no session');
   const n = await rpc(path, 'notifications/initialized', null, { notify: true }); assert.equal(n.status, 202); assert.equal(n.text, '');
   const p = await rpc(path, 'ping', null, { id: 'p-1' }); assert.deepEqual(p.j, { jsonrpc: '2.0', id: 'p-1', result: {} });
@@ -115,7 +115,7 @@ test('lifecycle (modern 2026-07-28): server/discover, headers checked against th
   const d = await modern(path, 'server/discover'); assert.equal(d.status, 200, d.text);
   assert.equal(d.j.result.resultType, 'complete'); assert.ok(d.j.result.supportedVersions.includes(MV) && d.j.result.supportedVersions.includes('2025-06-18'));
   assert.equal(d.j.result._meta['io.modelcontextprotocol/serverInfo'].name, 'rideframe-workouts');
-  const tl = await modern(path, 'tools/list'); assert.equal(tl.j.result.resultType, 'complete'); assert.equal(tl.j.result.tools.length, 6);
+  const tl = await modern(path, 'tools/list'); assert.equal(tl.j.result.resultType, 'complete'); assert.equal(tl.j.result.tools.length, 12);
   const c = await modern(path, 'tools/call', { name: 'list_workouts', arguments: {} }, { 'Mcp-Name': 'list_workouts' }); assert.equal(c.status, 200); assert.equal(c.j.result.isError, false);
   const c64 = await modern(path, 'tools/call', { name: 'list_workouts', arguments: {} }, { 'Mcp-Name': '=?base64?' + Buffer.from('list_workouts').toString('base64') + '?=' }); assert.equal(c64.status, 200, 'Base64 Mcp-Name');
   const mm = await modern(path, 'tools/list', {}, { 'Mcp-Method': 'ping' }); assert.equal(mm.status, 400); assert.equal(mm.j.error.code, -32020);
@@ -127,10 +127,11 @@ test('lifecycle (modern 2026-07-28): server/discover, headers checked against th
   const um = await modern(path, 'prompts/list'); assert.equal(um.status, 404); assert.equal(um.j.error.code, -32601);
 });
 
-test('tools/list: six tools with descriptions and JSON Schemas that match js/watchfields.js', async () => {
+test('tools/list: twelve tools with descriptions and JSON Schemas that match js/watchfields.js', async () => {
   const { path } = await newLink(await register('Schema Sam'));
   const { tools } = (await rpc(path, 'tools/list')).j.result;
-  assert.deepEqual(tools.map(t => t.name), ['list_exercises', 'list_workouts', 'create_workout', 'update_workout', 'delete_workout', 'get_strength_history']);
+  assert.deepEqual(tools.map(t => t.name), ['list_exercises', 'list_workouts', 'create_workout', 'update_workout', 'delete_workout', 'get_strength_history', 'get_profile', 'list_activities', 'get_activity', 'get_fitness', 'get_weight', 'get_health']);
+  for (const n of ['get_profile', 'list_activities', 'get_activity', 'get_fitness', 'get_weight', 'get_health']) assert.equal(tools.find(t => t.name === n).annotations.readOnlyHint, true, n + ' is read-only');
   for (const t of tools) { assert.ok(t.description.length > 30, t.name); assert.equal(t.inputSchema.type, 'object'); assert.equal(t.inputSchema.additionalProperties, false); assert.ok(t.annotations); }
   const c = tools.find(t => t.name === 'create_workout').inputSchema; assert.deepEqual(c.required, ['name', 'items']);
   const it = c.properties.items; assert.equal(it.maxItems, MAX_ITEMS); assert.deepEqual(it.items.required, ['exercise', 'sets', 'reps']);
@@ -240,4 +241,98 @@ test('update_workout and delete_workout: by id or name, errors, the watch follow
   assert.ok((await tool(path, 'delete_workout', { workout: id })).ok);
   assert.equal((await call('GET', '/api/watch/strength/setup', { bearer: watch })).j.workouts.length, 0, 'gone from the watch');
   assert.match((await tool(path, 'delete_workout', { workout: 'x' })).text, /There are no workouts yet/);
+});
+
+/* ---- 25.11.: the coach's read-only tools ---- */
+const samples = (n, w, hr) => Array.from({ length: n }, (_, i) => [i, i * 8, w + (i % 10), 30, 88, hr]);
+let C, cpath, cwatch;
+test('coach tools: profile, activities (all sources), one activity, fitness', async () => {
+  C = await register('Coach Carla'); cpath = (await newLink(C)).path; cwatch = await pairWith(C);
+  await call('PUT', '/api/account/settings', { token: C, body: { settings: { ftp: 250, hrMax: 190, hrRest: 50, riderKg: 70 }, at: now } });
+  const ride = { id: 'r1', routeId: 'pure', date: now - 1 * day, duration: 1800, distance: 15000, gain: 0, avgPower: 205, np: 210, complete: true, workout: 'Sweet spot 2x10',
+    laps: [{ t: 900, d: 7500, w: 200 }, { t: 900, d: 7500, w: 210 }], ivs: [{ name: 'SST 1', kind: 'ss', t: 600, w: 228, wMax: 260, hr: 150, target: 225 }], samples: samples(1800, 200, 140) };
+  assert.equal((await call('PUT', '/api/account/rides/r1', { token: C, body: ride })).status, 200);
+  await call('PUT', '/api/account/rides/st123', { token: C, body: { id: 'st123', routeId: 'ext', sportType: 'Run', sport: 'run', source: 'strava', stravaId: '123', strava: 'https://www.strava.com/activities/123',
+    start: now - 3 * day, date: now - 3 * day, duration: 2700, elapsed: 2800, distance: 9000, gain: 60, avgHr: 152, maxHr: 171, kcal: 640, workout: 'Easy run', kmSplits: [300, 298, 305, 301, 299, 300, 302, 297, 298] } });
+  await call('PUT', '/api/account/rides/demo1', { token: C, body: { id: 'demo1', routeId: 'demo', date: now - day, duration: 600, distance: 5000 } });
+  await call('PUT', '/api/account/kraft/k1', { token: C, body: { id: 'k1', name: 'Leg day', start: now - 2 * day, date: now - 2 * day + 3600e3, dur: 3000,
+    ex: [{ k: 'squat', n: 'Squat (barbell)', t: 'w', sets: [{ kg: 40, r: 10, done: true, warm: true }, { kg: 100, r: 5, done: true }] }, { k: 'plank', n: 'Plank', t: 'time', sets: [{ kg: '', r: '', s: 60, done: true }] }] } });
+  const wa = await call('POST', '/api/watch/activity', { bearer: cwatch, body: { id: 'wact01', type: 'Hike', start: Math.round((now - 4 * day) / 1000), duration: 5400, moving: 5000, dist: 8000, climb: 400, hr: 110, maxHr: 140, kcal: 700 } });
+  assert.equal(wa.status, 200, wa.text);
+
+  const p = await tool(cpath, 'get_profile', {}); assert.ok(p.ok, p.text);
+  assert.equal(p.data.ftp_w, 250); assert.equal(p.data.max_hr, 190); assert.equal(p.data.max_hr_from, 'entered'); assert.equal(p.data.weight_kg, 70); assert.equal(p.data.w_per_kg, 3.57);
+  assert.equal(p.data.hr_zones.length, 5); assert.deepEqual(p.data.hr_zones[1], { zone: 2, from_bpm: 114, to_bpm: 132 }); assert.equal(p.data.hr_zones[4].to_bpm, 190);
+  assert.ok(!/@example\.org/.test(p.text) && !/token/i.test(Object.keys(p.data).join()), 'no e-mail, no tokens'); assert.equal(p.data.name, 'Coach Carla');
+
+  const l = await tool(cpath, 'list_activities', {}); assert.ok(l.ok, l.text);
+  assert.deepEqual(l.data.activities.map(a => a.id), ['r1', 'k1', 'st123', 'watch-wact01'], 'newest first, every source, no demo ride');
+  const [r, k, run, hike] = l.data.activities;
+  assert.equal(r.type, 'ride'); assert.equal(r.env, 'indoor'); assert.equal(r.minutes, 30); assert.equal(r.np, 210); assert.equal(r.avg_hr, 140); assert.ok(r.load > 30 && r.load < 50, 'load from the watts: ' + r.load); assert.equal(r.load_from, 'power');
+  assert.equal(k.type, 'strength'); assert.equal(k.sets, 2, 'warm-up left out'); assert.equal(k.load, 38);
+  assert.equal(run.type, 'run'); assert.equal(run.source, 'Strava import'); assert.equal(run.on_strava, true); assert.equal(run.distance_km, 9); assert.equal(run.kcal, 640); assert.equal(run.load_from, 'heart rate');
+  assert.equal(hike.type, 'other'); assert.equal(hike.sport, 'Hike'); assert.equal(hike.source, 'Garmin watch (RIDEFRAME app)'); assert.equal(hike.climb_m, 400);
+  assert.ok(!l.text.includes('"samples"'), 'no streams in the list');
+  assert.deepEqual((await tool(cpath, 'list_activities', { type: 'run' })).data.activities.map(a => a.id), ['st123']);
+  assert.deepEqual((await tool(cpath, 'list_activities', { days: 2 })).data.activities.map(a => a.id), ['r1']);
+  const lim = await tool(cpath, 'list_activities', { limit: 1 }); assert.equal(lim.data.count, 1); assert.equal(lim.data.total, 4); assert.match(lim.data.more, /3 more/);
+  const d3 = new Date(now - 3 * day), ymd = `${d3.getFullYear()}-${String(d3.getMonth() + 1).padStart(2, '0')}-${String(d3.getDate()).padStart(2, '0')}`;
+  assert.deepEqual((await tool(cpath, 'list_activities', { from: ymd, to: ymd })).data.activities.map(a => a.id), ['st123'], 'from / to are whole local days');
+  for (const [args, re] of [[{ limit: 101 }, /limit: 1 to 100/], [{ type: 'swim' }, /type: one of ride, run, strength, other/], [{ from: '2026-13-01' }, /from: a day/], [{ from: ymd, days: 3 }, /not both/], [{ days: '3' }, /days: a whole number/]]) {
+    const x = await tool(cpath, 'list_activities', args); assert.equal(x.ok, false, JSON.stringify(args)); assert.match(x.text, re); }
+
+  const one = await tool(cpath, 'get_activity', { id: 'r1' }); assert.ok(one.ok, one.text);
+  assert.equal(one.data.laps.length, 2); assert.deepEqual(one.data.intervals[0], { name: 'SST 1', seconds: 600, target_w: 225, avg_power: 228, max_power: 260, avg_hr: 150 });
+  assert.deepEqual(one.data.series.columns, ['minute', 'power', 'hr', 'kmh', 'cadence']); assert.equal(one.data.series.points.length, 60); assert.ok(one.text.length < 8000, 'small: ' + one.text.length);
+  const rr = await tool(cpath, 'get_activity', { id: 'st123' }); assert.equal(rr.data.bests.run_1km_s, 297); assert.equal(rr.data.bests.run_5km_s, 1496); assert.equal(rr.data.km_splits_s.length, 9);
+  const kk = await tool(cpath, 'get_activity', { id: 'k1' }); assert.deepEqual(kk.data.exercises.map(x => x.sets), [[{ kg: 100, reps: 5 }], [{ seconds: 60 }]], 'a hold in seconds');
+  const no = await tool(cpath, 'get_activity', { id: 'nope' }); assert.equal(no.ok, false); assert.match(no.text, /No activity "nope"/);
+
+  const f = await tool(cpath, 'get_fitness', { weeks: 3 }); assert.ok(f.ok, f.text);
+  assert.ok(f.data.today.fitness > 0 && f.data.today.fatigue > f.data.today.fitness, 'fresh load: fatigue above fitness'); assert.equal(f.data.weeks.length, 3); assert.equal(f.data.last_14_days.length, 14);
+  assert.equal(f.data.ftp.setting_w, 250); assert.ok(f.data.vo2max_estimate.run && f.data.vo2max_estimate.run.value > 30, 'run VO2max from the splits');
+  const wsum = f.data.weeks.reduce((s, w) => s + w.sessions, 0); assert.ok(wsum >= 3 && wsum <= 4, 'the sessions of the last 3 weeks: ' + wsum);
+  assert.equal((await tool(cpath, 'get_fitness', { weeks: 27 })).ok, false);
+});
+
+test('coach tools: weight and health', async () => {
+  for (const [ago, kg] of [[20, 81], [10, 80.4], [3, 80], [1, 79.6]]) assert.equal((await call('POST', '/api/body', { token: C, body: { t: now - ago * day, kg, ...(ago === 1 ? { fatPct: 18.2 } : {}) } })).status, 200);
+  await call('PUT', '/api/body/prefs', { token: C, body: { goalKg: 76, heightCm: 180 } });
+  const w = await tool(cpath, 'get_weight', {}); assert.ok(w.ok, w.text);
+  assert.equal(w.data.latest.kg, 79.6); assert.equal(w.data.latest.fat_pct, 18.2); assert.equal(w.data.goal_kg, 76); assert.ok(w.data.change_7d_kg < 0); assert.ok(w.data.to_goal_kg < 0);
+  assert.equal(w.data.measurements.length, 4); assert.equal((await tool(cpath, 'get_weight', { days: 5 })).data.measurements.length, 2); assert.equal((await tool(cpath, 'get_weight', { limit: 1 })).data.measurements.length, 1);
+  assert.equal((await tool(cpath, 'get_profile', {})).data.weight_kg, 79.6, 'the profile weight is the newest weigh-in'); assert.equal((await tool(cpath, 'get_profile', {})).data.height_cm, 180);
+
+  const e = await tool(cpath, 'get_health', {}); assert.ok(e.ok); assert.equal(e.data.count, 0); assert.match(e.data.hint, /watch/);
+  const d = t => { const x = new Date(t); return `${x.getFullYear()}-${String(x.getMonth() + 1).padStart(2, '0')}-${String(x.getDate()).padStart(2, '0')}`; };
+  assert.equal((await call('POST', '/api/watch/health', { bearer: cwatch, body: { day: d(now - day), t: Math.round((now - day) / 1000), ss: 78, bb: 60, rhr: 48, rt: 600 } })).status, 200);
+  assert.equal((await call('POST', '/api/watch/health', { bearer: cwatch, body: { day: d(now), t: Math.round(now / 1000), ss: 85, bb: 92, rhr: 46, v2r: 52, ts: 'Productive' } })).status, 200);
+  const h = await tool(cpath, 'get_health', { days: 7 }); assert.ok(h.ok, h.text); assert.equal(h.data.count, 2);
+  assert.deepEqual(h.data.latest.sleep_score, { value: 85, day: d(now) }); assert.deepEqual(h.data.latest.recovery_time_min, { value: 600, day: d(now - day) }, 'the newest day that has it');
+  assert.equal(h.data.days[0].training_status, 'Productive'); assert.equal(h.data.days[1].resting_hr, 48);
+  assert.equal((await tool(cpath, 'get_health', { days: 91 })).ok, false);
+});
+
+test('coach tools: another account sees nothing of the first; an empty account gets empty answers', async () => {
+  const E = await register('Empty Emil'), ep = (await newLink(E)).path;
+  const all = await Promise.all(['get_profile', 'list_activities', 'get_fitness', 'get_weight', 'get_health'].map(n => tool(ep, n, {})));
+  for (const r of all) { assert.ok(r.ok, r.text); for (const x of ['Coach Carla', 'r1', 'st123', 'Sweet spot', '79.6', 'Productive', 'Leg day']) assert.ok(!r.text.includes(x), `${x} leaked: ${r.text.slice(0, 200)}`); }
+  const [p, l, f, w, h] = all.map(r => r.data);
+  assert.equal(p.ftp_w, null); assert.equal(p.weight_kg, null); assert.equal(p.max_hr, null);
+  assert.equal(l.count, 0); assert.match(l.hint, /No activities/); assert.equal(f.today.fitness, 0); assert.match(f.hint, /No activities/);
+  assert.equal(w.latest, null); assert.match(w.hint, /No weigh-ins/); assert.equal(h.count, 0);
+  const g = await tool(ep, 'get_activity', { id: 'r1' }); assert.equal(g.ok, false, "the first account's ride id is unknown here");
+  assert.equal((await tool(cpath, 'list_activities', {})).data.total, 4, 'the first account is unchanged');
+});
+
+test('links made before the coach tools: a one-time notice in the settings, gone once seen; the old link keeps working', async () => {
+  const A = await register('Old Olivia'), B = await register('Other Otto'), { path } = await newLink(A); await newLink(B);
+  assert.equal((await call('GET', '/api/account/mcp', { token: A })).j.notice, false, 'a new link knows the new scope');
+  const M = JSON.parse(await readFile(join(DATA, 'mcp.json'), 'utf8')); for (const l of Object.values(M.links)) delete l.scope; await writeFile(join(DATA, 'mcp.json'), JSON.stringify(M)); // as stored before 25.11.
+  assert.equal((await call('GET', '/api/account/mcp', { token: A })).j.notice, true, 'an old link: the notice');
+  assert.ok((await tool(path, 'get_profile', {})).ok, 'and it reads the new tools');
+  assert.equal((await call('POST', '/api/account/mcp/seen')).status, 401);
+  assert.equal((await call('POST', '/api/account/mcp/seen', { token: A })).status, 200);
+  assert.equal((await call('GET', '/api/account/mcp', { token: A })).j.notice, false, 'seen: once only');
+  assert.equal((await call('GET', '/api/account/mcp', { token: B })).j.notice, true, "another account's notice stays");
 });

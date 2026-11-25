@@ -8,6 +8,8 @@
 // (GET /api/watch/segments at the start of a run / ride and every 3 km; timed on the watch by Feed.mc).
 // 23.11.: the indoor trainer: TrainerBle.mc (made on the first radio action) carries Flow.link's actions to Bluetooth and its callbacks
 // back as E_BLE; Storage "trainer" (the trainer used last, connected by itself) and "tgt" (the last ERG target).
+// 25.11.: Garmin's recovery values of the day (Health.mc healthSnapshot) go to POST /api/watch/health at the start and before each
+// upload, at most every 10 minutes; nothing is stored on the watch, a failed send waits for the next start / upload.
 import Toybox.Activity;
 import Toybox.ActivityRecording;
 import Toybox.Application;
@@ -38,6 +40,7 @@ class RideframeApp extends Application.AppBase {
     var ble = null;             // 23.11.: TrainerBle, the indoor trainer's radio (only once the trainer screen is opened)
     var hrAt as Number = 0;     // 24.11.: System.getTimer() of the last heart rate a sensor event brought
     var hrPoll as Number = 0;   // and of the last poll (once a second while the events are silent)
+    var healthAt as Number = 0; // 25.11.: Time.now() seconds of the last recovery snapshot sent
 
     function initialize() { AppBase.initialize(); }
 
@@ -59,7 +62,7 @@ class RideframeApp extends Application.AppBase {
         sensorsOn();
         timer = new Timer.Timer();
         timer.start(method(:onTick), 200, true);
-        if (token != null) { refresh(); push(); pushAct(); }
+        if (token != null) { sendHealth(); refresh(); push(); pushAct(); }
         return [new FlowView(f, self), new FlowDelegate(f, self)];
     }
 
@@ -245,6 +248,7 @@ class RideframeApp extends Application.AppBase {
     // 23.11.: an entry with "tpl" is a workout saved on the watch (POST /api/watch/workout), the rest are sessions
     function push() as Void {
         if (sending || flow.queue.size() == 0 || !flow.paired) { return; }
+        sendHealth();
         sending = true; lastTry = now();
         var q = flow.queue[0] as Dictionary, t = q["tpl"];
         if (t instanceof Dictionary) { api.workout(t as Dictionary, method(:onSent)); } else { api.session(q, method(:onSent)); }
@@ -277,6 +281,7 @@ class RideframeApp extends Application.AppBase {
     }
     function pushAct() as Void {
         if (actSending || acts.size() == 0 || !flow.paired) { return; }
+        sendHealth();
         actSending = true; actTry = now();
         api.activity(acts[0], method(:onActSent));
     }
@@ -333,6 +338,20 @@ class RideframeApp extends Application.AppBase {
         if (code == 401) { recorder.segsLoaded(null, now()); unpair(); return; }
         if (code == 200 && data instanceof Dictionary) { recorder.segsLoaded(arrOf((data as Dictionary)["segs"]), now()); }
         else { recorder.segsLoaded(null, now()); }
+    }
+    // 25.11.: the recovery snapshot (Health.mc), at most every 10 minutes and only with the phone in reach; any trouble only skips it
+    function sendHealth() as Void {
+        if (flow == null || api == null || !flow.paired || now() - healthAt < 600) { return; }
+        if (!System.getDeviceSettings().phoneConnected) { return; }
+        var h = null;
+        try { h = healthSnapshot(); } catch (e) { h = null; }
+        if (h == null) { return; }
+        healthAt = now();
+        api.health(h as Dictionary, method(:onHealth));
+    }
+    function onHealth(code as Number, data) as Void {
+        if (code == 401) { unpair(); return; }
+        if (code != 200) { healthAt = 0; } // not taken (phone, server): the next start or upload tries again
     }
     function unpair() as Void {
         Application.Storage.deleteValue("token");

@@ -15,7 +15,7 @@ Target watches: Forerunner 265 / 265S (416 / 360 px round AMOLED, touch + 5 butt
 
 | File | What it is |
 | --- | --- |
-| `manifest.xml` | watch-app, products fr265, fr265s, fenix7xpro, fenix7pro, fenix8solar47mm, minApiLevel 5.0.0, permissions Communications, Sensor, Fit, Positioning, FitContributor, BluetoothLowEnergy |
+| `manifest.xml` | watch-app, products fr265, fr265s, fenix7xpro, fenix7pro, fenix8solar47mm, minApiLevel 5.0.0, permissions Communications, Sensor, Fit, Positioning, FitContributor, BluetoothLowEnergy, UserProfile, SensorHistory, ComplicationSubscriber (25.11.) |
 | `monkey.jungle` | project file (default `source/` and `resources/`) |
 | `resources/settings/properties.xml` | `baseUrl` (default `https://mac-mini-von-gary.tailcde074.ts.net`), `recordActivity` (off) |
 | `resources/settings/settings.xml` | both editable in the Garmin Connect app (app settings) |
@@ -29,6 +29,7 @@ Target watches: Forerunner 265 / 265S (416 / 360 px round AMOLED, touch + 5 butt
 | `source/Feed.mc` | 19.11.: segment timing (`SegFeed`) and route following (`RouteTrack`) on the watch, flat arrays of local metres (= `js/watchfeed.js`, tests: `tools/watchfeed-test.mjs`) |
 | `source/RideframeApp.mc` | app: flow, queues (strength, activities), caches, routes and segments calls, heart rate, vibration, optional strength `ActivityRecording` |
 | `source/Glance.mc` | glance: week points and the change against last week |
+| `source/Health.mc` | 25.11.: `healthSnapshot()`: Garmin's own recovery values (sleep score, body battery, recovery time, stress, resting HR, VO2max, training status, respiration, SpO2, steps) from `UserProfile`, `ActivityMonitor`, `SensorHistory` and `Toybox.Complications`, every read guarded; sent as `POST /api/watch/health` at the start and before each upload (= `js/watchflow.js healthBody`, tests: `tools/watchflow-test.mjs`, `tools/health-test.mjs`) |
 | `source/Trainer.mc` | 23.11.: the indoor trainer as pure state machines: `TLink` (scan, connect, FTMS / Wahoo setup, latest-wins target, lost / refused) and `TRide` (target steps, seconds, NP, the upload's series) (= `js/watchtrainer.js`, tests: `tools/watchtrainer-test.mjs`) |
 | `source/TrainerBle.mc` | 23.11.: the radio: `TLink.act` to `Toybox.BluetoothLowEnergy`, the `BleDelegate` callbacks back as `E_BLE` events (the preview's twin is the pretend KICKR `js/watchkickr.js`) |
 
@@ -350,6 +351,9 @@ Sources:
 | `Positioning` | GPS for outdoor recordings (`Position.enableLocationEvents`), segment timing and route following |
 | `FitContributor` | 23.11.: the trainer's power, cadence and ERG target in the indoor ride's FIT file (`Session.createField`) |
 | `BluetoothLowEnergy` | 23.11.: the indoor trainer (FTMS / Wahoo) over `Toybox.BluetoothLowEnergy` |
+| `UserProfile` | 25.11.: resting heart rate and VO2max for the recovery snapshot (`Health.mc`) |
+| `SensorHistory` | 25.11.: the newest body battery sample (`getBodyBatteryHistory`) |
+| `ComplicationSubscriber` | 25.11.: one-off `Complications.getComplication` reads: sleep score, training status, recovery time, pulse ox. VERIFY: the docs name watch faces as subscribers; if a watch-app may not hold this permission, remove it and the `Complications` block in `Health.mc` |
 
 ## Memory
 

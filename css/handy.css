@@ -119,3 +119,5 @@ button.wcrow { width: 100%; text-align: left; color: inherit; }
 .hwatch > i, button.wcrow > i { color: var(--accent); }
 button.wcrow { margin-top: 8px; }
 #wcSignedOut { margin-top: 6px; }
+#hHealth:empty { display: none; } /* 25.11.: the recovery card (js/healthcard.js brings its own styles) */
+.mnote { margin-top: 8px; } .mnote .mlead { color: var(--paper); } .mreads { margin: 6px 0 2px; } /* 25.11.: what the Claude link can read (js/mcplink.js) */

@@ -9,6 +9,7 @@ import { randomBytes, randomInt } from 'node:crypto';
 import { readdir, stat } from 'node:fs/promises';
 import { join } from 'node:path';
 import { accountOf, userByKey, shared } from './accounts-api.mjs';
+import { validateHealth, storeHealth, MAX_BODY as HEALTH_BODY } from './health-api.mjs';
 import { linkStrava, validateAct, storeActivity, linkStrength, segQuery, segmentsFor, validateRoute, routeList, putRoute, deleteRoute, routeForWatch } from './watch-feed.mjs';
 
 const { DATA, readJSON, writeJSON, send, body, limited, clientIp, userDir, sha, count, MAX_FILES } = shared;
@@ -284,7 +285,7 @@ export async function watchApi(req, res, path) {
         await writeJSON(WF, W); return send(res, 200, { token, name: u.name, label });
       });
     }
-    if (!['strength/setup', 'strength', 'summary', 'me', 'config', 'activity', 'segments', 'routes', 'route', 'workout'].includes(op)) return send(res, 404, { error: 'unknown' });
+    if (!['strength/setup', 'strength', 'summary', 'me', 'config', 'activity', 'segments', 'routes', 'route', 'workout', 'health'].includes(op)) return send(res, 404, { error: 'unknown' });
     const w = await watchOf(req); if (!w) return send(res, 401, { error: 'Not paired.' });
     if (limited('wcall:' + w.h, 120, 10 * 60e3)) return send(res, 429, { error: 'Too many requests.' });
     if (op === 'me') return send(res, 200, { name: w.u.name, label: w.d.label });
@@ -312,6 +313,11 @@ export async function watchApi(req, res, path) {
       let b; try { b = await body(req, 8e3); } catch (e) { return send(res, e.message === 'too large' ? 413 : 400, { error: e.message === 'too large' ? 'Activity too large.' : 'Body must be JSON.' }); } // 23.11.: 8 KB (the trainer's series)
       const v = await validateAct(b); if (v.error) return send(res, 400, { error: v.error });
       const r = await storeActivity(w.u.id, v); if (r[0] === 200) sumCache.delete(w.u.id); return send(res, ...r);
+    }
+    if (op === 'health' && M === 'POST') { // 25.11.: Garmin's recovery values of the day (garmin/source/Health.mc), tools/health-api.mjs
+      let b; try { b = await body(req, HEALTH_BODY); } catch (e) { return send(res, e.message === 'too large' ? 413 : 400, { error: e.message === 'too large' ? 'Snapshot too large.' : 'Body must be JSON.' }); }
+      const v = validateHealth(b); if (v.error) return send(res, 400, { error: v.error });
+      await storeHealth(w.u.id, v); return send(res, 200, { ok: true, day: v.day, kept: Object.keys(v.v), ...(v.dropped.length ? { dropped: v.dropped } : {}) });
     }
     const q = new URL(req.url, 'http://x').searchParams;
     if (op === 'segments' && M === 'GET') {

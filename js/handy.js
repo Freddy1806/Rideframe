@@ -39,7 +39,7 @@ function render() {
     ${installEvt && !window.__rfNative ? `<button class="btn ghost" id="hInstall">Install as app</button>` : ''}
     <section class="hweek"><div class="hwhead"><span class="label">This week</span><span class="wdl">▲▼ vs last week</span></div><div class="kstats">
       ${weekStat(nb(R2.cur), nb(R2.prev), 'Rides')}${weekStat(nr(R2.cur), nr(R2.prev), 'Runs')}${weekStat(km(R2.cur), km(R2.prev), 'km')}${weekStat(K2.cur.length, K2.prev.length, 'Strength')}</div></section>
-    <div id="hBody"></div>
+    <div id="hBody"></div><div id="hHealth"></div>
     <nav class="hmodes">${['ride', 'run', 'trainer', 'world', 'kraft'].map(card).join('')}</nav>
     <div id="hWatch">${watchCard()}</div>
     <section class="hmyw"><h3 class="ksec">My workouts</h3>${myW.slice(0, 4).map(w => `<a class="hrow hlink" href="pure.html?workout=${encodeURIComponent(w.id)}" style="${mcs('trainer')}"><div><b>${esc(w.name)}</b><small>${w.min} min · indoor trainer</small></div><i>›</i></a>`).join('')}
@@ -51,6 +51,7 @@ function render() {
   $('#hSet').onclick = settings;
   liveStrip(); wireWatch(); checkWatch();
   import('./bodycard.js').then(m => m.mountWeightCard($('#hBody'))).catch(() => {}); // 25.11.: the weight card (js/bodycard.js), signed in only
+  import('./healthcard.js').then(m => m.mountHealthCard($('#hHealth'))).catch(() => {}); // 25.11.: the watch's recovery values (js/healthcard.js), signed in only
   const ib = $('#hInstall'); if (ib) ib.onclick = async () => { installEvt.prompt(); await installEvt.userChoice.catch(() => {}); installEvt = null; render(); };
 }
 /* the watch card on the start page: only signed in with a paired watch; opens the same editor as Settings → Watch */

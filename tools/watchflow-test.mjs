@@ -2,7 +2,7 @@
 // prefill, record detection, queue and retry. Usage: node --test tools/watchflow-test.mjs
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { newFlow, handle, SCR, MENU, END_ROWS, LIST_LAY, DRAG_ROW, curEx, setNo, doneOf, tplOf, saveOffer, pickRows, restLeft, sent, paired, setSetup, clock, homeItems, HOME_FIT, HOME_LAY, homeTop, listItems, recPages, routeInfo, setRoute, setRoutes, routeFace, routeNav, setConfig, order, planItem, LAP_M, HOLD_S, holdPart, pausedTime, lastSet, lastParts, lastTxt, keepLast, loading, stepOf, dragRow, DRAG_MENU, SWIPE_ROWS, WHEEL_STEP, STD_W, workouts, savedW, VERSION } from '../js/watchflow.js';
+import { newFlow, handle, SCR, MENU, END_ROWS, LIST_LAY, DRAG_ROW, curEx, setNo, doneOf, tplOf, saveOffer, pickRows, restLeft, sent, paired, setSetup, clock, homeItems, HOME_FIT, HOME_LAY, homeTop, listItems, recPages, routeInfo, setRoute, setRoutes, routeFace, routeNav, setConfig, order, planItem, LAP_M, HOLD_S, holdPart, pausedTime, lastSet, lastParts, lastTxt, keepLast, loading, stepOf, dragRow, DRAG_MENU, SWIPE_ROWS, WHEEL_STEP, STD_W, workouts, savedW, VERSION, healthBody, HEALTH_KEYS, DEMO_HEALTH } from '../js/watchflow.js';
 import { readFileSync } from 'node:fs';
 import { FIELDS, defaults, validate, compact, fieldText, zoneOf, MORE, TOP } from '../js/watchfields.js';
 
@@ -465,4 +465,21 @@ test('standard workouts: the server knows every exercise by name and type (a hol
     assert.equal(x.t, it[6], `${w.n}: ${it[0]} type`); assert.notEqual(x.n, it[0], `${w.n}: ${it[0]} has a name`);
     if (it[6] === 'time') assert.equal(x.sets[0].s, it[2], 'seconds'); else assert.equal(x.sets[0].r, it[2], 'reps');
   }
+});
+
+test('25.11.: the recovery snapshot (healthBody = garmin/source/Health.mc healthSnapshot): only real values, rounded, the local day', () => {
+  const t = Math.round(new Date(2026, 10, 25, 7, 12).getTime() / 1000), h = healthBody(DEMO_HEALTH, t);
+  assert.deepEqual(h, { day: '2026-11-25', t, ss: 84, bb: 78, rt: 540, st: 22, rhr: 47, v2r: 53, v2b: 55, rr: 13.4, spo2: 97, steps: 2310, ts: 'Productive' });
+  assert.deepEqual(healthBody({ sleepScore: null, bodyBattery: 101, restingHr: 52.6, stress: NaN, vo2Run: '50', trainingStatus: '  ', respiration: 14.26 }, t), { day: '2026-11-25', t, rhr: 53, rr: 14.3 },
+    'null, out of range, NaN, text numbers and an empty status are left out');
+  assert.equal(healthBody({}, t), null, 'nothing to send'); assert.equal(healthBody(null, t), null);
+  assert.equal(healthBody({ steps: 5 }, Math.round(new Date(2026, 0, 1, 0, 5).getTime() / 1000)).day, '2026-01-01', 'the watch\'s local day');
+  // the watch sends the same keys with the same ranges
+  const mc = readFileSync(new URL('../garmin/source/Health.mc', import.meta.url), 'utf8');
+  for (const [k, , lo, hi] of HEALTH_KEYS) { if (k === 'rt') { assert.match(mc, /"rt"\] = rt/); assert.match(mc, /RECOVERY_TIME\), 0, 10080,/); continue; }
+    if (k === 'rhr') { assert.match(mc, /restingHeartRate, 25, 150, false/); continue; }
+    assert.match(mc, new RegExp(`(hPut\\(d, "${k}", hNum\\([^;]*, ${lo}, ${hi}, (true|false)\\)|"${k}"\\] = )`), k + ' with the same range on the watch'); }
+  assert.match(mc, /d\["ts"\]/); assert.match(mc, /d\["day"\]/); assert.match(mc, /d\["t"\] = now\.value\(\)/);
+  const app = readFileSync(new URL('../garmin/source/RideframeApp.mc', import.meta.url), 'utf8'); assert.match(app, /sendHealth\(\); refresh\(\);/, 'sent at every start');
+  const man = readFileSync(new URL('../garmin/manifest.xml', import.meta.url), 'utf8'); for (const p of ['UserProfile', 'SensorHistory', 'ComplicationSubscriber']) assert.match(man, new RegExp(`uses-permission id="${p}"`));
 });
