@@ -91,7 +91,7 @@ let fails = 0; const ok = (c, m) => { console.log(`${c ? '✓' : '✗'} ${m}`); 
     await W.setViewportSize({ width: 390, height: 844 }); await W.goto(BASE + '/watch.html'); await W.waitForFunction(() => window.__watch?.cfgFrom === 'account', null, { timeout: 8000 });
     const pg = await W.evaluate(async () => { const m = await import('/js/watchflow.js'), F = __watch.F; __watch.ev('start'); __watch.ev('start'); return { scr: F.scr, pages: m.recPages(F), w: m.workouts(F).map(w => w.n), more: F.cfg.more.map(x => x[1]) }; });
     ok(pg.scr === 'rec' && JSON.stringify(pg.pages) === JSON.stringify([['time', 'avgPace', 'pace', 'climb'], ['lapPace', 'lapDist', 'avgPace', 'hrZone']]), 'preview: the run pages from the phone (route page off)');
-    ok(pg.w.join() === 'Push day heavy' && pg.more.includes('Basketball') && pg.more.includes('Golf') && !pg.more.includes('Walk'), 'preview: the workout and the more sports from the phone');
+    ok(pg.w[0] === 'Push day heavy' && pg.w.includes('One-arm pull-up') && pg.more.includes('Basketball') && pg.more.includes('Golf') && !pg.more.includes('Walk'), 'preview: the workout and the more sports from the phone');
     ok(/your account/.test(await W.textContent('#wCfg')), 'the panel says where the screens come from');
     ok(await W.evaluate(() => document.documentElement.scrollWidth) <= 390, 'watch.html: no sideways scroll at 390 px');
     // a paired watch: the start page has the card, it opens the same editor (23.11.)
