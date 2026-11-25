@@ -26,7 +26,7 @@ export const TEND_ROWS = ['Resume', 'Stats page', 'Finish & save', 'Discard'];
 /** 23.11.: the strength list: the exercises (free), then the saved workouts (the phone's and those saved on the watch) */
 export const FREE = 'Free';
 /** shown in the menu title on the watch and in the preview, so the user can tell which file is on the watch; raise it with every watch file (garmin/source/Flow.mc VERSION) */
-export const VERSION = '23.11.8';
+export const VERSION = '25.11.1';
 /** BACK from the exercise list once sets are logged: nothing is lost without a second step */
 export const END_ROWS = ['Keep training', 'Finish & save', 'Discard'];
 /** the pause screen (every mode): BACK held this long (or a finger on the "Hold to finish" pill) saves; the short-press hint shows this long */
@@ -79,8 +79,15 @@ const STD_DEF = [
   ['std-legs', 'Leg day', [['squat', 4, 6, 120], ['rdl', 3, 8, 120], ['legpress', 3, 10, 90], ['legcurl', 3, 12, 60], ['calf', 3, 15, 60]]],
   ['std-upper', 'Upper body', [['bench', 3, 8, 120], ['row', 3, 8, 120], ['ohp', 3, 10, 90], ['lat', 3, 10, 90], ['curl', 3, 12, 60], ['tri', 3, 12, 60]]],
   ['std-lower', 'Lower body', [['frontsquat', 3, 8, 120], ['dead', 3, 5, 120], ['lunge', 3, 10, 90], ['legcurl', 3, 12, 60], ['calf', 3, 15, 60]]],
-  ['std-full', 'Full body', [['squat', 3, 8, 120], ['bench', 3, 8, 120], ['row', 3, 8, 90], ['ohp', 3, 10, 90], ['plank', 3, 60, 60]]]];
-export const STD_W = STD_DEF.map(([id, n, l]) => ({ id, n, std: true, it: l.map(([ex, k, r, rest]) => { const e = TOP.find(x => x.id === ex); return [ex, k, r, 0, rest, e.n, e.t]; }) }));
+  ['std-full', 'Full body', [['squat', 3, 8, 120], ['bench', 3, 8, 120], ['row', 3, 8, 90], ['ohp', 3, 10, 90], ['plank', 3, 60, 60]]],
+  // 25.11. (Freddy: one-arm pull-up and one-arm push-up as standard workouts, his own plan revised). One exercise per arm with the keys of
+  // js/kraftguide.js (oap_neg_l …) so phone and watch share the history; holds and negatives are timed (seconds); a 5th / 6th value = name, type.
+  ['std-oapull', 'One-arm pull-up', [['pull', 2, 6, 90], ['oap_90_l', 3, 10, 90, 'OA hold 90 left', 'time'], ['oap_90_r', 3, 10, 90, 'OA hold 90 right', 'time'],
+    ['oap_neg_l', 3, 6, 120, 'OA negative left', 'time'], ['oap_neg_r', 3, 6, 120, 'OA negative right', 'time'],
+    ['oap_asst_l', 3, 3, 120, 'OA assisted left', 'bw'], ['oap_asst_r', 3, 3, 120, 'OA assisted right', 'bw']]],
+  ['std-oapush', 'One-arm push-up', [['push', 2, 10, 60, 'Push-ups', 'bw'], ['oapu_inc_l', 4, 4, 120, 'OA incline left', 'bw'], ['oapu_inc_r', 4, 4, 120, 'OA incline right', 'bw'],
+    ['archer_pu', 3, 4, 90, 'Archer push-ups', 'bw'], ['oapu_neg_l', 3, 5, 90, 'OA negative left', 'time'], ['oapu_neg_r', 3, 5, 90, 'OA negative right', 'time']]]];
+export const STD_W = STD_DEF.map(([id, n, l]) => ({ id, n, std: true, it: l.map(([ex, k, r, rest, nm, t]) => { const e = nm ? { n: nm, t } : TOP.find(x => x.id === ex); return [ex, k, r, 0, rest, e.n, e.t]; }) }));
 /** the strength list's workouts: the saved ones (account / watch) first, then the standard ones; a saved one with a standard one's name hides it */
 export const workouts = F => { const s = savedW(F), nm = new Set(s.map(w => String(w.n).toLowerCase())); return [...s, ...STD_W.filter(w => !nm.has(w.n.toLowerCase()))]; };
 /** 23.11.: a workout in progress: plan = { w (index into workouts), i (the item now), on (false while a free exercise is done in between), skip: [items] };

@@ -157,7 +157,7 @@ let fails = 0; const ok = (c, m) => { console.log(`${c ? '✓' : '✗'} ${m}`); 
     d = await G(); const home = await D.evaluate(async () => (await import('/js/watchflow.js')).homeItems(__watch.F)); await dbtn('down', home.indexOf('kraft')); await dbtn('start');
     const DT = () => D.evaluate(() => __watch.texts.join(' | ')), DM = f => D.evaluate(async f => { const m = await import('/js/watchflow.js'); return m[f](__watch.F); }, f);
     await D.evaluate(() => { __watch.F.setup.ex.find(e => e.id === 'bench').s = [[80, 8], [77.5, 7], [75, 6]]; }); // 24.11.: last time's bench, set by set
-    d = await G(); ok(d.scr === 'smode', 'Strength: Exercises or a workout'); ok((await D.evaluate(async () => (await import('/js/watchflow.js')).listItems(__watch.F))).join() === 'Free,Push day,Pull day,Leg day,Upper body,Lower body,Full body', '23.11.7: one list: Free first, then the six standard workouts'); await dsnap('16_strength_mode');
+    d = await G(); ok(d.scr === 'smode', 'Strength: Exercises or a workout'); ok((await D.evaluate(async () => (await import('/js/watchflow.js')).listItems(__watch.F))).join() === 'Free,Push day,Pull day,Leg day,Upper body,Lower body,Full body,One-arm pull-up,One-arm push-up', '23.11.7: one list: Free first, then the six standard workouts'); await dsnap('16_strength_mode');
     await dbtn('down'); await dbtn('start'); d = await G(); ok(d.scr === 'set' && d.ex === 'bench' && d.kg === 80 && d.reps === 6 && d.plan.i === 0 && await DM('setNo') === 1, 'standard Push day: bench 4 × 6 with last time\'s 80 kg, set 1'); await dsnap('18_guided_set');
     ok(/♥|bpm|\d+:\d\d/.test(await DT()), 'set screen: heart rate and clock line');
     ok(/SET 1 OF 4 \| 80 \| 8 \|/.test(await DT()), 'set 1: last time\'s set 1 small on the SET row (80, 8)');
@@ -322,7 +322,7 @@ let fails = 0; const ok = (c, m) => { console.log(`${c ? '✓' : '✗'} ${m}`); 
       const o = []; o.push = (...a) => Array.prototype.push.apply(o, a.filter(x => x.k !== 'setup')); F.out = o; }); // no phone: the setup never comes
     await X.evaluate(async () => { const m = await import('/js/watchflow.js'); __watch.ev('item', m.homeItems(__watch.F).indexOf('kraft')); }); await X.waitForTimeout(150);
     w = await xs(); const sl = await X.evaluate(async () => (await import('/js/watchflow.js')).listItems(__watch.F));
-    ok(w.scr === 'smode' && sl.join() === 'Free,Push day,Pull day,Leg day,Upper body,Lower body,Full body', `empty setup: Strength lists Free + the six standard workouts (${sl.join(', ')})`);
+    ok(w.scr === 'smode' && sl.join() === 'Free,Push day,Pull day,Leg day,Upper body,Lower body,Full body,One-arm pull-up,One-arm push-up', `empty setup: Strength lists Free + the six standard workouts (${sl.join(', ')})`);
     await X.evaluate(() => __watch.ev('down')); await X.waitForTimeout(100); ok((await xt()).includes('Standard, 6 exercises'), 'Push day: "Standard, 6 exercises"'); await xshot('05_standard_workouts');
     await X.evaluate(() => __watch.ev('start')); w = await xs(); ok(w.scr === 'set' && w.ex === 'bench' && w.kg === 20 && w.reps === 6, `Push day: bench 4 × 6 at the start value 20 kg (${w.ex} ${w.kg} × ${w.reps})`);
     ok((await xt()).includes('SET 1 OF 4'), '"SET 1 OF 4"'); await xshot('06_standard_push_set');

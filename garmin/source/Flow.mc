@@ -114,7 +114,7 @@ const M_SYNC = "Sync now";
 const M_PAIR = "Pair with phone";
 const FREE_ROW = "Free";
 // js/watchflow.js VERSION: the menu title shows it
-const RF_VERSION = "23.11.8";
+const RF_VERSION = "25.11.1";
 // pairing states / sum states
 const P_ENTER = 0;
 const P_SENDING = 1;
@@ -250,7 +250,12 @@ function stdWorkouts() as Array<Dictionary> {
         stdW("std-lower", "Lower body", [["frontsquat", 3, 8, 0, 120, "Front squat", "w"], ["dead", 3, 5, 0, 120, "Deadlift", "w"], ["lunge", 3, 10, 0, 90, "Lunges", "w"],
             ["legcurl", 3, 12, 0, 60, "Leg curl", "w"], ["calf", 3, 15, 0, 60, "Calf raise", "w"]]),
         stdW("std-full", "Full body", [["squat", 3, 8, 0, 120, "Squat", "w"], ["bench", 3, 8, 0, 120, "Bench press", "w"], ["row", 3, 8, 0, 90, "Barbell row", "w"],
-            ["ohp", 3, 10, 0, 90, "Overhead press", "w"], ["plank", 3, 60, 0, 60, "Plank", "time"]])
+            ["ohp", 3, 10, 0, 90, "Overhead press", "w"], ["plank", 3, 60, 0, 60, "Plank", "time"]]),
+        stdW("std-oapull", "One-arm pull-up", [["pull", 2, 6, 0, 90, "Pull-ups", "bw"], ["oap_90_l", 3, 10, 0, 90, "OA hold 90 left", "time"], ["oap_90_r", 3, 10, 0, 90, "OA hold 90 right", "time"],
+            ["oap_neg_l", 3, 6, 0, 120, "OA negative left", "time"], ["oap_neg_r", 3, 6, 0, 120, "OA negative right", "time"],
+            ["oap_asst_l", 3, 3, 0, 120, "OA assisted left", "bw"], ["oap_asst_r", 3, 3, 0, 120, "OA assisted right", "bw"]]),
+        stdW("std-oapush", "One-arm push-up", [["push", 2, 10, 0, 60, "Push-ups", "bw"], ["oapu_inc_l", 4, 4, 0, 120, "OA incline left", "bw"], ["oapu_inc_r", 4, 4, 0, 120, "OA incline right", "bw"],
+            ["archer_pu", 3, 4, 0, 90, "Archer push-ups", "bw"], ["oapu_neg_l", 3, 5, 0, 90, "OA negative left", "time"], ["oapu_neg_r", 3, 5, 0, 90, "OA negative right", "time"]])
     ] as Array<Dictionary>;
     gStd = r;
     return r;

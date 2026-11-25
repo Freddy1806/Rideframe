@@ -247,10 +247,10 @@ test('more: the sports from the phone, one fixed page, no route', () => {
   const E = newFlow(null, { cfg: { ...CFG(), more: [] } }); go(E, [['item', 4]]); assert.equal(E.scr, SCR.MORE); go(E, ['start']); assert.equal(E.scr, SCR.MORE, 'empty list: nothing to start'); go(E, ['back']); assert.equal(E.scr, SCR.HOME);
 });
 test('strength: Exercises or a saved workout in one list; free = recent, then top 20, then the rest', () => {
-  const F = fl({ last: 'kraft' }); go(F, ['start']); assert.equal(F.scr, SCR.SMODE); assert.deepEqual(listItems(F), ['Free', 'Push day', 'Pull day', 'Leg day', 'Upper body', 'Lower body', 'Full body'], '23.11.7: the saved Push day hides the standard one');
+  const F = fl({ last: 'kraft' }); go(F, ['start']); assert.equal(F.scr, SCR.SMODE); assert.deepEqual(listItems(F), ['Free', 'Push day', 'Pull day', 'Leg day', 'Upper body', 'Lower body', 'Full body', 'One-arm pull-up', 'One-arm push-up'], '23.11.7: the saved Push day hides the standard one');
   go(F, ['start']); assert.equal(F.scr, SCR.PICK); assert.deepEqual(listItems(F), ['Pull-ups', 'Squat', 'Biceps curls', 'Bench press', 'Plank']);
   go(F, ['start']); assert.equal(curEx(F).id, 'pull'); go(F, ['done', 'back']); assert.equal(F.scr, SCR.PICK); assert.equal(F.sel, 0, 'the list opens on the current exercise');
-  const G = mk(); go(G, ['start']); assert.equal(G.scr, SCR.SMODE, '23.11.7: no saved workouts: still the list (Free + the standard ones)'); assert.equal(listItems(G).length, 7);
+  const G = mk(); go(G, ['start']); assert.equal(G.scr, SCR.SMODE, '23.11.7: no saved workouts: still the list (Free + the standard ones)'); assert.equal(listItems(G).length, 9);
   assert.deepEqual(order({ ex: [{ id: 'a' }, { id: 'b' }, { id: 'c' }], top: ['c', 'zz'], recent: ['b'] }), [1, 2, 0]);
   const S = fl({ last: 'kraft' }); go(S, ['start', 'back']); assert.equal(S.scr, SCR.HOME, 'BACK on the choice: the start menu, Strength on top'); assert.equal(S.start, 0); assert.equal(listItems(S)[S.sel], 'Strength');
   const T = fl({ last: 'kraft' }); go(T, ['start', 'start', 'back']); assert.equal(T.scr, SCR.SMODE, 'BACK on the exercises without sets: the choice again (workouts or exercises)'); assert.equal(T.start, 0);
@@ -420,15 +420,15 @@ test('lists: one row per row distance as drawn (1:1 with the finger), a swipe wi
   assert.ok(Math.abs(dragRow(SCR.PICK) - (rows[2] - rows[0]) / 2) < .02, 'a list row step = the mean distance of the rows around the selected one');
   assert.ok(Math.abs(DRAG_MENU - (menu[1] - menu[0])) < .001, 'a menu row step = the menu row distance');
   assert.ok(WHEEL_STEP * 260 >= 18 && WHEEL_STEP * 260 <= 21, `wheel step ${WHEEL_STEP * 260} px on the fenix 8`); assert.equal(SWIPE_ROWS, 3);
-  const F = fl({ last: 'kraft' }); go(F, ['start', 'swipeUp']); assert.equal(F.sel, 3, 'strength list: a swipe 3 rows'); go(F, ['swipeUp', 'swipeUp']); assert.equal(F.sel, 6, 'clamped at the end, no wrap');
+  const F = fl({ last: 'kraft' }); go(F, ['start', 'swipeUp']); assert.equal(F.sel, 3, 'strength list: a swipe 3 rows'); go(F, ['swipeUp', 'swipeUp', 'swipeUp']); assert.equal(F.sel, 8, 'clamped at the end, no wrap');
   go(F, ['swipeDown', 'swipeDown', 'swipeDown']); assert.equal(F.sel, 0);
 });
-test('standard workouts: six, built in, only standard exercises with sensible sets, reps and rest; kg 0', () => {
-  assert.deepEqual(STD_W.map(w => w.n), ['Push day', 'Pull day', 'Leg day', 'Upper body', 'Lower body', 'Full body']);
+test('standard workouts: built in, sensible sets, reps and rest; kg 0; the same in Flow.mc', () => {
+  assert.deepEqual(STD_W.map(w => w.n), ['Push day', 'Pull day', 'Leg day', 'Upper body', 'Lower body', 'Full body', 'One-arm pull-up', 'One-arm push-up']);
   const top = new Map(TOP.map(e => [e.id, e]));
-  for (const w of STD_W) { assert.ok(w.std && /^std-/.test(w.id)); assert.ok(w.it.length >= 4 && w.it.length <= 6, w.n);
-    for (const [ex, k, r, kg, rest, nm, t] of w.it) { const e = top.get(ex); assert.ok(e, `${w.n}: ${ex} is a standard exercise`); assert.equal(nm, e.n); assert.equal(t, e.t);
-      assert.ok(k >= 3 && k <= 4 && kg === 0 && rest >= 60 && rest <= 120 && (t === 'time' ? r === 60 : r >= 5 && r <= 15), `${w.n}: ${ex} ${k}×${r} ${rest}s`); } }
+  for (const w of STD_W) { assert.ok(w.std && /^std-/.test(w.id)); assert.ok(w.it.length >= 4 && w.it.length <= 7, w.n);
+    for (const [ex, k, r, kg, rest, nm, t] of w.it) { const e = top.get(ex); if (e) { assert.equal(nm, e.n); assert.equal(t, e.t); } else { assert.match(w.id, /^std-oap/); assert.ok(nm.length <= 18 && ['bw', 'time'].includes(t), `${w.n}: ${ex}`); }
+      assert.ok(k >= 2 && k <= 4 && kg === 0 && rest >= 60 && rest <= 120 && (t === 'time' ? r >= 5 && r <= 60 : r >= 3 && r <= 15), `${w.n}: ${ex} ${k}×${r} ${rest}s`); } }
   // the same six in garmin/source/Flow.mc stdWorkouts, item by item
   const mc = readFileSync(new URL('../garmin/source/Flow.mc', import.meta.url), 'utf8');
   for (const w of STD_W) { assert.ok(mc.includes(`stdW("${w.id}", "${w.n}", [`), `Flow.mc has ${w.n}`);
@@ -437,7 +437,7 @@ test('standard workouts: six, built in, only standard exercises with sensible se
 });
 test('standard workouts: no account, no phone: Strength lists Free + the six; Push day walks through its plan with last time\'s or start values', () => {
   const F = newFlow({ ex: [] }, { scr: SCR.HOME, last: 'kraft', paired: false }); F.scr = SCR.HOME; go(F, ['start']); assert.equal(F.scr, SCR.SMODE);
-  assert.deepEqual(listItems(F), ['Free', 'Push day', 'Pull day', 'Leg day', 'Upper body', 'Lower body', 'Full body']);
+  assert.deepEqual(listItems(F), ['Free', 'Push day', 'Pull day', 'Leg day', 'Upper body', 'Lower body', 'Full body', 'One-arm pull-up', 'One-arm push-up']);
   go(F, ['down', 'start']); assert.equal(F.scr, SCR.SET); assert.deepEqual([curEx(F).id, curEx(F).n, F.kg, F.reps, setNo(F)], ['bench', 'Bench press', 20, 6, 1], 'kg 0: the start value; the plan\'s reps');
   assert.deepEqual(listItems({ ...F, scr: SCR.PICK }).slice(0, 6), ['Bench press', 'Overhead press', 'Incline bench press', 'Dips', 'Lateral raise', 'Triceps pushdown'], 'its exercises are added to the empty setup');
   assert.equal(F.setup.ex.find(e => e.id === 'dip').t, 'bw', 'with their type');
@@ -454,6 +454,6 @@ test('standard workouts: unchanged = not asked; changed = saved under its name, 
   go(G, ['start', 'start']); assert.equal(G.queue.at(-1).tpl.n, 'Pull day'); assert.ok(!/^std-/.test(G.queue.at(-1).tpl.id), 'a new id in the account');
   const W = workouts(G); assert.equal(W.filter(w => w.n === 'Pull day').length, 1, 'only once'); assert.ok(!W.find(w => w.n === 'Pull day').std, 'the saved one');
   assert.equal(savedW(G).length, 2); assert.ok(!G.queue.some(q => q.tpl && /^std-/.test(q.tpl.id)), 'standard ones are never uploaded by themselves');
-  const Z = mk(); Z.cfg.w = Array.from({ length: 29 }, (_, i) => ({ id: 'z' + i, n: 'Z' + i, it: [['bench', 1, 5, 50, 60]] })); go(Z, ['start']); assert.equal(workouts(Z).length, 35);
+  const Z = mk(); Z.cfg.w = Array.from({ length: 29 }, (_, i) => ({ id: 'z' + i, n: 'Z' + i, it: [['bench', 1, 5, 50, 60]] })); go(Z, ['start']); assert.equal(workouts(Z).length, 37);
   go(Z, ['start', 'start', 'done', 'menu']); go(Z, [['item', Z.menu.indexOf(MENU.FIN)]]); assert.deepEqual(Z.saveq.rows, ['Save as workout', 'No'], '29 saved + 6 standard: room for one more');
 });
