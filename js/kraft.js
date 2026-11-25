@@ -30,7 +30,9 @@ async function load() {
 /** the workouts of the account's watch config (set up on the phone or saved on the watch, POST /api/watch/workout): startable here too */
 async function loadWatchTpl() {
   try { const r = await fetch('/api/watch/config', { cache: 'no-store', headers: { 'X-RF-Token': acc?.token || '' } }); if (!r.ok) return;
-    const j = await r.json(); wtpl = (j.config?.workouts || []).filter(w => w.items?.length); if (wtpl.length && !W) render(); } catch {}
+    const j = await r.json(); wtpl = (j.config?.workouts || []).filter(w => w.items?.length); if (wtpl.length && !W) render();
+    const q = new URLSearchParams(location.search).get('watch'), t = q && wtpl.find(w => w.id === q); // kraft.html?watch=<id>: Start on the Today page (a planned session, js/planlib.js)
+    if (q) window.history.replaceState(null, '', location.pathname); if (t && !W) watchBegin(t); } catch {}
 }
 const saveList = () => db.kvSet('kraft', list).catch(() => {});
 let draftT = 0;
@@ -143,14 +145,16 @@ function exView() {
         <span class="kbest">${b ? e.t === 'time' ? b.sec + ' s' : e.t === 'bw' ? b.reps + ' reps' : fmtNum(b.rm, 1) + ' kg' : ''}</span></div>`; }).join('')}</div>`;
 }
 
+/** a watch workout as a phone session: sets × reps (seconds when timed) at kg */
+function watchBegin(t) { begin({ name: t.name, ex: t.items.map(x => { const e = exOf(x.ex);
+    return { k: x.ex, n: e.n, t: e.t, sets: [...Array(Math.max(1, +x.sets || 1))].map(() => ({ kg: e.t === 'w' && +x.kg ? String(x.kg) : '', r: e.t === 'time' ? '' : String(x.reps || ''), s: e.t === 'time' ? String(x.reps || '') : '', done: false })) }; }) }); }
 function wireMain() {
   const on = (s, f) => el.querySelectorAll(s).forEach(b => b.onclick = e => f(b, e));
   on('#kNew', () => begin({ name: defaultName(), ex: [] }));
   on('#kQuick', () => quickSheet());
   on('#kNewEx', async () => { const k = await newExercise($('#kFind')?.value.trim() || ''); if (k) { render(); exSheet(k); } });
   on('[data-tpl]', (b, e) => { if (e.target.dataset.tdel) return; const t = tpls[+b.dataset.tpl]; begin({ name: t.name, ex: t.ex.map(x => ({ k: x.k, n: exOf(x.k).n, t: exOf(x.k).t, sets: fromPrev(x.k, x.n || 3) })) }); });
-  on('[data-wtpl]', b => { const t = wtpl[+b.dataset.wtpl]; begin({ name: t.name, ex: t.items.map(x => { const e = exOf(x.ex); // the watch plan: sets × reps (seconds when timed) at kg
-    return { k: x.ex, n: e.n, t: e.t, sets: [...Array(Math.max(1, +x.sets || 1))].map(() => ({ kg: e.t === 'w' && +x.kg ? String(x.kg) : '', r: e.t === 'time' ? '' : String(x.reps || ''), s: e.t === 'time' ? String(x.reps || '') : '', done: false })) }; }) }); });
+  on('[data-wtpl]', b => watchBegin(wtpl[+b.dataset.wtpl]));
   on('[data-tdel]', b => { if (!confirm('Delete template?')) return; tpls.splice(+b.dataset.tdel, 1); saveTpls(); render(); });
   on('[data-again]', b => { const s = list.find(x => x.id === b.dataset.again); if (s.guide) return openIntro(s.guide.id, gctx); begin({ name: s.name, ex: s.ex.map(x => ({ k: x.k, n: x.n, t: x.t, sets: fromPrev(x.k, x.sets.filter(y => y.done).length || 3) })) }); });
   on('[data-open]', b => sessionSheet(list.find(x => x.id === b.dataset.open)));

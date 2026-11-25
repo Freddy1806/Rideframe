@@ -1,12 +1,14 @@
-// RIDEFRAME main menu on the phone (handy.html, start of the installed app and the Android app).
+// RIDEFRAME Today on the phone (handy.html, start of the installed app and the Android app).
 // Freddy 16.11.: one clear menu, every mode its own big card with colour and icon (ride outside, run, indoor trainer,
 // routes & 3D world, strength); the week at a glance; settings for light/dark and colours.
+// 25.11. (owner: "komplett neu denken, so wie das Garmin auch macht … eher so dein Trainingscoach"): the start page is Today:
+// readiness, today's planned session with Start and the week, what changed (js/today.js), then the arrangeable cards
+// (js/cards.js). Recording stays one tap away in the compact Record row.
 import { db } from './db.js';
-import { esc, twoWeeks, weekStat, markHome } from './util.js';
+import { esc, markHome } from './util.js';
 markHome('handy');
-import { sportOf, isBike } from './fitness.js';
 import { MODES, ACCENTS, icon, applyTheme } from './theme.js';
-import { loadActs, rowHtml, wireRows } from './feed.js';
+import { loadActs, detail } from './feed.js';
 import { nav } from './nav.js';
 
 const el = document.getElementById('handy'), $ = (s, r = document) => r.querySelector(s);
@@ -28,30 +30,27 @@ async function load() {
 }
 
 function render() {
-  const R2 = twoWeeks(rides), K2 = twoWeeks(kraft), nb = l => l.filter(isBike).length, nr = l => l.filter(r => sportOf(r) === 'run').length, km = l => Math.round(l.reduce((a, r) => a + r.distance, 0) / 1000);
   const mcs = m => S.oneColor !== true ? `--mc:${MODES[m].color};--mcl:${MODES[m].light}` : '--mc:var(--accent);--mcl:var(--accent)';
-  const card = m => `<a class="hmode" href="${MODES[m].href}" style="${mcs(m)}">${icon(m, 'hico')}<b>${MODES[m].name}</b><i>›</i></a>`;
+  const card = m => `<a class="hmode" href="${MODES[m].href}" style="${mcs(m)}" aria-label="${MODES[m].name}">${icon(m, 'hico')}<b>${MODES[m].short}</b></a>`;
   el.innerHTML = `<header class="ptop"><div class="pbrand" style="font-size:22px">RIDE<span>FRAME</span></div>
       <button class="ppill ${acc ? 'on' : ''}" id="hAcc"><i></i><span class="pname">${acc ? esc(acc.name) : 'Sign in'}</span></button>
       <button class="pgear" id="hSet" title="Settings" aria-label="Settings">${icon('gear', 'gico')}</button></header>
-    <div id="hLive" class="live"></div>
     ${stv?.configured && (stv.connected ? !stv.canImport : !stvHide()) ? `<button class="hstrava" id="hStrava">${stv.connected ? '' : '<i id="hStravaX" role="button" aria-label="Hide">✕</i>'}<b>${stv.connected ? 'Strava import is off' : 'Strava is not connected'}</b><small>${stv.connected ? 'Tap to reconnect and allow reading your activities, then everything you upload to Strava shows up here.' : 'Tap to connect, then everything you upload to Strava shows up here.'}</small></button>` : stvMsg ? `<p class="hint" role="status">${esc(stvMsg)}</p>` : ''}
     ${installEvt && !window.__rfNative ? `<button class="btn ghost" id="hInstall">Install as app</button>` : ''}
-    <section class="hweek"><div class="hwhead"><span class="label">This week</span><span class="wdl">▲▼ vs last week</span></div><div class="kstats">
-      ${weekStat(nb(R2.cur), nb(R2.prev), 'Rides')}${weekStat(nr(R2.cur), nr(R2.prev), 'Runs')}${weekStat(km(R2.cur), km(R2.prev), 'km')}${weekStat(K2.cur.length, K2.prev.length, 'Strength')}</div></section>
-    <div id="hBody"></div><div id="hHealth"></div>
-    <nav class="hmodes">${['ride', 'run', 'trainer', 'world', 'kraft'].map(card).join('')}</nav>
-    <div id="hWatch">${watchCard()}</div>
+    <div class="tdhello" id="hHello"></div><div id="hHero"></div><div id="hPlan"></div>
+    <nav class="hmodes hstart" aria-labelledby="hRecH"><h2 class="label" id="hRecH">Record</h2><div>${['ride', 'run', 'trainer', 'world', 'kraft'].map(card).join('')}</div></nav>
+    <div id="hWhat"></div><div id="hOv"></div>
     <section class="hmyw"><h3 class="ksec">My workouts</h3>${myW.slice(0, 4).map(w => `<a class="hrow hlink" href="pure.html?workout=${encodeURIComponent(w.id)}" style="${mcs('trainer')}"><div><b>${esc(w.name)}</b><small>${w.min} min · indoor trainer</small></div><i>›</i></a>`).join('')}
       <a class="hall" href="pure.html?workout=">${myW.length > 4 ? `All ${myW.length} and the standard workouts ›` : myW.length ? 'All workouts · build a new one ›' : 'Build your own workout or pick a standard one ›'}</a></section>
-    <a class="hrow hlink hremote" href="remote.html?auto" id="hRemote"><div><b>Remote</b><small>Control RIDEFRAME on your laptop with this phone</small></div><i>›</i></a>
-    ${D.acts.length ? `<section class="hrecent"><h3 class="ksec">Recent</h3>${D.acts.slice(0, 3).map(a => rowHtml(a, D.P)).join('')}<a class="hall" href="aktivitaeten.html">All activities ›</a></section>` : ''}`;
-  wireRows(el, D, async () => { await load(); render(); });
+    <a class="hrow hlink hremote" href="remote.html?auto" id="hRemote"><div><b>Remote</b><small>Control RIDEFRAME on your laptop with this phone</small></div><i>›</i></a>`;
+  const again = async () => { await load(); render(); };
+  const ctx = { acts: D.acts, P: D.P, S, acc, openAct: a => detail(a, D.P, again), signIn: () => $('#hAcc').click(),
+    hosts: { friends: box => { box.innerHTML = '<div id="hLive" class="live"></div>'; liveStrip(box.firstElementChild); }, watch: box => { box.innerHTML = `<div id="hWatch">${watchCard()}</div>`; wireWatch(box); } } }; // the cards (not in the page yet, so the boxes are handed over): js/cards.js "Friends" and "Watch" are these two
+  import('./today.js').then(m => m.mountToday({ hello: $('#hHello'), hero: $('#hHero'), plan: $('#hPlan'), what: $('#hWhat') }, ctx)).catch(e => console.warn('Today:', e));
+  import('./cards.js').then(m => m.mountOverview($('#hOv'), ctx)).catch(e => console.warn('Cards:', e));
   $('#hAcc').onclick = async () => { const a = await import('./account.js'); await a.accountModal({ settings: S }, async () => { await load(); render(); }); };
   $('#hSet').onclick = settings;
-  liveStrip(); wireWatch(); checkWatch();
-  import('./bodycard.js').then(m => m.mountWeightCard($('#hBody'))).catch(() => {}); // 25.11.: the weight card (js/bodycard.js), signed in only
-  import('./healthcard.js').then(m => m.mountHealthCard($('#hHealth'))).catch(() => {}); // 25.11.: the watch's recovery values (js/healthcard.js), signed in only
+  checkWatch();
   const ib = $('#hInstall'); if (ib) ib.onclick = async () => { installEvt.prompt(); await installEvt.userChoice.catch(() => {}); installEvt = null; render(); };
 }
 /* the watch card on the start page: only signed in with a paired watch; opens the same editor as Settings → Watch */
@@ -60,7 +59,7 @@ function watchCard() {
   const w = l[0], more = l.length > 1 ? ` +${l.length - 1}` : '';
   return `<button type="button" class="hrow hlink hwatch" id="hWcfg">${icon('watch', 'rico')}<div><b>Watch · Screens &amp; workouts</b><small>${esc(w.label || 'Garmin watch')}${more} · data fields per sport, workouts</small></div><i>›</i></button>`;
 }
-function wireWatch() { const b = $('#hWcfg'); if (b) b.onclick = () => import('./watchcfg.js').then(m => m.openEditor()); }
+function wireWatch(root = document) { const b = $('#hWcfg', root); if (b) b.onclick = () => import('./watchcfg.js').then(m => m.openEditor()); }
 let watchAsk = 0;
 function checkWatch() {
   if (!acc) { if (watches) { watches = null; try { localStorage.removeItem(WKEY); } catch {} } return; }
@@ -76,8 +75,8 @@ function checkWatch() {
    with "Join on your laptop" + Copy link, a row of faces with dots that opens the list of every friend */
 let liveF = null, liveStop = null;
 const FR_FACES = 5;
-function liveStrip() {
-  const el = $('#hLive'); if (!el || !acc) return;
+function liveStrip(el = $('#hLive')) {
+  if (!el || !acc) return;
   import('./live.js').then(live => {
     const html = F => {
       const rs = F.friends.filter(f => f.state === 'riding' && f.ride).map(live.asRider), faces = F.friends.slice(0, FR_FACES), more = F.friends.length - faces.length;
@@ -170,6 +169,10 @@ function settings() {
 }
 let stv = null, stvMsg = ''; const stvHide = () => { try { return localStorage.getItem('rf-strava-hint') === 'off'; } catch { return false; } };
 await load(); render(); nav('home');
+// handy.html#settings, #settings-watch, #settings-coach: Settings opened (and scrolled there) from the cards and the Today page's first steps
+const hashOpen = () => { const m = /^#settings(?:-(watch|coach))?$/.exec(location.hash); if (!m) return; history.replaceState(null, '', location.pathname + location.search); settings();
+  const t = m[1] === 'watch' ? '#tWatchSec' : m[1] === 'coach' ? '#tMcp' : null; if (t) setTimeout(() => document.querySelector(t)?.scrollIntoView({ block: 'start' }), 300); };
+addEventListener('hashchange', hashOpen); hashOpen();
 const pull = () => acc && import('./account.js').then(async a => { const n = kraft.length, m = await a.pullRides().catch(() => 0); await a.syncKraft(); await load(); if (m || kraft.length !== n) render(); }).catch(() => {}); // strength from the watch or another device, activities the host imported from Strava (tools/strava-auto.mjs)
 pull();
 const stravaIn = async force => { const m = await import('./actimport.js'), r = force ? await m.importStrava() : await m.autoImport(S); if (r?.added) { stvMsg = r.text.replace('.', ' from Strava.'); await load(); render(); } else if (force && r?.text) { stvMsg = r.text; render(); } };

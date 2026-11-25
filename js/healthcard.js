@@ -23,7 +23,10 @@ const dayKey = t => { const d = new Date(t); return `${d.getFullYear()}-${pad(d.
 const ago = (day, now) => { const [y, m, d] = day.split('-').map(Number), n = Math.round((new Date(now).setHours(0, 0, 0, 0) - new Date(y, m - 1, d).getTime()) / 864e5);
   return n <= 0 ? 'today' : n === 1 ? 'yesterday' : n < 7 ? new Date(y, m - 1, d).toLocaleDateString('en-GB', { weekday: 'long' }) : new Date(y, m - 1, d).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' }); };
 const hm = t => new Date(t).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' });
-const word = (v, l) => l.find(([x]) => v >= x)?.[1] || l[l.length - 1][1];
+export const word = (v, l) => l.find(([x]) => v >= x)?.[1] || l[l.length - 1][1];
+/** the words for a value (the overview's small cards say the same, js/cards.js) */
+export const WORDS = { ss: [[90, 'excellent'], [80, 'good'], [60, 'fair'], [0, 'poor']], bb: [[75, 'charged'], [50, 'medium'], [25, 'low'], [0, 'drained']], st: [[76, 'high'], [51, 'medium'], [26, 'low'], [0, 'resting']] };
+export { ago as dayAgo, ICON as MOON };
 
 /** the resting heart rate of the newest day against the average of the 7 days before it: { v, avg, d } or null */
 export function rhrCompare(days) {
@@ -41,13 +44,13 @@ export function renderHealthCard(el, data, { now = Date.now() } = {}) {
   const top = days[0], fresh = top.day === dayKey(now), tiles = [];
   const tile = (label, v, unit, sub = '', cls = '') => tiles.push(`<div class="hct"><span>${label}</span><b>${v}${unit ? `<small> ${unit}</small>` : ''}</b>${sub ? `<em class="${cls}">${sub}</em>` : ''}</div>`);
   const from = k => L[k] && L[k].day !== top.day ? ago(L[k].day, now) : '';
-  if (L.ss) tile('Sleep score', L.ss.v, '', from('ss') || word(L.ss.v, [[90, 'excellent'], [80, 'good'], [60, 'fair'], [0, 'poor']]));
-  if (L.bb) tile('Body battery', L.bb.v, '', from('bb') || word(L.bb.v, [[75, 'charged'], [50, 'medium'], [25, 'low'], [0, 'drained']]));
+  if (L.ss) tile('Sleep score', L.ss.v, '', from('ss') || word(L.ss.v, WORDS.ss));
+  if (L.bb) tile('Body battery', L.bb.v, '', from('bb') || word(L.bb.v, WORDS.bb));
   const R = rhrCompare(days);
   if (R) tile('Resting HR', R.v, 'bpm', R.d == null ? 'first day' : R.d === 0 ? '= 7 days' : `${R.d > 0 ? '+' : '−'}${Math.abs(R.d)} vs 7 days`, R.d != null && R.d <= 0 ? 'hcgood' : '');
   if (L.rt) { const h = Math.round(L.rt.v / 60); tile('Recovery', L.rt.v ? (h >= 1 ? h : '<1') : '0', 'h', from('rt') || (L.rt.v ? 'to recover' : 'recovered'), L.rt.v ? '' : 'hcgood'); }
   if (L.v2r || L.v2b) tile('VO2max', L.v2r ? L.v2r.v : L.v2b.v, '', L.v2r && L.v2b ? `run · bike ${L.v2b.v}` : L.v2r ? 'running' : 'cycling');
-  if (L.st && tiles.length < 6) tile('Stress', L.st.v, '', from('st') || word(L.st.v, [[76, 'high'], [51, 'medium'], [26, 'low'], [0, 'resting']]));
+  if (L.st && tiles.length < 6) tile('Stress', L.st.v, '', from('st') || word(L.st.v, WORDS.st));
   const when = fresh ? `today ${hm(top.last)}` : ago(top.day, now);
   el.innerHTML = `<section class="hcard" aria-label="Recovery values from your Garmin watch, ${esc(when)}"><div class="hchead"><span class="hcico" aria-hidden="true">${ICON}</span>
     <div><span class="label">Recovery</span><small>Garmin watch · ${esc(when)}${L.ts ? ' · ' + esc(L.ts.v) : ''}</small></div></div>

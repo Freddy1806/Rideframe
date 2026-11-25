@@ -51,12 +51,14 @@ function render() {
     : `<section class="bempty"><span class="bcico big" aria-hidden="true">${SCALE}</span><h2>No weigh-ins yet</h2>
       <p>Step on the scale (once it is set up in Settings → Bathroom scale) or add your weight by hand. After a few mornings you see your trend here.</p>
       <div class="scbtns"><button class="btn" id="bAdd0">Add by hand</button><button class="btn ghost" id="bScale0">Set up the scale</button></div></section>`}
+    <div id="bHealth" class="bhealth"></div>
     <details class="kcard btips"><summary>How to weigh for a clean trend</summary><ul>${TIPS.map(t => `<li>${esc(t)}</li>`).join('')}</ul><p class="phint">${esc(RULE)}</p></details>
     ${list.length ? `<div class="bhead"><h3 class="ksec">Weigh-ins</h3><button class="btn ghost ksmall" id="bAdd">+ Add by hand</button></div>
       <section class="blist">${byWeek(list).slice(0, allWeeks ? Infinity : 6).map(g => `<div class="bweek"><div class="bwk"><span>Week of ${new Date(g.week).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: new Date(g.week).getFullYear() === new Date().getFullYear() ? undefined : 'numeric' })}</span><span>avg ${g.avg.toFixed(1)} kg</span></div>
         ${g.list.map(m => `<button class="brow" data-id="${m.id}"><span class="bd">${esc(new Date(m.t).toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric' }))}<small>${new Date(m.t).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })}</small></span>
           <span class="bk">${fmtKg(m.kg)} <small>kg</small></span><span class="bs">${esc(SRCN[m.src] || m.src)}${m.fatPct ? ` · ${m.fatPct} % fat` : ''}${m.note ? ` · ${esc(m.note)}` : ''}</span><i aria-hidden="true">›</i></button>`).join('')}</div>`).join('')}${!allWeeks && byWeek(list).length > 6 ? `<button class="btn ghost" id="bMore">Show all ${byWeek(list).length} weeks</button>` : ''}</section>` : ''}`;
   wireHead();
+  import('./healthcard.js').then(m => m.mountHealthCard($('#bHealth'))).catch(() => {}); // 25.11.: Body = weight and recovery (the watch's values, js/healthcard.js)
   el.querySelectorAll('[data-yes],[data-no]').forEach(b => b.onclick = async () => { b.disabled = true; try { await api('/api/body/prompts/' + (b.dataset.yes || b.dataset.no), { method: 'POST', body: JSON.stringify({ mine: !!b.dataset.yes }) }); } catch (e) { err = e.message; } await load(); render(); });
   el.querySelectorAll('[data-r]').forEach(b => b.onclick = () => { range = b.dataset.r; sel = null; try { localStorage.setItem('rf-body-range', range); } catch {} render(); });
   el.querySelectorAll('.brow').forEach(b => b.onclick = () => editSheet(list.find(m => m.id === b.dataset.id)));
@@ -162,7 +164,7 @@ function settingsSheet(toScale) {
   import('./scaleset.js').then(m => { m.scaleSection($('#sScale', s), { signIn: () => { s.remove(); signIn(); } }); if (toScale) $('#sScaleH', s).scrollIntoView({ block: 'start' }); });
 }
 
-await load(); render(); nav('');
+await load(); render(); nav('body');
 if (location.hash === '#scale') settingsSheet(true);
 let rw = 0; addEventListener('resize', () => { clearTimeout(rw); rw = setTimeout(() => { if (D?.list?.length) drawChart(); }, 150); });
 document.addEventListener('visibilitychange', async () => { if (!document.hidden && account()) { await load(); render(); } }); // back in the morning: the new weigh-in

@@ -98,7 +98,7 @@ test('lifecycle (legacy): initialize negotiates, initialized 202, ping, version 
     assert.equal(r.status, 200); assert.equal(r.j.result.protocolVersion, v, 'the same version back'); }
   const i = await rpc(path, 'initialize', { protocolVersion: '2024-11-05', capabilities: {}, clientInfo: { name: 't', version: '1' } }, { v: null });
   assert.equal(i.j.result.protocolVersion, '2025-11-25', 'unknown: the newest legacy version');
-  assert.deepEqual(i.j.result.capabilities, { tools: { listChanged: false } }); assert.equal(i.j.result.serverInfo.name, 'rideframe-workouts'); assert.match(i.j.result.instructions, /list_exercises/); assert.match(i.j.result.instructions, /coach/); assert.match(i.j.result.instructions, /get_health/);
+  assert.deepEqual(i.j.result.capabilities, { tools: { listChanged: false } }); assert.equal(i.j.result.serverInfo.name, 'rideframe-workouts'); assert.match(i.j.result.instructions, /list_exercises/); assert.match(i.j.result.instructions, /coach/); assert.match(i.j.result.instructions, /get_health/); assert.match(i.j.result.instructions, /plan_session/);
   assert.equal(i.h.get('content-type'), 'application/json'); assert.equal(i.h.get('mcp-session-id'), null, 'stateless: no session');
   const n = await rpc(path, 'notifications/initialized', null, { notify: true }); assert.equal(n.status, 202); assert.equal(n.text, '');
   const p = await rpc(path, 'ping', null, { id: 'p-1' }); assert.deepEqual(p.j, { jsonrpc: '2.0', id: 'p-1', result: {} });
@@ -115,7 +115,7 @@ test('lifecycle (modern 2026-07-28): server/discover, headers checked against th
   const d = await modern(path, 'server/discover'); assert.equal(d.status, 200, d.text);
   assert.equal(d.j.result.resultType, 'complete'); assert.ok(d.j.result.supportedVersions.includes(MV) && d.j.result.supportedVersions.includes('2025-06-18'));
   assert.equal(d.j.result._meta['io.modelcontextprotocol/serverInfo'].name, 'rideframe-workouts');
-  const tl = await modern(path, 'tools/list'); assert.equal(tl.j.result.resultType, 'complete'); assert.equal(tl.j.result.tools.length, 12);
+  const tl = await modern(path, 'tools/list'); assert.equal(tl.j.result.resultType, 'complete'); assert.equal(tl.j.result.tools.length, 16);
   const c = await modern(path, 'tools/call', { name: 'list_workouts', arguments: {} }, { 'Mcp-Name': 'list_workouts' }); assert.equal(c.status, 200); assert.equal(c.j.result.isError, false);
   const c64 = await modern(path, 'tools/call', { name: 'list_workouts', arguments: {} }, { 'Mcp-Name': '=?base64?' + Buffer.from('list_workouts').toString('base64') + '?=' }); assert.equal(c64.status, 200, 'Base64 Mcp-Name');
   const mm = await modern(path, 'tools/list', {}, { 'Mcp-Method': 'ping' }); assert.equal(mm.status, 400); assert.equal(mm.j.error.code, -32020);
@@ -127,17 +127,18 @@ test('lifecycle (modern 2026-07-28): server/discover, headers checked against th
   const um = await modern(path, 'prompts/list'); assert.equal(um.status, 404); assert.equal(um.j.error.code, -32601);
 });
 
-test('tools/list: twelve tools with descriptions and JSON Schemas that match js/watchfields.js', async () => {
+test('tools/list: sixteen tools with descriptions and JSON Schemas that match js/watchfields.js', async () => {
   const { path } = await newLink(await register('Schema Sam'));
   const { tools } = (await rpc(path, 'tools/list')).j.result;
-  assert.deepEqual(tools.map(t => t.name), ['list_exercises', 'list_workouts', 'create_workout', 'update_workout', 'delete_workout', 'get_strength_history', 'get_profile', 'list_activities', 'get_activity', 'get_fitness', 'get_weight', 'get_health']);
-  for (const n of ['get_profile', 'list_activities', 'get_activity', 'get_fitness', 'get_weight', 'get_health']) assert.equal(tools.find(t => t.name === n).annotations.readOnlyHint, true, n + ' is read-only');
+  assert.deepEqual(tools.map(t => t.name), ['list_exercises', 'list_workouts', 'create_workout', 'update_workout', 'delete_workout', 'get_strength_history', 'get_profile', 'list_activities', 'get_activity', 'get_fitness', 'get_weight', 'get_health', 'list_plan', 'plan_session', 'update_plan', 'delete_plan']);
+  for (const n of ['get_profile', 'list_activities', 'get_activity', 'get_fitness', 'get_weight', 'get_health', 'list_plan']) assert.equal(tools.find(t => t.name === n).annotations.readOnlyHint, true, n + ' is read-only');
   for (const t of tools) { assert.ok(t.description.length > 30, t.name); assert.equal(t.inputSchema.type, 'object'); assert.equal(t.inputSchema.additionalProperties, false); assert.ok(t.annotations); }
   const c = tools.find(t => t.name === 'create_workout').inputSchema; assert.deepEqual(c.required, ['name', 'items']);
   const it = c.properties.items; assert.equal(it.maxItems, MAX_ITEMS); assert.deepEqual(it.items.required, ['exercise', 'sets', 'reps']);
   const P = it.items.properties; assert.deepEqual([P.sets.minimum, P.sets.maximum], LIM.sets); assert.deepEqual([P.reps.minimum, P.reps.maximum], LIM.reps);
   assert.deepEqual([P.kg.minimum, P.kg.maximum], LIM.kg); assert.deepEqual([P.rest_seconds.minimum, P.rest_seconds.maximum], LIM.rest);
-  assert.equal(tools.find(t => t.name === 'delete_workout').annotations.destructiveHint, true); assert.equal(tools.find(t => t.name === 'list_exercises').annotations.readOnlyHint, true);
+  assert.equal(tools.find(t => t.name === 'delete_workout').annotations.destructiveHint, true); assert.equal(tools.find(t => t.name === 'delete_plan').annotations.destructiveHint, true); assert.equal(tools.find(t => t.name === 'plan_session').annotations.readOnlyHint, false);
+  assert.deepEqual(tools.find(t => t.name === 'plan_session').inputSchema.required, ['day', 'kind']); assert.equal(tools.find(t => t.name === 'list_exercises').annotations.readOnlyHint, true);
   const u = await rpc(path, 'tools/call', { name: 'drop_tables', arguments: {} }); assert.equal(u.j.error.code, -32602, 'unknown tool: protocol error');
   const na = await rpc(path, 'tools/call', { name: 'list_workouts', arguments: [1] }); assert.equal(na.j.error.code, -32602);
 });
