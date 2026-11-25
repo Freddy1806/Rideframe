@@ -858,6 +858,19 @@ img.face.big{width:96px;height:96px}
 .wb-end .lbl { overflow-wrap: anywhere; }
 .wbar .wstop { font-size: 10px; font-weight: 800; text-transform: uppercase; letter-spacing: .08em; padding: 5px 12px; border: 1px solid var(--line-2); border-radius: 999px; color: var(--muted); background: none; cursor: pointer; flex: none; }
 .wbar .wstop:hover, .wbar .wstop:focus-visible { color: var(--paper); border-color: var(--accent); outline: none; }
+/* steps of personal workouts that end by the lap button, a distance, calories, heart rate or power (js/workouts.js runTick) */
+.wbar .wstop.wnext { color: var(--paper); border-color: color-mix(in srgb, var(--accent) 60%, var(--line-2)); }
+.wbar.lapstep .wstop.wnext { background: var(--accent); border-color: var(--accent); color: #0b0b0b; font-size: 12px; padding: 7px 16px; animation: wnextpulse 1.6s ease-in-out infinite; }
+@keyframes wnextpulse { 50% { box-shadow: 0 0 0 6px color-mix(in srgb, var(--accent) 30%, transparent); } }
+@media (prefers-reduced-motion: reduce) { .wbar.lapstep .wstop.wnext { animation: none; } }
+.wbar.open .wring b { font-size: 26px; } .wbar.lapstep .wring b { color: var(--accent); } .wbar.open .wring span { letter-spacing: .04em; bottom: 27%; font-size: 9px; } .wbar.open .wring b { padding-bottom: 8px; }
+.wbar.lapstep .wring .fg { stroke: color-mix(in srgb, var(--accent) 55%, transparent); }
+.wb-note { font-size: 13px; color: color-mix(in srgb, var(--paper) 80%, transparent); margin: 2px 0 0; max-width: 60ch; overflow-wrap: anywhere; }
+.wb-note[hidden], .wtgt2[hidden] { display: none; }
+.wtgt2 { font-size: 13px; color: var(--muted); margin-top: 4px; } .wtgt2 b { color: var(--paper); font-weight: 800; }
+.wtgt2 em { font-style: normal; font-weight: 800; color: #2fb36b; } .wtgt2 em.z-lo { color: #ffb020; } .wtgt2 em.z-hi { color: #ff5a5a; }
+.wbar.shown .wzone { visibility: hidden; }
+.wbar.shown .wb-t small { font-size: .32em; }
 .wbar .wask { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-top: 10px; }
 .wbar .wask[hidden], .wcd[hidden] { display: none; }
 .wb-chart { margin: 12px -26px 0; background: rgba(11,11,11,.5); }
@@ -1153,3 +1166,4 @@ img.face.big{width:96px;height:96px}
 
 /* ERG target not taken by the trainer (js/ride.js _updateHUD) */
 #hGearL.warn { color: #ff5a4d; font-weight: 700; }
+.wadj[hidden] { display: none !important; }

@@ -67,6 +67,7 @@ function shell() {
         <button class="rc" data-cmd="music" id="rMusic">${ICON.music}<span>Music</span></button>
         <button class="rc" data-cmd="next">${ICON.next}<span>Next song</span></button>
         <button class="rc" data-cmd="wbview" id="rWb">${ICON.bars}<span>Intervals</span></button>
+        <button class="rc rwnext" data-cmd="wnext" id="rWNext">${ICON.next}<span>Next step</span></button>
       </div>
     </div>
     <div class="rnav" id="rNav">
@@ -133,7 +134,7 @@ function render() {
   $('#rResume').hidden = !paused;
   const mode = s.wo ? 'work' : s.mode || 'real', watts = mode === 'work' || mode === 'erg'; // quick setup (owner 19.11.): the mode with one tap, the keys follow it
   $('#rMode').hidden = !!s.wo; $('#rMode').querySelectorAll('.rm').forEach(b => { const on = b.dataset.m === mode; b.classList.toggle('sel', on); b.setAttribute('aria-pressed', on); });
-  $('#rWatts').hidden = !watts; $('#rGears').hidden = mode !== 'virtual'; $('#rBike').hidden = mode !== 'real'; $('#rWb').hidden = !s.wo;
+  $('#rWatts').hidden = !watts; $('#rGears').hidden = mode !== 'virtual'; $('#rBike').hidden = mode !== 'real'; $('#rWb').hidden = !s.wo; $('#rWNext').hidden = !s.wo; // a workout: the lap button of a bike computer, ends the step running now
   const mu = $('#rMusic'); mu.classList.toggle('off', s.music === false); mu.querySelector('span').textContent = s.music === false ? 'Music off' : 'Music';
   $('#rHint').textContent = paused ? 'D-pad · A ok · B back' : 'D-pad · A select · B back';
   const c = $('#rCtx'), age = Date.now() - stAt;
