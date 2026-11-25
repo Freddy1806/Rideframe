@@ -118,7 +118,7 @@
   .wbskip { margin-left: 4px; }
   .wbadd .btn { flex: 1 1 0; }
   .wbacts { position: sticky; bottom: 0; background: var(--ink-2); padding: 10px 0 calc(10px + env(safe-area-inset-bottom)); margin: 0; border-top: 1px solid var(--line); z-index: 4; }
-  .wbacts .mwsp { display: none; } .mwmodal .wbacts { flex-direction: row; flex-wrap: wrap; align-items: stretch; } .mwmodal .wbacts .btn { flex: 1 1 40%; width: auto; min-width: 0; height: 44px; padding: 0 10px; }
+  .wbacts .mwsp { display: none; } .mwmodal .wbacts { flex-direction: row; flex-wrap: wrap; align-items: stretch; } .mwmodal .wbacts .btn, .mwmodal .wbacts .btn.small { flex: 1 1 40%; width: auto; min-width: 0; height: 44px; padding: 0 8px; font-size: 12px; letter-spacing: .04em; }
   .wbrephead { gap: 6px; } .mwmodal .wbstep input { width: 46px; } .wbrepl { font-size: 14px; }
   .wbtoast { bottom: 72px; position: sticky; }
 }
