@@ -10,7 +10,7 @@
   <key>Label</key><string>com.rideframe.scale-bridge</string>
   <key>ProgramArguments</key>
   <array>
-    <string>/Users/USER/RIDEFRAME/tools/scale-bridge/RideframeScaleBridge.app/Contents/MacOS/scale-bridge</string>
+    <string>/Users/USER/RIDEFRAME_scale/RideframeScaleBridge.app/Contents/MacOS/scale-bridge</string>
     <string>--server</string><string>http://127.0.0.1:8765</string>
     <string>--data</string><string>/Users/USER/RIDEFRAME_data</string>
   </array>

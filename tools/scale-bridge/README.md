@@ -28,6 +28,16 @@ xcode-select -p || xcode-select --install          # Command Line Tools (already
 cd tools/scale-bridge && ./build.sh                # builds RideframeScaleBridge.app (ad-hoc signed)
 ```
 
+Build it in a staging checkout, **not inside the live host folder**, and copy the app once to a fixed place that rollouts never touch:
+
+```sh
+mkdir -p ~/RIDEFRAME_scale && cp -R RideframeScaleBridge.app ~/RIDEFRAME_scale/
+```
+
+Run every later step from `~/RIDEFRAME_scale`. Rebuild and copy again only when `main.swift` changes: a new build has a new ad-hoc
+signature and macOS may ask for Bluetooth again. LaunchAgents start only after a login: after a power cut the bridge (like the
+RIDEFRAME server) comes back when someone logs in at the Mac mini, unless automatic login is on.
+
 **1. Find out what the scale really sends.** Nothing goes to the server in this step.
 
 ```sh

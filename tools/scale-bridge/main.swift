@@ -65,6 +65,7 @@ final class Bridge: NSObject, CBCentralManagerDelegate, CBPeripheralDelegate {
   var last: [UUID: (String, Date)] = [:]         // what was last forwarded, to send only changes (and every 30 s)
   var idle: [UUID: DispatchWorkItem] = [:]
   var pendingChars: [UUID: Int] = [:]
+  var held: [UUID: [([String: Any], Date)]] = [:] // frames of devices without a name yet (see didDiscover)
 
   override init() { super.init(); central = CBCentralManager(delegate: self, queue: nil) }
 
@@ -89,8 +90,6 @@ final class Bridge: NSObject, CBCentralManagerDelegate, CBPeripheralDelegate {
     let mfr = (ad[CBAdvertisementDataManufacturerDataKey] as? Data) ?? Data()  // macOS: company id (2 bytes, little-endian) first
     let company = mfr.count >= 2 ? Int(mfr[mfr.startIndex]) | Int(mfr[mfr.startIndex + 1]) << 8 : -1
     let candidate = name.lowercased().hasPrefix("eufy") || company == 0xFF48
-    if !candidate && !scanAll { return }
-    known[id] = p
     var svc: [String: String] = [:]
     if let sd = ad[CBAdvertisementDataServiceDataKey] as? [CBUUID: Data] { for (k, v) in sd { svc[k.uuidString] = hex(v) } }
     let uuids = ((ad[CBAdvertisementDataServiceUUIDsKey] as? [CBUUID]) ?? []).map { $0.uuidString }
@@ -101,9 +100,24 @@ final class Bridge: NSObject, CBCentralManagerDelegate, CBPeripheralDelegate {
     var line: [String: Any] = ["kind": "adv", "id": id.uuidString, "name": name, "rssi": rssi.intValue, "mfr": hex(mfr), "at": Int(now.timeIntervalSince1970 * 1000)]
     if !svc.isEmpty { line["svc"] = svc }; if !uuids.isEmpty { line["uuids"] = uuids }
     if let cn = ad[CBAdvertisementDataIsConnectable] as? NSNumber { line["connectable"] = cn.boolValue }
+    if !candidate && !scanAll {
+      // 25.11.: a C20 / P3 is only known by its name, and the name comes with the scan response, maybe after the first weight frames:
+      // keep the last frames of a still unnamed device for 10 s and send them once it turns out to be a scale
+      if name.isEmpty && !mfr.isEmpty { var h = (held[id] ?? []).filter { now.timeIntervalSince($0.1) < 10 }; h.append((line, now)); if h.count > 20 { h.removeFirst(h.count - 20) }; held[id] = h
+        if last.count > 500 { last = last.filter { now.timeIntervalSince($0.value.1) < 30 } }
+        if held.count > 200 { held = held.filter { e in e.value.contains { now.timeIntervalSince($0.1) < 10 } } } }
+      return
+    }
+    known[id] = p
+    if let h = held.removeValue(forKey: id) { for e in h where now.timeIntervalSince(e.1) < 10 { var l = e.0; l["name"] = name; emit(l, p, name, c) } }
+    emit(line, p, name, c)
+  }
+
+  func emit(_ line: [String: Any], _ p: CBPeripheral, _ name: String, _ c: CBCentralManager) {
+    let id = p.identifier
     if scanOnly { let s = jsonLine(line); if let o = outPath { appendLine(o, s) } else { print(s); fflush(stdout) }; return }
     if let r = recordPath { appendLine(r, jsonLine(line)) }
-    vlog("adv \(id.uuidString.prefix(8)) \(name) rssi \(rssi) \(hex(mfr))")
+    vlog("adv \(id.uuidString.prefix(8)) \(name) \(line["mfr"] as? String ?? "")")
     post(line) { j in
       if (j["connect"] as? Bool) == true, p.state == .disconnected { log("connecting to \(name) (\(id.uuidString.prefix(8)))"); c.connect(p, options: nil)
         DispatchQueue.main.asyncAfter(deadline: .now() + 20) { if p.state == .connecting { log("connect timed out (the eufy app on a phone may hold the scale)"); c.cancelPeripheralConnection(p) } } }
