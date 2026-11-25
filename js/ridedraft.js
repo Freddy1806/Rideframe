@@ -5,7 +5,7 @@ export const DRAFT_KEY = 'rideDraft', DRAFT_EVERY = 10, DRAFT_MAX_AGE = 12 * 360
 /** everything a RideSession needs to go on where it stopped (plain data; the samples are the big part, no JSON anywhere:
  *  IndexedDB clones the arrays itself). Positions, clocks, laps, workout clock and offsets, records for the saved ride. */
 const KEYS = ['d', 'elapsed', 'lap', 'laps', 'lapOff', '_lapBase', '_lapT0', 'lapList', 'startD', 'lastSample', 'gainAcc', 'segDone', 'lapMarks',
-  'manLaps', '_ml', '_mlJ', '_wT0', 'wAdj', 'wAdjE', '_adjAcc', '_adjT', '_stepAdj', '_ergSpans', 'wDone', '_wName', '_wId', 'erg', 'flatRide',
+  'manLaps', '_ml', '_mlJ', '_wT0', '_wRun', 'wAdj', 'wAdjE', '_adjAcc', '_adjT', '_stepAdj', '_ergSpans', 'wDone', '_wName', '_wId', 'erg', 'flatRide',
   'berg', 'virtual', 'auto', 'gi', '_holdW', '_jumps', 'manualPower', '_hadTr', '_hadHr', 'ftp'];
 
 /** automated test browsers (navigator.webdriver) keep no drafts unless the page asks (?draft): the other UI tests reload in

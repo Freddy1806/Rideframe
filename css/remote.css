@@ -132,3 +132,4 @@ body.remote { --or: #ff5a1f; --glow: 0 0 22px rgba(255, 90, 31, .45); min-height
 #rm[data-scr="ride"] .rgears .rk { height: clamp(72px, 15vh, 132px); font-size: 17px !important; }
 #rm[data-scr="ride"] .rbike { min-height: clamp(72px, 15vh, 132px); }
 #rm .rcmds { grid-template-columns: repeat(4, 1fr); } #rm .rcmds .rc span { font-size: 10px; letter-spacing: .03em; } /* eight commands: two rows of four */
+.rc.rwnext { border-color: var(--accent, #ff5a1f); color: var(--accent, #ff5a1f); } /* a workout: Next step (ends the running step, like a bike computer's lap key) */

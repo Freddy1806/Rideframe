@@ -108,6 +108,72 @@ export const catalog = () => COACH.length ? [...COACH, ...WORKOUTS.filter(w => !
 export const allWorkouts = () => [...MY, ...PERSONAL, ...catalog()];
 export const workoutById = id => MY.find(w => w.id === id) || PERSONAL.find(w => w.id === id) || COACH.find(w => w.id === id) || WORKOUTS.find(w => w.id === id) || null;
 export const workoutDuration = w => w.steps.reduce((s, x) => s + x.dur, 0);
+export const ftpNow = () => FTP_NOW;
+
+/* ---- steps that end by something other than the clock (personal workouts, js/myworkouts.js v2, owner 24.11.: the step
+ *  model of a bike-computer workout builder). Such a step carries end = { kind: 'lap' | 'distance' (m) | 'calories' (kcal) |
+ *  'hr' (op 'gt' | 'lt', bpm) | 'power' (op, w) }; its dur is then only an estimate for charts and the route fit. While riding,
+ *  a run (runInit) keeps where the rider is: the step, when it started (workout clock, ridden metres, kJ) and how long each
+ *  finished step really took. runView() turns the workout into the one actually ridden (finished steps at their real length,
+ *  an open step growing with the time in it), so workoutState / workoutAt / the timeline / the Strava intervals run unchanged. ---- */
+export const KCAL_PER_KJ = 1; // ≈ 24 % gross efficiency: 1 kJ at the pedals ≈ 1 kcal burnt, the usual rule of bike computers
+export const HOLD_S = 2; // an end by heart rate or power: the value must stay across the limit this long (no end on one spike)
+// heart-rate zones in % of max HR (the common 5-zone model of bike computers); the power zones are ZONE_PCT in js/myworkouts.js
+export const HR_ZONES = [[50, 60], [60, 70], [70, 80], [80, 90], [90, 100]];
+export const isOpen = st => !!st && !!st.end && st.end.kind !== 'time';
+export const runInit = () => ({ i: 0, t0: 0, d0: 0, k0: 0, durs: [], holdT: null, same: true });
+const advance = (run, len, s, nominal) => { run.durs[run.i] = len; if (len !== nominal) run.same = false; run.t0 += len; run.i++; run.d0 = s.d ?? 0; run.k0 = s.kj ?? 0; run.holdT = null; };
+/** moves the run on to time t (workout clock, s) with the ride's numbers s = { d (m ridden), kj, hr, power }; returns true when a step ended */
+export function runTick(w, run, t, s = {}) {
+  let moved = false;
+  for (let g = 0; g < 1000 && run.i < w.steps.length; g++) {
+    const st = w.steps[run.i], into = t - run.t0; let done = false;
+    if (!isOpen(st)) done = into >= st.dur;
+    else { const e = st.end;
+      if (e.kind === 'distance') done = (s.d ?? 0) - run.d0 >= e.m;
+      else if (e.kind === 'calories') done = ((s.kj ?? 0) - run.k0) * KCAL_PER_KJ >= e.kcal;
+      else if (e.kind === 'hr' || e.kind === 'power') {
+        const v = e.kind === 'hr' ? s.hr : s.power, lim = e.kind === 'hr' ? e.bpm : e.w, across = v > 0 && (e.op === 'lt' ? v < lim : v > lim);
+        if (!across) run.holdT = null; else if (run.holdT == null) run.holdT = t;
+        done = run.holdT != null && t - run.holdT >= HOLD_S;
+      } }
+    if (!done) break;
+    advance(run, isOpen(st) ? Math.max(1, into) : st.dur, s, st.dur); moved = true; // a timed step ends exactly on its length, so the clock never drifts
+  }
+  return moved;
+}
+/** the lap button / "Next step": ends the step running now (any kind, a timed one early too); false when the workout is over */
+export function runNext(w, run, t, s = {}) {
+  if (run.i >= w.steps.length) return false;
+  const st = w.steps[run.i]; advance(run, Math.max(0, t - run.t0), s, isOpen(st) ? -1 : st.dur); return true; // its real length, even 0 s: the clock and the run stay together when Next is pressed twice in a second
+}
+/** the workout as ridden so far: finished steps at their real length, an open step as long as it ran (at least its estimate) */
+export function runView(w, run, t) {
+  if (!run) return w; const cur = w.steps[run.i];
+  if (run.same && !isOpen(cur)) return w; // nothing ended early and nothing open: the workout itself (built-ins, timed workouts)
+  return { ...w, steps: w.steps.map((st, k) => k < run.i ? { ...st, dur: run.durs[k] } : k === run.i && isOpen(st) ? { ...st, dur: Math.max(st.dur, Math.ceil(t - run.t0) + 1) } : st) };
+}
+/** what ends the running step, for the HUD: { kind, text (big), sub (small), frac (0..1 done, null when unknown) } or null (time) */
+export function endInfo(st, run, s = {}) {
+  const e = st?.end; if (!e || e.kind === 'time' || !run) return null;
+  if (e.kind === 'lap') return { kind: 'lap', text: 'Lap', sub: 'press Next', frac: null };
+  if (e.kind === 'distance') { const left = Math.max(0, e.m - ((s.d ?? 0) - run.d0)); return { kind: 'distance', text: left >= 1000 ? (left / 1000).toFixed(2) : String(Math.ceil(left)), sub: left >= 1000 ? 'km to go' : 'm to go', frac: 1 - left / e.m }; }
+  if (e.kind === 'calories') { const left = Math.max(0, e.kcal - ((s.kj ?? 0) - run.k0) * KCAL_PER_KJ); return { kind: 'calories', text: String(Math.ceil(left)), sub: 'kcal to go', frac: 1 - left / e.kcal }; }
+  const hr = e.kind === 'hr'; return { kind: e.kind, text: `${e.op === 'lt' ? '<' : '>'}${hr ? e.bpm : e.w}`, sub: hr ? 'bpm ends it' : 'W ends it', frac: null };
+}
+/** a target that is shown but never sent to the trainer (heart rate, cadence, speed): the band and where the rider is.
+ *  t = { kind: 'hrZone', zone } | { kind: 'hr' | 'cadence' | 'speed', lo, hi }; s = { hr, cad, kmh }; o.hrMax for the zones.
+ *  Returns { kind, name, lo, hi, unit, val, state: 'lo' | 'ok' | 'hi' | null, text } */
+export function tgtInfo(t, s = {}, o = {}) {
+  if (!t || t.kind === 'none') return null;
+  const K = { hrZone: ['Heart rate', 'bpm', 'hr'], hr: ['Heart rate', 'bpm', 'hr'], cadence: ['Cadence', 'rpm', 'cad'], speed: ['Speed', 'km/h', 'kmh'] }[t.kind]; if (!K) return null;
+  let lo = t.lo, hi = t.hi;
+  if (t.kind === 'hrZone') { const z = HR_ZONES[(t.zone || 1) - 1] || HR_ZONES[0]; lo = o.hrMax > 0 ? Math.round(z[0] / 100 * o.hrMax) : null; hi = o.hrMax > 0 ? Math.round(z[1] / 100 * o.hrMax) : null; }
+  const val = +s[K[2]] > 0 ? Math.round(+s[K[2]] * (t.kind === 'speed' ? 10 : 1)) / (t.kind === 'speed' ? 10 : 1) : null;
+  const state = val == null || lo == null ? null : val < lo ? 'lo' : val > hi ? 'hi' : 'ok';
+  const band = lo == null ? `zone ${t.zone} (set your max HR)` : `${lo}–${hi} ${K[1]}`;
+  return { kind: t.kind, name: K[0], lo, hi, unit: K[1], val, state, text: `${t.kind === 'hrZone' ? `${K[0]} zone ${t.zone} · ` : `${K[0]} `}${band}` };
+}
 
 /** live watt tuning in a workout (Freddy 17.11.: "turn the watts up when I can push more"): an offset in W on the hard
  *  intervals only (pct >= 88, not a free test block), ±150 W, never below 50 W; rest and warm-up stay as they are */
@@ -138,7 +204,7 @@ export function workoutState(w, t, ftp, o = {}) {
   const total = workoutDuration(w), main = steps.filter(isHard).map(stem).sort((a, b) => series({ label: b }).length - series({ label: a }).length)[0];
   const hardCount = steps.filter(x => isHard(x) && stem(x) === main).length;
   const ea = (p, st) => ftp && easyAdj && !st.free ? Math.max(50, p / 100 * ftp + easyAdj) / ftp * 100 : p; // the easy parts' offset (charts)
-  const list = steps.map(st => ({ dur: st.dur, pct: ftp && hardAdj && isHard(st) ? tunedTarget(st, st.pct / 100 * ftp, hardAdj) / ftp * 100 : isHard(st) ? st.pct : ea(st.pct, st), pct2: st.pct2 != null ? (isHard(st) ? (ftp && hardAdj ? tunedTarget(st, st.pct2 / 100 * ftp, hardAdj) / ftp * 100 : st.pct2) : ea(st.pct2, st)) : null, hard: isHard(st), label: st.label || '' }));
+  const list = steps.map(st => ({ dur: st.dur, open: isOpen(st), type: st.type || null, pct: ftp && hardAdj && isHard(st) ? tunedTarget(st, st.pct / 100 * ftp, hardAdj) / ftp * 100 : isHard(st) ? st.pct : ea(st.pct, st), pct2: st.pct2 != null ? (isHard(st) ? (ftp && hardAdj ? tunedTarget(st, st.pct2 / 100 * ftp, hardAdj) / ftp * 100 : st.pct2) : ea(st.pct2, st)) : null, hard: isHard(st), label: st.label || '' }));
   let s = 0, i = 0; for (; i < steps.length && t >= s + steps[i].dur; i++) s += steps[i].dur;
   if (i >= steps.length) return { done: true, i: steps.length, step: null, next: null, prev: steps[steps.length - 1] || null, left: 0, inStep: 0, target: null, plateau: null, lo: null, hi: null, ramp: null, hard: false,
     hardNo: 0, hardCount, nextHardNo: 0, name: '', nextTarget: null, nextName: '', nextDur: 0, totalLeft: 0, countdown: 0, steps: list };
@@ -151,10 +217,13 @@ export function workoutState(w, t, ftp, o = {}) {
     else if (prev && isHard(prev) && !shortHard(prev) && inStep < rampOut && rampOut > 0) { const k = inStep / rampOut, a = W0(prev, prev.dur), b = W0(st, 0); target = Math.round(a + (b - a) * k); ramp = 'out'; }
   }
   const ser = isHard(st) ? series(st) : steps.filter(x => isHard(x) && stem(x) === main), cnt = ser.length, before = steps.slice(0, i).filter(x => ser.includes(x)).length;
-  return { done: false, i, step: st, next, prev, left, inStep, target, plateau, lo: Math.round(target * .95), hi: Math.round(target * 1.05), ramp, hard: isHard(st),
+  // a power range (personal workouts: power zone, custom power lo–hi) is the band itself, shifted with the rider's offset; else ±5 %
+  const off = target - Math.round(pctAt(st, inStep) / 100 * ftp), lo = st.rlo != null && !st.free ? Math.round(st.rlo / 100 * ftp) + off : Math.round(target * .95), hi = st.rhi != null && !st.free ? Math.round(st.rhi / 100 * ftp) + off : Math.round(target * 1.05);
+  const open = isOpen(st); // ends by lap button, distance, calories, heart rate or power: no time left to count down
+  return { done: false, i, step: st, next, prev, left, inStep, target, plateau, lo, hi, range: st.rlo != null && !st.free, open, end: open ? st.end : null, ramp, hard: isHard(st),
     hardNo: isHard(st) ? before + 1 : 0, hardCount: cnt, nextHardNo: before + (isHard(st) ? 2 : 1) <= cnt ? before + (isHard(st) ? 2 : 1) : 0, series: isHard(st) ? stem(st) : main,
     name: st.label || 'Block', nextTarget: next ? W0(next, 0) : null, nextName: next ? next.label || 'Block' : '', nextDur: next ? next.dur : 0,
-    rampTo: st.pct2 != null ? W0(st, st.dur) : null, nextRampTo: next?.pct2 != null ? W0(next, next.dur) : null, totalLeft: Math.max(0, total - t), countdown: next && left <= 3 ? Math.max(1, Math.ceil(left)) : 0, steps: list };
+    rampTo: st.pct2 != null ? W0(st, st.dur) : null, nextRampTo: next?.pct2 != null ? W0(next, next.dur) : null, totalLeft: Math.max(0, total - t), countdown: next && !open && left <= 3 ? Math.max(1, Math.ceil(left)) : 0, steps: list };
 }
 
 /** where in the program we are at time t (seconds since start) */
@@ -182,7 +251,7 @@ export function timelineSVG(st, t, w, h = 92) {
       col = zoneColor(s.pct2 != null ? (s.pct + s.pct2) / 2 : s.pct), f = cur ? ' filter="url(#wglow)"' : '';
     const x0 = (x + Math.min(1.5, bw / 4)).toFixed(1), x1 = (x + bw - Math.min(1.5, bw / 4)).toFixed(1);
     o += s.pct2 != null ? `<polygon points="${x0},${h} ${x0},${(h - ph).toFixed(1)} ${x1},${(h - s.pct2 / mx * h).toFixed(1)} ${x1},${h}" fill="${col}" opacity="${op}"${f}/>`
-      : `<rect x="${x0}" y="${(h - ph).toFixed(1)}" width="${Math.max(0.5, x1 - x0).toFixed(1)}" height="${ph.toFixed(1)}" rx="3" fill="${col}" opacity="${op}"${f}/>`; x += bw; });
+      : `<rect x="${x0}" y="${(h - ph).toFixed(1)}" width="${Math.max(0.5, x1 - x0).toFixed(1)}" height="${ph.toFixed(1)}" rx="3" fill="${col}" opacity="${op}"${s.open ? ` fill-opacity=".45" stroke="${col}" stroke-width="2" stroke-dasharray="6 4"` : ''}${f}/>`; x += bw; }); // an open step (lap button, distance …): dashed, its width only an estimate until it ends
   return `<svg class="wtl" viewBox="0 0 ${W0} ${h + 8}" preserveAspectRatio="none"><defs><filter id="wglow" x="-10%" y="-40%" width="120%" height="180%"><feGaussianBlur stdDeviation="5" result="b"/><feMerge><feMergeNode in="b"/><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge></filter></defs>`
     + `<g transform="translate(0,4)">${o}</g><rect x="${(at - 2).toFixed(1)}" y="0" width="4" height="${h + 8}" fill="#fff" style="filter:drop-shadow(0 0 4px #fff)"/></svg>`;
 }

@@ -17,7 +17,7 @@ import { gearsFrom, gearName, parseGear, estimateGear, virtualGrade } from './ge
 import { UEBridge } from './uebridge.js';
 import { MiniMap } from './minimap.js';
 import { fovOf, FOV_MIN, FOV_MAX, FOV_DEFAULT } from './fov.js';
-import { workoutState, workoutSVG, timelineSVG, isHard, tunedTarget, tuneAdj, fmtAdj } from './workouts.js';
+import { workoutState, workoutSVG, timelineSVG, isHard, tunedTarget, tuneAdj, fmtAdj, runInit, runTick, runNext, runView, endInfo, tgtInfo } from './workouts.js';
 import { Challenges } from './challenges.js';
 import { findSegments, segmentBests, segmentLast, SEG_KIND } from './segments.js';
 import { testResult } from './stats.js';
@@ -126,7 +126,7 @@ export class RideSession {
     db.ridesFor(this.route.id).then(rs => { this.segBest = segmentBests(rs); this.segLast = segmentLast(rs); }).catch(() => {});
     import('./account.js').then(a => a.loadSegBoard(this.route.id)).then(b => { this.segBoard = b; }).catch(() => {}); // the others' times on this route
     this._wDef = workout; // kept when the workout is ended early: its intervals still go to Strava
-    this._wT0 = 0; this.flatRide = false; // workout chosen mid-ride (js/ridesetup.js): it runs from that second; "just ride": the trainer gets no gradient
+    this._wT0 = 0; this._wRun = runInit(); this.flatRide = false; // workout chosen mid-ride (js/ridesetup.js): it runs from that second; "just ride": the trainer gets no gradient
     this.lapMarks = []; // climbs count as laps in the Strava file (start and top of each climb)
     const st = state.settings;
     this.gears = gearsFrom(st); this.virtual = st.shiftMode === 'virtual'; this.auto = this.virtual && !!st.autoShift; this.berg = !this.virtual && !!st.bergWatt; this.realGear = parseGear(st.realGear);
@@ -467,6 +467,7 @@ export class RideSession {
     }
     if (this.finished) return;
     if (this.ow?.open && (hit(14) || hit(15))) { this.ow.choose(hit(14) ? -1 : 1); return; } // open world: D-pad left / right picks the road
+    if (hit(15) && this.workout && !this.wDone) { this._wNext(); return; } // workout: D-pad → = next step (lap button)
     // one job per button and per mode (owner 18.11.): ERG (workout or free ride) L / R ±5 W, L2 / R2 ±1 W · gears: L / R shift.
     // The D-pad's ↑ ↓ do the same as R / L; nothing else sits on it. A accepts, B display, X photo, Y camera, Select shifting mode.
     const up = hit(5) || hit(12), dn = hit(4) || hit(13), fine = hit(7) ? 1 : hit(6) ? -1 : 0;
@@ -487,7 +488,7 @@ export class RideSession {
     const el = this.q('#hPadLegend'); if (!el || !this.padSeen) return;
     const m = this._padMode(), key = m + (this.virtual ? 'v' : 'r');
     if (el.dataset.k === key) return; el.dataset.k = key; el.hidden = false;
-    const rows = [...(m === 'gear' ? [['L R', this.virtual ? 'Gear − / +' : 'Virtual gears']] : [['L R', '−5 / +5 W'], ['L2 R2', '−1 / +1 W']]),
+    const rows = [...(m === 'gear' ? [['L R', this.virtual ? 'Gear − / +' : 'Virtual gears']] : [['L R', '−5 / +5 W'], ['L2 R2', '−1 / +1 W']]), ...(m === 'work' ? [['→', 'Next step']] : []),
       ['Y', 'Camera'], ['X', 'Photo'], ['B', 'Display'], ['Start', 'Pause']];
     el.innerHTML = rows.map(([k, t]) => `<span><kbd>${k}</kbd>${t}</span>`).join('');
   }
@@ -508,7 +509,8 @@ export class RideSession {
   /** the phone remote's quick setup (owner 19.11.): ERG / shift on the bike / virtual gears with one tap, and a photo */
   _remote(e) {
     const n = e.detail?.name; if (!this.running || this.paused || this.finished) return;
-    if (n === 'lap') return this._manLap();
+    if (n === 'lap') { if (this.workout && !this.wDone && this.wNow?.end?.kind === 'lap') this._wNext('lap'); return this._manLap(); } // like a bike computer: the lap key ends a lap-button step
+    if (n === 'wnext') return this._wNext() || this._flash(this.workout ? 'The workout is done' : 'No workout running');
     if (n === 'turn:left' || n === 'turn:right') { if (!this.ow?.choose(n === 'turn:left' ? -1 : 1)) this._flash(this.ow ? 'The next junction is not in sight yet' : 'Turning works in the open world on the island'); return; }
     if (n === 'photo') { if (this.player?.snapshot && !this._shooting) this._takePhoto().then(url => this._shotPop(url)); return; }
     if (this.workout && !this.wDone) return this._flash('In a workout the plan sets the mode');
@@ -670,7 +672,7 @@ export class RideSession {
    *  easier (wAdjE: warm-up, rests, cool-down); free blocks have none. */
   _wTune(d) {
     if (!this.workout || this.wDone) return;
-    const w = workoutState(this.workout, this._wClock(), this.ftp); if (w.done || !w.step || w.step.free) return this._flash('Free block: ride as you like');
+    const w = workoutState(this._wv(), this._wClock(), this.ftp); if (w.done || !w.step || w.step.free) return this._flash(w.step?.tgt ? 'This step has no power target: ride by the band shown' : 'Free block: ride as you like');
     const k = isHard(w.step) ? 'wAdj' : 'wAdjE'; this[k] = tuneAdj(this[k], d);
     this._wT = 0; this._workout(0); this._workoutHUD(this.power); // HUD, chart and ERG follow right away
     this._flash(`Target ${this.wNow.plateau} W (${fmtAdj(this[k])} ${k === 'wAdj' ? 'on the intervals' : 'on the easy parts'})`);
@@ -679,7 +681,11 @@ export class RideSession {
   _workout(dt = 0.016) {
     if (!this.workout) return this._ergSpan(false);
     // targets with the rider's offsets (_wTune: hard intervals, easy parts) and, in ERG, ramps instead of a wall into / out of hard intervals
-    const w = this.wNow = workoutState(this.workout, this._wClock(), this.ftp, { hardAdj: this.wAdj, easyAdj: this.wAdjE, ramp: this.erg });
+    // steps that end by lap button, distance, calories, heart rate or power (personal workouts): the run moves on with the ride's numbers
+    const run = this._wRun ||= runInit(), t = this._wClock(), smp = this._wSample();
+    runTick(this.workout, run, t, smp);
+    const w = this.wNow = workoutState(runView(this.workout, run, t), t, this.ftp, { hardAdj: this.wAdj, easyAdj: this.wAdjE, ramp: this.erg });
+    if (!w.done) { w.endI = endInfo(w.step, run, smp); w.tgtI = tgtInfo(w.step.tgt, smp, { hrMax: this.state.settings.hrMax }); w.tgt2I = tgtInfo(w.step.tgt2, smp, { hrMax: this.state.settings.hrMax }); }
     if (!w.done && isHard(w.step) && dt > 0) { this._adjAcc += this.wAdj * dt; this._adjT += dt; const sa = this._stepAdj[w.i] ||= [0, 0]; sa[0] += this.wAdj * dt; sa[1] += dt; } // time-weighted, for the saved ride
     if (this.erg) this.state.trainer.setPower(w.done || w.step?.free ? null : w.target); // a test block is ridden freely
     if (dt > 0) this._ergSpan(this.erg && !w.done && !w.step?.free);
@@ -687,7 +693,21 @@ export class RideSession {
   }
 
   /** the hard interval running now (pct >= 88, 1 min or longer) with the rider's tuned target, or null (ivgate.js) */
-  _hardWin() { return hardWindow(this.workout, this._wClock(), this.ftp, { hard: this.wAdj, easy: this.wAdjE }); }
+  _hardWin() { return hardWindow(this._wv(), this._wClock(), this.ftp, { hard: this.wAdj, easy: this.wAdjE }); }
+  /** the workout as ridden so far (js/workouts.js runView): finished steps at their real length, an open one growing */
+  _wv() { return this.workout ? runView(this.workout, this._wRun ||= runInit(), this._wClock()) : null; }
+  /** the definition as ridden, for the saved ride (Strava intervals, heart rate per power): the steps' real times */
+  _wDefReal() { const d = this._wDef; return d && this._wRun ? runView(d, this._wRun, this._wClock()) : d; }
+  /** the numbers that end a step: ridden metres, work (kJ), heart rate, power, speed, cadence */
+  _wSample() { return { d: this._ridden(), kj: (this._mlJ || 0) / 1000, hr: this.hr, power: this.power, kmh: this.v * 3.6, cad: this.cadence }; }
+  /** the lap button / "Next step" (bar button, X, D-pad →, phone remote): the step running now ends, the next one starts */
+  _wNext(src = '') {
+    if (!this.workout || this.wDone || !this.running || this.paused) return false;
+    const run = this._wRun ||= runInit();
+    if (!runNext(this.workout, run, this._wClock(), this._wSample())) return false;
+    this._wT = 0; this._workout(0); this._workoutHUD(this.power);
+    return true;
+  }
   /** ERG control on / off over the ride (seconds): only a marker (owner 17.11.: the climb, best times, segments and the export
    *  stay as on any ride, speed comes from the power on the route's grade); in ERG no shifting advice and no auto shifting */
   /** seconds into the workout: from the ride start, or from the second it was chosen in the ride (js/ridesetup.js) */
@@ -896,6 +916,7 @@ export class RideSession {
     q('#hWAdj')?.querySelectorAll('[data-wa]').forEach(b => b.onclick = e => { e.currentTarget.blur(); this._wTune(+b.dataset.wa); });
     q('#hWStop').onclick = () => { ask.hidden = false; };
     q('#hWView').onclick = e => { e.currentTarget.blur(); this._cycleWbView(); };
+    q('#hWNextBtn').onclick = e => { e.currentTarget.blur(); this._wNext(); };
     q('#hWNo').onclick = () => { ask.hidden = true; };
     q('#hWSave').onclick = () => this._end(true);
     q('#hWFree').onclick = () => {
@@ -913,16 +934,17 @@ export class RideSession {
     const C = 2 * Math.PI * 58;
     return `<div class="wbar glass v-${this._wbView()}" id="hWork"><div class="wcd glass" id="hWCue" hidden><div class="num k" id="hWCueN">3</div><div class="w" id="hWCueW"></div></div>
       <div class="wb-row">
-        <div class="wring"><svg viewBox="0 0 132 132"><circle cx="66" cy="66" r="58" class="tr"/><circle cx="66" cy="66" r="58" class="fg" id="hWArc" stroke-dasharray="${C} ${C}" transform="rotate(-90 66 66)"/></svg><b class="num" id="hWLeft">–</b><span>Left</span></div>
+        <div class="wring"><svg viewBox="0 0 132 132"><circle cx="66" cy="66" r="58" class="tr"/><circle cx="66" cy="66" r="58" class="fg" id="hWArc" stroke-dasharray="${C} ${C}" transform="rotate(-90 66 66)"/></svg><b class="num" id="hWLeft">–</b><span id="hWLeftL">Left</span></div>
         <div class="wb-big">
           <div class="wb-name"><span class="wb-now">Now</span><span id="hWStep">–</span><span class="wb-of" id="hWOf"></span><b class="wadjv" id="hWAdjV">±0 W</b><b class="num wb-time" id="hWTime">–</b></div>
-          <div class="wb-nums"><span class="num wb-t"><span id="hWT">–</span><small>W</small></span><span class="num wb-p" id="hWPow"><span id="hWP">0</span><small>W · <em id="hWState">–</em></small><button class="sens-rc" id="hWRc" data-rc="tr" hidden>Reconnect</button></span>
+          <div class="wb-note" id="hWNote" hidden></div>
+          <div class="wb-nums"><span class="num wb-t"><span id="hWT">–</span><small id="hWTU">W</small></span><span class="num wb-p" id="hWPow"><span id="hWP">0</span><small>W · <em id="hWState">–</em></small><button class="sens-rc" id="hWRc" data-rc="tr" hidden>Reconnect</button></span>
             <span class="wadj" id="hWAdj"><button class="wab" data-wa="-5" title="Target −5 W (S · L2 · D-pad ↓ / L: 1 W)" aria-label="Target −5 W">−</button><button class="wab" data-wa="5" title="Target +5 W (W · R2 · D-pad ↑ / R: 1 W)" aria-label="Target +5 W">+</button></span></div>
-          <div class="wzone" id="hWZone"><i class="band"></i><i class="mk" id="hWMk"></i></div>
+          <div class="wzone" id="hWZone"><i class="band" id="hWBand"></i><i class="mk" id="hWMk"></i></div><div class="wtgt2" id="hWTgt2" hidden></div>
           <span class="wb-live" id="hWLive">${WB_LIVE.map(([k, l, u]) => `<span class="wl" data-wl="${k}"><i>${l}</i><b class="num"><span id="hWL-${k}">–</span>${u ? `<small>${u}</small>` : ''}</b></span>`).join('')}</span>
         </div>
         <div class="wb-next"><div class="lbl">Next</div><div class="n" id="hWNextN">–</div><div class="d" id="hWNext">–</div>
-          <div class="wb-end"><span class="lbl" id="hWName">${esc(this.workout.name)}${this.erg ? ' · ERG' : ''}</span><button class="wstop" id="hWView" title="Interval display: big / compact / focus (L, or pause menu Options)">View</button><button class="wstop" id="hWStop" title="End workout early">End</button></div></div>
+          <div class="wb-end"><span class="lbl" id="hWName">${esc(this.workout.name)}${this.erg ? ' · ERG' : ''}</span><button class="wstop wnext" id="hWNextBtn" title="End this step now and start the next (X · D-pad → · phone remote: Next step / Lap)">Next step ›</button><button class="wstop" id="hWView" title="Interval display: big / compact / focus (L, or pause menu Options)">View</button><button class="wstop" id="hWStop" title="End workout early">End</button></div></div>
       </div>
       <div class="wask" id="hWAsk" hidden><div class="label">End workout?</div><button class="btn small" id="hWFree">Keep riding freely</button><button class="btn ghost small" id="hWSave">Save ride &amp; finish</button><button class="btn ghost small" id="hWNo">Back</button></div>
       <div class="wb-chart" id="hWChart"></div></div>`;
@@ -960,10 +982,10 @@ export class RideSession {
     if (!bar.dataset.preset) this._wbLive(); // a new bar (ride start, a workout picked mid-ride)
     this._wbLiveFill(this._sensors());
     const ca = !w.done && w.step && !w.step.free ? (w.hard ? this.wAdj : this.wAdjE) : 0; // the offset on what runs now (intervals or easy parts)
-    q('#hWAdjV').textContent = fmtAdj(ca); q('#hWAdj').classList.toggle('adj', !!ca); bar.classList.toggle('adj', !!ca);
+    q('#hWAdjV').textContent = fmtAdj(ca); q('#hWAdj').classList.toggle('adj', !!ca); bar.classList.toggle('adj', !!ca); q('#hWAdj').hidden = !w.done && !!w.step?.free; // no watts to move on a free step (heart rate / cadence / speed target, free riding)
     const pw = q('.metric.power'), wp = q('#hWPow'); pw?.classList.remove('z-lo', 'z-ok', 'z-hi'); wp.classList.remove('z-lo', 'z-hi');
     const cue = q('#hWCue'), arc = q('#hWArc'), C = 2 * Math.PI * 58;
-    if (w.done) { q('#hWStep').textContent = 'Done – ride on freely'; q('#hWOf').textContent = ''; q('#hWT').textContent = '✓'; q('#hWLeft').textContent = '0:00'; q('#hWNextN').textContent = 'Workout done'; q('#hWNext').textContent = ''; q('#hWState').textContent = 'done'; cue.hidden = true; arc.setAttribute('stroke-dasharray', `0 ${C}`); bar.className = `wbar glass done v-${this._wbView()}`; }
+    if (w.done) { q('#hWStep').textContent = 'Done – ride on freely'; q('#hWOf').textContent = ''; q('#hWT').textContent = '✓'; q('#hWLeft').textContent = '0:00'; q('#hWLeftL').textContent = 'Left'; q('#hWNote').hidden = true; q('#hWTgt2').hidden = true; q('#hWNextN').textContent = 'Workout done'; q('#hWNext').textContent = ''; q('#hWState').textContent = 'done'; cue.hidden = true; arc.setAttribute('stroke-dasharray', `0 ${C}`); bar.className = `wbar glass done v-${this._wbView()}`; }
     else {
       const free = !!w.step.free, hard = w.hard, rest = !hard && !free && !w.ramp && /rest|easy|recover/i.test(w.step.label || '');
       const sp = this._sensors().pw; // no power source: "–", no verdict
@@ -973,25 +995,41 @@ export class RideSession {
       const ergOff = this._ergOn && this._ergOffAt && now - this._ergOffAt > 12000;
       const z = this._ergOn && zRaw ? 'ok' : zRaw;
       q('#hWStep').textContent = w.step.label || 'Block';
-      q('#hWOf').textContent = hard ? `${/^opener/i.test(w.series) ? 'opener' : 'interval'} ${w.hardNo} of ${w.hardCount}` : w.ramp === 'in' ? 'ramp up' : w.ramp === 'out' ? 'ramp down' : w.ramp === 'step' ? `ramp to ${w.rampTo} W` : '';
-      q('#hWT').textContent = w.target;
-      q('#hWP').textContent = sp === 'ok' ? pShow : '–'; q('#hWRc').hidden = sp !== 'lost';
-      q('#hWLeft').textContent = q('#hWTime').textContent = fmtTime(Math.ceil(w.left));
-      arc.setAttribute('stroke-dasharray', `${(C * Math.max(0, Math.min(1, w.left / w.step.dur))).toFixed(1)} ${C.toFixed(1)}`);
-      q('#hWState').textContent = sp !== 'ok' ? (sp === 'lost' ? (this.state.trainer.rejoining ? 'reconnecting …' : 'connection lost') : 'no connection') : free ? 'free' : w.ramp === 'in' ? 'ramp up' : w.ramp === 'out' ? 'ramp down' : w.ramp === 'step' ? 'ramp' : rest || !z ? 'easy' : ergOff ? `trainer ${Math.abs(pShow - w.target)} W off` : z === 'ok' ? (this._ergOn && zRaw !== 'ok' ? 'trainer settling' : 'in zone') : z === 'lo' ? `${w.target - pShow} W too low` : `${pShow - w.target} W too high`;
-      wp.classList.toggle('off', sp !== 'ok');
+      const ei = w.endI, ti = w.tgtI, t2 = w.tgt2I; // ends by lap / distance / … ; a target only shown (heart rate, cadence, speed); a second one
+      q('#hWOf').textContent = hard ? `${/^opener/i.test(w.series) ? 'opener' : 'interval'} ${w.hardNo} of ${w.hardCount}${w.range ? ` · ${w.lo}–${w.hi} W` : ''}` : w.ramp === 'in' ? 'ramp up' : w.ramp === 'out' ? 'ramp down' : w.ramp === 'step' ? `ramp to ${w.rampTo} W` : w.range ? `${w.lo}–${w.hi} W` : ti ? ti.text : '';
+      const nt = q('#hWNote'), note = w.step.note || ''; if (nt.textContent !== note) nt.textContent = note; nt.hidden = !note;
+      if (ti) { // heart rate / cadence / speed: the band is the target, the rider's value next to it; the trainer is left alone
+        q('#hWT').textContent = ti.lo != null ? `${ti.lo}–${ti.hi}` : `Z${w.step.tgt.zone}`; q('#hWTU').textContent = ti.unit;
+        q('#hWP').textContent = ti.val ?? '–'; q('#hWP').nextElementSibling.firstChild.textContent = `${ti.unit} · `;
+      } else { const noT = free && !!w.step.type; q('#hWT').textContent = noT ? '–' : w.target; q('#hWTU').textContent = noT ? '' : 'W'; /* a builder step with no target: nothing to hit (an old free test block still shows its pace) */ q('#hWP').textContent = sp === 'ok' ? pShow : '–'; q('#hWP').nextElementSibling.firstChild.textContent = 'W · '; }
+      q('#hWRc').hidden = sp !== 'lost';
+      if (ei) { // no clock: what is left until the step ends, or the lap button
+        q('#hWLeft').textContent = ei.text; q('#hWLeftL').textContent = ei.sub; q('#hWTime').textContent = '+' + fmtTime(Math.floor(w.inStep));
+        arc.setAttribute('stroke-dasharray', `${(C * (ei.frac == null ? 1 : Math.max(0, Math.min(1, 1 - ei.frac)))).toFixed(1)} ${C.toFixed(1)}`);
+      } else {
+        q('#hWLeft').textContent = q('#hWTime').textContent = fmtTime(Math.ceil(w.left)); q('#hWLeftL').textContent = 'Left';
+        arc.setAttribute('stroke-dasharray', `${(C * Math.max(0, Math.min(1, w.left / w.step.dur))).toFixed(1)} ${C.toFixed(1)}`);
+      }
+      q('#hWState').textContent = ti ? (ti.val == null ? `no ${ti.name.toLowerCase()} signal` : ti.state === 'lo' ? `${ti.name.toLowerCase()} too low` : ti.state === 'hi' ? `${ti.name.toLowerCase()} too high` : ti.state === 'ok' ? 'in zone' : ti.name.toLowerCase())
+        : sp !== 'ok' ? (sp === 'lost' ? (this.state.trainer.rejoining ? 'reconnecting …' : 'connection lost') : 'no connection') : free ? 'free' : w.ramp === 'in' ? 'ramp up' : w.ramp === 'out' ? 'ramp down' : w.ramp === 'step' ? 'ramp' : rest || !z ? 'easy' : ergOff ? `trainer ${Math.abs(pShow - w.target)} W off` : z === 'ok' ? (this._ergOn && zRaw !== 'ok' ? 'trainer settling' : 'in zone') : z === 'lo' ? `${w.target - pShow} W too low` : `${pShow - w.target} W too high`;
+      wp.classList.toggle('off', ti ? ti.val == null : sp !== 'ok');
+      if (ti && ti.state && ti.state !== 'ok') wp.classList.add('z-' + ti.state);
       if (hard && z && z !== 'ok') { wp.classList.add('z-' + z); pw?.classList.add('z-' + z); } else if (hard) pw?.classList.add('z-ok');
-      // the zone band: ±5 % around the target in the middle of a track from 80 to 120 %; the marker is your power
-      const mk = q('#hWMk'), k = Math.max(0, Math.min(1, (pShow - w.target * 0.8) / (w.target * 0.4)));
+      // the zone band: the target's band (±5 %, or the range of a zone / custom power) on a track from 80 to 120 %; the marker is your power
+      const mk = q('#hWMk'), k = Math.max(0, Math.min(1, (pShow - w.target * 0.8) / (w.target * 0.4))), bd = q('#hWBand');
+      const bl = Math.max(0, Math.min(1, (w.lo - w.target * 0.8) / (w.target * 0.4))), br = Math.max(0, Math.min(1, (w.hi - w.target * 0.8) / (w.target * 0.4)));
+      bd.style.left = (bl * 100).toFixed(1) + '%'; bd.style.width = Math.max(2, (br - bl) * 100).toFixed(1) + '%';
       mk.style.left = `calc(${(k * 100).toFixed(1)}% - 3px)`; q('#hWZone').className = 'wzone' + (hard && z && z !== 'ok' ? ' z-' + z : '');
+      const g2 = q('#hWTgt2'); g2.hidden = !t2; if (t2) g2.innerHTML = `<b>${esc(t2.text)}</b> · ${t2.val ?? '–'} ${esc(t2.unit)}${t2.state && t2.state !== 'ok' ? ` <em class="z-${t2.state}">${t2.state === 'lo' ? 'too low' : 'too high'}</em>` : t2.state === 'ok' ? ' <em>✓</em>' : ''}`;
+      const howLong = st => st.end ? ({ lap: 'until lap', distance: `${(st.end.m / 1000).toFixed(st.end.m % 1000 ? 2 : 0)} km`, calories: `${st.end.kcal} kcal`, hr: `until HR ${st.end.op === 'lt' ? '<' : '>'} ${st.end.bpm}`, power: `until ${st.end.op === 'lt' ? '<' : '>'} ${st.end.w} W` })[st.end.kind] : fmtTime(st.dur);
       q('#hWNextN').textContent = w.next ? w.nextName : 'Last block';
-      q('#hWNext').textContent = `${w.next ? `${w.nextRampTo != null ? `${w.nextTarget} → ${w.nextRampTo}` : w.nextTarget} W · ${fmtTime(w.nextDur)} · ` : ''}${fmtTime(Math.ceil(w.totalLeft))} left`;
-      bar.className = `wbar glass v-${this._wbView()}${hard ? ' hard' : rest ? ' rest' : ''}${w.ramp ? ' ramp' : ''}${ca ? ' adj' : ''}`;
+      q('#hWNext').textContent = `${w.next ? `${w.next.free ? (w.next.tgt ? tgtInfo(w.next.tgt, {}, { hrMax: this.state.settings.hrMax }).text : 'free') : `${w.nextRampTo != null ? `${w.nextTarget} → ${w.nextRampTo}` : w.nextTarget} W`} · ${howLong(w.next)} · ` : ''}${w.steps.some(x => x.open) ? '~' : ''}${fmtTime(Math.ceil(w.totalLeft))} left`;
+      bar.className = `wbar glass v-${this._wbView()}${hard ? ' hard' : rest ? ' rest' : ''}${w.ramp ? ' ramp' : ''}${ca ? ' adj' : ''}${ei ? ' open' : ''}${ei?.kind === 'lap' ? ' lapstep' : ''}${ti ? ' shown' : ''}`;
       // countdown into the next hard interval: big number above the bar (the ramp is already running), at the change a flash
       const soon = w.countdown && isHard(w.next); cue.hidden = !soon;
       if (soon) { q('#hWCueN').textContent = w.countdown; q('#hWCueW').textContent = `${w.nextName} · ${w.nextTarget} W`; }
     }
-    if (w.i !== this._barI) { if (this._barI !== undefined && !w.done) this._flash(`${w.step.label || 'Block'} · ${w.target} W`); this._barI = w.i; }
+    if (w.i !== this._barI) { if (this._barI !== undefined && !w.done) this._flash(`${w.step.label || 'Block'} · ${w.step.free && w.step.type ? (w.tgtI ? w.tgtI.text : 'no target') : w.target + ' W'}${w.endI?.kind === 'lap' ? ' · press Next when done' : ''}`); this._barI = w.i; }
     if (!this._wT || this.elapsed - this._wT > 1) { this._wT = this.elapsed; q('#hWChart').innerHTML = timelineSVG(w, this._wClock(), this.workout); }
     const h = bar.offsetHeight; if (h !== this._wbh) { this._wbh = h; this.el.style.setProperty('--wbh', h + 'px'); } // the other HUD parts sit above it
   }
@@ -1138,6 +1176,7 @@ export class RideSession {
     else if (e.key === 'i') this._cycleHud();
     else if ((e.key === 'o' || e.key === 'O') && !this.finished) this._setup(); // workout, mode and shifting (js/ridesetup.js)
     else if ((e.key === 'l' || e.key === 'L') && this.workout) this._cycleWbView();
+    else if ((e.key === 'x' || e.key === 'X') && this.workout) this._wNext(); // next workout step (the lap button of a bike computer)
     else if (e.key === 'n') { this.music?.skip(); setTimeout(() => this._flash('♫ ' + (this.music?.title() || '')), 300); }
   }
   _trainerLive() { const t = this.state.trainer; return !!(t.connected && t.lastData && performance.now() - t.lastData < 3000); }
@@ -1438,7 +1477,7 @@ export class RideSession {
   }
   /** heart rate vs power of a workout ride (js/hrpower.js): worked out once from the samples, only the results are added */
   _hrpRec(rec) {
-    if (this._wDef && rec.samples?.length) try { const h = hrpForRide(rec, this._wDef, { t0: this._wT0 || 0, ftp: this.ftp }); if (h) rec.hrp = h; } catch (e) { console.warn('hrp', e); }
+    if (this._wDef && rec.samples?.length) try { const h = hrpForRide(rec, this._wDefReal(), { t0: this._wT0 || 0, ftp: this.ftp }); if (h) rec.hrp = h; } catch (e) { console.warn('hrp', e); }
     return rec;
   }
 
@@ -1529,13 +1568,13 @@ export class RideSession {
   }
   /** the hard parts with time and average watts (Freddy 12.11.: into the Strava description): workout intervals, else the climbs */
   _intervals() {
-    const out = this._wDef ? intervalRecords({ workout: this._wDef, t0: this._wT0 || 0, samples: this.samples, elapsed: this.elapsed, ftp: this.ftp, stepAdj: this._stepAdj, kg: this.state.settings.riderKg })
+    const out = this._wDef ? intervalRecords({ workout: this._wDefReal(), t0: this._wT0 || 0, samples: this.samples, elapsed: this.elapsed, ftp: this.ftp, stepAdj: this._stepAdj, kg: this.state.settings.riderKg })
       : this.segDone.filter(s => s.kind === 'climb').map(s => ({ name: s.name, t: Math.round(s.t), w: s.w })); // ivhistory.js: ridden avg / max W, HR, cadence; the plan only as context
     return out.length ? out : undefined;
   }
   /** lap marks for the Strava file: climbs and route laps, plus start and end of every hard workout interval */
   _marks() {
-    const m = [...(this.lapMarks || [])], w = this._wDef;
+    const m = [...(this.lapMarks || [])], w = this._wDefReal();
     if (w) { let s = this._wT0 || 0; for (const st of w.steps) { if (st.pct >= 88 && s < this.elapsed) m.push(Math.round(s), Math.round(Math.min(s + st.dur, this.elapsed))); s += st.dur; } }
     return m.length ? m : undefined;
   }

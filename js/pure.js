@@ -3,7 +3,7 @@
 import { Trainer, HeartRate, BT_HELP } from './trainer.js';
 import { db, uid } from './db.js';
 import { fmtTime, fmtNum, esc, bestAvg, appHome } from './util.js';
-import { allWorkouts, workoutById, workoutAt, workoutDuration, workoutSVG, setMyWorkouts, isHard, tunedTarget, tuneAdj, fmtAdj, setFtp } from './workouts.js';
+import { allWorkouts, workoutById, workoutAt, workoutDuration, workoutSVG, setMyWorkouts, isHard, tunedTarget, tuneAdj, fmtAdj, setFtp, runInit, runTick, runNext, runView, endInfo, tgtInfo } from './workouts.js';
 import { defaultParams, step } from './physics.js';
 import { stravaStatus, stravaConnect, stravaUpload } from './stravaup.js';
 import { stravaExport } from './tcx.js';
@@ -98,10 +98,15 @@ const M = {
 
 // ---------------- control ----------------
 const work = () => P.mode === 'work' ? workoutById(P.workout) : null;
-const wAt = () => { const w = work(); return w ? workoutAt(w, R.wT, ftp()) : null; };
+// steps that end by lap button, distance, calories, heart rate or power (personal workouts): R.run keeps where the rider is (js/workouts.js)
+const wView = () => { const w = work(); return w ? runView(w, R.run ||= runInit(), R.wT) : null; };
+const wAt = () => { const w = wView(); return w ? workoutAt(w, R.wT, ftp()) : null; };
+const wSample = () => ({ d: R.d, kj: R.kj, hr: live.hr, power: live.power, kmh: R.v * 3.6, cad: live.cad });
+/** the lap key / "Next step": ends the step running now */
+function wNext() { const w = work(); if (!w || R.wDone || R.state !== 'run') return; if (runNext(w, R.run ||= runInit(), R.wT, wSample())) { const a = wAt(); flash(a?.done ? 'Last step done' : `Next: ${a.step.label || 'Block'}`, 2000); applyTrainer(); paint(); } }
 function targetW() {
   if (P.mode === 'erg') return P.erg;
-  const a = wAt(); return a && !a.done ? tunedTarget(a.step, Math.round(a.target * R.intensity / 100), R.wAdj) : null;
+  const a = wAt(); return a && !a.done && !(a.step.free && a.step.type) ? tunedTarget(a.step, Math.round(a.target * R.intensity / 100), R.wAdj) : null; // a builder step without a power target: the trainer is left free
 }
 /** workout: the hard intervals a few watts up or down (as in the 3D ride), on top of the % intensity; ERG follows */
 function tune(d) {
@@ -158,7 +163,7 @@ function tick(dt) {
   R.v = step(R.v, live.power, P.mode === 'grade' ? P.grade : 0, dt, pp);
   if (!counting) { R.v = 0; return; }
   R.moving += dt; R.d += R.v * dt; R.kj += live.power * dt / 1000;
-  if (P.mode === 'work' && !R.wDone) { R.wT += dt; const a = wAt(); if (a && isHard(a.step)) { R.adjAcc += R.wAdj * dt; R.adjT += dt; } if (a?.done) { R.wDone = true; flash('Workout done. Keep riding freely or finish.'); P.mode = 'erg'; P.erg = Math.round(ftp() * .5); render(); } }
+  if (P.mode === 'work' && !R.wDone) { R.wT += dt; { const w0 = work(); if (w0 && runTick(w0, R.run ||= runInit(), R.wT, wSample())) applyTrainer(); } const a = wAt(); if (a && isHard(a.step)) { R.adjAcc += R.wAdj * dt; R.adjT += dt; } if (a?.done) { R.wDone = true; flash('Workout done. Keep riding freely or finish.'); P.mode = 'erg'; P.erg = Math.round(ftp() * .5); render(); } }
   if (Math.floor(R.moving) > R.lastSec) { // one sample per second
     R.lastSec = Math.floor(R.moving);
     const w = Math.round(live.power); R.pw.push(w); R.max = Math.max(R.max, w); R.hrMax = Math.max(R.hrMax, live.hr || 0);
@@ -176,6 +181,7 @@ function start() {
 function pause() { R.state = 'pause'; render(); saveDraft(); }
 function lap() {
   if (R.state !== 'run') return;
+  if (P.mode === 'work' && wAt()?.step?.end?.kind === 'lap') wNext(); // like a bike computer: the lap key ends a lap-button step
   const l = lapNow(); R.laps.push({ t: Math.round(l.t), d: Math.round(l.d), w: Math.round(l.w) });
   R.lap = { t: R.moving, d: R.d, sum: 0, n: 0 }; flash(`Lap ${R.laps.length}: ${fmtTime(l.t)} · avg ${Math.round(l.w)} W`);
 }
@@ -239,7 +245,7 @@ function render() {
     ${control()}
   </section>
   <footer class="pfoot">
-    ${R.state === 'run' ? `<button class="btn ghost" id="pPause">Pause</button><button class="btn ghost" id="pLap">Lap</button>`
+    ${R.state === 'run' ? `<button class="btn ghost" id="pPause">Pause</button><button class="btn ghost" id="pLap">Lap</button>${P.mode === 'work' && !R.wDone ? '<button class="btn ghost" id="pNext">Next step</button>' : ''}`
       : `<button class="btn" id="pStart">${R.state === 'pause' ? 'Resume' : 'Start'}</button>${R.state === 'pause' ? '<button class="btn ghost" id="pEnd">Finish</button>' : ''}`}
   </footer>
   <div class="pflash" id="pflash"></div>`;
@@ -268,13 +274,18 @@ function wire() {
   el.querySelectorAll('[data-i]').forEach(b => b.onclick = () => { R.intensity = Math.max(50, Math.min(150, R.intensity + +b.dataset.i)); $('#pInt b').textContent = R.intensity + ' %'; applyTrainer(); });
   el.querySelectorAll('[data-wa]').forEach(b => b.onclick = () => tune(+b.dataset.wa));
   const set = $('#pSet'); if (set) set.onclick = () => numberSheet();
-  const wed = async from => { const t = await import('./training.js'), wk = await import('./workouts.js'), cur = work();
-    const own = !from && cur?.mine ? (S.myWorkouts || []).find(d => d.id === cur.id) : null;
-    const res = from === 'new' ? await t.editorModal(null, ftp()) : own ? await t.editorModal(own, ftp()) : await t.editorModal(wk.defFrom(cur), ftp(), true);
-    if (!res) return; const list = (S.myWorkouts || []).filter(d => d.id !== (res.del || res.id)); if (!res.del) list.unshift(res);
-    S.myWorkouts = list; setMyWorkouts(list); P.workout = res.del ? allWorkouts()[0]?.id || '' : res.id; R.wT = 0; R.wDone = false; await saveSettings(); render(); applyTrainer(); };
+  const wed = async from => { const cur = work();
+    if (!from && cur?.mine) { // a Training-tab workout (Pro mode, settings.myWorkouts) keeps its own editor
+      const t = await import('./training.js'), own = (S.myWorkouts || []).find(d => d.id === cur.id); const res = own ? await t.editorModal(own, ftp()) : null;
+      if (!res) return; const list = (S.myWorkouts || []).filter(d => d.id !== (res.del || res.id)); if (!res.del) list.unshift(res);
+      S.myWorkouts = list; setMyWorkouts(list); P.workout = res.del ? allWorkouts()[0]?.id || '' : res.id; R.wT = 0; R.run = runInit(); R.wDone = false; await saveSettings(); render(); applyTrainer(); return; }
+    // everything else in the workout builder (js/myworkouts-ui.js): your own to edit, a standard one as the start of a new one, or a new one
+    const [ui, mw, store] = await Promise.all([import('./myworkouts-ui.js'), import('./myworkouts.js'), import('./myworkouts-store.js')]);
+    const mine = !from && cur?.personal ? store.personalById(cur.id) : null;
+    const res = await ui.openEditor({ draft: mine || (from !== 'new' && cur ? mw.fromBuiltin2(cur) : mw.newWorkout2()), saved: !!mine, ftp: ftp(), hrMax: S.hrMax || 0 });
+    if (!res) return; P.workout = res.saved ? res.saved.id : allWorkouts()[0]?.id || ''; R.wT = 0; R.run = runInit(); R.wDone = false; await saveSettings(); render(); applyTrainer(); };
   const wa = $('#pWAdapt'); if (wa) wa.onclick = () => wed(); const wn = $('#pWNew'); if (wn) wn.onclick = () => wed('new');
-  const ws = $('#pWork'); if (ws) ws.onchange = () => { P.workout = ws.value; R.wT = 0; R.wDone = false; saveSettings(); render(); applyTrainer(); };
+  const ws = $('#pWork'); if (ws) ws.onchange = () => { P.workout = ws.value; R.wT = 0; R.run = runInit(); R.wDone = false; saveSettings(); render(); applyTrainer(); };
   el.querySelectorAll('[data-t]').forEach(b => b.onclick = () => { if (Date.now() - swiped > 400) tileSheet(+b.dataset.t); });
   el.querySelectorAll('[data-pg]').forEach(b => b.onclick = () => goPage(+b.dataset.pg - P.page));
   el.querySelectorAll('[data-z]').forEach(b => b.onclick = () => zoom(+b.dataset.z)); { const e = $('#pEdit'); if (e) e.onclick = () => bigSheet(); }
@@ -283,7 +294,7 @@ function wire() {
     pp.addEventListener('touchend', e => { if (x0 == null) return; const dx = e.changedTouches[0].clientX - x0, dy = e.changedTouches[0].clientY - y0; x0 = null; if (Math.abs(dx) > 55 && Math.abs(dx) > 1.6 * Math.abs(dy)) { swiped = Date.now(); goPage(dx < 0 ? 1 : -1); } }, { passive: true }); }
   $('#pBig').onclick = () => { if (Date.now() - swiped > 400 && R.state !== 'run') bigSheet(); }; // while riding only the Edit key opens the editor
   const on = (id, f) => { const x = $(id); if (x) x.onclick = f; };
-  on('#pStart', start); on('#pPause', pause); on('#pLap', lap); on('#pEnd', endSheet);
+  on('#pStart', start); on('#pPause', pause); on('#pLap', lap); on('#pNext', wNext); on('#pEnd', endSheet);
 }
 
 let swiped = 0;
@@ -301,8 +312,10 @@ function paint() {
   el.querySelectorAll('[data-k]').forEach(b => { const v = M[b.dataset.k]?.v(); if (b.textContent !== String(v)) b.textContent = v; });
   const a = wAt();
   if (a && $('#pStep')) {
-    $('#pStep').innerHTML = a.done ? 'Workout done' : `<b>${esc(a.step.label || '')}</b> · ${fmtTime(a.left)} left${a.next ? ` · then ${tunedTarget(a.next, Math.round(a.nextTarget * R.intensity / 100), R.wAdj)} W` : ''}`;
-    const w0 = work(); if (w0 && R.state === 'run') $('#pWsvg').innerHTML = workoutSVG(w0, R.wT, 40, R.wAdj, ftp());
+    const ei = a.done ? null : endInfo(a.step, R.run, wSample()), ti = a.done ? null : tgtInfo(a.step.tgt, wSample(), { hrMax: S.hrMax }), t2 = a.done ? null : tgtInfo(a.step.tgt2, wSample(), { hrMax: S.hrMax });
+    const band = t => t ? ` · <span class="ptgt ${t.state || ''}">${esc(t.text)}${t.val != null ? ` · ${t.val} ${esc(t.unit)}` : ''}</span>` : '';
+    $('#pStep').innerHTML = a.done ? 'Workout done' : `<b>${esc(a.step.label || '')}</b> · ${ei ? (ei.kind === 'lap' ? 'press <b>Lap</b> or <b>Next step</b> when done' : `${esc(ei.text)} ${esc(ei.sub)}`) : `${fmtTime(a.left)} left`}${band(ti)}${band(t2)}${a.step.note ? `<br><small>${esc(a.step.note)}</small>` : ''}${a.next ? ` · then ${a.next.free && a.next.type ? 'no power target' : `${tunedTarget(a.next, Math.round(a.nextTarget * R.intensity / 100), R.wAdj)} W`}` : ''}`;
+    const w0 = work(); if (w0 && R.state === 'run') $('#pWsvg').innerHTML = workoutSVG(wView(), R.wT, 40, R.wAdj, ftp());
   }
   $('#pSens')?.classList.toggle('on', sensOn());
 }

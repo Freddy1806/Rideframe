@@ -1,82 +1,138 @@
-/* Personal workouts (js/myworkouts-ui.js): the editor, the route page bits, the profile section. Accent: signal orange. */
-.mwmodal { --mwa: #ff5a1f; place-items: start center; overflow-y: auto; padding: 3vh 0; }
-.mwmodal .box.mwbox { width: min(900px, 94vw); padding: 24px 26px; max-height: none; }
-.mwhead { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
-.mwhead .label { min-width: 0; overflow-wrap: anywhere; }
+/* Personal workouts (js/myworkouts-ui.js): the workout builder (js/wbuilder.js), the route page bits, the profile section. Accent: signal orange. */
+.mwmodal { --mwa: #ff5a1f; }
 .mwx { flex: none; width: 40px; height: 40px; border-radius: 50%; border: 1px solid var(--line-2); background: transparent; color: var(--paper); font-size: 16px; cursor: pointer; }
 .mwx:hover, .mwx:focus-visible { border-color: var(--mwa); }
-.mwname { display: flex; flex-direction: column; gap: 6px; margin: 12px 0 10px; }
-.mwmodal .mwname input { width: 100%; height: 46px; font-size: 20px; font-weight: 900; }
-.mwsum { display: flex; flex-wrap: wrap; gap: 6px 22px; align-items: baseline; margin: 4px 0 8px; }
+.mwsum { display: flex; flex-wrap: wrap; gap: 6px 22px; align-items: baseline; margin: 0 0 8px; }
 .mwsum > span { display: flex; flex-direction: column; min-width: 0; }
 .mwsum b { font-size: 20px; font-weight: 900; font-variant-numeric: tabular-nums; }
 .mwsum small { font-size: 11px; color: var(--muted); font-weight: 700; }
 .mwsum p, .mwmodal .mwsum p { flex: 1 1 100%; margin: 2px 0 0; font-size: 13px; }
 .mwwarn, .mwmodal p.mwwarn { color: #ffb020; font-weight: 700; font-size: 13px; line-height: 1.4; }
 .mwfit, .mwmodal p.mwfit { color: var(--muted); }
-.mwgwrap { background: var(--ink); border: 1px solid var(--line); border-radius: 6px; padding: 8px; color: var(--paper); }
-.mwgraph { display: block; width: 100%; height: 80px; }
-.mwint { display: flex; align-items: center; gap: 12px; margin: 12px 0 6px; flex-wrap: wrap; font-size: 13px; font-weight: 700; }
-.mwint label { flex: 1 1 180px; color: var(--muted); }
-.mwint input[type=range] { flex: 2 1 200px; accent-color: var(--mwa); min-width: 0; }
-.mwint b { min-width: 56px; text-align: right; font-variant-numeric: tabular-nums; color: var(--mwa); }
-/* blocks as cards (owner 17.11. 22:14: "clean, slick, very fast"): zone colour on the left edge, − / + on minutes and % */
-.mwsteps { display: flex; flex-direction: column; gap: 6px; margin-top: 10px; }
-.mwstep { display: grid; grid-template-columns: 40px minmax(80px, 1fr) 132px 132px 84px 92px auto; gap: 8px; align-items: center; padding: 8px 10px 8px 8px;
-  background: var(--ink); border: 1px solid var(--line); border-left: 4px solid var(--z, var(--line-2)); border-radius: 10px; transition: border-color .12s, background .12s; }
-.mwstep.sel { border-color: color-mix(in srgb, var(--mwa) 55%, var(--line)); border-left-color: var(--z, var(--mwa)); background: color-mix(in srgb, var(--mwa) 5%, var(--ink)); }
-.mwno { display: grid; place-items: center; min-width: 40px; height: 28px; padding: 0 10px; box-sizing: border-box; border-radius: 14px; background: var(--z); color: #0b0b0b; font-weight: 900; font-size: 12px; }
-.mwmodal .mwstep input { height: 36px; width: 100%; min-width: 0; padding: 0 6px; }
-.mwmodal .mwstep input.mwlab { background: transparent; border-color: transparent; font-weight: 700; padding: 0 4px; }
-.mwmodal .mwstep input.mwlab:hover, .mwmodal .mwstep input.mwlab:focus { border-color: var(--line-2); background: var(--ink-2); }
-.mwst { display: flex; align-items: center; gap: 2px; min-width: 0; }
-.mwst .mwnum { flex: 1; } .mwmodal .mwst input { text-align: center; padding: 0 2px; }
-.mwpm { flex: none; width: 30px; height: 36px; border-radius: 8px; border: 1px solid var(--line-2); background: var(--ink-2); color: var(--paper); font-size: 17px; font-weight: 800; line-height: 1; cursor: pointer; touch-action: manipulation; }
-.mwpm:hover, .mwpm:focus-visible { border-color: var(--mwa); color: var(--mwa); }
-.mwpm:active { transform: scale(.94); }
-.mwnum { display: flex; align-items: center; gap: 3px; min-width: 0; }
-.mwnum small { font-size: 11px; color: var(--muted); font-weight: 700; }
-.mwramp { opacity: .8; } .mwramp:focus-within { opacity: 1; }
-.mwmodal .mwstep input.bad { border-color: #ff6b6b; }
-.mww { font-variant-numeric: tabular-nums; font-size: 14px; white-space: nowrap; text-align: right; }
-.mwbtns { display: flex; gap: 3px; }
-.mwbtns button { width: 32px; height: 34px; border-radius: 8px; border: 1px solid transparent; background: transparent; color: var(--muted); font-size: 15px; cursor: pointer; }
-.mwstep:hover .mwbtns button, .mwstep.sel .mwbtns button { border-color: var(--line-2); color: var(--paper); }
-.mwbtns button:hover:not(:disabled), .mwbtns button:focus-visible { border-color: var(--mwa); color: var(--mwa); }
-.mwbtns button:disabled { opacity: .25; cursor: default; }
-/* templates: one tap to a usable workout */
-.mwtpls { display: grid; grid-template-columns: repeat(auto-fill, minmax(118px, 1fr)); gap: 8px; padding: 2px 0 8px; margin: 2px 0 4px; } /* wraps: every template visible, no sideways scroll */
-.mwtl { grid-column: 1 / -1; font-size: 11px; font-weight: 800; letter-spacing: .12em; text-transform: uppercase; color: var(--muted); margin-right: 2px; }
-.mwtpl { min-width: 0; display: flex; flex-direction: column; align-items: flex-start; gap: 2px; padding: 8px 12px; border-radius: 10px; border: 1px solid var(--line-2); background: var(--ink); color: var(--paper); font: inherit; cursor: pointer; text-align: left; }
-.mwtpl b { font-size: 14px; font-weight: 800; } .mwtpl small { font-size: 11.5px; color: var(--muted); line-height: 1.3; }
-.mwtpl:hover, .mwtpl:focus-visible, .mwtpl.on { border-color: var(--mwa); } .mwtpl.on b { color: var(--mwa); }
-.mwgraph { cursor: pointer; height: 110px; }
-.mwadds { display: flex; gap: 8px; flex-wrap: wrap; }
-.mwtools { display: flex; flex-wrap: wrap; gap: 10px 14px; align-items: center; justify-content: space-between; margin-top: 12px; }
-.mwrep { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; font-size: 13px; font-weight: 700; color: var(--muted); }
-.mwmodal .mwrep input { width: 60px; height: 40px; padding: 0 8px; }
+.mwgwrap { background: var(--ink); border: 1px solid var(--line); border-radius: 8px; padding: 8px; color: var(--paper); }
+.mwgraph { display: block; width: 100%; height: 110px; cursor: pointer; }
+.mwgraph .mk { stroke: var(--paper); stroke-width: 3; vector-effect: non-scaling-stroke; }
 .mwerr, .mwmodal p.mwerr { color: #ff6b6b; font-size: 13px; font-weight: 700; min-height: 0; margin-top: 8px; }
 .mwerr:empty { display: none; }
 .mwacts { align-items: center; }
 .mwsp { flex: 1; }
 .mwmodal .btn.mwsave, .mwprof .btn.mwsave { background: var(--mwa); color: #0b0b0b; }
-:is(.mwmodal, .mwprof, .workout-pick) .btn:focus-visible, .mwmodal input:focus-visible { outline: 2px solid var(--mwa); outline-offset: 2px; }
-@media (max-width: 640px) {
-  .mwmodal { padding: 0; }
-  .mwmodal .box.mwbox { width: 100vw; min-height: 100dvh; border-radius: 0; padding: 16px 14px 24px; }
-  .mwgraph { height: 90px; }
-  .mwacts .mwsp { display: none; }
-  .mwacts .btn { flex: 1 1 auto; }
+:is(.mwmodal, .mwprof, .workout-pick) .btn:focus-visible, .mwmodal :is(input, select, textarea, button):focus-visible { outline: 2px solid var(--mwa); outline-offset: 2px; }
+
+/* ---- the builder: one window, the box scrolls; steps left, summary right (desktop), one column below 1000 px ---- */
+.wbmodal { padding: 2vh 0; overflow: hidden; }
+.wbmodal .box.wb { width: min(1240px, 96vw); max-height: 96vh; max-height: 96dvh; overflow-y: auto; overscroll-behavior: contain; padding: 20px 24px 24px; position: relative; }
+.wbhead { display: flex; align-items: flex-start; gap: 12px; margin-bottom: 14px; }
+.wbhl { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 4px; }
+.wbhl .label { overflow-wrap: anywhere; }
+.mwmodal input.wbtitle { width: 100%; height: 48px; font-size: 26px; font-weight: 900; font-stretch: 112%; background: transparent; border: 1px solid transparent; border-radius: 8px; padding: 0 8px; margin-left: -8px; color: var(--paper); }
+.mwmodal input.wbtitle:hover, .mwmodal input.wbtitle:focus { border-color: var(--line-2); background: var(--ink); }
+.wbmain { display: grid; grid-template-columns: minmax(0, 1fr) minmax(300px, 380px); gap: 22px; align-items: start; }
+.wbside { position: sticky; top: 0; display: flex; flex-direction: column; gap: 12px; min-width: 0; }
+.wbcol { min-width: 0; }
+.wblist { display: flex; flex-direction: column; gap: 8px; }
+.wbadd { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; }
+.wbassume { color: var(--muted); font-size: 12px !important; line-height: 1.4; }
+.wbnotes, .wbbase { display: flex; flex-direction: column; gap: 6px; }
+.mwmodal .wbnotes textarea, .mwmodal .wbfn textarea { width: 100%; resize: vertical; min-height: 64px; background: var(--ink); border: 1px solid var(--line-2); border-radius: 8px; padding: 8px 10px; color: var(--paper); font: inherit; font-size: 14px; line-height: 1.4; }
+.mwmodal .wbbase select { width: 100%; }
+.wbacts { flex-wrap: wrap; gap: 8px; margin-top: 4px; }
+/* a step card: the coloured edge says the step type */
+.wbcard { --tc: #7d8794; display: grid; grid-template-columns: 30px minmax(0, 1fr) auto; gap: 6px 10px; align-items: start; padding: 10px 10px 10px 6px; background: var(--ink); border: 1px solid var(--line); border-left: 5px solid var(--tc); border-radius: 10px; transition: border-color .12s, background .12s, opacity .12s; }
+.wbcard.sel { border-color: color-mix(in srgb, var(--mwa) 50%, var(--line)); border-left-color: var(--tc); }
+.wbcard.dragging, .wbrep.dragging { opacity: .3; }
+.wbcbody { min-width: 0; }
+.wblab { font-size: 12px; font-weight: 800; color: var(--muted); margin: 0 0 6px; overflow-wrap: anywhere; }
+.wbfields { display: grid; grid-template-columns: minmax(130px, 170px) minmax(0, 1fr) minmax(0, 1fr); gap: 8px 14px; align-items: start; }
+.wbf { display: flex; flex-direction: column; gap: 5px; min-width: 0; }
+.wbf .label { font-size: 10px; }
+.wbfg2, .wbfn { grid-column: 2 / -1; }
+.wbfn { flex-direction: row; flex-wrap: wrap; gap: 6px 16px; align-items: center; }
+.wbfn .label { flex: 1 1 100%; }
+.wbpair { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; min-width: 0; }
+.mwmodal .wbcard select, .mwmodal .wbsheet select, .mwmodal .wbrep input, .mwmodal .wbcard input, .mwmodal .wbsheet input { height: 38px; padding: 0 8px; font-weight: 700; min-width: 0; max-width: 100%; }
+.mwmodal select.wbtype { color: var(--tc); border-color: color-mix(in srgb, var(--tc) 55%, var(--line-2)); width: 100%; }
+.wbpair > select { flex: 1 1 140px; }
+.wbin { display: inline-flex; align-items: center; gap: 4px; min-width: 0; }
+.wbin small, .wbdash { font-size: 11px; color: var(--muted); font-weight: 700; }
+.wbx { font-size: 14px; color: var(--muted); font-weight: 800; }
+.mwmodal .wbin input { width: 82px; text-align: center; font-variant-numeric: tabular-nums; }
+.mwmodal .wbin input[data-f$="sec"] { width: 96px; }
+.wbin2 { display: inline-flex; flex-wrap: wrap; align-items: center; gap: 4px 6px; min-width: 0; }
+.mwmodal select.wbzone { flex: 1 1 100%; }
+.mwmodal input.bad, .mwmodal textarea.bad { border-color: #ff6b6b !important; }
+.wbw { font-size: 13px; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.wbhint { font-size: 12.5px; color: var(--muted); line-height: 1.35; }
+.wbhint b { color: var(--paper); }
+.wblink { background: none; border: 0; padding: 4px 0; color: var(--muted); font: inherit; font-size: 12.5px; font-weight: 800; cursor: pointer; border-bottom: 1px dashed var(--line-2); }
+.wblink:hover, .wblink:focus-visible { color: var(--mwa); border-color: var(--mwa); }
+.wbcact, .wbrepact { display: flex; gap: 4px; align-items: center; }
+.wbicon { flex: none; width: 34px; height: 34px; border-radius: 8px; border: 1px solid var(--line-2); background: transparent; color: var(--paper); font-size: 15px; font-weight: 800; line-height: 1; cursor: pointer; touch-action: manipulation; }
+.wbicon:hover:not(:disabled), .wbicon:focus-visible { border-color: var(--mwa); color: var(--mwa); }
+.wbicon.wbdel:hover, .wbicon.wbdel:focus-visible { color: #ff6b6b; border-color: #ff6b6b; }
+/* the drag handle: big enough for a thumb, never scrolls the page while it is held */
+.wbgrip { width: 30px; height: 40px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 4px; border: 0; border-radius: 6px; background: transparent; cursor: grab; touch-action: none; padding: 0; color: var(--muted); }
+.wbgrip i { display: block; width: 14px; height: 2px; border-radius: 1px; background: currentColor; }
+.wbgrip:hover, .wbgrip:focus-visible { color: var(--mwa); background: color-mix(in srgb, var(--mwa) 10%, transparent); }
+.wbdragging, .wbdragging * { cursor: grabbing !important; user-select: none; -webkit-user-select: none; }
+.wbghost { position: fixed; z-index: 80; pointer-events: none; margin: 0; box-shadow: 0 18px 40px rgba(0,0,0,.55); opacity: .95; background: var(--ink-2); }
+.wbdrop { position: fixed; z-index: 81; height: 4px; border-radius: 2px; background: var(--mwa); pointer-events: none; box-shadow: 0 0 0 3px color-mix(in srgb, var(--mwa) 25%, transparent); }
+.wbdrop.in { background: #f4f4ef; }
+/* a repeat block: a frame around its steps, × N with − / + */
+.wbrep { border: 1px dashed color-mix(in srgb, var(--paper) 30%, transparent); border-radius: 12px; padding: 8px 10px 10px; background: color-mix(in srgb, var(--paper) 3%, transparent); }
+.wbrep.sel { border-color: var(--mwa); }
+.wbrephead { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.wbrepl { font-weight: 900; font-size: 15px; font-stretch: 112%; }
+.wbstep { display: inline-flex; align-items: center; gap: 4px; }
+.mwmodal .wbstep input { width: 56px; text-align: center; font-size: 16px; }
+.wbrepact { margin-left: auto; }
+.wbskip { display: flex; align-items: center; gap: 8px; font-size: 12.5px; font-weight: 700; color: var(--muted); margin: 6px 0 0 38px; cursor: pointer; }
+.wbskip input { width: 18px; height: 18px; accent-color: var(--mwa); }
+.wbrepsteps { display: flex; flex-direction: column; gap: 8px; margin: 8px 0 0 12px; min-height: 30px; }
+.wbaddin { margin: 8px 0 0 12px; }
+/* the Undo toast */
+.wbtoast { position: sticky; bottom: 0; margin: 12px auto 0; width: fit-content; max-width: 100%; display: flex; align-items: center; gap: 14px; padding: 8px 8px 8px 16px; border-radius: 12px; background: #f4f4ef; color: #0b0b0b; font-weight: 800; font-size: 14px; box-shadow: 0 10px 30px rgba(0,0,0,.5); z-index: 5; }
+.wbtoast[hidden] { display: none; }
+.wbtoast .btn.ghost { color: #0b0b0b; border-color: rgba(0,0,0,.3); height: 34px; }
+@media (max-width: 1000px) { /* one column: summary and chart above the steps, notes and Save below them */
+  .wbmain { grid-template-columns: minmax(0, 1fr); gap: 12px; } .wbside { display: contents; }
+  .wbsum { order: -2; } .wbchart { order: -1; } .wbcol { order: 0; } .wbnotes { order: 1; } .wbbase { order: 2; } .wbside .mwerr { order: 3; } .wbacts { order: 4; } }
+@media (max-width: 860px) { .wbfields { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); } .wbft { grid-column: 1 / -1; } .wbfg2, .wbfn { grid-column: 1 / -1; } }
+/* phone: compact cards, the step in a sheet from below, the summary and Save always in reach */
+@media (max-width: 700px) {
+  .wbmodal { padding: 0; }
+  .wbmodal .box.wb { width: 100vw; max-height: 100vh; max-height: 100dvh; height: 100dvh; border-radius: 0; border: 0; padding: 12px 12px 0; }
+  .mwmodal input.wbtitle { font-size: 21px; height: 42px; }
+  .wbhead { margin-bottom: 8px; }
+  .wbmain { gap: 12px; }
+  .mwsum { gap: 4px 14px; } .mwsum b { font-size: 17px; }
+  .mwgraph { height: 80px; }
+  .wbcard.compact { grid-template-columns: 30px minmax(0, 1fr) 14px; align-items: center; padding: 4px 8px 4px 4px; min-height: 56px; }
+  .wbopen { min-width: 0; display: flex; flex-direction: column; align-items: flex-start; gap: 2px; text-align: left; background: none; border: 0; padding: 6px 0; color: var(--paper); font: inherit; cursor: pointer; width: 100%; }
+  .wbopen b { font-size: 15px; font-weight: 900; color: var(--tc); overflow-wrap: anywhere; }
+  .wbsumtxt { font-size: 13px; color: var(--paper); overflow-wrap: anywhere; }
+  .wbnote1 { font-size: 12px; color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 100%; }
+  .wbchev { color: var(--muted); font-size: 20px; }
+  .wbrep { padding: 6px 6px 8px; }
+  .wbrepsteps, .wbaddin { margin-left: 4px; }
+  .wbskip { margin-left: 4px; }
+  .wbadd .btn { flex: 1 1 0; }
+  .wbacts { position: sticky; bottom: 0; background: var(--ink-2); padding: 10px 0 calc(10px + env(safe-area-inset-bottom)); margin: 0; border-top: 1px solid var(--line); z-index: 4; }
+  .wbacts .mwsp { display: none; } .mwmodal .wbacts { flex-direction: row; flex-wrap: wrap; align-items: stretch; } .mwmodal .wbacts .btn, .mwmodal .wbacts .btn.small { flex: 1 1 40%; width: auto; min-width: 0; height: 44px; padding: 0 8px; font-size: 12px; letter-spacing: .04em; }
+  .wbrephead { gap: 6px; } .mwmodal .wbstep input { width: 46px; } .wbrepl { font-size: 14px; }
+  .wbtoast { bottom: 72px; position: sticky; }
 }
-@media (max-width: 980px) { /* tablets too: the wide one-row card needs ~860 px of box (94vw) */
-  /* a card is two rows (name · watts, then minutes and %); the selected one opens its ramp and its buttons */
-  .mwstep { grid-template-columns: 40px minmax(0, 1fr) minmax(0, 1fr); grid-template-areas: "no lab w" ". min pct" ". p2 p2" "btn btn btn"; row-gap: 6px; padding: 8px; }
-  .mwno { grid-area: no; } .mwlab { grid-area: lab; } .mwsmin { grid-area: min; } .mwspct { grid-area: pct; } .mwramp { grid-area: p2; }
-  .mww { grid-area: w; justify-self: end; align-self: center; } .mwbtns { grid-area: btn; justify-self: end; }
-  .mwstep:not(.sel):not(:focus-within) .mwbtns, .mwstep:not(.sel):not(:focus-within) .mwramp.flat { display: none; }
-  .mwbtns button { border-color: var(--line-2); color: var(--paper); }
-  .mwpm { width: 34px; height: 38px; }
-}
+/* the phone's step sheet */
+.wbsheetwrap { --tc: #7d8794; position: fixed; inset: 0; z-index: 70; background: rgba(0,0,0,.5); display: flex; align-items: flex-end; justify-content: center; }
+.wbsheet { width: min(560px, 100vw); max-height: 88dvh; overflow-y: auto; background: var(--ink-2); border-top: 5px solid var(--tc); border-radius: 16px 16px 0 0; padding: 12px 14px calc(14px + env(safe-area-inset-bottom)); box-shadow: 0 -20px 40px rgba(0,0,0,.5); }
+.wbshead { display: flex; align-items: center; gap: 6px; margin-bottom: 10px; }
+.wbshead b { font-size: 17px; font-weight: 900; color: var(--tc); }
+.wbshead .wbsp { flex: 1; }
+.wbsheet .wbfields { grid-template-columns: minmax(0, 1fr); }
+.wbsheet .wbfg2, .wbsheet .wbfn, .wbsheet .wbft { grid-column: 1; }
+.wbsheet .wbicon { width: 40px; height: 40px; }
+.wbsfoot { display: flex; justify-content: flex-end; margin-top: 14px; }
+.wbsfoot .btn { min-width: 120px; }
 
 /* route page */
 .mwpick { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; }
@@ -109,14 +165,8 @@
 .mwprof .mwdanger { color: #ff6b6b; }
 .mwnew { align-self: flex-start; margin-top: 4px; }
 
-/* ramps, name suggestions, the in-page question */
-.mwramp small:first-child { color: var(--muted); }
-.mwmodal .mwstep input[data-f="pct2"]::placeholder { color: var(--muted); font-weight: 600; }
-.mwchips { display: flex; flex-wrap: wrap; gap: 6px; margin: -2px 0 10px; }
-.mwchip { height: 32px; padding: 0 12px; border-radius: 16px; border: 1px solid var(--line-2); background: transparent; color: var(--paper); font: inherit; font-size: 12.5px; font-weight: 700; cursor: pointer; max-width: 100%; overflow-wrap: anywhere; }
-.mwchip.on { border-color: #ff5a1f; color: #ff5a1f; }
-.mwchip:hover, .mwchip:focus-visible { border-color: #ff5a1f; }
-.mwask { z-index: 60; }
+/* the in-page question */
+.mwask { z-index: 90; }
 .mwask .box { width: min(460px, 92vw); padding: 24px; }
 .mwask h3 { font-size: 20px; font-weight: 900; margin-bottom: 8px; overflow-wrap: anywhere; }
 .mwask .btn.mwsave { background: #ff5a1f; color: #0b0b0b; }

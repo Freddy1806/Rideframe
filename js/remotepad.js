@@ -46,7 +46,7 @@ function command(name) {
   if (!rideOn()) return;
   if (name === 'pause') return tap(9); // Start: pause menu, again: resume
   const key = KEYS[name]; if (key) document.dispatchEvent(new KeyboardEvent('keydown', { key, bubbles: true, cancelable: true }));
-  else if (/^(mode:(erg|real|virtual)|photo|lap|turn:(left|right))$/.test(name)) document.dispatchEvent(new CustomEvent('rf-remote', { detail: { name } })); // the ride's own switch (js/ride.js _remote): ERG / bike / virtual gears, a photo
+  else if (/^(mode:(erg|real|virtual)|photo|lap|wnext|turn:(left|right))$/.test(name)) document.dispatchEvent(new CustomEvent('rf-remote', { detail: { name } })); // the ride's own switch (js/ride.js _remote): ERG / bike / virtual gears, a photo
 }
 
 // ---------------- the session ----------------
