@@ -24,12 +24,10 @@
             <iq:uses-permission id="FitContributor"/>
             <!-- 23.11.: the indoor trainer (FTMS / Wahoo over Toybox.BluetoothLowEnergy, API 3.1.0) -->
             <iq:uses-permission id="BluetoothLowEnergy"/>
-            <!-- 25.11.: Garmin's recovery values for the coach (Health.mc): resting HR and VO2max (UserProfile), the body battery
-                 history (SensorHistory), sleep score / training status / recovery time / pulse ox (Toybox.Complications, read once,
-                 not subscribed). VERIFY: the compiler accepts ComplicationSubscriber for a watch-app (the docs name watch faces as subscribers) -->
+            <!-- 25.11.: Garmin's recovery values for the coach (Health.mc): resting HR and VO2max (UserProfile), body battery and
+                 pulse ox history (SensorHistory). Complications are not allowed for a watch-app. -->
             <iq:uses-permission id="UserProfile"/>
             <iq:uses-permission id="SensorHistory"/>
-            <iq:uses-permission id="ComplicationSubscriber"/>
         </iq:permissions>
         <iq:languages>
             <iq:language>eng</iq:language>

@@ -476,10 +476,11 @@ test('25.11.: the recovery snapshot (healthBody = garmin/source/Health.mc health
   assert.equal(healthBody({ steps: 5 }, Math.round(new Date(2026, 0, 1, 0, 5).getTime() / 1000)).day, '2026-01-01', 'the watch\'s local day');
   // the watch sends the same keys with the same ranges
   const mc = readFileSync(new URL('../garmin/source/Health.mc', import.meta.url), 'utf8');
-  for (const [k, , lo, hi] of HEALTH_KEYS) { if (k === 'rt') { assert.match(mc, /"rt"\] = rt/); assert.match(mc, /RECOVERY_TIME\), 0, 10080,/); continue; }
+  for (const [k, , lo, hi] of HEALTH_KEYS) { if (k === 'ss') continue; // the sleep score cannot be read by a watch-app (Complications are for watch faces); it comes another way
+    if (k === 'rt') { assert.match(mc, /"rt"\] = \(h as Number\) \* 60/); continue; }
     if (k === 'rhr') { assert.match(mc, /restingHeartRate, 25, 150, false/); continue; }
     assert.match(mc, new RegExp(`(hPut\\(d, "${k}", hNum\\([^;]*, ${lo}, ${hi}, (true|false)\\)|"${k}"\\] = )`), k + ' with the same range on the watch'); }
-  assert.match(mc, /d\["ts"\]/); assert.match(mc, /d\["day"\]/); assert.match(mc, /d\["t"\] = now\.value\(\)/);
+  assert.doesNotMatch(mc, /Complications\./); assert.match(mc, /d\["day"\]/); assert.match(mc, /d\["t"\] = now\.value\(\)/);
   const app = readFileSync(new URL('../garmin/source/RideframeApp.mc', import.meta.url), 'utf8'); assert.match(app, /sendHealth\(\); refresh\(\);/, 'sent at every start');
-  const man = readFileSync(new URL('../garmin/manifest.xml', import.meta.url), 'utf8'); for (const p of ['UserProfile', 'SensorHistory', 'ComplicationSubscriber']) assert.match(man, new RegExp(`uses-permission id="${p}"`));
+  const man = readFileSync(new URL('../garmin/manifest.xml', import.meta.url), 'utf8'); for (const p of ['UserProfile', 'SensorHistory']) assert.match(man, new RegExp(`uses-permission id="${p}"`)); assert.doesNotMatch(man, /ComplicationSubscriber/);
 });
