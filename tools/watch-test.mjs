@@ -123,6 +123,17 @@ test('setup after a watch session: last time is the newest session, also one fro
   const S = (await call('GET', '/api/watch/strength/setup', { bearer: t })).j; assert.equal(S.recent[0], 'bench'); assert.ok(Math.abs(S.last.at - (nowS() - 600)) < 3, 'last: the newest session');
 });
 
+test('standard one-arm workouts: every exercise the watch sends comes back in the setup with name, type and last time', async () => {
+  const { STD_W } = await import('../js/watchflow.js');
+  const t = await pairWith(A), its = STD_W.filter(w => /^std-oap/.test(w.id)).flatMap(w => w.it);
+  const r = await call('POST', '/api/watch/strength', { bearer: t, body: { id: 'onearm001', start: nowS() - 60, duration: 50, sets: its.map((it, i) => ({ ex: it[0], kg: 0, reps: it[2], t: i + 1 })) } });
+  assert.equal(r.status, 200);
+  const S = (await call('GET', '/api/watch/strength/setup', { bearer: t })).j;
+  for (const it of its) { const e = S.ex.find(x => x.id === it[0]); assert.ok(e, `${it[0]} is in the setup`); assert.equal(e.t, it[6], `${it[0]} type`); assert.notEqual(e.n, it[0]); assert.ok(e.n.length <= 18, e.n);
+    assert.deepEqual(e.s, [[0, it[2]]], `${it[0]} last time`); }
+  assert.ok(JSON.stringify(S).length < 8000, 'the setup stays small');
+});
+
 test('summary: week points, change, sessions, streak', async () => {
   const t = await pairWith(A), r = await call('GET', '/api/watch/summary', { bearer: t });
   assert.equal(r.status, 200); assert.equal(typeof r.j.pts, 'number'); assert.ok(r.j.pts >= 30, 'the 45 min watch session counts (45 points per hour)'); assert.equal(r.j.delta, r.j.pts - r.j.prev);

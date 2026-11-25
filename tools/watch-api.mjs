@@ -87,6 +87,10 @@ export async function setup(u) {
   const one = k => { const e = info.get(k) || { n: k, t: 'w' }, m = use.get(k), o = { id: k, n: name(k), t: ['bw', 'time'].includes(e.t) ? e.t : 'w' };
     if (m) { o.s = m.sets.slice(0, 6).map(([kg, r, sec]) => e.t === 'time' ? [0, sec] : [r1(kg), r]); o.b = r1(m.best); } return o; };
   const ids = keys.slice(0, 40); for (const k of [...top, ...inW]) if (!ids.includes(k)) ids.push(k);
+  // 25.11.: timed exercises that were done (the holds and negatives of the standard one-arm workouts) come too, the 12 newest,
+  // so the watch keeps their last-time values after a setup sync
+  const timed = [...use.entries()].filter(([k]) => info.get(k)?.t === 'time' && !ids.includes(k)).sort((a, b) => b[1].last - a[1].last).slice(0, 12);
+  for (const [k] of timed) ids.push(k);
   const recent = [...use.entries()].filter(([, m]) => now - m.last < 90 * 864e5).sort((a, b) => b[1].last - a[1].last).slice(0, 8).map(([k]) => k).filter(k => ids.includes(k));
   const last = list[0], sets = last ? last.ex.reduce((a, x) => a + x.sets.length, 0) : 0;
   return { v: 1, unit: 'kg', rest: Math.min(600, Math.max(15, +S.kraftRest || 90)), ex: ids.map(one), last: last ? { at: Math.round(last.start / 1000), sets, n: clean(last.name, 24) } : null,
