@@ -47,7 +47,7 @@ export function renderWeightCard(el, data, { href = 'body.html' } = {}) {
   el.innerHTML = `<a class="bcard" href="${href}" aria-label="Weight ${fmtKg(last.kg)} kg, ${esc(when(last.t))}. 7 days: ${esc(w.text)}.">
     <span class="bcico" aria-hidden="true">${SCALE}</span>
     <div class="bcmain"><span class="label">Weight</span><b>${fmtKg(last.kg)}<small> kg</small></b><small>${esc(when(last.t))}</small>${badge}</div>
-    <div class="bcside">${sparkline(list)}<span class="bchg ${w.cls}">${w.arrow ? `<em aria-hidden="true">${w.arrow}</em> ` : ''}${esc(w.text)}<small> · 7 days</small></span></div><i>›</i></a>`;
+    <div class="bcside">${sparkline(list)}${c.d7 == null ? '' : `<span class="bchg ${w.cls}">${w.arrow ? `<em aria-hidden="true">${w.arrow}</em> ` : ''}${esc(w.text)}<small> · 7 days</small></span>`}</div><i>›</i></a>`;
 }
 /** the start page: loads the account's last 90 days, draws the card, lets this device's profile weight follow */
 export async function mountWeightCard(el) {
