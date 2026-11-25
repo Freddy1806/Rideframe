@@ -38,10 +38,18 @@ const pad = n => String(n).padStart(2, '0'), dk = t => { const d = new Date(t); 
       return { side: document.documentElement.scrollWidth > innerWidth + 1, bad }; });
     const shot = async nm => { if (!SHOTS) return; await P.evaluate(() => document.querySelector('#hBody').scrollIntoView({ block: 'start' })); await wait(150); await P.screenshot({ path: `${SHOTS}/health_${nm}.png` }); };
 
-    await as(E); await P.waitForSelector('.hcard');
-    ok(/Open the RIDEFRAME app on your watch once a day to sync these/.test(await P.textContent('.hcard')), 'no values yet: the honest empty state');
-    const e1 = await overflow(); ok(!e1.side && !e1.bad.length, 'empty state: nothing overflows at 360 px ' + JSON.stringify(e1));
-    await shot('empty');
+    // a new account: the Today page greets with its first steps (no recovery card made up from nothing); the recovery card's own
+    // honest empty state lives on the Body page now (the Today overview's Recovery card has its own empty text, tools/cards-ui.cjs)
+    await as(E); await P.waitForSelector('#ovFirst');
+    await wait(800); ok(!(await P.locator('.hcard:visible').count()) && !(await P.locator('#hHealth:visible').count()) && await P.locator('#ovFirst').isVisible(), 'new account on Today: no empty recovery card, the first steps instead');
+    await P.goto(BASE + '/body.html'); await P.waitForSelector('#bHealth .hcard');
+    ok(/Open the RIDEFRAME app on your watch once a day to sync these/.test(await P.textContent('#bHealth .hcard')), 'no values yet: the honest empty state (Body page)');
+    const e1 = await P.evaluate(() => { const c = document.querySelector('#bHealth'), r = c.getBoundingClientRect(), bad = [];
+      for (const e of c.querySelectorAll('*')) { const q = e.getBoundingClientRect(); if (q.width && (q.left < r.left - .5 || q.right > r.right + .5)) bad.push(e.className || e.tagName); if (e.scrollWidth > e.clientWidth + 1 && getComputedStyle(e).overflow === 'visible' && e.clientWidth) bad.push('scroll:' + (e.className || e.tagName)); }
+      return { side: document.documentElement.scrollWidth > innerWidth + 1, bad }; });
+    ok(!e1.side && !e1.bad.length, 'empty state: nothing overflows at 360 px ' + JSON.stringify(e1));
+    if (SHOTS) { await P.evaluate(() => document.querySelector('#bHealth').scrollIntoView({ block: 'start' })); await wait(150); await P.screenshot({ path: `${SHOTS}/health_empty.png` }); }
+    await P.goto(BASE + '/handy.html'); await P.waitForSelector('#hSet');
 
     await as(A); await P.waitForSelector('.hcard .hct'); await P.waitForSelector('#hBody .bcard');
     const txt = await P.textContent('.hcard');
@@ -52,7 +60,7 @@ const pad = n => String(n).padStart(2, '0'), dk = t => { const d = new Date(t); 
     ok(/Resting HR47 bpm−3 vs 7 days/.test(await tile('Resting HR')), 'resting HR against the 7-day average: ' + await tile('Resting HR'));
     ok(/Recovery7 hto recover/.test(await tile('Recovery')), 'recovery time in hours');
     ok(/VO2max54run · bike 56/.test(await tile('VO2max')), 'VO2max run and bike');
-    ok(await P.evaluate(() => { const a = document.querySelector('#hBody'), h = document.querySelector('#hHealth'); return a.nextElementSibling === h && a.getBoundingClientRect().bottom <= h.getBoundingClientRect().top; }), 'right under the weight card');
+    ok(await P.evaluate(() => { const a = document.querySelector('#hBody'), h = document.querySelector('#hHealth'), ca = a.closest('.cd') || a, ch = h.closest('.cd') || h; return ch.nextElementSibling === ca && h.getBoundingClientRect().bottom <= a.getBoundingClientRect().top; }), 'right above the weight card (Today overview: Recovery, then Weight)');
     const cut = () => P.evaluate(() => [...document.querySelectorAll('.hct > *')].filter(e => e.scrollWidth > e.clientWidth + 1).map(e => e.textContent));
     for (const wd of [360, 320]) { await P.setViewportSize({ width: wd, height: 800 }); await wait(150); const o = await overflow(); ok(!o.side && !o.bad.length, `full card: nothing overflows at ${wd} px ` + JSON.stringify(o)); const c = await cut(); ok(!c.length, `no tile text cut at ${wd} px ` + JSON.stringify(c)); }
     await P.setViewportSize({ width: 360, height: 800 }); await shot('full');

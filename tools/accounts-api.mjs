@@ -8,6 +8,7 @@ import { homedir } from 'node:os';
 import { join } from 'node:path';
 import { mergeWallet, cleanWallet } from '../js/wizpoints.js';
 import { itemFor } from '../js/shop.js';
+import { keepHome } from '../js/cardlayout.js';
 
 const DATA = process.env.RIDEFRAME_DATA || join(homedir(), 'RIDEFRAME_data');
 const ACC = join(DATA, 'accounts.json');
@@ -216,7 +217,7 @@ export async function accountsApi(req, res, path) {
       if (!timingSafeEqual(Buffer.from(hash(String(b.password || ''), u.salt), 'hex'), Buffer.from(u.hash, 'hex'))) { limited('pw:' + t.key, 10, 10 * 60e3); return send(res, 401, { error: 'Wrong password.', keep: true }); }
       return await withAcc(async a => { const other = byMail(a, e); if (other && other[0] !== t.key) return send(res, 409, { error: 'This email already belongs to another account.', keep: true });
         if (!a.users[t.key]) return send(res, 401, { error: 'Not signed in.' }); a.users[t.key].email = e; await writeJSON(ACC, a); return send(res, 200, { ok: true, email: e }); }); }
-    if (op === 'settings' && req.method === 'PUT') { const b = await body(req, 1e6); await writeJSON(join(dir, 'settings.json'), { settings: b.settings || {}, at: +b.at || Date.now() }); return send(res, 200, { ok: true }); }
+    if (op === 'settings' && req.method === 'PUT') { const b = await body(req, 1e6), f = join(dir, 'settings.json'); await writeJSON(f, { settings: keepHome(b.settings, (await readJSON(f, null))?.settings), at: +b.at || Date.now() }); return send(res, 200, { ok: true }); } // the overview's layout: the newer one stays (tools/home-api.mjs)
     if (op === 'board') { const rows = await board(a); return send(res, 200, { week: weekKey(), rows: rows.map(r => ({ ...r, me: r.key === t.key })) }); }
     if (op === 'story' && req.method === 'GET') { /* a new device gets the wallet and the worn shop items back */
       const s = await readJSON(join(dir, 'story.json'), null), wk = weekKey();

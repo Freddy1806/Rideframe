@@ -7,7 +7,7 @@ import { account } from './account.js';
 
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 let fresh = null, list = null, max = 3, msg = '', notice = false;
-export const READS = 'Claude can read your activities (all sports), strength sessions, fitness and form, weight and the recovery values from your watch, and your FTP and heart-rate settings. It can change only your watch workouts. Never your e-mail or password.'; // kept here, so a redraw of the settings sheet keeps the new link on screen
+export const READS = 'Claude can read your activities (all sports), strength sessions, fitness and form, weight and the recovery values from your watch, and your FTP and heart-rate settings. It can change only your watch workouts and your training plan. Never your e-mail or password.'; // kept here, so a redraw of the settings sheet keeps the new link on screen
 
 async function api(path, opt = {}) { // own fetch: a 401 here must not sign the phone out (account.js does that)
   const r = await fetch('/api/account/' + path, { cache: 'no-store', ...opt, headers: { 'Content-Type': 'application/json', 'X-RF-Token': account()?.token || '' } });

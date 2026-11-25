@@ -34,7 +34,7 @@ export function lineOf(a) {
   return (g === 'run' ? [kmTxt(a), paceS(a.distance, a.duration) + ' /km', fmtTime(a.duration)] : [kmTxt(a), fmtTime(a.duration), a.avgPower > 0 && `${a.avgPower} W avg`]).filter(Boolean).join(' · ');
 }
 const day = t => new Date(t).toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short' });
-const keyOf = a => (a.kraft ? 'k:' : 'r:') + a.id;
+export const keyOf = a => (a.kraft ? 'k:' : 'r:') + a.id;
 const mc = m => document.documentElement.dataset.modecolors === '1' ? `--mc:${MODES[m].color};--mcl:${MODES[m].light}` : '--mc:var(--accent);--mcl:var(--accent)';
 export const hm = s => `${Math.floor(s / 3600)}:${String(Math.floor(s % 3600 / 60)).padStart(2, '0')} h`;
 
@@ -200,7 +200,7 @@ async function page(root) {
     const have = ORDER.filter(m => D.acts.some(a => sportOf(a) === m)); if (f !== 'all' && !have.includes(f)) f = 'all';
     const groups = new Map(); for (const a of D.acts) if (f === 'all' || sportOf(a) === f) { const w = weekStart(a.date); (groups.get(w) || groups.set(w, []).get(w)).push(a); }
     const reco = st?.connected && !st.canImport;
-    root.innerHTML = `<header class="ptop"><div class="pbrand"><b>RIDEFRAME </b><span>Activities</span></div></header>
+    root.innerHTML = `<header class="ptop"><div class="pbrand"><b>RIDEFRAME </b><span>Activities</span></div><a class="btn ghost ksmall fstats" href="statistik.html" id="fStats">${icon('chart', 'fsico')}Stats</a></header>
       <div class="fact"><button class="btn ghost ksmall" id="fImp" ${st?.configured ? '' : 'hidden'} ${busy ? 'disabled' : ''}>${reco ? 'Reconnect Strava' : 'Import from Strava'}</button><button class="btn ksmall" id="fAdd">+ Add activity</button></div>
       <p class="fmsg" id="fMsg" role="status" ${msg || reco ? '' : 'hidden'}>${esc(msg || (reco ? 'Reconnect Strava to import your activities.' : ''))}</p>
       ${!D.acts.length ? `<div class="fempty"><p class="hint">No activities yet. Start a ride, a run or a workout on Home, add one here or import them from Strava, and it shows up here.</p><a class="btn" href="handy.html">Go to Home</a></div>`
@@ -212,6 +212,7 @@ async function page(root) {
     $('#fImp', root).onclick = impTap; $('#fAdd', root).onclick = addTap;
   };
   draw();
+  { const o = new URLSearchParams(location.search).get('open'), a = o && D.acts.find(x => keyOf(x) === o); if (a) detail(a, D.P, reload); } // ?open=r:<id> | k:<id>: the overview's "Last activity" card (js/cards.js)
   // strength sessions from another device or the Garmin watch (tools/watch-api.mjs) reach this phone with the strength sync
   // ... and the account's activities this phone does not have yet: the host's background Strava import (tools/strava-auto.mjs), the laptop's import
   const pull = () => import('./account.js').then(async ac => { if (!ac.account()) return; const before = D.acts.map(a => a.id).join();

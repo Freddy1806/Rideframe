@@ -49,6 +49,9 @@ export function pmcLoads(loads, days = 90) {
   return out;
 }
 
+/** form (fitness minus fatigue) in words, like the profile page and the coach's data say it */
+export const formWords = v => v > 15 ? 'very fresh' : v > 5 ? 'fresh' : v > -10 ? 'training' : v > -25 ? 'tired' : 'very tired';
+
 /** VO2max estimates, always with a range: bike from the best 5 minutes, run from the best effort (Daniels) */
 export function vo2(acts, P, days = 180) {
   const since = Date.now() - days * DAY, rec = acts.filter(a => !a.kraft && a.date > since);

@@ -1,0 +1,116 @@
+/* The overview's cards on the Today page (js/cards.js, 25.11.). One frame for every card, the area's colour on its title and border:
+   orange = training (the accent), pink = strength, yellow = body, periwinkle = recovery, green = friends, violet = coach.
+   "One colour" in Settings: every area takes the accent. */
+:root { --a-kraft: #ff4f9a; --a-body: #f5d33d; --a-rec: #a5b4ff; --a-friends: #2fd36b; --a-coach: #d07cff; }
+:root[data-theme="light"] { --a-kraft: #d62c78; --a-body: #8a6d00; --a-rec: #4652c8; --a-friends: #1a9e4f; --a-coach: #9333d6; }
+:root[data-modecolors="0"] { --a-kraft: var(--accent); --a-body: var(--accent); --a-rec: var(--accent); --a-friends: var(--accent); --a-coach: var(--accent); }
+.a-main, .a-watch { --a: var(--accent); } .a-kraft { --a: var(--a-kraft); } .a-body { --a: var(--a-body); } .a-rec { --a: var(--a-rec); } .a-friends { --a: var(--a-friends); } .a-coach { --a: var(--a-coach); }
+
+.ov { display: flex; flex-direction: column; gap: 10px; min-width: 0; }
+.ovhead { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-top: 10px; }
+.ovhead h2 { margin: 0; }
+.ovbtn { height: 34px; padding: 0 14px; border-radius: 99px; border: 1px solid var(--line-2); font-size: 13px; font-weight: 800; color: var(--paper); }
+.ovbtn.on { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); }
+.ovsr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+
+/* the grid: two half cards per row on the phone, four columns on a wide screen (a full card = two) */
+.ovgrid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); grid-auto-flow: row dense; gap: 10px; }
+.cd { grid-column: span 1; position: relative; display: flex; flex-direction: column; gap: 8px; min-width: 0; padding: 12px 14px 14px; border-radius: 16px;
+  background: var(--ink-2); border: 1px solid color-mix(in srgb, var(--a) 22%, var(--line)); color: inherit; text-decoration: none; -webkit-tap-highlight-color: transparent; }
+.cd.cd-full { grid-column: 1 / -1; }
+a.cd:active { transform: scale(.985); border-color: var(--a); }
+a.cd:focus-visible, .cd a:focus-visible, .cd button:focus-visible { outline: 2px solid var(--a); outline-offset: 2px; }
+.cd.cd-bare[data-state="ok"], .cd.cd-host { padding: 0; border: 0; background: none; }
+.cd[data-state="none"] { display: none; }
+.cdh { display: flex; align-items: center; gap: 8px; min-width: 0; padding-right: 14px; }
+.cdt { display: flex; align-items: center; gap: 7px; min-width: 0; flex: 1; font-size: 11px; font-weight: 800; font-stretch: 112%; letter-spacing: .12em; text-transform: uppercase; color: var(--a); }
+.cdt span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; } .cdt svg { width: 16px; height: 16px; flex: none; }
+.cdr { flex: none; font-size: 12px; font-weight: 700; color: var(--muted); white-space: nowrap; } .cdr b { color: var(--paper); }
+.cdgo { position: absolute; right: 12px; top: 10px; font-style: normal; font-size: 18px; line-height: 1; color: var(--muted); }
+.cdbig { display: flex; flex-direction: column; gap: 0; margin: 0; } .cdbig b { font-size: 30px; line-height: 1.05; font-weight: 900; font-stretch: 110%; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.cdbig b small { font-size: 14px; color: var(--muted); font-weight: 800; } .cdbig > span { font-size: 12px; font-weight: 700; color: var(--muted); }
+.cdbig.cdon b { font-size: 20px; color: var(--a); }
+.cds, .cdf { margin: 0; font-size: 12.5px; font-weight: 700; color: var(--muted); line-height: 1.35; overflow-wrap: anywhere; } .cds b { color: var(--paper); } .cdf b { color: var(--paper); font-weight: 800; }
+.cdf { font-weight: 600; }
+.cde { margin: 0; font-size: 13px; line-height: 1.4; color: var(--muted); font-weight: 600; } .cderr { font-size: 12px; }
+.cdcta { align-self: flex-start; font-size: 13px; font-weight: 800; color: var(--a); text-decoration: none; padding: 6px 0 0; }
+.cdgood { color: var(--a); }
+.cd .kstats.cdk { margin: 0; grid-template-columns: repeat(4, minmax(0, 1fr)); } .cd .kstats.k2 { grid-template-columns: repeat(2, minmax(0, 1fr)); } .cd .kstats.k3 { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+.cd .kstats b { font-size: 21px; } .cd .kstats small { display: block; } .cd .kstats .wd { font-size: 11.5px; white-space: nowrap; }
+@media (max-width: 340px) { .cd .kstats.cdk:not(.k2):not(.k3) { grid-template-columns: repeat(2, minmax(0, 1fr)); row-gap: 8px; } }
+/* the last activity */
+.cdact { display: flex; align-items: center; gap: 12px; min-width: 0; --c: var(--mc); } :root[data-theme="light"] .cdact { --c: var(--mcl); }
+.cdsi { width: 40px; height: 40px; padding: 9px; flex: none; border-radius: 11px; color: var(--c); background: color-mix(in srgb, var(--c) 16%, transparent); }
+.cdact > div { flex: 1; min-width: 0; } .cdact b { display: block; font-size: 16px; font-weight: 800; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.cdact small { display: block; font-size: 12.5px; color: var(--muted); font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.cd-half .cdact { flex-direction: column; align-items: flex-start; gap: 6px; } .cd-half .cdact > div { width: 100%; }
+.cdpts { flex: none; text-align: right; } .cdpts b { display: block; font-size: 20px; font-weight: 900; font-variant-numeric: tabular-nums; } .cdpts small { font-size: 11px; color: var(--muted); font-weight: 700; }
+/* lines and bars */
+.cdspark { width: 100%; height: 36px; display: block; margin-top: auto; } .cdspark path { fill: none; stroke: var(--a); stroke-width: 2.2; stroke-linejoin: round; stroke-linecap: round; }
+.cdspark .cdsp2 { stroke: var(--muted); stroke-width: 1.3; stroke-dasharray: 3 3; opacity: .8; } .cdspark circle { fill: var(--a); }
+.cd-full .cdspark { height: 44px; }
+.cdbars { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 6px; align-items: end; height: 92px; }
+.cdbar { display: flex; flex-direction: column; align-items: center; gap: 4px; height: 100%; min-width: 0; }
+.cdcol { flex: 1; width: 100%; max-width: 30px; display: flex; flex-direction: column-reverse; border-radius: 6px 6px 2px 2px; overflow: hidden; box-shadow: inset 0 -2px 0 color-mix(in srgb, var(--paper) 18%, transparent); } /* no track: an empty day is only a thin baseline */
+.cdcol i { display: block; background: var(--mc); min-height: 2px; } :root[data-theme="light"] .cdcol i { background: var(--mcl); } :root[data-modecolors="0"] .cdcol i { background: var(--accent); }
+.cdcol i + i { border-bottom: 1px solid var(--ink-2); }
+.cdbar small { font-size: 11px; font-weight: 800; color: var(--muted); } .cdbar.now small { color: var(--paper); }
+/* rows of values (VO2max) and lists (records, strength) */
+.cdls { display: flex; flex-direction: column; gap: 4px; }
+.cdl { display: grid; grid-template-columns: 38px auto minmax(0, 1fr); align-items: baseline; gap: 8px; min-width: 0; } .cdl span { font-size: 12px; font-weight: 800; color: var(--muted); }
+.cdl b { font-size: 24px; font-weight: 900; font-variant-numeric: tabular-nums; white-space: nowrap; } .cdl small { font-size: 11.5px; font-weight: 700; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.cdrec, .cdrl { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
+.cdrec li { display: flex; align-items: baseline; gap: 6px; min-width: 0; font-size: 12.5px; } .cdrec i { font-style: normal; flex: none; }
+.cdrec span { color: var(--muted); font-weight: 700; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; } .cdrec b { flex: none; font-weight: 800; margin-left: auto; white-space: nowrap; }
+.cd-half .cdrec li { flex-wrap: wrap; } .cd-half .cdrec b { margin-left: 0; }
+.cdrl li { display: flex; align-items: center; gap: 10px; min-width: 0; --c: var(--mc); } :root[data-theme="light"] .cdrl li { --c: var(--mcl); }
+.cdri { width: 30px; height: 30px; padding: 6px; flex: none; border-radius: 9px; color: var(--c); background: color-mix(in srgb, var(--c) 15%, transparent); }
+.cdrl span { flex: 1; min-width: 0; display: flex; flex-direction: column; } .cdrl b { font-size: 15px; font-weight: 900; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.cdrl small { font-size: 12px; color: var(--muted); font-weight: 700; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; } .cdrl em { flex: none; font-style: normal; font-size: 12px; font-weight: 700; color: var(--muted); }
+/* skeleton while a card loads */
+.cdsk { display: flex; flex-direction: column; gap: 8px; } .cdsk i { display: block; height: 26px; width: 55%; border-radius: 6px; background: linear-gradient(90deg, var(--ink-3), color-mix(in srgb, var(--ink-3) 60%, var(--paper) 8%), var(--ink-3)); background-size: 200% 100%; animation: cdsk 1.4s ease-in-out infinite; }
+.cdsk i + i { height: 12px; width: 80%; } @keyframes cdsk { to { background-position: -200% 0; } }
+@media (prefers-reduced-motion: reduce) { .cdsk i { animation: none; } }
+.cd[data-state="loading"] { min-height: 96px; }
+/* the cards the start page fills itself (watch, friends): their own look, the empty text when they have nothing */
+.cdhempty { display: none; flex-direction: column; gap: 8px; padding: 12px 14px 14px; border-radius: 16px; background: var(--ink-2); border: 1px solid color-mix(in srgb, var(--a) 22%, var(--line)); }
+.cd-host:has(.cdhost > :empty) .cdhempty { display: flex; } .cd-host:has(.cdhost > :empty) .cdhost { display: none; }
+.cd-host .live-in { padding-top: 0; } .cd-host #hLive.on .frbar:first-child { margin-top: 0; }
+/* signed out: one line instead of five empty cards */
+.ovsign { display: flex; flex-direction: column; gap: 2px; position: relative; width: 100%; text-align: left; padding: 12px 34px 12px 14px; border-radius: 16px; border: 1px dashed var(--line-2); color: inherit; font: inherit; }
+.ovsign b { font-size: 14px; font-weight: 800; } .ovsign small { font-size: 12.5px; color: var(--muted); font-weight: 600; line-height: 1.35; } .ovsign i { position: absolute; right: 14px; top: 50%; transform: translateY(-50%); font-style: normal; color: var(--muted); font-size: 20px; }
+
+/* brand-new account / signed out without activities */
+.ovfresh .cd:not([data-state="ok"]), .ovfresh .cd-host:has(.cdhost > :empty), .ovfresh .ovsign { display: none; }
+.ovfresh:not(:has(.cd[data-state="ok"]:not(.cd-host), .cd-host:has(.cdhost > :not(:empty)))) .ovhead { display: none; }
+.ovwel { display: flex; flex-direction: column; gap: 10px; padding: 16px; border-radius: 16px; background: var(--ink-2); border: 1px solid var(--line); }
+.ovwel h2 { font-size: 20px; font-weight: 900; font-stretch: 108%; margin: 0; } .ovwel p { margin: 0; font-size: 14px; line-height: 1.45; color: var(--muted); }
+.ovwelbtn { display: flex; flex-wrap: wrap; gap: 8px; } .ovwelbtn .btn { flex: 1 1 auto; white-space: nowrap; }
+.ovsteps { display: flex; flex-direction: column; } .ovstep { --c: var(--accent); } .ovstep:last-child { border-bottom: 0; }
+.ovsi { width: 34px; height: 34px; padding: 7px; flex: none; border-radius: 10px; color: var(--accent); background: color-mix(in srgb, var(--accent) 14%, transparent); display: grid; } .ovsi svg { width: 100%; height: 100%; }
+.ovlink { align-self: flex-start; font-size: 13px; font-weight: 800; color: var(--accent); padding: 4px 0; }
+
+/* edit: a list like the watch's own, drag by the handle, arrows, size, remove; the hidden ones below with Add */
+.ovhelp { margin: 0; font-size: 13px; line-height: 1.4; color: var(--muted); }
+.ovlist { position: relative; }
+.ovlist, .ovadd { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
+.ovrow { display: flex; flex-wrap: nowrap; align-items: center; gap: 4px; padding: 5px 6px 5px 2px; border-radius: 12px; background: var(--ink-2); border: 1px solid var(--line); position: relative; touch-action: auto; }
+.ovrow.ovdrag { z-index: 5; border-color: var(--a); box-shadow: 0 12px 30px rgba(0,0,0,.45); background: var(--ink-3); transition: none; }
+.ovdragging .ovrow:not(.ovdrag) { transition: transform .16s ease; }
+.ovgrip { width: 40px; height: 44px; flex: none; display: grid; place-items: center; color: var(--muted); border-radius: 10px; cursor: grab; touch-action: none; }
+.ovgrip svg { width: 22px; height: 22px; stroke-width: 3.2; } .ovdrag .ovgrip { cursor: grabbing; color: var(--a); }
+.ovname { flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column; padding: 2px 0; }
+.ovname i { position: absolute; left: 0; top: 10px; bottom: 10px; width: 3px; border-radius: 3px; background: var(--a); }
+.ovname b { font-size: 14.5px; line-height: 1.2; font-weight: 800; overflow-wrap: anywhere; } .ovname small { font-size: 12px; color: var(--muted); font-weight: 600; line-height: 1.3; }
+.ovctl { display: flex; gap: 4px; flex: none; margin-left: auto; }
+.ovctl button { height: 40px; min-width: 36px; border-radius: 10px; border: 1px solid var(--line-2); display: grid; place-items: center; color: var(--paper); font-size: 12px; font-weight: 800; }
+.ovctl button svg { width: 18px; height: 18px; } .ovctl button:disabled { opacity: .3; } .ovsz { padding: 0 6px; min-width: 44px !important; } .ovrm { color: #ff6b6b !important; border-color: rgba(255,107,107,.35) !important; }
+.ovaddh { margin-top: 14px; }
+.ovadd li { display: flex; align-items: center; gap: 10px; padding: 10px 10px 10px 14px; border-radius: 12px; border: 1px dashed var(--line-2); position: relative; }
+.ovadd .ovname i { left: 0; } .ovadd .btn { flex: none; }
+.ovfoot { display: flex; justify-content: space-between; gap: 8px; margin-top: 10px; } .ovfoot .btn { flex: 1 1 0; }
+
+@media (min-width: 900px) {
+  .ovgrid { grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 14px; } .cd.cd-full { grid-column: span 2; }
+  .ovediting .ovlist, .ovediting .ovadd, .ovediting .ovhelp, .ovediting .ovfoot, .ovediting .ovaddh { max-width: 640px; }
+}

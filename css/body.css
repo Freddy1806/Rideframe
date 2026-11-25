@@ -91,3 +91,4 @@
 @media (min-width: 700px) { #body { padding-left: 24px; padding-right: 24px; } .bbig { font-size: 76px; } }
 #bMore { align-self: center; }
 body.hasnav #body { padding-bottom: calc(env(safe-area-inset-bottom) + 92px); } /* room for the bottom bar (css/feed.css) */
+.bhealth:empty { display: none; } .bhealth { margin: 4px 0; } /* 25.11.: the recovery card on the Body page (js/healthcard.js) */

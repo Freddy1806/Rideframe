@@ -142,7 +142,7 @@ export async function getActivity(uid, id) {
 }
 
 /* ---- fitness: js/fitness.js over all sports, like the profile page ---- */
-const formWord = v => v > 15 ? 'very fresh' : v > 5 ? 'fresh' : v > -10 ? 'training' : v > -25 ? 'tired' : 'very tired'; // the profile page's words (js/profil.js formTxt)
+const formWord = F.formWords; // the profile page's words (js/fitness.js, the same as js/profil.js formTxt)
 const mon = t => { const d = new Date(t); d.setHours(0, 0, 0, 0); d.setDate(d.getDate() - ((d.getDay() + 6) % 7)); return d.getTime(); };
 export async function fitness(uid, weeks = 8) {
   const acts = await activities(uid), S = await settingsOf(uid), P = await profile(uid, acts, S), loads = [];

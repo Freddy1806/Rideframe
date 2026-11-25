@@ -39,7 +39,7 @@ let fails = 0; const ok = (c, m) => { console.log(`${c ? '✓' : '✗'} ${m}`); 
     const url = await P.inputValue('#mUrl'); ok(new RegExp(`^${BASE}/mcp/[A-Za-z0-9_-]{43}$`).test(url), 'the full link is shown: ' + url.replace(/[A-Za-z0-9_-]{43}$/, '<token>'));
     const box = await P.textContent('.mnew');
     ok(/Settings → Connectors → Add custom connector/.test(box), 'the steps for Claude'); ok(/Keep the link secret: anyone who has it can read this data and change your watch workouts/.test(box), 'says it is a secret');
-    ok(/Claude can read your activities \(all sports\), strength sessions, fitness and form, weight and the recovery values from your watch/.test(box) && /change only your watch workouts/.test(box), '25.11.: says plainly what the link reads');
+    ok(/Claude can read your activities \(all sports\), strength sessions, fitness and form, weight and the recovery values from your watch/.test(box) && /change only your watch workouts and your training plan/.test(box), '25.11.: says plainly what the link reads');
     ok(/shown only now/.test(box), 'says it is shown once'); ok(/not opened via its public https address/.test(box), 'on localhost: warns that Claude cannot reach it');
     ok(await P.locator('.mdev').count() === 1 && /Claude link.*Created today · not used yet/.test(await P.textContent('.mdev')), 'listed with created and last use');
     for (const w of [320, 390]) ok(!(await sideways(w)), `new link: no sideways scroll at ${w} px`);

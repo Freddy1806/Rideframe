@@ -7,6 +7,8 @@
 // 25.11. (Freddy: "Claude is my coach who sees all of it"): plus read-only tools over the rest of the account: get_profile,
 // list_activities, get_activity, get_fitness, get_weight, get_health (tools/coachdata.mjs, tools/health-api.mjs). Writes are still
 // only the watch workouts. Nothing of another account, no e-mail, no tokens.
+// 25.11. (2): the training plan (tools/plan-api.mjs): list_plan, plan_session, update_plan, delete_plan, so the coach can plan the days
+// the Today page shows with a Start button.
 // Auth: the secret link itself. Up to 3 links per account, made and removed in Settings → Devices → Claude connector (js/mcplink.js)
 // through /api/account/mcp; only a SHA-256 hash of the token is stored (<data>/mcp.json), with label, created and last-used time.
 // Protocol: dual era. Legacy clients (2025-03-26 … 2025-11-25) open with initialize; modern ones (2026-07-28) send the version in
@@ -17,6 +19,8 @@ import { accountOf, userByKey, shared } from './accounts-api.mjs';
 import { exerciseData, editWorkouts, configOf, shortName } from './watch-api.mjs';
 import { athlete, listActivities, getActivity, fitness, weight, parseDay, when } from './coachdata.mjs';
 import { healthOf, latestOf, HEALTH } from './health-api.mjs';
+import { listPlan, addPlan, editPlan, deletePlan, PlanError } from './plan-api.mjs';
+import { KINDS, dayKey, addDays, MAX_RANGE } from '../js/planlib.js';
 
 const { DATA, readJSON, writeJSON, send, body, limited, clientIp, sha } = shared;
 const MF = join(DATA, 'mcp.json');
@@ -24,13 +28,15 @@ export const MAX_LINKS = 3, CALLS_PER_MIN = 60, MAX_BODY = 16e3;
 const USED_EVERY = 60e3;
 export const MODERN = ['2026-07-28'], LEGACY = ['2025-11-25', '2025-06-18', '2025-03-26'];
 const ALL = [...MODERN, ...LEGACY];
-const SERVER = { name: 'rideframe-workouts', title: 'RIDEFRAME coach: training data and watch workouts', version: '1.1.0' }; // the name stays: existing links know it
+const SERVER = { name: 'rideframe-workouts', title: 'RIDEFRAME coach: training data and watch workouts', version: '1.2.0' }; // the name stays: existing links know it
 const INSTRUCTIONS = 'RIDEFRAME is where the user\'s training data comes together: rides, runs and other sports (recorded in the app, on the Garmin watch or imported from Strava), '
   + 'strength sessions with every set, body weight from the scale, and the recovery values of the Garmin watch. You act as the user\'s coach. '
   + 'Read first, then advise: get_profile (FTP, heart rate, weight, goal), get_fitness (fitness, fatigue, form, weekly totals, VO2max estimate), list_activities / get_activity, '
   + 'get_strength_history, get_weight and get_health (sleep score, body battery, resting heart rate, recovery time). Base advice on these numbers and say when data is missing. '
-  + 'Everything is read-only except the watch strength workouts: call list_exercises first and use its ids; create_workout / update_workout / delete_workout change the workouts '
-  + 'that the watch loads at its next sync and the RIDEFRAME app shows. Units are metric; weights in kg; for timed exercises (type "time", e.g. plank) reps are seconds. '
+  + 'Everything is read-only except the watch strength workouts and the training plan. Workouts: call list_exercises first and use its ids; create_workout / update_workout / delete_workout change the workouts '
+  + 'that the watch loads at its next sync and the RIDEFRAME app shows. Plan: list_plan shows the planned days (and which were done), plan_session adds a session or a rest day '
+  + '(kind ride, run, strength, rest, other; ref = a watch workout id from list_workouts for strength, so the app\'s Start button opens exactly it), update_plan / delete_plan change it; '
+  + 'the user sees it on the Today page. Plan only what the user agreed to. Units are metric; weights in kg; for timed exercises (type "time", e.g. plank) reps are seconds. '
   + 'Times are the user\'s local time.';
 
 let lock = Promise.resolve(); // serialise writes to mcp.json
@@ -133,7 +139,26 @@ export const TOOLS = [
   { name: 'get_health', title: 'Recovery values', annotations: { readOnlyHint: true, openWorldHint: false },
     description: 'The Garmin watch\'s own recovery values, one row per day as the RIDEFRAME watch app read them: sleep score, body battery, recovery time (minutes), stress, resting heart rate, VO2max run / bike, training status, respiration, pulse ox, steps; plus the latest of each. Empty when the watch app was not opened.',
     inputSchema: { type: 'object', additionalProperties: false, properties: { days: { type: 'integer', minimum: 1, maximum: 90, description: 'Days, 1 to 90 (default 14).' } } } },
+  // 25.11. (2): the training plan (tools/plan-api.mjs, js/planlib.js)
+  { name: 'list_plan', title: 'Training plan', annotations: { readOnlyHint: true, openWorldHint: false },
+    description: 'The planned sessions and rest days in a date range (default: today and the next 13 days), each with id, day, kind, title, minutes, note, ref (the workout Start opens) and done (the activity that fulfilled it; matched automatically when an activity of the same day and kind exists).',
+    inputSchema: { type: 'object', additionalProperties: false, properties: { from: { type: 'string', description: 'First day, YYYY-MM-DD (local). Default today.' }, to: { type: 'string', description: `Last day, YYYY-MM-DD, included; at most ${MAX_RANGE} days after from. Default from + 13 days.` } } } },
+  { name: 'plan_session', title: 'Plan a session', annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: false },
+    description: 'Adds one planned session or rest day to the user\'s plan. It shows on the Today page and in Training with a Start button. Several entries per day are fine. Returns the stored entry.',
+    inputSchema: { type: 'object', additionalProperties: false, required: ['day', 'kind'], properties: { day: { type: 'string', description: 'The day, YYYY-MM-DD (local).' },
+      kind: { type: 'string', enum: KINDS, description: 'ride, run, strength, rest or other.' }, title: { type: 'string', maxLength: 60, description: 'Short title, e.g. "Sweet spot 3 × 12 min" (default: the kind).' },
+      ref: { type: 'string', description: 'Optional: for strength the id of a watch workout (list_workouts), for a ride the id of a ride workout in the app. Start then opens exactly it.' },
+      minutes: { type: 'integer', minimum: 1, maximum: 600, description: 'Planned duration in minutes.' }, note: { type: 'string', maxLength: 300, description: 'Optional note for the user (targets, how it should feel).' } } } },
+  { name: 'update_plan', title: 'Change a planned session', annotations: { readOnlyHint: false, destructiveHint: true, idempotentHint: true, openWorldHint: false },
+    description: 'Changes a plan entry by its id from list_plan: any of day, kind, title, ref, minutes, note. Moving it to another day or kind clears its done mark. Returns the stored entry.',
+    inputSchema: { type: 'object', additionalProperties: false, required: ['id'], properties: { id: { type: 'string', description: 'The entry id from list_plan.' }, day: { type: 'string', description: 'New day, YYYY-MM-DD.' },
+      kind: { type: 'string', enum: KINDS, description: 'New kind.' }, title: { type: 'string', maxLength: 60, description: 'New title.' }, ref: { type: 'string', description: 'New workout id ("" removes it).' },
+      minutes: { type: 'integer', minimum: 1, maximum: 600, description: 'New duration in minutes.' }, note: { type: 'string', maxLength: 300, description: 'New note ("" removes it).' } } } },
+  { name: 'delete_plan', title: 'Delete a planned session', annotations: { readOnlyHint: false, destructiveHint: true, idempotentHint: false, openWorldHint: false },
+    description: 'Removes a plan entry by its id from list_plan.',
+    inputSchema: { type: 'object', additionalProperties: false, required: ['id'], properties: { id: { type: 'string', description: 'The entry id from list_plan.' } } } },
 ];
+const PLAN = new Set(['list_plan', 'plan_session', 'update_plan', 'delete_plan']);
 const READ = new Set(['get_profile', 'list_activities', 'get_activity', 'get_fitness', 'get_weight', 'get_health']);
 
 class ToolError extends Error {}
@@ -200,9 +225,21 @@ async function readTool(u, name, a) {
   }
 }
 
+/** the plan tools (25.11. (2)); PlanError messages are the tool's error text */
+async function planTool(u, name, a) {
+  try {
+    if (name === 'list_plan') { const from = a.from ?? dayKey(Date.now()), to = a.to ?? addDays(from, 13), l = await listPlan(u.id, from, to);
+      return { from, to, count: l.length, entries: l, ...(!l.length ? { hint: 'Nothing planned in this range.' } : {}) }; }
+    if (name === 'plan_session') return { planned: true, entry: await addPlan(u.id, { day: a.day, kind: a.kind, ...(a.title !== undefined ? { title: a.title } : {}), ...(a.ref ? { ref: a.ref } : {}), ...(a.minutes !== undefined ? { minutes: a.minutes } : {}), ...(a.note ? { note: a.note } : {}) }, 'coach'), note: 'The user sees it on the Today page.' };
+    if (name === 'update_plan') { const { id, ...b } = a; if (b.ref === '') b.ref = null; if (b.note === '') b.note = null; return { updated: true, entry: await editPlan(u.id, id, b) }; }
+    if (name === 'delete_plan') { const e = await deletePlan(u.id, a.id); return { deleted: true, id: e.id, day: e.day, title: e.title }; }
+  } catch (e) { if (e instanceof PlanError) fail(e.message); throw e; }
+}
+
 async function callTool(u, name, a = {}) {
   const t = TOOLS.find(x => x.name === name); argsOk(a, t.inputSchema);
   if (READ.has(name)) return readTool(u, name, a);
+  if (PLAN.has(name)) return planTool(u, name, a);
   const { list, D } = await exercisesOf(u), rest = Math.min(600, Math.max(0, Math.round((+D.S.kraftRest || 90) / 5) * 5));
   if (name === 'list_exercises') {
     const q = norm(a.query); const l = q ? list.filter(x => [x.id, x.name, x.short, x.also, x.group].some(v => v && norm(v).includes(q))) : list;

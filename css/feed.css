@@ -4,7 +4,7 @@
 body.hasnav :is(#handy, #profil, #feed, #stat) { padding-bottom: calc(env(safe-area-inset-bottom) + 92px); }
 
 /* ---- bottom navigation ---- */
-.bnav { position: fixed; left: 0; right: 0; bottom: 0; z-index: 40; display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); padding: 0 max(0px, calc((100% - 620px) / 2)) env(safe-area-inset-bottom);
+.bnav { position: fixed; left: 0; right: 0; bottom: 0; z-index: 40; display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); padding: 0 max(0px, calc((100% - 620px) / 2)) env(safe-area-inset-bottom);
   background: color-mix(in srgb, var(--ink-2) 94%, transparent); border-top: 1px solid var(--line); backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px); }
 .bnav a { min-height: 58px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 3px; color: var(--muted); text-decoration: none; font-size: 11px; font-weight: 800; letter-spacing: .02em; -webkit-tap-highlight-color: transparent; }
 .bnav a span { white-space: nowrap; }
@@ -80,3 +80,4 @@ button.hrow { width: 100%; text-align: left; font: inherit; color: inherit; }
 .fnotev { font-size: 15px; line-height: 1.4; white-space: pre-wrap; overflow-wrap: anywhere; }
 .froute .kline { fill: none; stroke-linejoin: round; stroke-linecap: round; }
 .fwsrc { margin: 6px 0 0; font-size: 12.5px; color: var(--muted); } /* "Recorded on watch" */
+#feed .ptop { justify-content: space-between; gap: 10px; } .fstats { flex: none; gap: 6px; text-decoration: none; padding: 0 12px; } .fsico { width: 18px; height: 18px; } /* 25.11.: Stats moved under Activities (js/nav.js) */
