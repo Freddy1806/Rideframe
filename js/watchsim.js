@@ -12,7 +12,7 @@
 // 23.11.7: the wheel (a finger dragged over kg / reps / the trainer's target steps it, the neighbours show small above and below), lists
 // track the finger 1:1 (dragRow), a drag is never also a tap or a swipe; the six standard workouts (watchflow STD_W) instead of demo ones.
 import { newFlow, handle, SCR, curEx, setNo, restLeft, clock, sent, paired, setSetup, setConfig, setRoute, setRoutes, routeFace, routeInfo, recPages, homeItems, listItems, workouts, planItem, HOME, HOME_FIT, HOME_LAY, homeTop, holdPart, pausedTime, HOLD_S,
-  LIST_LAY, dragRow, pickRows, doneOf, prefillOf, lastSet, lastTxt, loading, VERSION, stepOf, WHEEL_STEP, WHEEL_SHOW, DRAG_MIN } from './watchflow.js';
+  LIST_LAY, healthBody, DEMO_HEALTH, dragRow, pickRows, doneOf, prefillOf, lastSet, lastTxt, loading, VERSION, stepOf, WHEEL_STEP, WHEEL_SHOW, DRAG_MIN } from './watchflow.js';
 import { nextTarget } from './watchtrainer.js';
 import { compact, defaults, fieldText, labelOf, TOP } from './watchfields.js';
 import { shown, live as tLive } from './watchtrainer.js';
@@ -301,6 +301,8 @@ function panel() {
   p.querySelector('#wUnpair').hidden = !(live() && token);
   p.querySelector('#wCfg').textContent = cfgFrom === 'defaults' ? 'Screens and workouts: defaults. Sign in on the phone (Settings, Devices, Watch) to use your own.' : `Screens and workouts: from ${cfgFrom === 'watch' ? 'the paired account' : 'your account'}.`;
   p.querySelector('#wRoutes').textContent = rsrc === 'demo' ? 'Routes: two demo routes.' : `Routes: ${F.routes ? F.routes.length : 0} sent from the phone (Routes, Send to watch).`;
+  const hw = p.querySelector('#wHealth'); if (hw) { const h = healthBody(live() ? null : DEMO_HEALTH, now()); // 25.11.: what the watch sends at its start (POST /api/watch/health)
+    hw.textContent = h ? `Recovery values (demo, not sent): sleep ${h.ss} · body battery ${h.bb} · resting HR ${h.rhr} · recovery ${Math.round(h.rt / 60)} h. The watch sends Garmin's own at every start.` : 'Recovery values: the watch sends Garmin\'s own (sleep score, body battery, resting HR …) at every start.'; }
   p.querySelector('#wSeg').disabled = !(F.rec && F.sp !== 'other' && F.scr === SCR.REC);
   p.querySelectorAll('[data-mode]').forEach(b => b.onclick = () => { if (mode === b.dataset.mode) return; mode = b.dataset.mode; store.set('mode', mode); boot(); });
 }

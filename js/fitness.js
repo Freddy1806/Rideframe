@@ -39,9 +39,11 @@ export function loadOf(a, P) {
 }
 
 /** fitness (42 d), fatigue (7 d) and form per day over all sports */
-export function pmcAll(acts, P, days = 90) {
-  const load = new Map(); for (const a of acts) { const k = dayKey(a.date); load.set(k, (load.get(k) || 0) + loadOf(a, P).pts); }
-  const end = dayKey(Date.now()), first = acts.length ? Math.min(...acts.map(a => dayKey(a.date)), end - days * DAY) : end - days * DAY;
+export function pmcAll(acts, P, days = 90) { return pmcLoads(acts.map(a => [a.date, loadOf(a, P).pts]), days); }
+/** the same from [date, points] pairs (the server keeps the points of big ride files cached: tools/coachdata.mjs) */
+export function pmcLoads(loads, days = 90) {
+  const load = new Map(); for (const [t, p] of loads) { const k = dayKey(t); load.set(k, (load.get(k) || 0) + p); }
+  const end = dayKey(Date.now()), first = loads.length ? Math.min(...loads.map(([t]) => dayKey(t)), end - days * DAY) : end - days * DAY;
   const out = []; let ctl = 0, atl = 0;
   for (let t = first; t <= end; t += DAY) { const l = load.get(t) || 0, tsb = ctl - atl; ctl += (l - ctl) / 42; atl += (l - atl) / 7; if (t > end - days * DAY) out.push({ t, load: l, ctl, atl, tsb }); }
   return out;

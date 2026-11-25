@@ -26,7 +26,7 @@ export const TEND_ROWS = ['Resume', 'Stats page', 'Finish & save', 'Discard'];
 /** 23.11.: the strength list: the exercises (free), then the saved workouts (the phone's and those saved on the watch) */
 export const FREE = 'Free';
 /** shown in the menu title on the watch and in the preview, so the user can tell which file is on the watch; raise it with every watch file (garmin/source/Flow.mc VERSION) */
-export const VERSION = '25.11.1';
+export const VERSION = '25.11.2';
 /** BACK from the exercise list once sets are logged: nothing is lost without a second step */
 export const END_ROWS = ['Keep training', 'Finish & save', 'Discard'];
 /** the pause screen (every mode): BACK held this long (or a finger on the "Hold to finish" pill) saves; the short-press hint shows this long */
@@ -611,3 +611,21 @@ function act(F, item, now) {
   else if (item === MENU.SYNC) { F.out.push({ k: 'setup' }, { k: 'send' }); F.scr = F.back; }
   else if (item === MENU.PAIR) { F.pair = { d: [0, 0, 0, 0, 0, 0], i: 0, st: 'enter' }; F.scr = SCR.PAIR; }
 }
+
+/* ---- 25.11.: Garmin's own recovery values (garmin/source/Health.mc healthSnapshot, the server: tools/health-api.mjs) ----
+ * The watch reads them once per app start and before each upload and sends POST /api/watch/health { day, t, ss?, bb?, … }.
+ * raw = what the watch's APIs gave (null / missing = the device does not have it): { sleepScore, bodyBattery, recoveryMin, stress,
+ * restingHr, vo2Run, vo2Bike, trainingStatus, respiration, pulseOx, steps }. Only real values go out: numbers that are finite and
+ * in range (rounded like the watch's toNumber), the training status as text; the local day as the watch sees it. */
+export const HEALTH_KEYS = [['ss', 'sleepScore', 0, 100], ['bb', 'bodyBattery', 0, 100], ['rt', 'recoveryMin', 0, 10080], ['st', 'stress', 0, 100], ['rhr', 'restingHr', 25, 150],
+  ['v2r', 'vo2Run', 10, 100], ['v2b', 'vo2Bike', 10, 100], ['rr', 'respiration', 3, 60], ['spo2', 'pulseOx', 50, 100], ['steps', 'steps', 0, 200000]];
+const p2 = n => String(n).padStart(2, '0');
+/** now = Unix seconds; returns the upload body, or null when the watch has none of the values */
+export function healthBody(raw, now) {
+  const d = new Date(now * 1000), o = { day: `${d.getFullYear()}-${p2(d.getMonth() + 1)}-${p2(d.getDate())}`, t: now }; let n = 0;
+  for (const [k, f, lo, hi] of HEALTH_KEYS) { const v = raw ? raw[f] : null; if (typeof v === 'number' && Number.isFinite(v)) { const x = k === 'rr' ? Math.round(v * 10) / 10 : Math.round(v); if (x >= lo && x <= hi) { o[k] = x; n++; } } }
+  const ts = raw ? raw.trainingStatus : null; if (typeof ts === 'string' && ts.trim()) { o.ts = ts.trim().slice(0, 40); n++; }
+  return n ? o : null;
+}
+/** the preview's watch (demo data): a morning after a good night; the demo never sends it */
+export const DEMO_HEALTH = { sleepScore: 84, bodyBattery: 78, recoveryMin: 540, stress: 22, restingHr: 47, vo2Run: 53, vo2Bike: 55, trainingStatus: 'Productive', respiration: 13.4, pulseOx: 97, steps: 2310 };

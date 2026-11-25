@@ -3,7 +3,10 @@
 // Claude (claude.ai → Settings → Connectors → Add custom connector) lists the exercises, reads the strength history and creates,
 // changes and deletes the account's watch workouts. They live in the same place as the phone editor's (users/<id>/watch.json,
 // tools/watch-api.mjs editWorkouts) and pass the same check (js/watchfields.js validate), so the phone, the Strength page and the
-// watch (GET /api/watch/strength/setup and /api/watch/config) show them after their next sync. Nothing else is exposed.
+// watch (GET /api/watch/strength/setup and /api/watch/config) show them after their next sync.
+// 25.11. (Freddy: "Claude is my coach who sees all of it"): plus read-only tools over the rest of the account: get_profile,
+// list_activities, get_activity, get_fitness, get_weight, get_health (tools/coachdata.mjs, tools/health-api.mjs). Writes are still
+// only the watch workouts. Nothing of another account, no e-mail, no tokens.
 // Auth: the secret link itself. Up to 3 links per account, made and removed in Settings → Devices → Claude connector (js/mcplink.js)
 // through /api/account/mcp; only a SHA-256 hash of the token is stored (<data>/mcp.json), with label, created and last-used time.
 // Protocol: dual era. Legacy clients (2025-03-26 … 2025-11-25) open with initialize; modern ones (2026-07-28) send the version in
@@ -12,6 +15,8 @@ import { randomBytes, timingSafeEqual } from 'node:crypto';
 import { join } from 'node:path';
 import { accountOf, userByKey, shared } from './accounts-api.mjs';
 import { exerciseData, editWorkouts, configOf, shortName } from './watch-api.mjs';
+import { athlete, listActivities, getActivity, fitness, weight, parseDay, when } from './coachdata.mjs';
+import { healthOf, latestOf, HEALTH } from './health-api.mjs';
 
 const { DATA, readJSON, writeJSON, send, body, limited, clientIp, sha } = shared;
 const MF = join(DATA, 'mcp.json');
@@ -19,15 +24,21 @@ export const MAX_LINKS = 3, CALLS_PER_MIN = 60, MAX_BODY = 16e3;
 const USED_EVERY = 60e3;
 export const MODERN = ['2026-07-28'], LEGACY = ['2025-11-25', '2025-06-18', '2025-03-26'];
 const ALL = [...MODERN, ...LEGACY];
-const SERVER = { name: 'rideframe-workouts', title: 'RIDEFRAME watch workouts', version: '1.0.0' };
-const INSTRUCTIONS = 'RIDEFRAME strength workouts for the user\'s Garmin watch. Call list_exercises first and use its ids; get_strength_history shows what the user lifted recently, '
-  + 'so weights can be based on it. create_workout / update_workout / delete_workout change the workouts that the watch loads at its next sync and the RIDEFRAME app shows. '
-  + 'Weights are in kg; for timed exercises (type "time", e.g. plank) reps are seconds.';
+const SERVER = { name: 'rideframe-workouts', title: 'RIDEFRAME coach: training data and watch workouts', version: '1.1.0' }; // the name stays: existing links know it
+const INSTRUCTIONS = 'RIDEFRAME is where the user\'s training data comes together: rides, runs and other sports (recorded in the app, on the Garmin watch or imported from Strava), '
+  + 'strength sessions with every set, body weight from the scale, and the recovery values of the Garmin watch. You act as the user\'s coach. '
+  + 'Read first, then advise: get_profile (FTP, heart rate, weight, goal), get_fitness (fitness, fatigue, form, weekly totals, VO2max estimate), list_activities / get_activity, '
+  + 'get_strength_history, get_weight and get_health (sleep score, body battery, resting heart rate, recovery time). Base advice on these numbers and say when data is missing. '
+  + 'Everything is read-only except the watch strength workouts: call list_exercises first and use its ids; create_workout / update_workout / delete_workout change the workouts '
+  + 'that the watch loads at its next sync and the RIDEFRAME app shows. Units are metric; weights in kg; for timed exercises (type "time", e.g. plank) reps are seconds. '
+  + 'Times are the user\'s local time.';
 
 let lock = Promise.resolve(); // serialise writes to mcp.json
 function withM(fn) { const run = lock.then(async () => fn(await readJSON(MF, { links: {} }))); lock = run.catch(() => {}); return run; }
 const clean = (s, n) => String(s ?? '').replace(/[\u0000-\u001f<>]/g, '').trim().replace(/\s+/g, ' ').slice(0, n);
 const view = l => ({ id: l.id, label: l.label, created: l.created, used: l.used || 0 });
+/** 25.11.: links made before the read-only coach tools have no scope 2: the settings show a one-time notice until the user saw it */
+export const SCOPE = 2;
 
 /* ---- the link behind /mcp/<token>: every stored hash is compared in constant time ---- */
 async function linkOf(token) {
@@ -47,7 +58,7 @@ async function exercisesOf(u) {
   for (const [k, e] of D.info) {
     const t = ['bw', 'time'].includes(e.t) ? e.t : 'w', m = D.use.get(k), x = { id: k, name: e.n || k, short: shortName(k, top.get(k) || e.n || k), type: TYPE[t], group: e.own ? 'Custom' : e.g || 'Other' };
     if (top.has(k) && top.get(k) !== x.name) x.also = top.get(k);
-    if (m) { x.last = { date: new Date(m.last).toISOString().slice(0, 10), sets: m.sets.slice(0, 8).map(([kg, r, s]) => t === 'time' ? { seconds: s } : t === 'bw' ? (kg ? { reps: r, extra_kg: kg } : { reps: r }) : { kg, reps: r }) };
+    if (m) { x.last = { date: new Date(m.last).toISOString().slice(0, 10), sets: m.sets.slice(0, 8).map(([kg, r, s]) => t === 'time' ? { seconds: s || r } : t === 'bw' ? (kg ? { reps: r, extra_kg: kg } : { reps: r }) : { kg, reps: r }) };
       x.best = t === 'time' ? { seconds: m.best } : t === 'bw' ? { reps: m.best } : { e1rm_kg: Math.round(m.best * 10) / 10 }; }
     out.push(x);
   }
@@ -69,8 +80,8 @@ function resolve(list, q) {
 }
 
 /* ---- tools ---- */
-const workoutOut = (w, list) => ({ id: w.id, name: w.name, items: w.items.map(i => { const x = list.find(e => e.id === i.ex);
-  return { exercise: i.ex, name: x?.name || i.ex, type: x?.type || 'weight', sets: i.sets, reps: i.reps, kg: i.kg, rest_seconds: i.rest }; }) });
+const workoutOut = (w, list) => ({ id: w.id, name: w.name, items: w.items.map(i => { const x = list.find(e => e.id === i.ex), t = x?.type || 'weight';
+  return { exercise: i.ex, name: x?.name || i.ex, type: t, sets: i.sets, reps: i.reps, ...(t === 'time' ? { hold_seconds: i.reps } : {}), kg: i.kg, rest_seconds: i.rest }; }) });
 const ITEM = { type: 'object', additionalProperties: false, required: ['exercise', 'sets', 'reps'], properties: {
   exercise: { type: 'string', description: 'Exercise id from list_exercises (preferred) or its exact name, case-insensitive. Unknown names are refused with the closest matches.' },
   sets: { type: 'integer', minimum: 1, maximum: 10, description: 'Number of sets, 1 to 10.' },
@@ -98,7 +109,32 @@ export const TOOLS = [
   { name: 'get_strength_history', title: 'Strength history', annotations: { readOnlyHint: true, openWorldHint: false },
     description: 'The user\'s recent strength sessions, newest first: date, name, and per exercise the done sets (kg × reps, reps, or seconds). Warm-up sets are left out. Optional exercise (id or exact name) keeps only that exercise.',
     inputSchema: { type: 'object', additionalProperties: false, properties: { exercise: { type: 'string', description: 'Optional exercise id or exact name.' }, limit: { type: 'integer', minimum: 1, maximum: 50, description: 'Number of sessions, 1 to 50 (default 10).' } } } },
+  // 25.11.: the coach's view of everything else, read-only (tools/coachdata.mjs, tools/health-api.mjs)
+  { name: 'get_profile', title: 'Athlete profile', annotations: { readOnlyHint: true, openWorldHint: false },
+    description: 'The athlete\'s numbers: FTP (setting and estimate), W/kg, max and resting heart rate, heart-rate zones, current weight and trend, goal weight, height, BMI, units. Read this first.',
+    inputSchema: { type: 'object', additionalProperties: false, properties: {} } },
+  { name: 'list_activities', title: 'List activities', annotations: { readOnlyHint: true, openWorldHint: false },
+    description: 'All sessions of every sport, newest first, as short rows: id, type (ride, run, strength, other), indoor / outdoor, sport, name, start (local time), minutes, distance_km, climb_m, avg / max power, NP, avg / max heart rate, kcal, load points (100 = one hour at threshold) and where it came from (RIDEFRAME, Garmin watch, Strava import, by hand). Filter by type and a date range. get_activity gives one session in detail.',
+    inputSchema: { type: 'object', additionalProperties: false, properties: {
+      type: { type: 'string', enum: ['ride', 'run', 'strength', 'other'], description: 'Optional: only this kind.' },
+      from: { type: 'string', description: 'Optional first day, YYYY-MM-DD (local).' }, to: { type: 'string', description: 'Optional last day, YYYY-MM-DD (local), included.' },
+      days: { type: 'integer', minimum: 1, maximum: 365, description: 'Optional: the last n days (instead of from).' },
+      limit: { type: 'integer', minimum: 1, maximum: 100, description: 'Number of rows, 1 to 100 (default 20).' } } } },
+  { name: 'get_activity', title: 'One activity', annotations: { readOnlyHint: true, openWorldHint: false },
+    description: 'One session by its id from list_activities: the summary plus laps, intervals (target and actual watts, heart rate), km splits, best efforts and a small series (at most 60 points of power, heart rate, speed, cadence) where stored. Strength sessions: every set.',
+    inputSchema: { type: 'object', additionalProperties: false, required: ['id'], properties: { id: { type: 'string', description: 'The id from list_activities.' } } } },
+  { name: 'get_fitness', title: 'Fitness, fatigue, form', annotations: { readOnlyHint: true, openWorldHint: false },
+    description: 'The app\'s training numbers over all sports: fitness (42-day load), fatigue (7-day), form, the last 14 days, VO2max estimates (bike, run), FTP setting and estimate, threshold pace, and totals per week (sessions, hours, km, climb, load, per sport).',
+    inputSchema: { type: 'object', additionalProperties: false, properties: { weeks: { type: 'integer', minimum: 1, maximum: 26, description: 'Weeks of totals, 1 to 26 (default 8), this week first.' } } } },
+  { name: 'get_weight', title: 'Body weight', annotations: { readOnlyHint: true, openWorldHint: false },
+    description: 'Weigh-ins from the scale (and by hand): the latest with body fat etc. where measured, the smoothed trend, its change over 7 and 30 days, the goal weight and the distance to it, and the measurements of a range, newest first.',
+    inputSchema: { type: 'object', additionalProperties: false, properties: { days: { type: 'integer', minimum: 1, maximum: 3650, description: 'Range in days (default 90).' },
+      limit: { type: 'integer', minimum: 1, maximum: 200, description: 'Most measurements listed, 1 to 200 (default 60).' } } } },
+  { name: 'get_health', title: 'Recovery values', annotations: { readOnlyHint: true, openWorldHint: false },
+    description: 'The Garmin watch\'s own recovery values, one row per day as the RIDEFRAME watch app read them: sleep score, body battery, recovery time (minutes), stress, resting heart rate, VO2max run / bike, training status, respiration, pulse ox, steps; plus the latest of each. Empty when the watch app was not opened.',
+    inputSchema: { type: 'object', additionalProperties: false, properties: { days: { type: 'integer', minimum: 1, maximum: 90, description: 'Days, 1 to 90 (default 14).' } } } },
 ];
+const READ = new Set(['get_profile', 'list_activities', 'get_activity', 'get_fitness', 'get_weight', 'get_health']);
 
 class ToolError extends Error {}
 const fail = m => { throw new ToolError(m); };
@@ -111,6 +147,8 @@ function argsOk(a, schema) { // the argument shape (types, required, no extra ke
     if (p.type === 'string' && typeof a[k] !== 'string') fail(`${k}: text.`);
     if (p.type === 'integer' && !Number.isInteger(a[k])) fail(`${k}: a whole number.`);
     if (p.type === 'array' && !Array.isArray(a[k])) fail(`${k}: a list.`);
+    if (p.enum && !p.enum.includes(a[k])) fail(`${k}: one of ${p.enum.join(', ')}.`);
+    if (p.type === 'integer' && (a[k] < p.minimum || a[k] > p.maximum)) fail(`${k}: ${p.minimum} to ${p.maximum}.`);
   }
 }
 /** MCP items → the watch config's items ({ ex, sets, reps, kg, rest }); names resolved, defaults filled in, nothing range-checked here */
@@ -138,8 +176,33 @@ const findW = (ws, q) => { const s = String(q).trim(), i = ws.findIndex(w => w.i
 const wMissing = (ws, q) => `No workout "${clean(q, 60)}". ${ws.length ? 'The workouts: ' + ws.map(w => `${w.id} (${w.name})`).join(', ') + '.' : 'There are no workouts yet.'}`;
 const newId = () => 'w' + Date.now().toString(36) + randomBytes(3).toString('hex').slice(0, 3);
 
+const HK = { ss: 'sleep_score', bb: 'body_battery', rt: 'recovery_time_min', st: 'stress', rhr: 'resting_hr', v2r: 'vo2max_run', v2b: 'vo2max_bike', ts: 'training_status', rr: 'respiration_rate', spo2: 'pulse_ox_pct', steps: 'steps' };
+const healthRow = r => { const o = { day: r.day, first_seen: when(r.first), last_seen: when(r.last) }; for (const k of Object.keys(HEALTH)) if (r[k] != null) o[HK[k]] = r[k]; return o; };
+/** the read-only tools (25.11.) */
+async function readTool(u, name, a) {
+  if (name === 'get_profile') return athlete(u.id, u.name);
+  if (name === 'list_activities') {
+    const day = (k, v) => { const t = parseDay(v); if (!Number.isFinite(t)) fail(`${k}: a day as YYYY-MM-DD.`); return t; };
+    if (a.from !== undefined && a.days !== undefined) fail('Give from or days, not both.');
+    const from = a.from !== undefined ? day('from', a.from) : a.days !== undefined ? Date.now() - a.days * 864e5 : null, to = a.to !== undefined ? day('to', a.to) + 864e5 : null;
+    if (from != null && to != null && to <= from) fail('to must not be before from.');
+    const r = await listActivities(u.id, { from, to, type: a.type || null, limit: a.limit ?? 20 });
+    return { count: r.rows.length, total: r.total, activities: r.rows, ...(r.empty ? { hint: 'No activities in this account yet.' } : !r.rows.length ? { hint: 'Nothing in this range / type.' } : r.total > r.rows.length ? { more: `${r.total - r.rows.length} more: narrow the range or raise limit (up to 100).` } : {}) };
+  }
+  if (name === 'get_activity') { const r = await getActivity(u.id, clean(a.id, 80)); if (!r) fail(`No activity "${clean(a.id, 80)}". Ids come from list_activities.`); return r; }
+  if (name === 'get_fitness') { const r = await fitness(u.id, a.weeks ?? 8); return r.empty ? { ...r, hint: 'No activities yet: every number is 0.' } : r; }
+  if (name === 'get_weight') { const r = await weight(u.id, { days: a.days ?? 90, limit: a.limit ?? 60 }); return r.empty ? { ...r, hint: 'No weigh-ins yet (scale or by hand on the Body page).' } : r; }
+  if (name === 'get_health') {
+    const days = await healthOf(u.id, a.days ?? 14), L = latestOf(days), latest = {};
+    for (const [k, x] of Object.entries(L)) latest[HK[k]] = { value: x.v, day: x.day };
+    return { count: days.length, latest, days: days.map(healthRow), units: { recovery_time_min: 'minutes until fully recovered', resting_hr: 'bpm', vo2max_run: 'ml/kg/min', vo2max_bike: 'ml/kg/min', body_battery: '0-100', sleep_score: '0-100', stress: '0-100' },
+      ...(!days.length ? { hint: 'No recovery values yet: they come when the user opens the RIDEFRAME app on the Garmin watch (once a day is enough).' } : {}) };
+  }
+}
+
 async function callTool(u, name, a = {}) {
   const t = TOOLS.find(x => x.name === name); argsOk(a, t.inputSchema);
+  if (READ.has(name)) return readTool(u, name, a);
   const { list, D } = await exercisesOf(u), rest = Math.min(600, Math.max(0, Math.round((+D.S.kraftRest || 90) / 5) * 5));
   if (name === 'list_exercises') {
     const q = norm(a.query); const l = q ? list.filter(x => [x.id, x.name, x.short, x.also, x.group].some(v => v && norm(v).includes(q))) : list;
@@ -152,9 +215,9 @@ async function callTool(u, name, a = {}) {
     const out = [];
     for (const s of D.list) { if (out.length >= lim) break;
       const xs = s.ex.filter(x => (!ex || x.k === ex.ex.id) && x.sets.length); if (!xs.length) continue;
-      out.push({ date: new Date(s.start).toISOString().slice(0, 16).replace('T', ' '), name: s.name || 'Workout', ...(s.dur ? { minutes: Math.round(s.dur / 60) } : {}),
+      out.push({ date: when(s.start), name: s.name || 'Workout', ...(s.dur ? { minutes: Math.round(s.dur / 60) } : {}),
         exercises: xs.map(x => { const e = list.find(y => y.id === x.k), t = e?.type || TYPE[x.t] || 'weight';
-          return { exercise: x.k, name: e?.name || x.n || x.k, type: t, sets: x.sets.map(([kg, r, sec]) => t === 'time' ? { seconds: sec } : t === 'bodyweight' ? (kg ? { reps: r, extra_kg: kg } : { reps: r }) : { kg, reps: r }) }; }) });
+          return { exercise: x.k, name: e?.name || x.n || x.k, type: t, sets: x.sets.map(([kg, r, sec]) => t === 'time' ? { seconds: sec || r } : t === 'bodyweight' ? (kg ? { reps: r, extra_kg: kg } : { reps: r }) : { kg, reps: r }) }; }) });
     }
     return { count: out.length, sessions: out, ...(!out.length ? { hint: ex ? 'No sessions with this exercise yet.' : 'No strength sessions yet.' } : {}) };
   }
@@ -256,13 +319,16 @@ async function endpoint(req, res, path) {
 async function settings(req, res, op) {
   const me = await accountOf(req); if (!me) return send(res, 401, { error: 'Not signed in.' });
   const mine = M => Object.entries(M.links).filter(([, l]) => l.key === me.key && l.uid === me.u.id);
-  if (op === 'mcp' && req.method === 'GET') { const M = await readJSON(MF, { links: {} }); return send(res, 200, { links: mine(M).map(([, l]) => view(l)).sort((a, b) => b.created - a.created), max: MAX_LINKS }); }
+  if (op === 'mcp' && req.method === 'GET') { const M = await readJSON(MF, { links: {} }), l = mine(M);
+    return send(res, 200, { links: l.map(([, x]) => view(x)).sort((a, b) => b.created - a.created), max: MAX_LINKS, notice: l.some(([, x]) => !(x.scope >= SCOPE)) }); }
+  if (op === 'mcp/seen' && req.method === 'POST') return await withM(async M => { let n = 0; for (const [, l] of mine(M)) if (!(l.scope >= SCOPE)) { l.scope = SCOPE; n++; }
+    if (n) await writeJSON(MF, M); return send(res, 200, { ok: true, notice: false }); });
   if (op === 'mcp' && req.method === 'POST') {
     if (limited('mcpnew:' + me.key, 10, 36e5)) return send(res, 429, { error: 'Too many new links. Please try again in an hour.' });
     const b = await body(req, 2e3).catch(() => ({}));
     return await withM(async M => {
       if (mine(M).length >= MAX_LINKS) return send(res, 409, { error: `Up to ${MAX_LINKS} links. Remove one first.` });
-      const token = randomBytes(32).toString('base64url'), now = Date.now(), l = { id: randomBytes(6).toString('hex'), key: me.key, uid: me.u.id, label: clean(b?.label, 40) || 'Claude', created: now, used: 0 };
+      const token = randomBytes(32).toString('base64url'), now = Date.now(), l = { id: randomBytes(6).toString('hex'), key: me.key, uid: me.u.id, label: clean(b?.label, 40) || 'Claude', created: now, used: 0, scope: SCOPE };
       M.links[sha(token)] = l; await writeJSON(MF, M);
       return send(res, 200, { token, path: '/mcp/' + token, link: view(l) }); // the only time the token is handed out
     });
