@@ -80,7 +80,7 @@ export async function hostFromRide(routeId) {
 
 /** lobby: open a group (host) or join one with a code. startRide(routeId, { group }) starts the ride. */
 export function groupModal({ routeId = null, code = null, startRide }) {
-  globalThis.__rfMode ||= state.settings.worldMode || 'voll'; import('./world/lofoten.js').catch(() => {}); /* the models download while the group gathers, so "Alle starten" does not wait minutes */
+  globalThis.__rfMode ||= state.settings.worldMode || 'leer'; import('./world/lofoten.js').catch(() => {}); /* the models download while the group gathers, so "Alle starten" does not wait minutes */
   let name = riderName(false), autoJoined = false;
   const m = document.createElement('div'); m.className = 'modal';
   document.body.append(m);

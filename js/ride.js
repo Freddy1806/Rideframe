@@ -176,7 +176,7 @@ export class RideSession {
         /* the card shows right away: the first ride after an update downloads all models (minutes over a friend's line), never a silent black screen */
         const ld0 = document.createElement('div'); ld0.className = 'countdown loading'; ld0.textContent = 'Loading world …'; el.append(ld0);
         const tk = setInterval(() => { const p = globalThis.__rfLoad; if (p?.total) ld0.textContent = `Loading world … ${Math.round(p.done / p.total * 100)} %`; }, 300);
-        const mode = new URLSearchParams(location.search).get('mode') || this.state.settings.worldMode || 'voll'; globalThis.__rfMode = mode; /* graphics level (route page): decides which models are downloaded at all */
+        const mode = new URLSearchParams(location.search).get('mode') || this.state.settings.worldMode || 'leer'; globalThis.__rfMode = mode; /* default = level 1, landscape only (owner 26.11.: a friend's screen stayed black while loading; the lightest level must be the start, higher ones are a choice) · graphics level (route page): decides which models are downloaded at all */
         try { const { WorldScene, prepareWorld, upgradeWorld } = await import('./world/lofoten.js'); await upgradeWorld(mode); clearInterval(tk); ld0.remove(); await prepareWorld(this.track);
           { const L = await loadLedger().catch(() => null), q = new URLSearchParams(location.search).get('village'); // your village grows with your lifetime km
             if (L || q != null) this.track.__village = { km: q != null ? +q : L.life.km, hm: L?.life.hm || 0, leader: L ? (leaderOf(L.pts) || L.colour) : null, colour: new URLSearchParams(location.search).get('week') || L?.colour || null }; }

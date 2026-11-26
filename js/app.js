@@ -452,7 +452,7 @@ function detail(id) {
   $('#chSel').value = String(state.settings.challenges ?? 4);
   $('#lapSel').value = String(state.settings.laps || 1);
   $('#lapSel').onchange = e => { state.settings.laps = +e.target.value; saveSettings(); };
-  $('#wmSel').value = state.settings.worldMode || 'voll';
+  $('#wmSel').value = state.settings.worldMode || 'leer';
   $('#wmSel').onchange = e => { state.settings.worldMode = e.target.value; saveSettings(); };
   $('#lightSel').value = state.settings.light === 'fest' ? 'fest' : 'sunset';
   $('#lightSel').onchange = e => { state.settings.light = e.target.value; saveSettings(); };
