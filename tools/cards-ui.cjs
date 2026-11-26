@@ -211,7 +211,7 @@ const clearActs = p => p.evaluate(async () => { const { db } = await import('/js
     await TR.click('#trSheet [data-k="run"]'); await TR.fill('#trTitle', 'Intervals 6 × 800 m'); await TR.fill('#trMin', '55'); await shot(TR, 'training_plan_sheet_360', false); await TR.click('#trOk');
     await TR.waitForFunction(t => /Intervals 6 × 800 m/.test(document.querySelector('#d-' + t)?.textContent || ''), tomorrow);
     ok(true, 'Training: a run planned for tomorrow');
-    const lst = (await api('GET', `/api/account/plan?from=${tomorrow}&to=${tomorrow}`, null, T)).j.entries; ok(lst.length === 1 && lst[0].kind === 'run' && lst[0].minutes === 55, 'stored in the account');
+    const lst = (await api('GET', `/api/account/plan?from=${tomorrow}&to=${tomorrow}`, null, T)).j.entries.filter(e => e.title === 'Intervals 6 × 800 m'); ok(lst.length === 1 && lst[0].kind === 'run' && lst[0].minutes === 55, 'stored in the account'); // by title: the seeded week may already have something on that day (it failed on a Thursday, Friday has the seeded rest day)
     L = await layout(TR); ok(!L.side && !L.bad.length, 'Training: nothing sticks out at 360 px ' + JSON.stringify(L));
     await TR.evaluate(() => scrollTo(0, 0)); await shot(TR, 'training_360');
     const bn = await TR.$$eval('.bnav a', l => l.map(a => a.textContent.trim() + '>' + a.getAttribute('href')));
