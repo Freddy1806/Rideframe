@@ -167,3 +167,13 @@ test('--replay of a recorded file (real C20 and P2 Pro frames, tools/fixtures/sc
   const w = replayLines(lines).filter(e => e.weighIn);
   assert.deepEqual(w.map(e => [e.model, e.weighIn.kg, e.weighIn.hr || null]), [['T9130', 100.1, null], ['T9149', 105.1, 81]]);
 });
+
+test("C20, Freddy's own scale (capture 26.11.): it locks with status 0x35, which the list of known states did not have", () => {
+  const d = h => D.decodeAdv('T9130', raw(0xbc64, h));
+  const live = d('0fb7030da200aaca076b0100631a00000000'), lock = d('0fb7030da200acca076b3500631a00000000'), end = d('0fb7030da200b1ca076b3580631a00000041150000000000');
+  assert.equal(live.kg, 67.55); assert.equal(live.final, false);
+  assert.equal(lock.kg, 67.55); assert.equal(lock.final, true); assert.equal(lock.end, false);
+  assert.equal(end.kg, 67.55); assert.equal(end.final, true); assert.equal(end.end, true);
+  assert.equal(d('0fb7030da2008dca076b0500660300000000').kg, 8.7, 'a partial load locks with 0x05');
+  assert.equal(d('0fb7030da200aaca076b0200631a00000000'), null, 'an unknown state stays unknown');
+});

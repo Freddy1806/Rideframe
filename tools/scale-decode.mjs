@@ -69,7 +69,7 @@ export function decodeAdv(model, mfr) {
     const st = p[10], kg = (p[12] | p[13] << 8) / 100;
     if (st === 0x00 || st === 0x0d) return { kg: 0, final: false, quiet: true, status: st };
     if (st === 0x01) return { kg, final: false, status: st };
-    if (![0x05, 0x15, 0x25, 0x65, 0xa5].includes(st)) return null;
+    if ((st & 0x0f) !== 0x05) return null; // locked = low nibble 5: 0x05 0x15 0x25 0x65 0xA5 from the logs, 0x35 from Freddy's own C20 (26.11., 67.55 kg)
     const f = { kg, final: true, status: st, end: (p[11] & 0x80) !== 0 };
     if (st === 0xa5 && p[15] > 0) f.hr = p[15];
     return f;
