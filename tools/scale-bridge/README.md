@@ -115,11 +115,11 @@ The bridge does not touch port 8888 (the existing health webhook); it only talks
 
 "P20" is not a eufy model. The owner's scale is most likely the P2 / P2 Pro, the C20, or the P3. All three have verified decoders.
 
-Not stored on purpose:
-- The C20 / P3 bytes [17..18], which look like an impedance but were never compared with the app.
-- Any body-fat percentage computed from impedance, because there is no Eufy formula and generic ones are off by 3–5 points ([B]).
+Impedance (26.11.): the C20 / P3 end frame carries bytes [17..18] LE / 10 = the foot-to-foot impedance in ohms (Freddy's C20: 518.5 Ω at 83.40 kg). It is stored with the weigh-in as `impedance` when it lies within 200–1500 Ω; bytes [19..21] are unknown and kept raw as `x`. It was never compared with the eufy app's own reading. The lock frames before the end carry no impedance, so the server waits up to 20 s for the end frame (and re-sends a weigh-in once if the impedance only arrives after it went out; the store merges both).
 
-Body fat, water, muscle and bone are only stored from an import of the eufy app's own figures. BMI is only computed from the height the user enters (kg/m², WHO).
+Body composition is not stored: it is ESTIMATED on the fly from the impedance plus height, sex and birth year with a published formula (`js/bodycomp.js`, Sun et al. 2003), not eufy's unpublished one. Expect about ±4–5 body-fat points for one person; the trend is the useful part. No bone mass, muscle mass, visceral fat or metabolic age. Body fat etc. from an import of the eufy app's figures are kept separately as reported. BMI is computed from the height the user enters (kg/m², WHO).
+
+Weigh-in hook (26.11.): with `<data>/weigh-hook.json` = `{ "url": "http://127.0.0.1:<port>/<path>", "header": "X-Some-Token", "tokenFile": "/abs/path" }` (header and tokenFile optional, url only to 127.0.0.1 / localhost) the server POSTs `{ account, name, kg, deltaKg, bodyFatPct, at }` once per new scale weigh-in that belongs to an account whose owner turned on "Say my weight out loud at home" in the Body settings. Fire-and-forget, 2 s timeout.
 
 ## Sources
 

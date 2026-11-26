@@ -12,7 +12,7 @@ let fails = 0; const ok = (c, m) => { console.log(`${c ? '✓' : '✗'} ${m}`); 
 
 // pieces that must never overlap their siblings, and nothing may stick out sideways
 const layout = P => P.evaluate(() => {
-  const bad = [], sel = ['.bhero', '.bhr', '.bstats', '.bst', '.brow', '.bq', '.bqb', '.bcard', '.bcmain', '.bcside', '.bhead', '.bwk', '.ptop', '.scbtns', '.bcomp', '.hrow'];
+  const bad = [], sel = ['.bhero', '.bhr', '.bstats', '.bst', '.brow', '.bq', '.bqb', '.bcard', '.bcmain', '.bcside', '.bhead', '.bwk', '.ptop', '.scbtns', '.bcomp', '.hrow', '.bcmph', '.bcmpm', '.bcmpg', '.bcx', '.bcmphint'];
   const vis = e => { const r = e.getBoundingClientRect(), s = getComputedStyle(e); return r.width > 0 && r.height > 0 && s.visibility !== 'hidden' && s.display !== 'none'; };
   for (const c of document.querySelectorAll(sel.join(','))) {
     const kids = [...c.children].filter(vis).filter(k => getComputedStyle(k).position !== 'absolute');
@@ -23,7 +23,7 @@ const layout = P => P.evaluate(() => {
   }
   if (document.documentElement.scrollWidth > innerWidth + 1) bad.push('page scrolls sideways');
   const nav = document.querySelector('.bnav'); if (nav && nav.getBoundingClientRect().height > 120) bad.push('bottom bar without its styles');
-  for (const t of document.querySelectorAll('.bsvg text')) { const r = t.getBoundingClientRect(), s = t.closest('svg').getBoundingClientRect(); if (r.left < s.left - 1 || r.right > s.right + 1) bad.push('chart label outside: ' + t.textContent); }
+  for (const t of document.querySelectorAll('.bsvg text, .bfsvg text')) { const r = t.getBoundingClientRect(), s = t.closest('svg').getBoundingClientRect(); if (r.left < s.left - 1 || r.right > s.right + 1) bad.push('chart label outside: ' + t.textContent); }
   return bad;
 });
 
@@ -119,6 +119,40 @@ const layout = P => P.evaluate(() => {
     if (SHOTS) await dk.screenshot({ path: `${SHOTS}/body_desktop.png` });
     // phone 320 too
     await P.goto(BASE + '/body.html'); await P.setViewportSize({ width: 320, height: 700 }); await P.waitForSelector('#bSvg'); await lay('phone 320 px');
+
+    // 26.11.: body composition estimated from the scale's impedance. A demo account like Freddy's real numbers: ~83 kg, ~520 Ω,
+    // 183 cm, male, born 1993; 45 days of readings (imported), then a real C20 weigh-in (his own frames) through the bridge.
+    await P.setViewportSize({ width: 360, height: 740 });
+    const Dm = await reg('Demo'), drows = [];
+    for (let d = 45; d >= 1; d--) { if (d % 8 === 3) continue; const t0 = new Date(now - d * day); t0.setHours(7, 2 + (d % 5), 0, 0);
+      drows.push({ t: t0.getTime(), kg: Math.round((84.4 - (45 - d) * 0.022 + Math.sin(d * 1.3) * 0.35) * 20) / 20, impedance: Math.round((517 + (45 - d) * 0.05 + Math.sin(d * 2.1) * 9) * 10) / 10 }); }
+    ok((await api('POST', '/api/body/import', { rows: drows }, Dm.token)).added === drows.length, `demo: ${drows.length} readings with impedance`);
+    await api('PUT', '/api/body/prefs', { heightCm: 183 }, Dm.token);
+    await api('POST', '/api/scale/frame', { kind: 'adv', id: 'periph-c20', name: 'eufy T9130', mfr: '64bc0fb7030da200aaca076b0000000000000000' }, null, SECRET);
+    await api('POST', '/api/scale/household', { name: 'Demo flat' }, Dm.token); const sa = await api('POST', '/api/scale/add', { key: 'mac:BC0FB7030DA2' }, Dm.token); ok(sa.ok, 'demo: C20 added');
+    await api('POST', '/api/scale/frame', { kind: 'adv', id: 'periph-c20', mfr: '64bc0fb7030da20063cb076b2500942000000000' }, null, SECRET); await wait(1500); // lock, 83.40 kg
+    await api('POST', '/api/scale/frame', { kind: 'adv', id: 'periph-c20', mfr: '64bc0fb7030da20063cb076b2580942000000041141e14850000' }, null, SECRET); // end, 518.5 Ω
+    let dl2 = []; for (let i = 0; i < 20; i++) { dl2 = (await api('GET', '/api/body', null, Dm.token)).list; if (dl2.some(m => m.src === 'scale')) break; await wait(250); }
+    const sm = dl2.find(m => m.src === 'scale'); ok(sm && sm.kg === 83.4 && sm.impedance === 518.5 && sm.x === '1e1485', 'the C20 weigh-in kept its impedance: ' + JSON.stringify(sm && { kg: sm.kg, impedance: sm.impedance, x: sm.x }));
+    await P.goto(BASE + '/body.html'); await P.evaluate(([token, name]) => localStorage.setItem('rf_account', JSON.stringify({ token, name })), [Dm.token, Dm.name]); await P.reload(); await P.waitForSelector('#bSvg');
+    ok(await P.locator('.bcmphint').count() === 1 && /Add height, sex and birth year to see body fat/.test(await P.textContent('.bcmphint')), 'no sex / birth year: one line instead of the composition');
+    ok(await P.locator('.bcmp').count() === 0 && !/% fat/.test(await P.textContent('.blist')), 'no estimate anywhere'); await lay('composition hint');
+    await P.evaluate(() => document.querySelector('.bchart').scrollIntoView({ block: 'start' })); await shot('comp_hint');
+    await P.click('.bcmphint'); await P.waitForSelector('#sSex'); ok(await P.evaluate(() => document.activeElement?.id) === 'sSex', 'the hint opens the settings at the missing field');
+    ok(/only used to estimate body fat/.test(await P.textContent('#bSheet')) && /Say my weight out loud at home \(voice assistant\)/.test(await P.textContent('#bSheet')), 'why it is asked; the voice opt-in');
+    await P.selectOption('#sSex', 'm'); await P.fill('#sBy', '1993'); await P.press('#sBy', 'Tab'); await P.waitForTimeout(400);
+    await P.evaluate(() => document.querySelector('#sH').scrollIntoView({ block: 'start' })); await P.waitForTimeout(150); await lay('settings sheet'); await shot('comp_settings');
+    const pf = (await api('GET', '/api/body', null, Dm.token)).prefs; ok(pf.sex === 'm' && pf.birthYear === 1993 && pf.announce === false, 'saved: male, 1993, voice off by default');
+    await P.click('#sOk'); await P.waitForSelector('.bcmp');
+    const ct = await P.textContent('.bcmp'); ok(/Body fat/.test(ct) && /24\.0/.test(ct) && /est\./.test(ct), 'composition: 24.0 % body fat (Sun 2003 for 83.4 kg / 518.5 Ω), marked est.');
+    ok(/Fat mass\s*20\.0/.test(ct) && /Lean mass\s*63\.4/.test(ct) && /Body water\s*46\.3/.test(ct) && /55\.5 % of weight/.test(ct), 'fat / lean mass and body water');
+    ok((ct.match(/30 d/g) || []).length >= 3, 'changes vs 30 days ago'); ok(/trend is more reliable than the single number/.test(ct), 'the honest line');
+    ok(await P.locator('.bfsvg .bpt').count() >= 10, 'body-fat line with the readings'); ok(/% fat/.test(await P.textContent('.blist')), 'list: body fat per weigh-in');
+    await lay('composition'); await P.evaluate(() => document.querySelector('.bchart').scrollIntoView({ block: 'start' })); await shot('comp_body'); await P.evaluate(() => scrollTo(0, 0)); await shot('comp_body_full', true);
+    const fc = {}; for (const r of ['w1', 'm1', 'all']) { await P.click(`[data-r="${r}"]`); await P.waitForSelector(`[data-r="${r}"].on`); fc[r] = await P.locator('.bfsvg .bpt').count(); }
+    ok(fc.w1 < fc.m1 && fc.m1 < fc.all, 'the body-fat line follows the range switch: ' + JSON.stringify(fc)); await P.click('[data-r="m1"]');
+    await P.goto(BASE + '/handy.html'); await P.waitForSelector('.bcard'); ok(/24\.0 % fat/.test(await P.textContent('.bcard .bcfat')) && /est\./.test(await P.textContent('.bcard .bcfat')), 'Today weight card: body fat as the second value');
+    await lay('weight card with body fat'); await P.locator('.bcard').screenshot({ path: SHOTS ? `${SHOTS}/comp_card.png` : path.join(os.tmpdir(), 'rf-comp-card.png') }); await shot('comp_today');
     ok(!perr.length, 'no page errors' + (perr.length ? ': ' + perr.join(' | ') : ''));
   } catch (e) { console.log('✗ ' + e.message); fails++; }
   await b.close(); srv.kill(); fs.rmSync(DATA, { recursive: true, force: true });

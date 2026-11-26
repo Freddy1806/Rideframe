@@ -133,7 +133,7 @@ export const TOOLS = [
     description: 'The app\'s training numbers over all sports: fitness (42-day load), fatigue (7-day), form, the last 14 days, VO2max estimates (bike, run), FTP setting and estimate, threshold pace, and totals per week (sessions, hours, km, climb, load, per sport).',
     inputSchema: { type: 'object', additionalProperties: false, properties: { weeks: { type: 'integer', minimum: 1, maximum: 26, description: 'Weeks of totals, 1 to 26 (default 8), this week first.' } } } },
   { name: 'get_weight', title: 'Body weight', annotations: { readOnlyHint: true, openWorldHint: false },
-    description: 'Weigh-ins from the scale (and by hand): the latest with body fat etc. where measured, the smoothed trend, its change over 7 and 30 days, the goal weight and the distance to it, and the measurements of a range, newest first.',
+    description: 'Weigh-ins from the scale (and by hand): the latest with body fat etc. where reported, est_* body composition estimated from the scale\'s impedance (fat %, fat / lean mass, body water; ±4-5 points for one person, trust the trend) per entry and the latest, the smoothed trend, its change over 7 and 30 days, the goal weight and the distance to it, and the measurements of a range, newest first.',
     inputSchema: { type: 'object', additionalProperties: false, properties: { days: { type: 'integer', minimum: 1, maximum: 3650, description: 'Range in days (default 90).' },
       limit: { type: 'integer', minimum: 1, maximum: 200, description: 'Most measurements listed, 1 to 200 (default 60).' } } } },
   { name: 'get_health', title: 'Recovery values', annotations: { readOnlyHint: true, openWorldHint: false },

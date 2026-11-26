@@ -11,6 +11,7 @@ import * as F from '../js/fitness.js';
 import { collapse, startOf } from '../js/actimport.js';
 import { labelOf, famOf } from '../js/sports.js';
 import { changes, FIELDS as BODY_FIELDS, bmiOf } from '../js/bodylib.js';
+import { compOf, compSeries, asKg, ready as compReady, MODEL as COMP_MODEL, ageAt } from '../js/bodycomp.js';
 import { ZONES as HR_ZONES } from '../js/watchfields.js';
 
 const { readJSON, userDir } = shared;
@@ -184,17 +185,26 @@ export async function athlete(uid, name) {
     weight_kg: kg, weight_from: last ? `weigh-in ${when(last.t)}` : S.riderKg ? 'profile setting' : null, weight_trend_kg: C.now != null ? r2(C.now) : null,
     goal_weight_kg: B.prefs.goalKg >= 20 ? B.prefs.goalKg : null, height_cm: h, ...(h && kg ? { bmi: bmiOf(kg, h) } : {}),
     strength_rest_s: Math.min(600, Math.max(15, +S.kraftRest || 90)),
-    not_stored: 'age, sex (RIDEFRAME does not ask for them)' };
+    sex: B.prefs.sex === 'm' ? 'male' : B.prefs.sex === 'f' ? 'female' : null, birth_year: B.prefs.birthYear >= 1900 ? B.prefs.birthYear : null,
+    ...(B.prefs.birthYear >= 1900 ? { age_years: ageAt(B.prefs.birthYear) } : {}),
+    ...(B.prefs.sex && B.prefs.birthYear ? {} : { not_stored: 'sex and birth year are optional (Body settings, used only for the body-fat estimate); not entered' }) };
 }
 
 /* ---- weight ---- */
 export async function weight(uid, { days = 90, limit = 60 } = {}) {
   const B = await bodyOf(uid), S = await settingsOf(uid), list = [...B.list].sort((a, b) => b.t - a.t), C = changes(B.list), since = Date.now() - days * DAY;
   const last = list[0] || null, goal = B.prefs.goalKg >= 20 ? B.prefs.goalKg : null, h = B.prefs.heightCm >= 100 ? Math.round(B.prefs.heightCm) : null;
+  // fat_pct etc. = what the scale's app reported (an import); est_* = our own estimate from the scale's impedance (js/bodycomp.js)
   const m = x => { const o = { at: when(x.t), kg: x.kg }; for (const k of Object.keys(BODY_FIELDS)) if (x[k] != null && k !== 'impedance') o[{ fatPct: 'fat_pct', musclePct: 'muscle_pct', waterPct: 'water_pct', boneKg: 'bone_kg', bmi: 'bmi', hr: 'hr' }[k] || k] = x[k];
+    if (x.impedance) o.impedance_ohm = x.impedance; const c = compOf(x, B.prefs);
+    if (c) Object.assign(o, { est_body_fat_pct: c.fatPct, est_fat_mass_kg: c.fatKg, est_lean_mass_kg: c.leanKg, est_body_water_kg: c.waterKg, est_body_water_pct: c.waterPct });
     o.source = x.src; return o; };
-  const inR = list.filter(x => x.t >= since);
-  return { empty: !list.length, latest: last ? m(last) : null, trend_kg: C.now != null ? r2(C.now) : null,
+  const inR = list.filter(x => x.t >= since), ser = compSeries(B.list, B.prefs), lc = ser[ser.length - 1], fc = ser.length ? changes(asKg(ser, 'fatPct')) : null;
+  const composition = lc ? { at: when(lc.t), est_body_fat_pct: lc.fatPct, est_fat_mass_kg: lc.fatKg, est_lean_mass_kg: lc.leanKg, est_body_water_kg: lc.waterKg, est_body_water_pct: lc.waterPct,
+      est_body_fat_trend_pct: fc?.now != null ? r1(fc.now) : null, est_body_fat_change_30d_pct_points: fc?.d30 != null ? r1(fc.d30) : null, count_with_impedance: ser.length,
+      method: `Estimate from the scale's foot-to-foot impedance with ${COMP_MODEL.cite}. Expect about ±4-5 body-fat points for one person; the trend over weeks is far more reliable than one value, and hydration moves single days.` }
+    : B.list.some(x => x.impedance) && !compReady(B.prefs) ? { missing: 'The scale measured impedance, but height, sex and birth year are needed for the estimate (Body settings).' } : null;
+  return { empty: !list.length, latest: last ? m(last) : null, composition, trend_kg: C.now != null ? r2(C.now) : null,
     change_7d_kg: C.d7 != null ? r2(C.d7) : null, change_30d_kg: C.d30 != null ? r2(C.d30) : null,
     goal_kg: goal, to_goal_kg: goal && C.now != null ? r2(goal - C.now) : null, height_cm: h, profile_weight_kg: S.riderKg || null,
     count_in_range: inR.length, measurements: inR.slice(0, limit).map(m),

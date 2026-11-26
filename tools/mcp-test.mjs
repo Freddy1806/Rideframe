@@ -303,6 +303,15 @@ test('coach tools: weight and health', async () => {
   assert.equal(w.data.latest.kg, 79.6); assert.equal(w.data.latest.fat_pct, 18.2); assert.equal(w.data.goal_kg, 76); assert.ok(w.data.change_7d_kg < 0); assert.ok(w.data.to_goal_kg < 0);
   assert.equal(w.data.measurements.length, 4); assert.equal((await tool(cpath, 'get_weight', { days: 5 })).data.measurements.length, 2); assert.equal((await tool(cpath, 'get_weight', { limit: 1 })).data.measurements.length, 1);
   assert.equal((await tool(cpath, 'get_profile', {})).data.weight_kg, 79.6, 'the profile weight is the newest weigh-in'); assert.equal((await tool(cpath, 'get_profile', {})).data.height_cm, 180);
+  // 26.11.: the body-fat estimate from the scale's impedance (js/bodycomp.js): per entry and the latest, only with height + sex + birth year
+  assert.equal(w.data.composition, null, 'no impedance: no composition');
+  assert.equal((await call('POST', '/api/body', { token: C, body: { t: now - day / 2, kg: 83.4, impedance: 518.5 } })).status, 200);
+  let w2 = await tool(cpath, 'get_weight', {}); assert.match(w2.data.composition.missing, /height, sex and birth year/); assert.equal(w2.data.latest.impedance_ohm, 518.5); assert.equal(w2.data.latest.est_body_fat_pct, undefined);
+  await call('PUT', '/api/body/prefs', { token: C, body: { heightCm: 183, sex: 'm', birthYear: 1993 } }); w2 = await tool(cpath, 'get_weight', {});
+  assert.deepEqual([w2.data.latest.est_body_fat_pct, w2.data.latest.est_fat_mass_kg, w2.data.latest.est_lean_mass_kg, w2.data.latest.est_body_water_kg, w2.data.latest.est_body_water_pct], [24, 20, 63.4, 46.3, 55.5]);
+  const cp = w2.data.composition; assert.equal(cp.est_body_fat_pct, 24); assert.equal(cp.count_with_impedance, 1); assert.equal(cp.est_body_fat_change_30d_pct_points, null); assert.match(cp.method, /Sun SS/);
+  assert.equal(w2.data.measurements.find(x => x.kg === 79.6).est_body_fat_pct, undefined, 'entries without impedance: no estimate'); assert.equal(w2.data.measurements.find(x => x.kg === 79.6).fat_pct, 18.2, 'the reported value stays apart');
+  const pr = (await tool(cpath, 'get_profile', {})).data; assert.equal(pr.sex, 'male'); assert.equal(pr.birth_year, 1993); assert.equal(pr.not_stored, undefined);
 
   const e = await tool(cpath, 'get_health', {}); assert.ok(e.ok); assert.equal(e.data.count, 0); assert.match(e.data.hint, /watch/);
   const d = t => { const x = new Date(t); return `${x.getFullYear()}-${String(x.getMonth() + 1).padStart(2, '0')}-${String(x.getDate()).padStart(2, '0')}`; };

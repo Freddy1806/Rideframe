@@ -64,7 +64,11 @@ export function decodeAdv(model, mfr) {
     // [B] eufy-c20-p3.ts, checked against Home Assistant logs in eufylife-ble-client#3 and #5: [5] 0x00, [6..9] scale clock,
     // [10] status (0x00/0x0D idle, 0x01 live, 0x05 0x15 0x25 0x65 0xA5 locked weight while it measures), [11] 0x80 = last frame of
     // the weigh-in, 0x40 = switching off, [12..13] weight LE / 100, [15] heart rate from status 0xA5 on.
-    // [17..18] / 10 looks like an impedance but was never compared with the app: NOT used.
+    // [17..18] LE / 10 = foot-to-foot impedance in ohms (26.11., Freddy's own C20: 518.5 standing at 83.40 kg, 544.1 at 67.55 kg; only
+    // the 24-byte end frame carries it, the 18-byte lock frames do not). Plausible (adults measure 350-700 Ω leg-to-leg) and the same
+    // spot as [B] reads, but never compared with the eufy app: kept as `impedance` inside 200..1500 Ω, body composition is our own
+    // estimate from it (js/bodycomp.js). [19..21] are unknown (1e 14 85 standing, 00 00 00 in the other frame): kept raw as `x` for
+    // a later look, never interpreted.
     if (p.length < 18 || p[5] !== 0x00) return null;
     const st = p[10], kg = (p[12] | p[13] << 8) / 100;
     if (st === 0x00 || st === 0x0d) return { kg: 0, final: false, quiet: true, status: st };
@@ -72,6 +76,8 @@ export function decodeAdv(model, mfr) {
     if ((st & 0x0f) !== 0x05) return null; // locked = low nibble 5: 0x05 0x15 0x25 0x65 0xA5 from the logs, 0x35 from Freddy's own C20 (26.11., 67.55 kg)
     const f = { kg, final: true, status: st, end: (p[11] & 0x80) !== 0 };
     if (st === 0xa5 && p[15] > 0) f.hr = p[15];
+    if (p.length >= 19) { const imp = (p[17] | p[18] << 8) / 10; if (imp >= 200 && imp <= 1500) f.impedance = imp; }
+    if (p.length >= 22) f.x = hexOf(p.subarray(19, 22));
     return f;
   }
   if (model === 'T9146' || model === 'T9147') {
@@ -116,26 +122,31 @@ export function decodeNotify(model, char, hex) {
  * The scale says "final" more than once: P2 repeats the final advertisement for ~30 s (and may still settle, [B] #284: keep the
  * last), C20/P3 keep the locked weight through 0x05…0xA5 while measuring impedance / heart rate and end with [11] 0x80.
  * Emitted when the weigh-in ends: an end flag, the scale going idle, a new live weight, or SETTLE ms without a changed final frame.
- * The same weight again within REPEAT ms after an emission is the same weigh-in still on the air. */
-export const SETTLE = 4000, REPEAT = 60e3;
+ * The same weight again within REPEAT ms after an emission is the same weigh-in still on the air.
+ * 26.11.: the C20's impedance arrives ONLY on the end frame, after lock frames that do not change for a while (the scale measures).
+ * A family that announces its end (C20/P3: `end` false on the lock frames) therefore waits END_WAIT, not SETTLE, so the 1-s flush on
+ * the server does not emit the weigh-in without it. Should it still happen (a long measurement), an end frame that brings an
+ * impedance the emitted weigh-in lacked goes out once more; the store merges it into the same entry (js/bodylib.js merge). */
+export const SETTLE = 4000, REPEAT = 60e3, END_WAIT = 20e3;
 export const session = () => ({ fin: null, lastChange: 0, sent: null });
-/** feeds one frame; returns { s, out } where out is a measurement { kg, hr?, impedance?, t } or null */
+/** feeds one frame; returns { s, out } where out is a measurement { kg, hr?, impedance?, x?, t } or null */
 export function feed(s, f, now) {
   if (!f) return { s, out: null };
   if (f.quiet || (!f.final && f.kg > 0 && s.fin && Math.abs(f.kg - s.fin.kg) > 0.5)) { const r = flush(s, now, true); return { s: r.s, out: r.out }; } // idle, or someone new stepped on
   if (!f.final) return { s, out: null };
   if (!(f.kg >= KG_LO && f.kg <= KG_HI)) return { s, out: null };
-  if (s.sent && Math.abs(s.sent.kg - f.kg) < 0.001 && now - s.sent.at < REPEAT && !s.fin) return { s, out: null }; // still on the air
-  const fin = s.fin || { kg: f.kg, t: now }, changed = !s.fin || fin.kg !== f.kg || (f.hr && f.hr !== fin.hr) || (f.impedance && f.impedance !== fin.impedance);
-  const next = { ...s, fin: { ...fin, kg: f.kg, hr: f.hr || fin.hr, impedance: f.impedance || fin.impedance }, lastChange: changed ? now : s.lastChange };
+  const air = s.sent && Math.abs(s.sent.kg - f.kg) < 0.001 && now - s.sent.at < REPEAT && !s.fin, late = air && f.impedance && !s.sent.impedance;
+  if (air && !late) return { s, out: null }; // still on the air (late: the impedance came after the weigh-in went out: once more, with it)
+  const fin = s.fin || { kg: f.kg, t: late ? s.sent.t : now }, changed = !s.fin || fin.kg !== f.kg || (f.hr && f.hr !== fin.hr) || (f.impedance && f.impedance !== fin.impedance);
+  const next = { ...s, fin: { ...fin, kg: f.kg, hr: f.hr || fin.hr, impedance: f.impedance || fin.impedance, x: f.x || fin.x, waitEnd: f.end === false || fin.waitEnd }, lastChange: changed ? now : s.lastChange };
   if (f.end) return flush(next, now, true);
   return { s: next, out: null };
 }
 /** call regularly (and on idle): emits the pending weigh-in once it settled; force = now */
 export function flush(s, now, force = false) {
-  if (!s.fin || (!force && now - s.lastChange < SETTLE)) return { s, out: null };
-  const out = { kg: s.fin.kg, t: s.fin.t }; if (s.fin.hr) out.hr = s.fin.hr; if (s.fin.impedance) out.impedance = s.fin.impedance;
-  return { s: { fin: null, lastChange: 0, sent: { kg: out.kg, at: now } }, out };
+  if (!s.fin || (!force && now - s.lastChange < (s.fin.waitEnd ? END_WAIT : SETTLE))) return { s, out: null };
+  const out = { kg: s.fin.kg, t: s.fin.t }; if (s.fin.hr) out.hr = s.fin.hr; if (s.fin.impedance) out.impedance = s.fin.impedance; if (s.fin.impedance && s.fin.x) out.x = s.fin.x;
+  return { s: { fin: null, lastChange: 0, sent: { kg: out.kg, at: now, t: out.t, impedance: out.impedance || null } }, out };
 }
 
 /* ---- P2 / P2 Pro authentication (only for impedance; the weight needs none) ----

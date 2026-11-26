@@ -51,7 +51,8 @@ test('C20 advertisement (real capture): idle, live 100.10, locked 100.10 through
   const d = h => D.decodeAdv('T9130', raw(0xbc64, h));
   assert.equal(d(C20.idle).quiet, true); assert.equal(d(C20.off0d).quiet, true); assert.equal(d(C20.off).quiet, true);
   assert.deepEqual(d(C20.live), { kg: 100.1, final: false, status: 1 });
-  for (const h of [C20.lock, C20.s15, C20.end25]) { const f = d(h); close(f.kg, 100.1); assert.equal(f.final, true); assert.equal(f.impedance, undefined, 'the C20 impedance bytes are not used'); }
+  for (const h of [C20.lock, C20.s15, C20.end25]) { const f = d(h); close(f.kg, 100.1); assert.equal(f.final, true); }
+  assert.equal(d(C20.lock).impedance, undefined, 'the 18-byte lock frames carry no impedance'); close(d(C20.end25).impedance, 445.2, 1e-9); assert.equal(d(C20.end25).x, '04038a');
   assert.equal(d(C20.end25).end, true); assert.equal(d(C20.lock).end, false);
 });
 test('P3 advertisement (real captures): 82.80 kg with heart rate 95 at 0xA5; 123.20 live then 123.00 final', () => {
@@ -176,4 +177,33 @@ test("C20, Freddy's own scale (capture 26.11.): it locks with status 0x35, which
   assert.equal(end.kg, 67.55); assert.equal(end.final, true); assert.equal(end.end, true);
   assert.equal(d('0fb7030da2008dca076b0500660300000000').kg, 8.7, 'a partial load locks with 0x05');
   assert.equal(d('0fb7030da200aaca076b0200631a00000000'), null, 'an unknown state stays unknown');
+});
+
+/* ---- 26.11.: the C20 impedance, Freddy's own frames ---- */
+const FR = { lock: '0fb7030da20063cb076b2500942000000000', end: '0fb7030da20063cb076b2580942000000041141e14850000', sit: '0fb7030da200b1ca076b3580631a00000041150000000000' };
+test("C20 impedance (Freddy's captures 26.11.): p[17..18] LE / 10 on the end frame only, p[19..21] raw as x", () => {
+  const d = h => D.decodeAdv('T9130', raw(0xbc64, h));
+  const e = d(FR.end); assert.equal(e.kg, 83.4); assert.equal(e.end, true); assert.equal(e.impedance, 518.5, '0x1441 = 5185'); assert.equal(e.x, '1e1485');
+  const s2 = d(FR.sit); assert.equal(s2.kg, 67.55); assert.equal(s2.impedance, 544.1, '0x1541 = 5441'); assert.equal(s2.x, '000000');
+  assert.equal(d(FR.lock).impedance, undefined); assert.equal(d(FR.lock).x, undefined);
+  const out = b => { const x = Buffer.from(FR.end, 'hex'); x[17] = b & 255; x[18] = b >> 8; return d(x.toString('hex')).impedance; };
+  assert.equal(out(1999), undefined, '199.9 Ω: below 200, not a body'); assert.equal(out(2000), 200); assert.equal(out(15000), 1500); assert.equal(out(15001), undefined); assert.equal(out(0), undefined, 'no contact');
+  close(D.decodeAdv('T9150', raw(0xcf4d, P3.s25)).impedance, 513.1, 1e-9);
+});
+test('the impedance arrives only on the END frame, after lock frames for longer than SETTLE: the weigh-in waits for it', () => {
+  let s = D.session(), out = []; const t0 = 5e6, d = h => D.decodeAdv('T9130', raw(0xbc64, h));
+  const run = (h, t) => { const fl = D.flush(s, t); s = fl.s; if (fl.out) out.push(fl.out); const r = D.feed(s, d(h), t); s = r.s; if (r.out) out.push(r.out); };
+  run(FR.lock, t0); for (let t = t0 + 1000; t <= t0 + 9000; t += 1000) { const fl = D.flush(s, t); s = fl.s; if (fl.out) out.push(fl.out); } // the server's 1-s flush
+  assert.equal(out.length, 0, 'not emitted without the end frame after 9 s'); run(FR.end, t0 + 9500); run(FR.end, t0 + 10500);
+  assert.equal(out.length, 1); assert.deepEqual(out[0], { kg: 83.4, t: t0, impedance: 518.5, x: '1e1485' });
+  // the scale goes quiet without an end frame: emitted at END_WAIT, and an end frame with the impedance after that goes out once more
+  s = D.session(); out = []; run(FR.lock, t0); const fl = D.flush(s, t0 + D.END_WAIT); s = fl.s; assert.equal(fl.out.impedance, undefined); out.push(fl.out);
+  run(FR.end, t0 + D.END_WAIT + 2000); run(FR.end, t0 + D.END_WAIT + 3000);
+  assert.equal(out.length, 2, 'once more, with the impedance, then never again'); assert.equal(out[1].impedance, 518.5); assert.equal(out[1].t, t0, 'the same weigh-in (same time): the store merges it');
+  const m = B.merge(B.merge([], { id: 'a', src: 'scale', ...out[0] }).list, { id: 'b', src: 'scale', ...out[1] }).list; assert.equal(m.length, 1); assert.equal(m[0].impedance, 518.5);
+});
+test('validate keeps the impedance (one decimal) and x only on scale entries with an impedance; old entries stay valid', () => {
+  const now = Date.now(), v = B.validate({ t: now, kg: 83.4, src: 'scale', impedance: 518.5, x: '1e1485' }).m; assert.equal(v.impedance, 518.5); assert.equal(v.x, '1e1485');
+  assert.equal(B.validate({ t: now, kg: 83.4, src: 'manual', impedance: 518.5, x: '1e1485' }).m.x, undefined); assert.equal(B.validate({ t: now, kg: 83.4, src: 'scale', x: '1e1485' }).m.x, undefined);
+  assert.equal(B.validate({ t: now, kg: 83.4, src: 'scale', impedance: 518.5, x: '<b>' }).m.x, undefined); assert.deepEqual(B.validate({ t: now, kg: 80 }).m, { t: now, kg: 80, src: 'manual' });
 });
