@@ -2,7 +2,10 @@
 // page (js/body.js), the start-page card (js/bodycard.js) and the server (tools/body-api.mjs). No DOM, no fetch.
 //
 // One measurement: { id, t (ms), kg, src: 'scale'|'manual'|'import', scaleId?, fatPct?, musclePct?, waterPct?, boneKg?, bmi?,
-//   impedance?, hr?, note? }. kg is kept at the resolution the scale reports (eufy: hundredths, steps of 0.05), never rounded further.
+//   impedance?, x?, hr?, note? }. kg is kept at the resolution the scale reports (eufy: hundredths, steps of 0.05), never rounded further.
+//   impedance (Ω, one decimal) comes from the scale itself (C20 end frame, P2 notification); the body-composition ESTIMATE is computed
+//   from it on the fly (js/bodycomp.js), never stored, so a better formula later re-evaluates all old weigh-ins. x = the C20's unknown
+//   bytes [19..21] as hex, kept only for a later analysis (scale entries only).
 //
 // Trend: the exponentially smoothed moving average of John Walker's "The Hacker's Diet" (chapter "Signal and Noise", 10 % smoothing:
 // trend = trend + 0.1 × (weight − trend) per day, https://www.fourmilab.ch/hackdiet/e4/signalnoise.html). A day without a weigh-in
@@ -41,6 +44,7 @@ export function validate(b, now = Date.now()) {
     if (!(v >= f.lo && v <= f.hi)) return { error: `${k}: ${f.lo} to ${f.hi}.` }; m[k] = Math.round(v * 10 ** Math.max(1, f.d)) / 10 ** Math.max(1, f.d); }
   const note = clean(b.note, LIM.note); if (note) m.note = note;
   if (b.scaleId != null && /^[\w:-]{1,60}$/.test(String(b.scaleId))) m.scaleId = String(b.scaleId);
+  if (src === 'scale' && m.impedance && /^[0-9a-f]{2,32}$/.test(String(b.x ?? ''))) m.x = String(b.x);
   return { m };
 }
 

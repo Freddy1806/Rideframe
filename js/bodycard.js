@@ -2,6 +2,7 @@
 // self-contained weight card renderWeightCard(el, data) for the start page (and later the arrangeable overview: it needs nothing
 // but its element and the data, and draws its own sparkline).
 import { trend, changes, changeWords, fmtKg } from './bodylib.js';
+import { compOf } from './bodycomp.js';
 import { account } from './account.js';
 
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -44,9 +45,12 @@ export function renderWeightCard(el, data, { href = 'body.html' } = {}) {
   const badge = ask ? `<span class="bcask">${ask} weigh-in${ask > 1 ? 's' : ''} to confirm</span>` : '';
   if (!list.length) { el.innerHTML = `<a class="bcard bempty" href="${href}"><span class="bcico" aria-hidden="true">${SCALE}</span><div><b>Weight</b><small>Add a weigh-in or connect your scale</small>${badge}</div><i>›</i></a>`; return; }
   const last = list.reduce((a, m) => !a || m.t > a.t ? m : a, null), c = changes(list), w = changeWords(c.d7);
-  el.innerHTML = `<a class="bcard" href="${href}" aria-label="Weight ${fmtKg(last.kg)} kg, ${esc(when(last.t))}. 7 days: ${esc(w.text)}.">
+  // 26.11.: body fat (estimated from the newest weigh-in's impedance, js/bodycomp.js) as a quiet second value; only the newest one,
+  // an older estimate next to today's weight would read as today's
+  const bf = compOf(last, data.prefs);
+  el.innerHTML = `<a class="bcard" href="${href}" aria-label="Weight ${fmtKg(last.kg)} kg, ${esc(when(last.t))}.${bf ? ` Body fat about ${bf.fatPct.toFixed(1)} percent, estimated.` : ''} 7 days: ${esc(w.text)}.">
     <span class="bcico" aria-hidden="true">${SCALE}</span>
-    <div class="bcmain"><span class="label">Weight</span><b>${fmtKg(last.kg)}<small> kg</small></b><small>${esc(when(last.t))}</small>${badge}</div>
+    <div class="bcmain"><span class="label">Weight</span><b>${fmtKg(last.kg)}<small> kg</small></b>${bf ? `<span class="bcfat" aria-hidden="true">${bf.fatPct.toFixed(1)} % fat <small>est.</small></span>` : ''}<small>${esc(when(last.t))}</small>${badge}</div>
     <div class="bcside">${sparkline(list)}${c.d7 == null ? '' : `<span class="bchg ${w.cls}">${w.arrow ? `<em aria-hidden="true">${w.arrow}</em> ` : ''}${esc(w.text)}<small> · 7 days</small></span>`}</div><i>›</i></a>`;
 }
 /** the start page: loads the account's last 90 days, draws the card, lets this device's profile weight follow */

@@ -55,13 +55,25 @@ test('validation, edit, delete, merge of a repeat within 3 min / 0.2 kg', async 
 });
 test('prefs; the profile weight follows the newest weigh-in unless turned off', async () => {
   assert.equal((await pub('PUT', '/api/body/prefs', { token: A, body: { goalKg: 5 } })).status, 400);
-  const p = await pub('PUT', '/api/body/prefs', { token: A, body: { goalKg: 78.5, heightCm: 183 } }); assert.deepEqual(p.j.prefs, { goalKg: 78.5, heightCm: 183, follow: true });
+  const p = await pub('PUT', '/api/body/prefs', { token: A, body: { goalKg: 78.5, heightCm: 183 } }); assert.deepEqual(p.j.prefs, { goalKg: 78.5, heightCm: 183, follow: true, announce: false, sex: null, birthYear: null });
   await pub('POST', '/api/body', { token: A, body: { t: Date.now() - 60e3, kg: 81.9 } });
   let me = await pub('GET', '/api/account/me', { token: A }); assert.equal(me.j.settings.riderKg, 81.9); assert.ok(me.j.settingsAt > Date.now() - 10e3, 'newer, so the devices pull it');
   await pub('PUT', '/api/body/prefs', { token: A, body: { follow: false } }); await pub('POST', '/api/body', { token: A, body: { t: Date.now() - 30e3, kg: 81.5 } });
   me = await pub('GET', '/api/account/me', { token: A }); assert.equal(me.j.settings.riderKg, 81.9, 'off: unchanged');
   await pub('PUT', '/api/body/prefs', { token: A, body: { follow: true } }); me = await pub('GET', '/api/account/me', { token: A }); assert.equal(me.j.settings.riderKg, 81.5, 'on again: caught up');
   assert.equal((await pub('GET', '/api/body', { token: A })).j.prefs.goalKg, 78.5, 'kept');
+});
+test('prefs (26.11.): sex and birth year for the body-fat estimate, announce; validated, cleared with "", kept when missing', async () => {
+  const y = new Date().getFullYear();
+  for (const b of [{ sex: 'x' }, { sex: 1 }, { birthYear: 1899 }, { birthYear: y + 1 }, { birthYear: 1990.5 }, { birthYear: 'abc' }, { announce: 'yes' }])
+    assert.equal((await pub('PUT', '/api/body/prefs', { token: A, body: b })).status, 400, JSON.stringify(b));
+  assert.equal((await pub('PUT', '/api/body/prefs', { token: A, body: [1] })).status, 400, 'not an object');
+  let p = await pub('PUT', '/api/body/prefs', { token: A, body: { sex: 'm', birthYear: '1993' } }); assert.equal(p.status, 200);
+  assert.deepEqual(p.j.prefs, { goalKg: 78.5, heightCm: 183, follow: true, announce: false, sex: 'm', birthYear: 1993 });
+  p = await pub('PUT', '/api/body/prefs', { token: A, body: { sex: '', birthYear: null } }); assert.equal(p.j.prefs.sex, null); assert.equal(p.j.prefs.birthYear, null); assert.equal(p.j.prefs.heightCm, 183, 'missing keys kept');
+  p = await pub('PUT', '/api/body/prefs', { token: A, body: { sex: 'm', birthYear: 1993, announce: true } }); assert.equal(p.j.prefs.announce, true);
+  assert.equal((await pub('PUT', '/api/body/prefs', { token: A, body: { birthYear: y } })).j.prefs.birthYear, y, 'this year is allowed');
+  await pub('PUT', '/api/body/prefs', { token: A, body: { birthYear: 1993 } }); assert.equal((await pub('GET', '/api/body', { token: B })).j.prefs.sex, null, 'per account');
 });
 test('import rows: valid ones stored as import, broken ones counted', async () => {
   const rows = [...Array(20)].map((_, i) => ({ t: Date.now() - (40 - i) * day, kg: 83 - i * 0.05, fatPct: 22.1 })).concat([{ t: 'x', kg: 80 }, { t: Date.now(), kg: 2 }]);
@@ -132,9 +144,52 @@ test('"Was that you?": an unclear weigh-in is asked to every member; Yes makes i
   assert.equal((await pub('GET', '/api/body', { token: B })).j.prompts.length, 0, 'expired');
   assert.equal((await call('POST', '/api/scale/measure', { bearer: SECRET, body: { key: 'mac:0000000000AA', kg: 80 } })).j.stored, false, 'a scale no household added: dropped');
 });
+/* ---- 26.11.: the C20 impedance through the frame path, the weigh-in hook ---- */
+const c20 = (hex, kg) => { const b = Buffer.from(hex, 'hex'), r = Math.round(kg * 100); b[12] = r & 255; b[13] = r >> 8; return '64bc' + b.toString('hex'); }; // Freddy's frames, weight set to his history here
+const C20LOCK = '0fb7030da20063cb076b2500942000000000', C20END = '0fb7030da20063cb076b2580942000000041141e14850000';
+let hookSrv, hookPort, hits = [];
+const hookFile = o => writeFile(join(DATA, 'weigh-hook.json'), JSON.stringify(o));
+const uidOf = async name => (await readFile(join(DATA, 'accounts.json'), 'utf8')).match(new RegExp(`"${name}":\\{[^}]*"id":"([0-9a-f]+)"`))[1];
+const waitHits = async (n, ms = 3000) => { for (let i = 0; i < ms / 100 && hits.length < n; i++) await wait(100); };
+test('C20 frames: lock, 5 s of measuring, the END frame with the impedance -> one weigh-in that keeps 518.5 Ω and x; the hook fires once', async () => {
+  const { createServer } = await import('node:http'); hookPort = await free();
+  hookSrv = createServer((req, res) => { let d = ''; req.on('data', c => d += c); req.on('end', () => { hits.push({ url: req.url, headers: req.headers, body: JSON.parse(d || '{}') }); res.end('{}'); }); }).listen(hookPort, '127.0.0.1');
+  await writeFile(join(DATA, 'hook.token'), '  s3cret-token\n'); await hookFile({ url: `http://127.0.0.1:${hookPort}/weigh`, header: 'X-Gary-Token', tokenFile: join(DATA, 'hook.token') });
+  await pub('PUT', '/api/body/prefs', { token: A, body: { heightCm: 183, sex: 'm', birthYear: 1993, announce: true } });
+  await frame({ kind: 'adv', id: 'periph-c20', name: 'eufy T9130', mfr: c20(C20LOCK, 0) });
+  const add = await pub('POST', '/api/scale/add', { token: A, body: { key: 'mac:BC0FB7030DA2' } }); assert.equal(add.status, 200, JSON.stringify(add.j));
+  const before = (await pub('GET', '/api/body', { token: A })).j.list, prev = before.reduce((a, m) => !a || m.t > a.t ? m : a, null);
+  await frame({ kind: 'adv', id: 'periph-c20', mfr: c20(C20LOCK, 82.6) }); await wait(5000); // longer than SETTLE (4 s): the old code emitted here, without the impedance
+  await frame({ kind: 'adv', id: 'periph-c20', mfr: c20(C20END, 82.6) }); await frame({ kind: 'adv', id: 'periph-c20', mfr: c20(C20END, 82.6) }); // the scale repeats
+  let l = []; for (let i = 0; i < 30; i++) { l = (await pub('GET', '/api/body', { token: A })).j.list; if (l.length > before.length) break; await wait(200); }
+  const m = l.filter(x => x.src === 'scale' && x.kg === 82.6); assert.equal(m.length, 1, 'one weigh-in'); assert.equal(m[0].impedance, 518.5); assert.equal(m[0].x, '1e1485');
+  await waitHits(1); await wait(500); assert.equal(hits.length, 1, 'exactly one POST');
+  const { compOf } = await import('../js/bodycomp.js'), h = hits[0];
+  assert.equal(h.url, '/weigh'); assert.equal(h.headers['x-gary-token'], 's3cret-token', 'trimmed token in the configured header');
+  assert.deepEqual(h.body, { account: await uidOf('freddy scale'), name: 'Freddy Scale', kg: 82.6, deltaKg: Math.round((82.6 - prev.kg) * 100) / 100, bodyFatPct: compOf(m[0], { heightCm: 183, sex: 'm', birthYear: 1993 }).fatPct, at: new Date(m[0].t).toISOString() });
+  assert.equal(typeof h.body.bodyFatPct, 'number');
+  assert.ok(!(await readFile(join(DATA, 'scales.json'), 'utf8')).includes('s3cret'), 'the token is not copied into the data');
+  assert.ok(!JSON.stringify((await pub('GET', '/api/body', { token: A })).j).includes('s3cret'), 'nor into any answer');
+});
+test('hook: not for an account without announce, not to a non-local URL, not without a readable token; the weigh-in is stored anyway', async () => {
+  hits = []; const t0 = Date.now();
+  const r = await call('POST', '/api/scale/measure', { bearer: SECRET, body: { key: 'mac:BC0FB7030DA2', kg: 64.2, t: t0 - 30 * 60e3 } }); assert.equal(r.j.uid, await uidOf('riley flat'), JSON.stringify(r.j));
+  await wait(800); assert.equal(hits.length, 0, 'Riley did not opt in');
+  await hookFile({ url: `http://example.org:${hookPort}/weigh` });
+  assert.equal((await call('POST', '/api/scale/measure', { bearer: SECRET, body: { key: 'mac:BC0FB7030DA2', kg: 81.7, t: t0 - 20 * 60e3 } })).j.stored, true); await wait(800); assert.equal(hits.length, 0, 'non-local URL ignored');
+  await hookFile({ url: `http://127.0.0.1:${hookPort}/weigh`, header: 'X-Gary-Token', tokenFile: join(DATA, 'nope.token') });
+  assert.equal((await call('POST', '/api/scale/measure', { bearer: SECRET, body: { key: 'mac:BC0FB7030DA2', kg: 81.75, t: t0 - 12 * 60e3 } })).j.stored, true); await wait(800); assert.equal(hits.length, 0, 'unreadable token file: skipped');
+  await hookFile({ url: `http://localhost:${hookPort}/weigh` });
+  assert.equal((await call('POST', '/api/scale/measure', { bearer: SECRET, body: { key: 'mac:BC0FB7030DA2', kg: 81.65, t: t0 - 6 * 60e3 } })).j.stored, true); await waitHits(1);
+  assert.equal(hits.length, 1, 'localhost works, without a token'); assert.equal(hits[0].body.kg, 81.65); assert.equal(hits[0].body.bodyFatPct, null, 'no impedance: null'); assert.equal(hits[0].headers['x-gary-token'], undefined);
+  await new Promise(r => hookSrv.close(r)); const s0 = Date.now(); // the target is down now
+  const d = await call('POST', '/api/scale/measure', { bearer: SECRET, body: { key: 'mac:BC0FB7030DA2', kg: 81.6, t: t0 - 60e3 } }); assert.equal(d.j.stored, true); assert.ok(Date.now() - s0 < 1500, 'not delayed by the dead hook');
+  assert.ok((await pub('GET', '/api/body', { token: A })).j.list.some(m => m.kg === 81.6 && m.src === 'scale'));
+  for (const kg of [81.7, 81.75]) assert.ok((await pub('GET', '/api/body', { token: A })).j.list.some(m => m.kg === kg), kg + ' stored');
+});
 test('leaving: the owner role passes on; the last one out frees the scale', async () => {
   assert.equal((await pub('POST', '/api/scale/leave', { token: A })).j.household, null);
   const b = await pub('GET', '/api/scale', { token: B }); assert.equal(b.j.household.owner, true); assert.equal(b.j.household.members, 1);
   await pub('POST', '/api/scale/leave', { token: B });
-  await frame({ kind: 'adv', id: 'periph-1', mfr: p2adv(0) }); assert.equal((await pub('GET', '/api/scale', { token: C })).j.found.length, 1, 'free again');
+  await frame({ kind: 'adv', id: 'periph-1', mfr: p2adv(0) }); assert.ok((await pub('GET', '/api/scale', { token: C })).j.found.some(f => f.key === 'mac:CFE8121833EE'), 'free again');
 });

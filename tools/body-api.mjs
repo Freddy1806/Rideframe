@@ -3,7 +3,8 @@
 //   GET    /api/body[?from=ms&to=ms]       -> { list, prefs, prompts, at }        the account's own measurements only
 //   POST   /api/body                       -> { ok, m }      add one by hand { t, kg, fatPct?, …, note? }
 //   PUT    /api/body/<id> · DELETE /api/body/<id>
-//   PUT    /api/body/prefs                 -> { ok, prefs }  { goalKg, heightCm, follow }   follow = the profile weight follows the newest weigh-in
+//   PUT    /api/body/prefs                 -> { ok, prefs }  { goalKg, heightCm, sex: 'm'|'f', birthYear, follow }   follow = the profile weight follows
+//                                                            the newest weigh-in; '' or null clears a value, a missing key keeps it
 //   POST   /api/body/import                -> { ok, added, merged, skipped }   { rows: [{ t, kg, … }] } (CSV parsed by js/bodylib.js)
 //   POST   /api/body/prompts/<id>          -> { ok }         { mine: true | false }   "82.4 kg at 07:12 · Was that you?"
 //   GET    /api/scale                      -> household (members count, scales, bridge status) and the scales the bridge hears
@@ -16,15 +17,16 @@
 // Storage: users/<id>/body.json { list, prefs, at } (private, 0600 like every account file); <data>/scales.json for households, scales,
 // join codes (hashes) and the open questions. Members never see each other's values; an open question shows only its own weight and time.
 import { randomBytes, randomInt, timingSafeEqual } from 'node:crypto';
-import { readFile } from 'node:fs/promises';
+import { readFile, stat } from 'node:fs/promises';
 import { join } from 'node:path';
 import { accountOf, userByKey, shared } from './accounts-api.mjs';
 import { validate, merge, LIM } from '../js/bodylib.js';
 import { assign } from './body-assign.mjs';
+import { compOf } from '../js/bodycomp.js';
 import * as D from './scale-decode.mjs';
 
 const { DATA, readJSON, writeJSON, send, body, limited, clientIp, userDir, sha } = shared;
-const SF = join(DATA, 'scales.json'), SECRET = join(DATA, 'scale-bridge.secret');
+const SF = join(DATA, 'scales.json'), SECRET = join(DATA, 'scale-bridge.secret'), HOOK = join(DATA, 'weigh-hook.json');
 const CODE_MS = 10 * 60e3, ASK_MS = 48 * 3600e3, MAX_MEMBERS = 8, MAX_SCALES = 4, FOUND_MS = 10 * 60e3;
 const VERBOSE = !!process.env.RIDEFRAME_SCALE_LOG;
 const log = (...a) => { if (VERBOSE) console.log('[scale]', ...a); };
@@ -35,7 +37,10 @@ const bodyFile = uid => join(userDir(uid), 'body.json');
 const ulocks = new Map();
 function withUser(uid, fn) { const run = (ulocks.get(uid) || Promise.resolve()).then(fn); const tail = run.catch(() => {}); ulocks.set(uid, tail);
   tail.then(() => { if (ulocks.get(uid) === tail) ulocks.delete(uid); }); return run; }
-const PREFS = p => ({ goalKg: p?.goalKg >= 20 && p?.goalKg <= 300 ? Math.round(p.goalKg * 10) / 10 : null, heightCm: p?.heightCm >= 100 && p?.heightCm <= 250 ? Math.round(p.heightCm) : null, follow: p?.follow !== false });
+// sex and birthYear (26.11.): only for the body-composition estimate (js/bodycomp.js: the formula is per sex, the age bounds its validity)
+const PREFS = p => ({ goalKg: p?.goalKg >= 20 && p?.goalKg <= 300 ? Math.round(p.goalKg * 10) / 10 : null, heightCm: p?.heightCm >= 100 && p?.heightCm <= 250 ? Math.round(p.heightCm) : null, follow: p?.follow !== false,
+  announce: p?.announce === true, // the weigh-in hook may say this account's weigh-ins out loud (own opt-in per housemate, default off)
+  sex: p?.sex === 'm' || p?.sex === 'f' ? p.sex : null, birthYear: p?.birthYear != null && Number.isInteger(+p.birthYear) && +p.birthYear >= 1900 && +p.birthYear <= new Date().getFullYear() ? +p.birthYear : null });
 async function bodyOf(uid) { const f = await readJSON(bodyFile(uid), null); return { list: Array.isArray(f?.list) ? f.list : [], prefs: PREFS(f?.prefs), at: +f?.at || 0 }; }
 const newId = () => randomBytes(6).toString('hex');
 /** adds measurements to an account (merging repeats), then lets the profile weight follow the newest one. Returns { added, merged, ids } */
@@ -45,7 +50,7 @@ function addTo(uid, ms) {
     for (const m0 of ms) { if (list.length >= LIM.count) break; const r = merge(list, { id: newId(), ...m0 }); list = r.list; ids.push(r.id); r.merged ? merged++ : added++; }
     await writeJSON(bodyFile(uid), { list, prefs: b.prefs, at: Date.now() });
     if (b.prefs.follow) await follow(uid, list);
-    return { added, merged, ids };
+    return { added, merged, ids, prefs: b.prefs, before: b.list };
   });
 }
 /** the profile weight (settings.riderKg, used for W/kg, the trainer and the climbing speed) = the newest weigh-in */
@@ -54,6 +59,37 @@ async function follow(uid, list) {
   const f = join(userDir(uid), 'settings.json'), s = await readJSON(f, null), st = { ...(s?.settings || {}) };
   if (st.riderKg === last.kg && st.riderKgAt === last.t) return;
   st.riderKg = last.kg; st.riderKgAt = last.t; await writeJSON(f, { settings: st, at: Date.now() });
+}
+
+/* ---- the weigh-in hook (26.11.): the owner's voice assistant on the same Mac says a finished weigh-in out loud ----
+ * <data>/weigh-hook.json = { "url": "http://127.0.0.1:<port>/<path>", "header"?, "tokenFile"? } (optional; no file = no hook). Only http to 127.0.0.1 /
+ * localhost: weights must not leave the machine through a typo. The file is read when needed (re-read when its mtime changes), so it
+ * works without a restart. One POST per NEW scale weigh-in that has an owner (auto-assigned, or "Yes, me"), only for accounts with
+ * prefs.announce: { account, name, kg, deltaKg (vs the previous weigh-in, null when none), bodyFatPct (est., null), at (ISO) }.
+ * Fire-and-forget, 2 s timeout: a dead hook never delays or fails the weigh-in. A merged repeat (the scale repeats itself) is no
+ * new weigh-in, so it is not announced again. */
+// A receiver that wants a secret: "header": "X-Some-Token" + "tokenFile": "/abs/path". The token is read from that file at send time
+// (trimmed) and only ever goes into that header: never logged, never copied into the data folder or any answer. Unreadable = no POST.
+let hookC = { mt: -1, cfg: null }, hookWarned = '';
+async function hookCfg() {
+  const st = await stat(HOOK).catch(() => null); if (!st) { hookC = { mt: -1, cfg: null }; return null; }
+  if (st.mtimeMs === hookC.mt) return hookC.cfg;
+  const f = await readJSON(HOOK, null), raw = String(f?.url ?? ''); let url = null;
+  try { const u = new URL(raw); if (u.protocol === 'http:' && ['127.0.0.1', 'localhost'].includes(u.hostname) && !u.username && !u.password) url = u.href; } catch {}
+  if (!url && hookWarned !== raw) { hookWarned = raw; console.log('[scale] weigh-hook.json ignored: the url must be http://127.0.0.1:… or http://localhost:…'); }
+  const header = typeof f?.header === 'string' && /^[A-Za-z0-9-]{1,64}$/.test(f.header) ? f.header : null, tokenFile = typeof f?.tokenFile === 'string' && f.tokenFile.startsWith('/') ? f.tokenFile : null;
+  hookC = { mt: st.mtimeMs, cfg: url ? { url, header: header && tokenFile ? header : null, tokenFile: header && tokenFile ? tokenFile : null } : null }; return hookC.cfg;
+}
+/** after a new scale weigh-in m landed in account uid (a = addTo's result); never throws, never awaited by the caller */
+function announce(uid, key, m, a) {
+  if (!a?.prefs?.announce || a.merged || !a.added) return;
+  (async () => {
+    const cfg = await hookCfg(); if (!cfg) return; const headers = { 'Content-Type': 'application/json' };
+    if (cfg.header) { const tok = (await readFile(cfg.tokenFile, 'utf8').catch(() => '')).trim(); if (!tok) { console.log('[scale] weigh-hook: token file not readable or empty, nothing sent'); return; } headers[cfg.header] = tok; }
+    const prev = (a.before || []).filter(x => x.t < m.t).reduce((p, x) => !p || x.t > p.t ? x : p, null), u = await userByKey(key).catch(() => null);
+    const body = { account: uid, name: u?.name || '', kg: m.kg, deltaKg: prev ? Math.round((m.kg - prev.kg) * 100) / 100 : null, bodyFatPct: compOf(m, a.prefs)?.fatPct ?? null, at: new Date(m.t).toISOString() };
+    const r = await fetch(cfg.url, { method: 'POST', headers, body: JSON.stringify(body), signal: AbortSignal.timeout(2000) }); log('weigh-hook', r.status);
+  })().catch(e => log('weigh-hook failed:', e?.name || 'error')); // the name only: an error message could carry a header value
 }
 
 /* ---- scales.json: households, scales, codes, open questions ---- */
@@ -109,11 +145,11 @@ export function ingest(key, w, now = Date.now()) {
     const sc = S.scales[key]; if (!sc) { log('weigh-in from a scale no household added:', key, w.kg); return { stored: false, reason: 'unknown scale' }; }
     const h = S.households[sc.hid]; if (!h) return { stored: false, reason: 'no household' };
     sc.lastAt = now; const t = Math.round(w.t || now);
-    const m = { t, kg: w.kg, src: 'scale', scaleId: sc.id }; if (w.impedance) m.impedance = w.impedance; if (w.hr) m.hr = w.hr;
+    const m = { t, kg: w.kg, src: 'scale', scaleId: sc.id }; if (w.impedance) m.impedance = w.impedance; if (w.impedance && w.x) m.x = w.x; if (w.hr) m.hr = w.hr;
     const v = validate(m, now + 60e3); if (v.error) { await saveS(S); return { stored: false, reason: v.error }; }
     const members = []; for (const x of h.members) members.push({ id: x.uid, joined: x.joined, list: (await bodyOf(x.uid)).list });
     const r = assign(v.m.kg, members, t); log(key, v.m.kg, 'kg ->', r.decision, r.reason);
-    if (r.decision === 'auto') { await saveS(S); const a = await addTo(r.id, [v.m]); return { stored: true, auto: true, uid: r.id, id: a.ids[0] }; }
+    if (r.decision === 'auto') { await saveS(S); const a = await addTo(r.id, [v.m]); announce(r.id, h.members.find(x => x.uid === r.id)?.key, v.m, a); return { stored: true, auto: true, uid: r.id, id: a.ids[0] }; }
     const same = S.pending.find(p => p.hid === sc.hid && Math.abs(p.t - t) <= 3 * 60e3 && Math.abs(p.m.kg - v.m.kg) <= 0.2 + 1e-9);
     if (same) { same.m = { ...same.m, ...v.m }; same.t = t; } else S.pending.push({ id: newId(), hid: sc.hid, t, exp: t + ASK_MS, m: v.m, no: [], reason: r.reason });
     await saveS(S); return { stored: true, auto: false, reason: r.reason };
@@ -196,10 +232,15 @@ export async function bodyApi(req, res, path) {
         const r = await addTo(uid, [v.m]); const list = (await bodyOf(uid)).list; return send(res, 200, { ok: true, m: list.find(x => x.id === r.ids[0]) });
       }
       if (sub === 'prefs' && M === 'PUT') {
-        let b; try { b = await body(req, 2e3); } catch { return send(res, 400, { error: 'Body must be JSON.' }); }
+        let b; try { b = await body(req, 2e3); } catch { return send(res, 400, { error: 'Body must be JSON.' }); } if (!b || typeof b !== 'object' || Array.isArray(b)) return send(res, 400, { error: 'Body must be JSON.' });
         const bad = (k, lo, hi) => b[k] != null && b[k] !== '' && !(+b[k] >= lo && +b[k] <= hi);
         if (bad('goalKg', 20, 300)) return send(res, 400, { error: 'Goal: 20 to 300 kg.' }); if (bad('heightCm', 100, 250)) return send(res, 400, { error: 'Height: 100 to 250 cm.' });
-        return await withUser(uid, async () => { const cur = await bodyOf(uid), prefs = PREFS({ ...cur.prefs, ...b, goalKg: b.goalKg === '' ? null : b.goalKg ?? cur.prefs.goalKg, heightCm: b.heightCm === '' ? null : b.heightCm ?? cur.prefs.heightCm, follow: b.follow ?? cur.prefs.follow });
+        const yNow = new Date().getFullYear();
+        if (bad('birthYear', 1900, yNow) || (b.birthYear != null && b.birthYear !== '' && !Number.isInteger(+b.birthYear))) return send(res, 400, { error: `Birth year: 1900 to ${yNow}.` });
+        if (b.sex != null && b.sex !== '' && b.sex !== 'm' && b.sex !== 'f') return send(res, 400, { error: 'Sex: m or f.' });
+        if (b.announce != null && typeof b.announce !== 'boolean') return send(res, 400, { error: 'announce: true or false.' });
+        return await withUser(uid, async () => { const cur = await bodyOf(uid), keep = k => b[k] === '' || b[k] === null ? null : b[k] !== undefined ? b[k] : cur.prefs[k]; // '' / null clears, a missing key keeps
+          const prefs = PREFS({ goalKg: keep('goalKg'), heightCm: keep('heightCm'), follow: b.follow ?? cur.prefs.follow, announce: b.announce ?? cur.prefs.announce, sex: keep('sex'), birthYear: keep('birthYear') });
           for (const k of ['goalKg', 'heightCm']) if (prefs[k] != null) prefs[k] = +prefs[k];
           await writeJSON(bodyFile(uid), { list: cur.list, prefs, at: Date.now() }); if (prefs.follow && !cur.prefs.follow) await follow(uid, cur.list); return send(res, 200, { ok: true, prefs }); });
       }
@@ -216,7 +257,7 @@ export async function bodyApi(req, res, path) {
         let b; try { b = await body(req, 1e3); } catch { return send(res, 400, { error: 'Body must be JSON.' }); }
         const got = await withS(async S => { await prune(S); const h = await homeOf(S, uid), p = h && S.pending.find(x => x.id === pm[1] && x.hid === h[0] && !x.no.includes(uid));
           if (!p) { await saveS(S); return null; }
-          if (b?.mine === true) { S.pending = S.pending.filter(x => x !== p); await saveS(S); await addTo(uid, [p.m]); return 'yes'; }
+          if (b?.mine === true) { S.pending = S.pending.filter(x => x !== p); await saveS(S); announce(uid, me.key, p.m, await addTo(uid, [p.m])); return 'yes'; }
           p.no.push(uid); if (h[1].members.every(m => p.no.includes(m.uid))) S.pending = S.pending.filter(x => x !== p); // nobody's: gone
           await saveS(S); return 'no'; });
         return got ? send(res, 200, { ok: true, answer: got }) : send(res, 404, { error: 'This question is gone (answered or expired).' });

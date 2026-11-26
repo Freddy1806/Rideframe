@@ -2,6 +2,7 @@
 // each leading to its detail page. Pure (tools/today-test.mjs). Numbers from js/bodylib.js (weight trend), js/cardlib.js (fitness,
 // records, strength), js/fitness.js (streak); no formulas here.
 import { changes, changeWords, fmtKg } from './bodylib.js';
+import { compSeries, asKg, enough } from './bodycomp.js';
 import { streak } from './fitness.js';
 import { durOf } from './cardlib.js';
 
@@ -10,8 +11,8 @@ const dayTxt = (t, now) => { const n = Math.round((new Date(now).setHours(0, 0, 
   return n <= 0 ? 'today' : n === 1 ? 'yesterday' : n < 7 ? 'on ' + new Date(t).toLocaleDateString('en-GB', { weekday: 'long' }) : 'on ' + new Date(t).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' }); };
 const hm = s => s >= 3600 ? `${Math.floor(s / 3600)} h ${String(Math.round(s % 3600 / 60)).padStart(2, '0')} min` : `${Math.max(1, Math.round(s / 60))} min`;
 
-/** x = { acts (newest first), body ({ list }), fit (cardlib fitnessSummary), recs (cardlib recentRecords), last ({ name, line, key }), now }
- *  -> [{ k, text, href }] at most n, in this order: new records, weight, fitness, consistency, last session */
+/** x = { acts (newest first), body ({ list, prefs }), fit (cardlib fitnessSummary), recs (cardlib recentRecords), last ({ name, line, key }), now }
+ *  -> [{ k, text, href }] at most n, in this order: new records, weight, body fat (est.), fitness, consistency, last session */
 export function insights(x = {}, n = 4) {
   const now = x.now ?? Date.now(), acts = x.acts || [], out = [];
   const rec = (x.recs?.list || []).filter(r => now - r.t < 8 * DAY)[0];
@@ -19,6 +20,11 @@ export function insights(x = {}, n = 4) {
   const list = x.body?.list || [];
   if (list.length >= 2) { const c = changes(list, now), d = c.d30 != null ? c.d30 : c.d7, span = c.d30 != null ? '30 days' : '7 days';
     if (d != null) { const w = changeWords(d); out.push({ k: 'weight', text: w.cls === 'flat' ? `Weight steady over ${span}, trend ${fmtKg(c.now)} kg.` : `Weight trend ${w.text} in ${span}, now ${fmtKg(c.now)} kg.`, href: 'body.html' }); } }
+  // 26.11.: body fat (an estimate from the scale's impedance, js/bodycomp.js): only with 4+ estimates over 14+ days, of the smoothed
+  // trend like the weight, in percentage points; below 0.3 points it is "steady" (single readings swing ±1–2 with hydration)
+  const ser = compSeries(list, x.body?.prefs);
+  if (enough(ser, 4, 14)) { const c = changes(asKg(ser, 'fatPct'), now), d = c.d30 != null ? c.d30 : c.start, span = c.d30 != null ? '30 days' : `${Math.round((ser[ser.length - 1].t - ser[0].t) / DAY)} days`;
+    if (d != null && c.now != null) out.push({ k: 'bodyfat', text: Math.abs(d) < 0.3 ? `Body fat (est.) steady over ${span}, about ${c.now.toFixed(1)} %.` : `Body fat (est.) ${d < 0 ? 'down' : 'up'} ${Math.abs(d).toFixed(1)} points in ${span}, about ${c.now.toFixed(1)} %.`, href: 'body.html' }); }
   const F = x.fit; if (F && !F.empty && acts.length) { const d = Math.round(F.d28);
     out.push({ k: 'fitness', text: Math.abs(d) < 2 ? `Fitness steady at ${Math.round(F.ctl)} over 4 weeks.` : `Fitness ${d > 0 ? 'up' : 'down'} ${Math.abs(d)} in 4 weeks, now ${Math.round(F.ctl)}.`, href: 'profil.html' }); }
   const s = streak(acts);
