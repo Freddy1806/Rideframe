@@ -72,10 +72,10 @@ function wkRide(o = {}) {
 // t = seconds ridden, pw(t, tgt) / hr(t) the rider, zones = the profile's zones (null: none)
 const hrOf = () => { let h = 100; return (k, p) => { h += (92 + p * .09 - h) / 25; return h; }; }; // the heart follows the watts, 25 s behind
 const FREE_PW = k => k % 1200 < 600 ? 1250 : 350; // a free ride: 10 min hard, 10 min easy
-function tsRide({ def = null, t = 5025, pw = def ? (k, g) => g : FREE_PW, hr = hrOf(), zones = [100, 130, 150, 165, 180, 199], name = LONG_RIDE } = {}) {
+function tsRide({ def = null, t = 5025, pw = def ? (k, g) => g : FREE_PW, hr = hrOf(), zones = [100, 130, 150, 165, 180, 199], name = LONG_RIDE, cad = 120 } = {}) {
   const W = def ? newWk(def) : null, R = newRide(0, W ? wkTarget(W, 0) : 1000); R.zb = hrZones(zones);
   for (let k = 1; k <= t; k++) {
-    const p = Math.max(0, Math.round(pw(k, R.tgt))), h = Math.round(hr(k, p)); rideSec(R, p, 120, h);
+    const p = Math.max(0, Math.round(pw(k, R.tgt))), h = Math.round(hr(k, p)); rideSec(R, p, cad, h);
     if (W) { wkRec(W, R.t, p, h, R.tgt); wkAt(W, R.t); if (W.i < W.dur.length) R.tgt = Math.max(30, Math.min(1000, wkTarget(W, R.t))); }
   }
   if (W) { W.n = name; wkClose(W); }
@@ -241,3 +241,43 @@ export const SCENES = [
   ['glance', 'Glance', () => { const F = mk(); F.scr = SCR.GLANCE; return { F, sum: SUM }; }],
 ];
 export { END_ROWS, saveOffer };
+
+/* ---- 27.11.7: Connect IQ Store screenshots (tools/watch-storeshots.cjs). Not part of SCENES (those are the worst cases the layout check
+ *      and the tests walk): the same screens with plausible numbers, an FTP of 250 W, the built-in 30/15 (wkFallback), a rider at
+ *      250..370 W, 85..96 rpm, heart rate 105..175. ---- */
+const ST_FTP = 250;
+const ST_RIDES = [{ id: 'z2', n: 'Endurance 60 min', c: 'e', s: [[3600, 160]] }, { id: 'z3', n: 'Tempo 2 x 20 min', c: 'e', s: [[2, [[1200, 200, null, 1, 'Tempo'], [300, 130]], 1]] },
+  { id: 'ss', n: 'Sweet Spot 3 x 10', c: 't', s: [[600, 120, 180, 0, 'Warm-up'], [3, [[600, 225, null, 1, 'SS'], [240, 130]], 1], [600, 150, 110, 0, 'Cool-down']] },
+  { id: 'th', n: 'Threshold 2 x 15', c: 't', s: [[600, 120, 190, 0, 'Warm-up'], [2, [[900, 250, null, 1, 'FTP'], [300, 130]], 1], [600, 150, 110, 0, 'Cool-down']] },
+  { id: 'v5', n: 'VO2 5 x 4 min', c: 'v', s: [[600, 120, 200, 0, 'Warm-up'], [5, [[240, 300, null, 1, 'VO2'], [240, 130]], 1], [600, 150, 110, 0, 'Cool-down']] },
+  { id: 'v4', n: '40/20, 2 x 10', c: 'v', s: [[600, 120, 200, 0, 'Warm-up'], [2, [[10, [[40, 330, null, 1, '40/20'], [20, 125]], 1], [300, 130, null, 0, 'Rest']], 1], [600, 150, 110, 0, 'Cool-down']] },
+  { id: 'sp', n: 'Sprints 8 x 30 s', c: 'a', s: [[8, [[30, 450, null, 1, 'Go'], [270, 120]], 1]] }, { id: 'rp', n: 'Ramp test', c: 'f', s: [[1200, 100, 400, 1, 'Ramp']] }];
+const ST_SUM = { pts: 1840, delta: 215 };
+/** the trainer, connected, ERG, the rider's live numbers */
+function stTrainer(st = 'ready') { const F = trainer(st); F.ftp = ST_FTP; const L = F.link; L.pw = 372; L.cad = 94; F.hr = 164; F.rides = ST_RIDES; return F; }
+/** the built-in 30/15 at 250 W FTP, second t (default: 7/13 of set 2, 12 s in), the + / - at 5 W */
+function stRide(pg = 0, t = 1170 + 750 + 6 * 45 + 12) {
+  const F = stTrainer(), R = F.tr = newRide(NOW - t, 130), W = F.wk = newWk(wkFallback(ST_FTP)); wkAt(W, t);
+  Object.assign(R, { t, tgt: wkTarget(W, t), step: 5, pg, st: 'run', pwSum: 238 * t, pwMax: 512, kj: 238 * t / 1000, np4: 262 ** 4 * 10, npN: 10, cadSum: 91 * t, cadN: t, hrSum: 148 * t, hrN: t, hrMax: 171, bT0: 0, bSum: 0, bN: 0 });
+  F.scr = SCR.TREC; return F;
+}
+/** the summary of the whole built-in 30/15, ridden: the hard ones a few watts around the target and fading a little, the heart behind */
+function stSum(page) {
+  const def = wkFallback(ST_FTP), W = newWk(def);
+  const pw = (k, g) => g >= 300 ? g + ((k * 7) % 9) - 4 - Math.floor(k / 1100) : g + ((k * 5) % 7) - 3;
+  const hr = (() => { let h = 92; return (k, p) => { h += (66 + p * .29 - h) / 25; return h; }; })();
+  return tsPage(tsRide({ def, t: W.tot, pw, hr, cad: 91, zones: [100, 120, 135, 148, 158, 190], name: def.n }), page);
+}
+/** [id, label, () => { F, now?, sum?, ui? }] in the store's order */
+export const STORE = [
+  ['home', 'Start menu: the sports on the wheel, Trainer chosen, week points', () => { const F = mk({ last: 'run' }); F.sel = 2; return { F, sum: ST_SUM }; }],
+  ['trainer', 'Indoor trainer connected, ERG ready', () => ({ F: stTrainer() })],
+  ['categories', 'Training: the categories', () => { const F = stTrainer(); F.scr = SCR.TPICK; F.tlev = 1; F.sel = 2; return { F }; }],
+  ['workouts', 'Training: the VO2max workouts with their length', () => { const F = stTrainer(); F.scr = SCR.TPICK; F.tlev = 2; F.tcat = 'v'; F.sel = 0; return { F }; }],
+  ['target', 'Ride: the target page in an interval, - 5 / + 5', () => ({ F: stRide(0) })],
+  ['workout', 'Ride: the workout page, the steps around now', () => ({ F: stRide(1) })],
+  ['summary', 'Summary: all intervals done', () => stSum('ov')],
+  ['intervals', 'Summary: the intervals set by set', () => stSum('iv')],
+  ['heartrate', 'Summary: heart rate zones and recovery', () => stSum('hr')],
+  ['strength', 'Strength: a set of bench press', () => { const F = onSet('bench', { kg: 80, reps: 8, logged: 2 }); F.hr = 128; F.start = NOW - 1520; return { F }; }],
+];
