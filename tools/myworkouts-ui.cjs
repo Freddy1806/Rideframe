@@ -275,7 +275,7 @@ const layoutOf = (page, root) => page.evaluate(root => {
     ok(got >= lo && got <= hi, `ride: first target ${got} W = 260 W × the warm-up ramp start 40 % (${lo} W, rising)`);
     ok(/My VO2/.test(await D.textContent('#hWName')), 'ride: the HUD names “My VO2”');
     await D.waitForFunction(d0 => { const [m, s] = (document.querySelector('#hWLeft')?.textContent || '99:99').split(':').map(Number); return m * 60 + s <= d0 - 35; }, 480, { timeout: 90000 });
-    await D.click('#hPause'); await D.waitForSelector('#pSave'); await D.click('#pSave'); await D.waitForTimeout(2500);
+    await D.click('#hPause'); await D.waitForSelector('#pEnd'); await D.click('#pEnd'); await D.click('#pSave'); await D.waitForTimeout(2500);
     const rides = await D.evaluate(async () => { const { db } = await import('/js/db.js'); return (await db.all('rides')).map(r => ({ workout: r.workout, workoutId: r.workoutId })); });
     ok(rides.some(r => r.workout === 'My VO2' && r.workoutId === saved.id), `finished ride records the workout name (${JSON.stringify(rides)})`);
     await ctx.close();

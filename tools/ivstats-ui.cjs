@@ -38,7 +38,7 @@ let fails = 0, n = 0; const ok = (c, m, info = '') => { n++; console.log(`${c ? 
       const hard = t => (t > __A && t <= __A + 300) || (t > __B2 && t <= __B2 + 300);
       for (let t = 1; t <= end; t++) s.push([t, t * 8, hard(t) ? w + (t % 2 ? 6 : -6) : 130, 30, 92, hard(t) ? hr : 118]);
       r.samples = s; r.lastSample = end; r.elapsed = end; }, [w, hr]);
-    const save = async () => { await p.keyboard.press('Space'); await p.waitForSelector('#pSave'); await p.click('#pSave'); await p.waitForSelector('.finish', { timeout: 10000 });
+    const save = async () => { await p.keyboard.press('Space'); await p.waitForSelector('#pEnd'); await p.click('#pEnd'); await p.click('#pSave'); await p.waitForSelector('.finish', { timeout: 10000 });
       await p.waitForFunction(() => document.querySelector('#fIvs .ivtbl'), null, { timeout: 8000 }); await p.waitForTimeout(500); };
     const last = () => p.evaluate(async () => { const { db } = await import('/js/db.js'); return (await db.all('rides')).sort((a, b) => b.date - a.date)[0]; });
 

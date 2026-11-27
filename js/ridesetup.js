@@ -7,7 +7,7 @@
 // button; no browser dialogs. Power source (Freddy 18.11. 11:34): trainer control, or a power meter only (pedals / crank,
 // Cycling Power Service) as pure data source while another app runs the trainer: never both, no ERG, no gradient then. The pure part (choices, which mode is on) is tested in Node (tools/ridesetup-test.mjs).
 import { esc } from './util.js';
-import { allWorkouts, workoutDuration, workoutSVG, setFtp } from './workouts.js';
+import { allWorkouts, workoutDuration, workoutSVG, setFtp, fmtAdj } from './workouts.js';
 
 if (typeof document !== 'undefined' && !document.querySelector('link[data-rs]')) { const l = document.createElement('link'); l.rel = 'stylesheet'; l.href = 'css/ridesetup.css'; l.dataset.rs = '1'; document.head.append(l); }
 
@@ -97,44 +97,69 @@ export function setWorkout(r, w, again = false) {
 }
 
 const press = (on, extra = '') => `aria-pressed="${on}"${on ? ' class="rsopt on"' : ' class="rsopt"'}${extra}`;
-/** the setup in the pause overlay; focus = index of the button to stand on (the pad's menu index) */
+
+/* ---------------- the pause sheets' shared parts (js/ridemenus.js uses them too; owner 27.11.: one look for every sheet) ---------------- */
+/** the one line about the devices (pause menu hint, Workout & mode): long = "Trainer: KICKR ✓ · Heart rate: not connected" */
+export function devLine(t = {}, h = {}, long = false) {
+  const tr = t.connected ? `${t.device?.name || (t.pmOnly ? 'Power meter' : 'Trainer')} ✓` : t.rejoining ? 'reconnecting …' : 'not connected';
+  const hr = h?.connected ? `${h.device?.name || 'Heart rate'} ✓` : h?.rejoining ? 'reconnecting …' : 'not connected';
+  if (long) return `${t.pmOnly ? 'Power meter' : 'Trainer'}: ${tr} · Heart rate: ${hr}`;
+  return `${t.connected ? tr : (t.pmOnly ? 'power meter ' : 'trainer ') + tr} · ${h?.connected ? hr : 'heart rate ' + hr}`;
+}
+/** the laps a ride can still be set to: never below the lap it is on */
+export const LAPS = [1, 2, 3, 4, 5, 10];
+export const lapChoices = lap => LAPS.filter(n => n >= (lap || 1));
+/** top of every sheet: the orange "Ride on ▸" and, when there is a level above, "‹ Back" (pad B / Esc do the same) */
+export const sheetTop = r => `<div class="rmtop"><button type="button" class="btn rsgo" id="oBack">Ride on ▸</button>${r._backs?.length ? '<button type="button" class="btn ghost rmback" id="mBack">‹ Back</button>' : ''}</div>`;
+export const PAD_HINT = '🎮 D-pad to choose · A ok · B back &nbsp;·&nbsp; ⌨ Tab · Enter · Esc';
+/** puts a sheet into the pause overlay's box; null when the overlay is gone */
+export function sheetBox(r, name, cls = '') {
+  const box = r.q('#pauseOverlay .box'); if (!box) return null;
+  box.className = 'box rsbox' + (cls ? ' ' + cls : ''); r._menu = name; return box;
+}
+export function wireTop(r, box) {
+  box.querySelector('#oBack')?.addEventListener('click', () => r._resume());
+  box.querySelector('#mBack')?.addEventListener('click', () => r._menuBack());
+}
+const padIndex = (box, el) => Math.max(0, [...box.querySelectorAll('.padmenu button')].indexOf(el));
+
+/** Workout & mode in the pause overlay; focus = index of the button to stand on (the pad's menu index).
+ *  No connect buttons here any more (owner 27.11.: one home for devices): one status line with a button to Devices. */
 export function openSetup(r, focus = 0) {
-  const box = r.q('#pauseOverlay .box'); if (!box) return;
+  const box = sheetBox(r, 'setup'); if (!box) return;
   const mode = modeOf(r), shift = shiftOf(r), src = sourceOf(r), pm = src === 'pm', t = r.state.trainer, cur = r.workout?.id || '', ftp = r.ftp || 200; setFtp(ftp);
-  const list = workoutChoices();
-  box.classList.add('rsbox');
+  const list = workoutChoices(), tune = r.workout && !r.wDone && r.wNow?.step && !r.wNow.step.free, laps = !r.group && !r.ow && !r.autopilot && r.track;
+  r._repaint = () => openSetup(r, padIndex(box, document.activeElement));
   box.innerHTML = `<div class="label">Ride setup · ${esc(r.route?.name || '')}</div><h2 class="display">Workout &amp; mode</h2>
     <div class="padmenu rs">
-      <button class="btn rsgo" id="oBack">Ride on ▸</button>
-      ${r.state.hr?.connected ? `<span class="rsdev rshr">✓ ${esc(r.state.hr.device?.name || 'Heart rate')}${r.state.hr.hr ? ` · ${r.state.hr.hr} bpm` : ''}</span>` : '<button type="button" class="btn ghost small rshr" id="rsHr">Connect heart rate</button>'}
-      <div class="rsg" role="group" aria-label="Power source"><div class="rsl">Power source</div><div class="rsrow">${SOURCES.map(([id, n, h]) => `<button type="button" data-src="${id}" ${press(src === id)} title="${esc(h)}"><b>${n}</b><small>${h}</small></button>`).join('')}</div>
-        <div class="rsnote" id="rsNote">${esc(SOURCE_NOTE[src])} ${t.connected ? `<span class="rsdev">✓ ${esc(t.device?.name || (pm ? 'Power meter' : 'Trainer'))}${pm ? ' · watts only' : ''}</span>` : `<button type="button" class="btn ghost small" id="rsConn">Connect ${pm ? 'power meter' : 'trainer'}</button>`}</div></div>
+      ${sheetTop(r)}
+      <div class="rsdevline"><span id="rsDevS">${esc(devLine(t, r.state.hr, true))}</span><button type="button" class="btn ghost small" id="rsDev">Devices</button></div>
       <div class="rsg" role="group" aria-label="Mode"><div class="rsl">Mode${pm ? ' <span class="rscur">off: the trainer is not controlled</span>' : ''}</div><div class="rsrow">${MODES.map(([id, n, h]) => { const off = pm, hold = id === 'erg' && !r.workout;
         return `<button type="button" data-mode="${id}" ${press(mode === id, off ? ' disabled' : '')} title="${esc(h)}"><b>${n}</b><small>${pm ? (id === 'erg' ? 'Power meter only: targets shown' : 'Power meter only') : hold ? (mode === 'erg' ? `Holds ${r._holdW} W · pad L / R ±5 W, L2 / R2 ±1 W` : 'Holds your watts · L / R ±5 W, L2 / R2 ±1 W') : h}</small></button>`; }).join('')}</div></div>
       ${mode === 'erg' ? '<div class="rsg rsoff"><div class="rsl">Shifting <span class="rscur">not needed in ERG: the trainer holds the watts in any gear</span></div></div>' : `<div class="rsg" role="group" aria-label="Shifting"><div class="rsl">Shifting</div><div class="rsrow">${SHIFTS.map(([id, n, h]) => { const off = pm && id === 'virtual';
         return `<button type="button" data-shift="${id}" ${press(shift === id && !r.berg, off ? ' disabled' : '')} title="${esc(h)}"><b>${n}</b><small>${off ? 'Needs trainer control' : h}</small></button>`; }).join('')}</div></div>`}
+      ${tune ? `<div class="rsg" role="group" aria-label="Target"><div class="rsl">Target <span class="rscur" id="rsAdj">${r.wNow.hard ? 'intervals' : 'easy parts'} now ${fmtAdj(r.wNow.hard ? r.wAdj : r.wAdjE)}</span></div>
+        <div class="rsrow rsrow2"><button type="button" class="rsopt" id="oAdjDn"><b>Target −5 W</b><small>${r.wNow.hard ? 'Hard intervals' : 'Easy parts'}</small></button><button type="button" class="rsopt" id="oAdjUp"><b>Target +5 W</b><small>${r.wNow.hard ? 'Hard intervals' : 'Easy parts'}</small></button></div>
+        <div class="rsnote">While riding: 🎮 L / R or D-pad up / down: target ±5 W · L2 / R2: ±1 W · keys W / S ±5 W (Shift 1 W), arrows ±1 W with a trainer · − / + on the bar. Hard intervals and easy parts keep their own offset.</div></div>` : ''}
+      ${laps ? `<div class="rsg" role="group" aria-label="Laps"><div class="rsl">Laps <span class="rscur">${r.laps > 1 ? `now lap ${r.lap} of ${r.laps}` : 'one lap'}</span></div><div class="rsrow rslaps">${lapChoices(r.lap).map(n => `<button type="button" data-laps="${n}" ${press(r.laps === n)}><b>${n === 1 ? '1 lap' : n + ' laps'}</b></button>`).join('')}</div></div>` : ''}
+      <div class="rsg" role="group" aria-label="Power source"><div class="rsl">Power source</div><div class="rsrow">${SOURCES.map(([id, n, h]) => `<button type="button" data-src="${id}" ${press(src === id)} title="${esc(h)}"><b>${n}</b><small>${h}</small></button>`).join('')}</div>
+        <div class="rsnote" id="rsNote">${esc(SOURCE_NOTE[src])}</div></div>
       <div class="rsg" role="group" aria-label="Workout"><div class="rsl">Workout${r.workout ? ` <span class="rscur">now: ${esc(r.workout.name)}${r.wDone ? ' · done' : ''}</span>` : ''}</div>
         <div class="rsw"><button type="button" data-w="" ${press(!cur)}><b>No workout</b><small>Ride freely</small></button>${list.map(x => `<button type="button" data-w="${esc(x.id)}" ${press(cur === x.id)}>
           <b>${x.own ? '★ ' : ''}${esc(x.name)}</b><small>${x.min} min${x.coach ? ' · Coach' : ''}${ftp ? ` · FTP ${ftp} W` : ''}</small><span class="rsmini">${workoutSVG(x.w, null, 18)}</span></button>`).join('')}</div></div>
     </div>
-    <div class="hint pad-hint">🎮 D-pad to choose · A take it · B ride on &nbsp;·&nbsp; ⌨ Tab · Enter · O</div>`;
-  const again = el => { const bs = [...box.querySelectorAll('.padmenu button')]; openSetup(r, Math.max(0, bs.indexOf(el))); };
-  box.querySelector('#oBack').onclick = () => { box.classList.remove('rsbox'); r._resume(); };
+    <div class="hint pad-hint">${PAD_HINT} · O</div>`;
+  const again = el => openSetup(r, padIndex(box, el));
+  wireTop(r, box);
+  box.querySelector('#rsDev').onclick = e => { const i = padIndex(box, e.currentTarget); (r._backs ||= []).push(() => openSetup(r, i)); r._devices(); };
   box.querySelectorAll('[data-mode]').forEach(b => b.onclick = () => { if (setMode(r, b.dataset.mode)) again(b); });
   const save = () => import('./app.js').then(m => m.saveSettings()).catch(() => {});
   box.querySelectorAll('[data-src]').forEach(b => b.onclick = () => { if (setSource(r, b.dataset.src)) save(); again(b); });
-  const conn = box.querySelector('#rsConn');
-  if (conn) conn.onclick = async () => { conn.disabled = true; conn.textContent = 'Connecting …';
-    try { await t.connect(); await t.setSim?.({ riderKg: r.state.settings.riderKg, bikeKg: r.state.settings.bikeKg, crr: 0.004, cw: 0.51 }); if (r.erg) r._workout(0); }
-    catch (e) { if (e?.name !== 'NotFoundError') r._flash(e?.name === 'SecurityError' ? 'Bluetooth needs a click or Enter: press Enter or click “Connect”' : 'Connection failed: ' + (e?.message || e), 4000); }
-    if (box.isConnected && box.classList.contains('rsbox')) again(conn); };
-  const hrB = box.querySelector('#rsHr'); // owner 27.11.: the strap connects here too, next to the trainer
-  if (hrB) hrB.onclick = async () => { hrB.disabled = true; hrB.textContent = 'Connecting …';
-    try { await (await import('./app.js')).connectHR(false); } catch (e) { r._flash('Connection failed: ' + (e?.message || e), 4000); }
-    if (r.state.hr?.connected) r._flash('✓ Heart rate connected'); else if (r.state.hr?.device) r.state.hr.rejoinNow?.()?.catch?.(() => {});
-    if (box.isConnected && box.classList.contains('rsbox')) again(hrB); };
   box.querySelectorAll('[data-shift]').forEach(b => b.onclick = () => { setShift(r, b.dataset.shift); again(b); });
-  box.querySelectorAll('[data-w]').forEach(b => b.onclick = () => { const w = list.find(x => x.id === b.dataset.w)?.w || null; if (!w) { setWorkout(r, null); return again(b); } openAdjust(r, w, [...box.querySelectorAll('.padmenu button')].indexOf(b)); });
+  box.querySelectorAll('[data-laps]').forEach(b => b.onclick = () => { r._setLaps(+b.dataset.laps); again(b); });
+  for (const [id, d] of [['oAdjDn', -5], ['oAdjUp', 5]]) { const b = box.querySelector('#' + id); if (b) b.onclick = () => { r._wTune(d); again(b); }; }
+  box.querySelectorAll('[data-w]').forEach(b => b.onclick = () => { const w = list.find(x => x.id === b.dataset.w)?.w || null; if (!w) { setWorkout(r, null); return again(b); }
+    const i = padIndex(box, b); (r._backs ||= []).push(() => openSetup(r, i)); openAdjust(r, w); });
   r._padFocus(focus);
   const f = [...box.querySelectorAll('.padmenu button')][r._padI || 0]; f?.scrollIntoView?.({ block: 'nearest' });
 }
@@ -166,10 +191,9 @@ export function applyGroups(w, rows) {
 }
 const mmss = s => `${Math.floor(s / 60)}:${String(Math.round(s % 60)).padStart(2, '0')}`;
 const durStep = (dur, d) => { const st = (d < 0 ? dur <= 120 : dur < 120) ? 15 : 60; return Math.max(15, Math.min(7200, dur + d * st)); };
-export function openAdjust(r, w, back = 0, rows = stepGroups(w.steps), focus = 0) {
-  const box = r.q('#pauseOverlay .box'); if (!box) return;
+export function openAdjust(r, w, rows = stepGroups(w.steps), focus = 0) {
+  const box = sheetBox(r, 'adjust'); if (!box) return;
   const ftp = r.ftp || 200; setFtp(ftp); const W = p => Math.round(p / 100 * ftp), out = applyGroups(w, rows), total = out.steps.reduce((a, s) => a + s.dur, 0), warm = warmupRows(rows), warmOff = warm.length > 0 && warm.every(g => g.skip);
-  box.classList.add('rsbox');
   box.innerHTML = `<div class="label">Workout · adjust before it starts</div><h2 class="display rsah">${esc(w.name)}</h2>
     <div class="rsasum">${Math.round(total / 60)} min · FTP ${ftp} W<span class="rsmini rsabig">${out.steps.length ? workoutSVG(out, null, 44) : ''}</span></div>
     <div class="padmenu rs">
@@ -181,9 +205,10 @@ export function openAdjust(r, w, back = 0, rows = stepGroups(w.steps), focus = 0
         <button type="button" class="rsask" data-a="skip" aria-pressed="${g.skip}">${g.skip ? 'Left out' : 'Leave out'}</button></div>`).join('')}</div>
     </div>
     <div class="hint pad-hint">🎮 D-pad to choose · A change · B back &nbsp;·&nbsp; time in 1 min steps (15 s under 2 min), watts in 5 W steps</div>`;
-  const again = el => openAdjust(r, w, back, rows, Math.max(0, [...box.querySelectorAll('.padmenu button')].indexOf(el)));
-  box.querySelector('#raBack').onclick = () => openSetup(r, back);
-  box.querySelector('#raGo').onclick = () => { setWorkout(r, applyGroups(w, rows), true); box.classList.remove('rsbox'); r._resume(); };
+  r._repaint = () => again(document.activeElement);
+  const again = el => openAdjust(r, w, rows, Math.max(0, [...box.querySelectorAll('.padmenu button')].indexOf(el)));
+  box.querySelector('#raBack').onclick = () => r._menuBack();
+  box.querySelector('#raGo').onclick = () => { setWorkout(r, applyGroups(w, rows), true); r._resume(); };
   const wb = box.querySelector('#raWarm'); if (wb) wb.onclick = () => { const on = !warmOff; warm.forEach(g => g.skip = on); again(wb); };
   box.querySelectorAll('.rsar [data-a]').forEach(b => b.onclick = () => {
     const g = rows[+b.closest('.rsar').dataset.i], a = b.dataset.a, d = a.endsWith('+') ? 1 : -1;

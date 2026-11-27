@@ -154,10 +154,10 @@ let fails = 0, n = 0; const ok = (c, m, info = '') => { n++; console.log(`${c ? 
     await p.keyboard.press('Space'); await p.waitForSelector('#pOpts'); await p.waitForTimeout(500);
     ok(await p.evaluate(() => { const h = window.__hudOp(); return !h.cls && h.map === 1 && h.grade === 1; }), 'pause: the HUD is back');
     await p.click('#pOpts'); await p.waitForSelector('#oEagle');
-    ok(/Eagle of Destiny: on/.test(await p.textContent('#oEagle')), 'pause Options: "Eagle of Destiny: on"');
+    ok(await p.getAttribute('#oEagle', 'aria-checked') === 'true', 'pause → Display & sound: the Eagle of Destiny switch is on');
     await p.click('#oEagle'); await p.waitForTimeout(200);
-    ok(/Eagle of Destiny: off/.test(await p.textContent('#oEagle')) && await p.evaluate(() => window.__ride.state.settings.eagle === false), 'Options: switched off (saved in the settings)');
-    await p.click('#oBack'); await p.waitForSelector('#pResume'); await p.click('#pResume'); await p.waitForTimeout(500);
+    ok(await p.getAttribute('#oEagle', 'aria-checked') === 'false' && await p.evaluate(() => window.__ride.state.settings.eagle === false), 'Display & sound: switched off (saved in the settings)');
+    await p.click('#oBack'); await p.waitForTimeout(500);
     ok(await p.evaluate(() => { const h = window.__hudOp(); return !h.cls && h.map === 1 && !window.__ride.eagle.rig && !window.__world.camera.getObjectByName('eagleOfDestiny'); }), 'aborted mid-scene: eagle gone, the HUD stays back');
     await p.evaluate(() => { window.__ride.eg = { state: 'wait', now: true, iv: -1 }; }); await p.waitForTimeout(1500);
     ok(await p.evaluate(() => window.__ride.eagle.state !== 'play' && window.__ride.eg.state === 'wait'), 'switched off: no eagle');

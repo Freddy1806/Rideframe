@@ -66,16 +66,101 @@ let fails = 0; const ok = (c, m) => { console.log(`${c ? '✓' : '✗'} ${m}`); 
       await O.close();
     }
 
-    // ---- the 3D ride (Passo Demo, desktop): #hPause opens the pause menu with Resume, Finish & save and Discard ----
-    const dctx = await b.newContext({ viewport: { width: 1280, height: 860 } });
-    const R = await dctx.newPage(); R.on('pageerror', e => errs.push('ride: ' + e.message)); R.on('dialog', d => d.accept());
-    await R.goto(BASE + '/?desktop&noprofile&demo'); await R.waitForTimeout(800);
+    // ---- the 3D ride (Passo Demo, desktop): the pause menu (owner 27.11.: one clear list, each thing in ONE place) ----
+    const dctx = await b.newContext({ viewport: { width: 1280, height: 720 } });
+    const R = await dctx.newPage(); R.on('pageerror', e => errs.push('ride: ' + e.message)); R.on('dialog', d => { errs.push('a native dialog: ' + d.message()); d.dismiss(); });
+    await R.goto(BASE + '/?desktop&noprofile&demo&laptest'); await R.waitForTimeout(800);
     await R.click('.tab[data-view="library"]'); await R.click('.card[data-id="demo"]'); await R.click('#rideBtn');
     await R.waitForSelector('#hPause', { timeout: 30000 }); await R.waitForTimeout(500);
     ok(await vis(R, '#hPause'), '3D ride: Pause on the HUD');
+    const act = () => R.evaluate(() => document.activeElement?.id || '');
+    const pick = () => R.evaluate(() => { window.__picks = []; const bt = navigator.bluetooth || {}; bt.requestDevice = async o => { window.__picks.push(JSON.stringify(o || {})); throw Object.assign(new Error('User cancelled the requestDevice() chooser.'), { name: 'NotFoundError' }); }; bt.getDevices = async () => []; if (!navigator.bluetooth) Object.defineProperty(navigator, 'bluetooth', { value: bt, configurable: true }); });
+    await pick();
     await R.click('#hPause'); await R.waitForTimeout(400);
-    ok(await vis(R, '#pResume') && await vis(R, '#pSave') && await vis(R, '#pDiscard'), '3D ride paused: Resume, Finish & save, Discard');
+    const ids = await R.evaluate(() => [...document.querySelectorAll('#pauseOverlay .pmlist button')].map(b => b.id));
+    ok(JSON.stringify(ids) === JSON.stringify(['pResume', 'pSetup', 'pDev', 'pOpts', 'pGroup', 'pSet', 'pEnd']), `pause: one list in order (${ids.join(' · ')})`);
+    ok(await act() === 'pResume', 'the focus starts on Resume');
+    ok(!(await R.locator('#pauseOverlay #pConn, #pauseOverlay #pHr, #pauseOverlay #pRejoin, #pauseOverlay #pSave, #pauseOverlay #pDiscard, #pauseOverlay #pInvite').count()), 'no connect, save, discard or invite buttons in the list itself');
+    ok(/trainer not connected · heart rate not connected/.test(await R.textContent('#pDev')), `Devices shows the live state ("${(await R.textContent('#pDev')).trim()}")`);
+    { const f = await R.evaluate(() => { const r = document.querySelector('#pauseOverlay .box').getBoundingClientRect(); return { top: r.top, bottom: r.bottom, h: innerHeight, scroll: document.querySelector('#pauseOverlay .box').scrollHeight > document.querySelector('#pauseOverlay .box').clientHeight + 1 }; });
+      ok(f.top >= 0 && f.bottom <= f.h && !f.scroll, `1280 × 720: the whole pause list fits without scrolling (${Math.round(f.top)}–${Math.round(f.bottom)} px)`); }
+    // pad order: ↓ walks the list, ↑ back, every entry ≥ 40 px
+    { const seq = []; for (let i = 0; i < 7; i++) { await R.evaluate(() => window.__ride._padMove('down')); seq.push(await act()); }
+      ok(seq.join() === 'pSetup,pDev,pOpts,pGroup,pSet,pEnd,pResume', `D-pad ↓ goes down the list and wraps (${seq.join(' → ')})`);
+      await R.evaluate(() => window.__ride._padMove('up')); ok(await act() === 'pEnd', 'D-pad ↑ steps back');
+      ok(await R.evaluate(() => [...document.querySelectorAll('#pauseOverlay .pmlist button')].every(b => b.getBoundingClientRect().height >= 40)), 'every entry is at least 40 px high'); }
+    if (SHOTS) await R.screenshot({ path: `${SHOTS}/ride_pause_1280x720.png` });
+    const back = async (id, how = 'button') => { if (how === 'esc') await R.keyboard.press('Escape'); else await R.click('#mBack'); await R.waitForTimeout(200); return await act() === id && await R.locator('#pauseOverlay .pmlist').count() === 1; };
+
+    // Workout & mode: no connect button, one devices line
+    await R.click('#pSetup'); await R.waitForSelector('.rsbox [data-mode]');
+    { const w = await R.evaluate(() => { const b = document.querySelector('.rsbox'); return { conn: [...b.querySelectorAll('button')].filter(x => /connect/i.test(x.textContent)).map(x => x.textContent.trim()), line: b.querySelector('.rsdevline')?.textContent.trim() || '', dev: !!b.querySelector('#rsDev'), laps: b.querySelectorAll('[data-laps]').length, shift: b.querySelectorAll('[data-shift]').length }; });
+      ok(!w.conn.length && w.dev && /Trainer: not connected · Heart rate: not connected/.test(w.line), `Workout & mode: no connect button (${w.conn.join(', ') || 'none'}), one line “${w.line.replace(/\s+/g, ' ')}”`);
+      ok(w.laps >= 1 && w.shift === 2, `Workout & mode has shifting and the laps (${w.laps} choices)`); }
+    await R.click('#rsDev'); await R.waitForSelector('#dvTr'); ok(true, 'its “Devices” button opens Devices');
+    await R.click('#mBack'); await R.waitForSelector('.rsbox [data-mode]'); ok(await act() === 'rsDev', 'Back from there: Workout & mode again, on its Devices button');
+    ok(await back('pSetup'), 'Back: the pause list, the focus on “Workout & mode”');
+
+    // Devices: one place for Bluetooth; the chooser opens inside the tap
+    await R.click('#pDev'); await R.waitForSelector('#dvTr');
+    await R.click('#dvTr'); await R.waitForTimeout(500);
+    ok((await R.evaluate(() => window.__picks.length)) === 1, 'Devices → “Connect trainer” opens the browser’s device list');
+    await R.waitForSelector('#dvHr'); await R.click('#dvHr'); await R.waitForTimeout(500);
+    ok((await R.evaluate(() => window.__picks.length)) === 2 && /180d|heart_rate/i.test(await R.evaluate(() => window.__picks[1])), 'Devices → “Connect heart rate” opens it for a heart rate strap');
+    ok(await R.locator('#pauseOverlay #dvHrAll').count() === 1 && await R.locator('#pauseOverlay #dvZc').count() === 1 && await R.locator('#pauseOverlay #dvCt').count() === 1, 'Devices: “All devices”, Zwift Click and the controller test are there');
+    ok(/^Phone remote · /.test((await R.textContent('#oRemote')).trim()), `the phone remote is an info line (“${(await R.textContent('#oRemote')).trim()}”)`);
+    if (SHOTS) await R.screenshot({ path: `${SHOTS}/ride_devices_1280x720.png` });
+    await R.evaluate(() => { const t = window.__ride.state.trainer; t.device = { name: 'KICKR TEST', gatt: { connected: true, disconnect() { this.connected = false; } } }; t.mode = 'ftms'; t.lastData = performance.now(); window.__ride._repaint(); });
+    ok(/KICKR TEST/.test(await R.textContent('#dvTrC')) && await R.locator('#dvTrOff').count() === 1, 'a connected trainer: its name and Disconnect');
+    await R.click('#dvTrOff'); ok(/Tap again/.test(await R.textContent('#dvTrOff')), 'Disconnect asks with a second tap');
+    await R.evaluate(() => { const t = window.__ride.state.trainer; t.device = null; t.mode = null; });
+    ok(await back('pDev', 'esc'), 'Esc: one level back, the focus on “Devices”');
+
+    // Display & sound: toggles show their state, no Shifting / Laps / phone remote
+    await R.click('#pOpts'); await R.waitForSelector('#oEagle');
+    { const d = await R.evaluate(() => { const b = document.querySelector('.rsbox'); return { t: b.textContent, sw: b.querySelector('#oEagle').getAttribute('role'), on: b.querySelector('#oEagle').getAttribute('aria-checked'), hud: b.querySelectorAll('[data-hud]').length }; });
+      ok(d.sw === 'switch' && d.on === 'true' && d.hud >= 5 && !/Shifting|Laps|Phone remote/.test(d.t), `Display & sound: the eagle is a switch (${d.on}), ${d.hud} display layouts, no shifting / laps / phone remote`); }
+    await R.click('#oEagle'); await R.waitForTimeout(300);
+    ok(await R.evaluate(() => document.querySelector('#oEagle')?.getAttribute('aria-checked') === 'false' && window.__ride.state.settings.eagle === false), 'the switch turns the eagle off, its label stays');
+    await R.click('#oEagle'); await R.waitForTimeout(300);
+    await R.click('[data-hud="pur"]'); await R.waitForTimeout(300); ok(await R.evaluate(() => document.querySelector('[data-hud="pur"]')?.classList.contains('on')), 'a display layout is picked by name');
+    await R.click('[data-hud="voll"]'); await R.waitForTimeout(300);
+    ok(await back('pOpts'), 'Back: the focus on “Display & sound”');
+
+    // Ride together (the group server is not reachable from every test machine: a stand-in group)
+    await R.evaluate(() => { const r = window.__ride; r._hostGroup = async () => (r.group = { code: '482913', open: true, link: location.origin + '/?join=482913', me: {}, others: () => [], update() {}, close() {} }); });
+    await R.click('#pGroup'); await R.waitForSelector('.rmcode');
+    ok(/482913/.test(await R.textContent('.rmcode')) && await R.locator('#pgLink').count() === 1 && await R.locator('#pInvite').count() === 1, 'Ride together: the code big, Copy link, Invite');
+    await R.keyboard.press('Escape'); await R.waitForTimeout(200);
+    ok(/Group 482913/.test(await R.textContent('#pauseOverlay .label')) && await act() === 'pGroup', 'with a group the pause header shows it, the focus on “Ride together”');
+    await R.evaluate(() => { window.__ride.group = null; });
+
+    // Settings over the ride: no device rows, no shifting switch (the main menu still has both)
+    await R.click('#pSet'); await R.waitForSelector('.rideset #chainrings');
+    ok(!(await R.locator('.rideset #trBtn, .rideset #hrBtn, .rideset #zcBtn, .rideset #rmBtn, .rideset #shiftMode').count()) && /Pause → Devices/.test(await R.textContent('.rideset')), 'in-ride Settings: no connect rows, no shifting switch, one line pointing to Devices; chainrings stay');
+    if (SHOTS) await R.screenshot({ path: `${SHOTS}/ride_settings_1280x720.png` });
+    await R.click('#rsetBack'); await R.waitForTimeout(300); ok(await act() === 'pSet', 'back from Settings: the focus on “Settings”');
+
+    // a click beside a sheet rides on
+    await R.click('#pOpts'); await R.waitForSelector('#oEagle'); await R.mouse.click(6, 360); await R.waitForTimeout(300);
+    ok(!(await vis(R, '#pauseOverlay')) && !(await R.evaluate(() => window.__ride.paused)), 'a click beside a sheet closes it and rides on');
+    await R.click('#hPause'); await R.waitForTimeout(300); await R.mouse.click(6, 360); await R.waitForTimeout(300);
+    ok(!(await vis(R, '#pauseOverlay')), 'a click beside the pause list rides on');
+
+    // End ride: Save / Discard, Discard asks once
+    await R.click('#hPause'); await R.click('#pEnd'); await R.waitForSelector('#pSave');
+    ok(await vis(R, '#pSave') && await vis(R, '#pDiscard') && await act() === 'pSave', 'End ride: Save (focused) and Discard');
+    await R.click('#pDiscard'); await R.waitForSelector('#pDiscardYes');
+    ok(/Discard this ride\?/.test(await R.textContent('#pauseOverlay h2')) && await act() === 'mBack' && await R.locator('.ride').count() === 1, 'Discard asks “Discard this ride?” first, the focus on Back');
+    await R.click('#mBack'); await R.waitForSelector('#pSave'); ok(true, 'Back: the End sheet again');
+    await R.click('#mBack'); await R.waitForTimeout(200); ok(await act() === 'pEnd', 'Back: the pause list, the focus on “End ride”');
     await R.click('#pResume'); await R.waitForTimeout(300); ok(!(await vis(R, '#pauseOverlay')), '3D ride: Resume closes the pause menu');
+    await R.click('#hPause'); await R.click('#pEnd'); await R.click('#pDiscard'); await R.click('#pDiscardYes'); await R.waitForTimeout(800);
+    ok(!(await R.locator('.ride').count()), 'Discard → yes: the ride is gone');
+
+    // the main-menu Settings still have the device rows and the shifting switch
+    await R.goto(BASE + '/?desktop&noprofile&demo&view=settings'); await R.waitForSelector('#trBtn', { timeout: 15000 }).catch(() => {});
+    ok(await R.locator('#main #trBtn').count() === 1 && await R.locator('#main #hrBtn').count() === 1 && await R.locator('#main #shiftMode').count() === 1, 'main-menu Settings: Connect trainer, heart rate and the shifting switch are still there');
     await dctx.close();
 
     ok(!errs.length, 'no page errors' + (errs.length ? ': ' + errs.join(' | ') : ''));

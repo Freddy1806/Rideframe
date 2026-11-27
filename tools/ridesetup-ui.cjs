@@ -29,7 +29,7 @@ let fails = 0; const ok = (c, m) => { console.log(`${c ? '✓' : '✗'} ${m}`); 
     const on = () => R.evaluate(() => { const a = document.activeElement; return a ? (a.id || (a.dataset.src ? 'src:' + a.dataset.src : '') || a.dataset.mode || a.dataset.shift || (a.dataset.w !== undefined ? 'w:' + a.dataset.w : a.textContent.trim())) : ''; });
     /** the ride's own menu: D-pad down / up until the wanted button is the focused one */
     // → and ← walk through every button in order (the D-pad goes where it points; at the end of a row it steps on to the next one)
-    const padTo = async (want, dir = 'down', max = 60) => { dir = dir === 'up' ? 'left' : 'right'; for (let i = 0; i < max; i++) { const o = await on(); if (process.env.DBG) console.log("  pad", dir, o); if (o === want) return true; await press(dir); } return (await on()) === want; };
+    const padTo = async (want, dir = 'down', max = 80) => { dir = dir === 'up' ? 'left' : 'right'; for (let i = 0; i < max; i++) { const o = await on(); if (process.env.DBG) console.log("  pad", dir, o); if (o === want) return true; await press(dir); } return (await on()) === want; };
     const st = () => R.evaluate(() => { const r = window.__ride, t = r.state.trainer; return { w: r.workout?.id || null, erg: r.erg, flat: r.flatRide, virt: r.virtual, t0: r._wT0, el: r.elapsed, step: r.wNow?.i ?? null, target: r.wNow?.target ?? null,
       trainerErg: t.erg ?? null, bar: !!document.querySelector('#hWork'), wk: r.el.classList.contains('wk'), n: r.samples.length, paused: r.paused, grade: window.__grade }; });
 
@@ -104,15 +104,17 @@ let fails = 0; const ok = (c, m) => { console.log(`${c ? '✓' : '✗'} ${m}`); 
     const pm = await R.evaluate(() => { const r = window.__ride, t = r.state.trainer, b = document.querySelector('.rsbox');
       return { pm: t.pmOnly, gone: window.__gone, dev: !!t.device, erg: r.erg, tErg: t.erg ?? null, w: r.workout?.id, set: r.state.settings.powerSource,
         modesOff: [...b.querySelectorAll('[data-mode]')].every(x => x.disabled), virtOff: b.querySelector('[data-shift="virtual"]').disabled, realOn: b.querySelector('[data-shift="real"]').classList.contains('on'),
-        note: b.querySelector('#rsNote')?.textContent || '', conn: b.querySelector('#rsConn')?.textContent || '', on: b.querySelector('[data-src="pm"]').classList.contains('on') }; });
+        note: b.querySelector('#rsNote')?.textContent || '', conn: b.querySelector('#rsDevS')?.textContent || '', btns: [...b.querySelectorAll('button')].filter(x => /connect/i.test(x.textContent)).length, on: b.querySelector('[data-src="pm"]').classList.contains('on') }; });
     ok(pm.pm && pm.gone && !pm.dev && pm.set === 'pm' && pm.on, 'power meter only: the trainer is disconnected, the choice is kept');
     ok(!pm.erg && pm.tErg === null && pm.modesOff && pm.virtOff && pm.realOn, 'no ERG, no gradient modes, no virtual gears');
-    { // owner 27.11.: the heart rate strap connects in the ride setup too
+    ok(/never controls the trainer/.test(pm.note) && /Power meter: not connected/.test(pm.conn) && pm.btns === 0, `one line explains it, the devices line says “${pm.conn}”, no connect button in the setup (owner 27.11.: one home)`);
+    { // the devices line leads to Devices: the power meter and the strap connect there, Back returns to the setup
       await R.evaluate(() => { window.__picks = 0; const bt = navigator.bluetooth || {}; bt.requestDevice = async () => { window.__picks++; throw Object.assign(new Error('User cancelled the requestDevice() chooser.'), { name: 'NotFoundError' }); }; if (!navigator.bluetooth) Object.defineProperty(navigator, 'bluetooth', { value: bt, configurable: true }); });
-      const hb = await R.evaluate(() => document.querySelector('.rsbox #rsHr')?.textContent || '');
-      await R.click('.rsbox #rsHr'); await R.waitForTimeout(400);
-      ok(/Connect heart rate/.test(hb) && await R.evaluate(() => window.__picks) === 1 && await R.evaluate(() => !!document.querySelector('.rsbox #rsHr')), 'ride setup: “Connect heart rate” opens the device list, the setup stays open'); }
-    ok(/never controls the trainer/.test(pm.note) && /Connect power meter/.test(pm.conn), `one line explains it, a button connects the power meter (“${pm.note.slice(0, 60)}…”)`);
+      await R.click('.rsbox #rsDev'); await R.waitForSelector('#dvHr');
+      ok(/Connect power meter/.test(await R.textContent('#dvTr')), 'Devices offers “Connect power meter”');
+      await R.click('#dvHr'); await R.waitForTimeout(400);
+      ok(await R.evaluate(() => window.__picks) === 1 && await R.evaluate(() => !!document.querySelector('#dvHr')), 'Devices: “Connect heart rate” opens the device list, the sheet stays open');
+      await R.click('#mBack'); await R.waitForSelector('.rsbox [data-mode]'); ok(true, 'Back: Workout & mode again'); }
     if (SHOTS) await R.screenshot({ path: `${SHOTS}/ridesetup_pm_1280.png` });
     await R.evaluate(() => { const t = window.__ride.state.trainer; window.__w = []; // a power meter connected (fake): watts in, nothing out
       t.device = { name: 'ASSIOMA TEST', gatt: { connected: true, disconnect() {} } }; t.mode = 'pm'; t.lastData = performance.now();
@@ -121,7 +123,7 @@ let fails = 0; const ok = (c, m) => { console.log(`${c ? '✓' : '✗'} ${m}`); 
     const pr = await R.evaluate(() => { const r = window.__ride; return { w: window.__w.length, paused: r.paused, target: r.wNow?.target, wt: document.querySelector('#hWT')?.textContent || '', step: document.querySelector('#hWStep')?.textContent || '' }; });
     ok(!pr.paused && pr.w === 0, `riding with the power meter: nothing written to a trainer (${pr.w} writes)`);
     ok(pr.target > 0 && /\d/.test(pr.wt + pr.step), `the workout shows its target only (${pr.target} W)`);
-    await R.keyboard.press('o'); await R.waitForSelector('.rsbox'); ok(/ASSIOMA TEST · watts only/.test(await R.locator('#rsNote').textContent()), 'the setup names the connected power meter');
+    await R.keyboard.press('o'); await R.waitForSelector('.rsbox'); ok(/Power meter: ASSIOMA TEST ✓/.test(await R.locator('#rsDevS').textContent()), 'the setup names the connected power meter');
     ok(await tabTo('src:trainer'), 'keyboard: Tab to “Trainer control”'); await R.keyboard.press('Enter'); await R.waitForTimeout(300);
     const tc = await R.evaluate(() => { const r = window.__ride; return { pm: r.state.trainer.pmOnly, dev: !!r.state.trainer.device, erg: r.erg, set: r.state.settings.powerSource }; });
     ok(!tc.pm && !tc.dev && tc.erg && tc.set === 'trainer', 'trainer control again: the power meter is disconnected, ERG back');
@@ -133,7 +135,7 @@ let fails = 0; const ok = (c, m) => { console.log(`${c ? '✓' : '✗'} ${m}`); 
     if (SHOTS) await R.screenshot({ path: `${SHOTS}/ridesetup_390.png` });
     await R.click('.rsbox [data-w="ss2x12"]'); await R.waitForSelector('#raGo'); ok(await R.evaluate(() => { const b = document.querySelector('.rsbox').getBoundingClientRect(); return b.left >= 0 && b.right <= innerWidth && document.documentElement.scrollWidth <= innerWidth; }), 'adjust at 390 px: inside the screen'); await R.click('#raGo'); await R.setViewportSize({ width: 1280, height: 860 });
     await R.waitForTimeout(31000); // a saved ride needs 30 s
-    await R.click('#hPause'); await R.click('#pSave'); await R.waitForTimeout(2500);
+    await R.click('#hPause'); await R.click('#pEnd'); await R.click('#pSave'); await R.waitForTimeout(2500);
     const rec = await R.evaluate(async () => { const { db } = await import('/js/db.js'); return (await db.all('rides')).filter(r => r.routeId === 'demo').sort((a, b) => b.date - a.date)[0]; });
     ok(rec && /Sweet Spot/.test(rec.workout || '') && rec.workoutId === 'ss2x12', `saved ride: the workout chosen in the ride (${rec?.workout})`);
     ok(!errs.length, 'no page errors, no browser dialogs' + (errs.length ? ': ' + errs.join(' | ') : ''));

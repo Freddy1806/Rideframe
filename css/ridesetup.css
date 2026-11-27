@@ -42,3 +42,74 @@
 @media (max-width: 640px) { .rsar { grid-template-columns: 1fr 1fr; } }
 
 .rs .rshr { align-self: flex-start; }
+
+/* ---------------- the pause menu and its sheets (js/ridemenus.js, owner 27.11.): the look of Workout & mode everywhere ---------------- */
+.paused .box.rsbox .pad-hint { margin-top: 14px; opacity: .7; font-size: 12px; }
+.paused .box.rsbox .btn { min-height: 40px; }
+.rmtop { display: flex; flex-wrap: wrap; gap: 8px; }
+.rmtop .btn { height: 48px; }
+.rsrow2 { grid-template-columns: repeat(2, minmax(0, 1fr)); } .rsrow3 { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+.rshud { grid-template-columns: repeat(auto-fit, minmax(118px, 1fr)); }
+.rslaps { grid-template-columns: repeat(auto-fit, minmax(86px, 1fr)); }
+.rsopt { min-height: 48px; justify-content: center; }
+.rsnote .rscur { margin: 0; }
+/* the pause list: one column of big entries, a one-line hint under each name */
+.paused .box.rsbox.pmbox { width: min(540px, calc(100vw - 32px)); padding: 22px 24px 18px; }
+.paused .box.rsbox.pmbox h2 { font-size: clamp(40px, 5.2vw, 72px); margin: 4px 0 14px; }
+.pmlist { display: flex; flex-direction: column; gap: 6px; }
+.pmi { display: flex; align-items: center; gap: 14px; min-height: 56px; padding: 9px 16px; border-radius: 12px; border: 1.5px solid rgba(255,255,255,.12); background: rgba(255,255,255,.04);
+  color: var(--paper, #f4f1ea); font: inherit; text-align: left; cursor: pointer; transition: border-color .12s, background .12s; }
+.pmi span { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.pmi b { font-size: 16px; font-weight: 800; line-height: 1.2; }
+.pmi small { font-size: 12.5px; color: var(--muted, #9a9a9a); line-height: 1.3; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pmi > i { font-style: normal; font-size: 22px; line-height: 1; color: var(--muted, #9a9a9a); }
+.pmi:hover { border-color: rgba(255,255,255,.32); }
+.pmi.rmgo { background: var(--rs); border-color: var(--rs); color: #0b0b0b; } .pmi.rmgo small, .pmi.rmgo > i { color: rgba(11,11,11,.72); }
+.pmi:focus-visible { outline: 3px solid var(--rs); outline-offset: 3px; }
+#pEnd { margin-top: 6px; }
+/* on / off switches */
+.rmtog { flex-direction: row; align-items: center; justify-content: space-between; gap: 14px; }
+.rmtog span { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
+.rmtog.on b::after { content: none; }
+.rmsw { flex: none; position: relative; width: 44px; height: 26px; border-radius: 13px; background: rgba(255,255,255,.16); transition: background .15s; }
+.rmsw::after { content: ''; position: absolute; top: 3px; left: 3px; width: 20px; height: 20px; border-radius: 50%; background: #f4f1ea; transition: transform .15s; }
+.rmtog.on .rmsw { background: var(--rs); } .rmtog.on .rmsw::after { transform: translateX(18px); }
+.rmtog.on { border-color: rgba(255,255,255,.14); background: rgba(255,255,255,.04); } .rmtog.on:hover { border-color: rgba(255,255,255,.32); }
+/* − value + */
+.rmstep { display: flex; align-items: center; gap: 10px; margin-top: 8px; }
+.rmstepl { font-size: 14px; font-weight: 700; margin-right: auto; }
+.rmsq { width: 48px; height: 48px; border-radius: 12px; border: 1.5px solid rgba(255,255,255,.18); background: transparent; color: inherit; font: 800 22px/1 inherit; cursor: pointer; }
+.rmsq:hover { border-color: rgba(255,255,255,.4); } .rmsq:focus-visible { outline: 3px solid var(--rs); outline-offset: 3px; }
+.rmval { min-width: 84px; text-align: center; display: flex; flex-direction: column; } .rmval b { font-size: 20px; font-weight: 800; font-variant-numeric: tabular-nums; } .rmval small { font-size: 11px; color: var(--muted, #9a9a9a); }
+/* Workout & mode: the devices line */
+.rsdevline { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 14px; padding: 8px 8px 8px 14px; border-radius: 12px; border: 1px solid rgba(255,255,255,.1); font-size: 13px; color: var(--muted, #9a9a9a); }
+.rsdevline span { flex: 1; min-width: 200px; }
+/* Devices */
+.dvcard { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 10px 16px; padding: 12px 14px; border-radius: 12px; border: 1.5px solid rgba(255,255,255,.12); background: rgba(255,255,255,.03); }
+.dvcard + .dvcard { margin-top: 8px; }
+.dvinfo { display: flex; align-items: center; gap: 12px; min-width: 0; flex: 1 1 240px; }
+.dvinfo b { display: block; font-size: 15px; font-weight: 800; overflow-wrap: anywhere; } .dvinfo small { display: block; font-size: 12.5px; color: var(--muted, #9a9a9a); margin-top: 2px; }
+.dvdot { flex: none; width: 10px; height: 10px; border-radius: 50%; background: rgba(255,255,255,.25); }
+.dvcard.on .dvdot { background: #2fd36b; box-shadow: 0 0 8px rgba(47,211,107,.6); } .dvcard.lost .dvdot { background: var(--rs); box-shadow: 0 0 8px var(--rs); } .dvcard.info .dvdot { background: transparent; border: 2px solid rgba(255,255,255,.35); }
+.dvcard.on { border-color: rgba(47,211,107,.35); }
+.dvbtns { display: flex; flex-wrap: wrap; gap: 8px; }
+.dvbtns .btn.small { height: 40px; font-size: 12.5px; }
+.rmwarn { border-color: #ff6b6b !important; color: #ff6b6b !important; }
+/* Ride together */
+.rmcode { display: flex; align-items: center; flex-wrap: wrap; gap: 12px 18px; }
+.rmcode b { font-size: clamp(34px, 5vw, 52px); font-weight: 800; letter-spacing: .12em; font-variant-numeric: tabular-nums; line-height: 1; }
+.rmrider { padding: 12px 14px; border-radius: 12px; border: 1.5px dashed rgba(255,255,255,.14); } .rmrider b { display: block; font-size: 15px; } .rmrider small { font-size: 12px; color: var(--muted, #9a9a9a); }
+.rs .invlist { margin: 0; }
+.rs .invlist .rsopt b { display: flex; align-items: center; gap: 10px; }
+/* End ride */
+.paused .box.rsbox.rmsmall { width: min(540px, calc(100vw - 32px)); }
+.rmtext { margin: 0 0 16px; font-size: 14px; line-height: 1.45; color: var(--muted, #9a9a9a); }
+.rmend { display: flex; flex-wrap: wrap; gap: 10px; }
+.rmend .btn { height: 52px; }
+.modal.rideset.ctride .box { margin-top: 24px; }
+@media (max-height: 760px) { .paused .box.rsbox.pmbox h2 { font-size: 48px; margin-bottom: 10px; } .pmi { min-height: 52px; padding: 7px 16px; } }
+@media (max-width: 640px) { .rsrow3, .rsrow2 { grid-template-columns: minmax(0, 1fr); } .rshud { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+/* the sheets' titles stay modest so the content starts high (a 1280 × 720 laptop) */
+.paused .box.rsbox:not(.pmbox) h2 { font-size: clamp(30px, 3.6vw, 48px); margin: 4px 0 14px; }
+.paused .box.rsbox:not(.pmbox) h2.rsah { font-size: clamp(26px, 3.4vw, 44px); }
+.paused .box.rsbox.rmmid { width: min(720px, calc(100vw - 32px)); }

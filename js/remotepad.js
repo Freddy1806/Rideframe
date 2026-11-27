@@ -118,7 +118,7 @@ function snapshot() {
   if (ride.querySelector('#hWork')) Object.assign(s, { wo: true, step: txt(ride, '#hWStep'), of: txt(ride, '#hWOf', 30), tgt: txt(ride, '#hWT', 6), left: txt(ride, '#hWLeft', 8), adj: txt(ride, '#hWAdjV', 8), next: txt(ride, '#hWNextN', 30) });
   if (po) {
     const bs = [...po.querySelectorAll('.padmenu button')];
-    s.title = txt(po, 'h2', 20); s.menu = bs.slice(0, 16).map(b => b.textContent.trim().replace(/\s+/g, ' ').slice(0, 34)); s.sel = Math.max(0, bs.findIndex(b => /solid/.test(b.style.outline || '')));
+    s.title = txt(po, 'h2', 20); s.menu = bs.slice(0, 16).map(b => (b.querySelector('b')?.textContent || b.textContent).trim().replace(/\s+/g, ' ').slice(0, 34)); s.sel = Math.max(0, bs.findIndex(b => /solid/.test(b.style.outline || '')));
   }
   return s;
 }
@@ -216,9 +216,11 @@ function ui() {
   st.querySelector('span').textContent = err && !S ? err : phonesN ? `Phone connected${phonesN > 1 ? ` · ${phonesN} phones` : ''}` : link?.state === 'retry' ? 'Reconnecting…' : 'Waiting for your phone…';
 }
 
-// ---------------- the pause menu's Options (js/ride.js): one button that shows the code / the state ----------------
+// ---------------- the ride's Pause → Devices (js/ridemenus.js): one info line with the code / the state ----------------
 const live = () => !!S?.code && S.exp - Date.now() > 5000;
-export const remoteLabel = () => phonesN ? 'Phone remote: connected' : live() ? `Phone remote: code ${fmtCode(S.code)}` : 'Phone remote: show code';
+export const remoteLabel = () => phonesN ? `Phone remote · connected${phonesN > 1 ? ` (${phonesN} phones)` : ''}` : live() ? `Phone remote · code ${fmtCode(S.code)}` : err && !S ? 'Phone remote · needs the RIDEFRAME server' : 'Phone remote · getting a code …';
+/** what Devices shows: phones connected, the code while it is valid */
+export const remoteInfo = () => ({ phones: phonesN, code: live() ? S.code : '' });
 export function remoteCode() { wantOpen = true; (live() ? Promise.resolve() : newCode()).catch(() => {}).finally(refreshLabel); }
 function refreshLabel() { const b = document.querySelector('#oRemote'); if (b) b.textContent = remoteLabel(); }
 

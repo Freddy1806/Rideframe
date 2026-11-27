@@ -165,13 +165,15 @@ function fakePad() { // a standard-mapping gamepad; window.__pad.press(i) holds 
     // ---- back to +10 W and finish: options, saved record and summary ----
     await p.keyboard.press('s'); await p.keyboard.press('s'); await p.keyboard.press('Shift+S'); await p.keyboard.press('Shift+S'); await p.waitForTimeout(1200);
     ok((await H()).a === 10, 'back to +10 W');
-    await p.evaluate(() => window.__pad.press(9)); await p.waitForSelector('#pOpts');
-    await p.click('#pOpts'); await p.waitForTimeout(200);
+    await p.evaluate(() => window.__pad.press(9)); await p.waitForSelector('#pSetup');
+    await p.click('#pSetup'); await p.waitForSelector('#oAdjUp');
     const opt = await p.textContent('#pauseOverlay');
-    ok(/Target \+5 W \(intervals now \+10 W\)/.test(opt) && /Target −5 W/.test(opt) && /L \/ R or D-pad up \/ down: target ±5 W/.test(opt) && /W \/ S/.test(opt) && /Interval display: big/.test(opt), 'pause Options: target items, interval display and the key / pad help', opt);
-    await p.click('#oAdjDn'); await p.waitForTimeout(200); ok((await H()).a === 5, 'Options "Target −5 W" works (in an interval: the intervals)');
-    await p.click('#oAdjUp'); await p.waitForTimeout(200); ok((await H()).a === 10, 'Options "Target +5 W" works');
-    await p.click('#oBack'); await p.waitForSelector('#pSave'); await p.click('#pSave');
+    ok(/Target.*intervals now \+10 W/.test(opt) && /Target \+5 W/.test(opt) && /Target −5 W/.test(opt) && /L \/ R or D-pad up \/ down: target ±5 W/.test(opt) && /W \/ S/.test(opt), 'pause → Workout & mode: the target items and the key / pad help', opt);
+    await p.click('#oAdjDn'); await p.waitForTimeout(200); ok((await H()).a === 5, 'Workout & mode "Target −5 W" works (in an interval: the intervals)');
+    await p.click('#oAdjUp'); await p.waitForTimeout(200); ok((await H()).a === 10, 'Workout & mode "Target +5 W" works');
+    await p.click('#mBack'); await p.click('#pOpts'); await p.waitForSelector('[data-wb]');
+    ok(await p.evaluate(() => document.querySelector('[data-wb="big"]')?.classList.contains('on')), 'pause → Display & sound: the interval display, "Big" on');
+    await p.click('#mBack'); await p.click('#pEnd'); await p.waitForSelector('#pSave'); await p.click('#pSave');
     await p.waitForSelector('.finish', { timeout: 10000 });
     const fin = await p.textContent('.finish');
     ok(/Intervals \+10 W/.test(fin) && /easy parts \+10 W/.test(fin), 'summary shows "Intervals +10 W … easy parts +10 W"', fin.slice(0, 300));
@@ -210,7 +212,7 @@ function fakePad() { // a standard-mapping gamepad; window.__pad.press(i) holds 
       const [c, q2] = await ride2('vo2_5x5', true, 'erg climb');
       const up = await q2.evaluate(async () => { const r = window.__ride; r.elapsed = 60; r.manualPower = 400; const d0 = r.d; /* over the 30 s a saved ride needs */ await new Promise(z => setTimeout(z, 4000)); return { dd: r.d - d0, gain: r.gainAcc, on: r._ergOn }; });
       ok(up.on && up.dd > 10 && up.gain > 0.3, `ERG part: ${up.dd.toFixed(0)} m uphill ridden, ${up.gain.toFixed(1)} m climb counted (as on any ride)`, JSON.stringify(up));
-      await q2.keyboard.press('Space'); await q2.waitForSelector('#pSave'); await q2.click('#pSave'); await q2.waitForSelector('.finish', { timeout: 10000 });
+      await q2.keyboard.press('Space'); await q2.waitForSelector('#pEnd'); await q2.click('#pEnd'); await q2.click('#pSave'); await q2.waitForSelector('.finish', { timeout: 10000 });
       const fin = await q2.textContent('.finish');
       const rec = await q2.evaluate(async () => { const { db } = await import('/js/db.js'); return (await db.ridesFor('demo')).sort((a, b) => b.date - a.date)[0]; });
       ok(rec.erg === true && rec.mode === 'Workout (ERG)' && rec.ergSpans === undefined && rec.gain >= Math.floor(up.gain), `saved: erg true, mode "Workout (ERG)", gain ${rec.gain} m kept`, JSON.stringify({ erg: rec.erg, mode: rec.mode, gain: rec.gain }));
@@ -278,7 +280,7 @@ function fakePad() { // a standard-mapping gamepad; window.__pad.press(i) holds 
       const lost = await q2.evaluate(() => ({ p: document.querySelector('#hWP').textContent, st: document.querySelector('#hWState').textContent, rc: !document.querySelector('#hWRc').hidden, cad: document.querySelector('#hCad').textContent, cs: document.querySelector('#hCadS').textContent, hr: document.querySelector('#hBpm').textContent }));
       ok(lost.p === '–' && lost.st === 'connection lost' && lost.rc && lost.cad === '–' && /Connection lost/.test(lost.cs), 'trainer dropped: bar "–" + "connection lost" + Reconnect, cadence "–"', JSON.stringify(lost));
       ok(lost.hr === '–', 'heart rate from the trainer gone: "–", not 0', JSON.stringify(lost));
-      await q2.keyboard.press('Space'); await q2.waitForSelector('#pSave'); await q2.click('#pSave'); await q2.waitForSelector('.finish', { timeout: 10000 });
+      await q2.keyboard.press('Space'); await q2.waitForSelector('#pEnd'); await q2.click('#pEnd'); await q2.click('#pSave'); await q2.waitForSelector('.finish', { timeout: 10000 });
       ok(!/arrow keys/i.test(await q2.textContent('.finish')), 'the ride is saved normally (not "ridden with the arrow keys")');
       await c.close();
     }
