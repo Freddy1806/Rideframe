@@ -568,7 +568,7 @@ export class RideSession {
   /** the small "No connection" / "Connection lost · Reconnect" lines under the values, only rebuilt when a state changes */
   _sensUI(sn) {
     const k = sn.pw + sn.cad + sn.hr + sn.trRj + sn.hrRj; if (k === this._sensK) return; this._sensK = k;
-    const line = (st, none, rc, rj) => st === 'ok' ? '' : `<i class="dot"></i>${st === 'lost' ? (rj ? 'Lost · reconnecting …' : 'Connection lost') : none}${st === 'lost' && rc ? ` <button class="sens-rc" data-rc="${rc}">Reconnect</button>` : ''}`;
+    const line = (st, none, rc, rj) => st === 'ok' ? '' : `<i class="dot"></i>${st === 'lost' ? (rj ? 'Lost · reconnecting …' : 'Connection lost') : none}${rc ? ` <button class="sens-rc" data-rc="${rc}">${st === 'lost' ? 'Reconnect' : 'Connect'}</button>` : ''}`; // owner 27.11.: connectable inside the ride, also when nothing was connected before
     const set = (id, html) => { const e = this.q(id); if (!e) return; e.innerHTML = html; e.hidden = !html; e.previousElementSibling?.classList.toggle('sens-hide', !!html); };
     set('#hPowS', line(sn.pw, 'No connection', 'tr', sn.trRj)); set('#hCadS', line(sn.cad, 'No sensor', '', sn.trRj)); set('#hHrS', line(sn.hr, 'No sensor', 'hr', sn.hrRj));
     this.el.querySelectorAll('.sens-rc').forEach(b => b.onclick = e => { e.currentTarget.blur(); this._reconnect(b.dataset.rc); });
@@ -577,9 +577,11 @@ export class RideSession {
    *  in a browser without getDevices): the chooser, which this tap allows */
   _reconnect(which) {
     const d = which === 'hr' ? this.state.hr : this.state.trainer;
-    if (!d?.device) return which === 'hr' ? this._connHr() : this._connTrainer();
-    this._flash(which === 'hr' ? 'Reconnecting the heart rate strap …' : 'Reconnecting the trainer …', 4000);
-    d.rejoinNow?.().catch?.(() => {});
+    if (d?.connected) return;
+    // owner 27.11.: "Reconnect is there but the popup does not open". Every tap wakes the quiet loop AND opens the browser's
+    // device list in the same tap: a device that sleeps or hangs on another app never came back from the loop alone
+    if (d?.device) { this._flash(which === 'hr' ? 'Reconnecting the heart rate strap … or choose it from the list' : 'Reconnecting the trainer … or choose it from the list', 5000); d.rejoinNow?.()?.catch?.(() => {}); }
+    return which === 'hr' ? this._connHr() : this._connTrainer();
   }
 
   _updateHUD(force) {
@@ -1002,7 +1004,7 @@ export class RideSession {
         q('#hWT').textContent = ti.lo != null ? `${ti.lo}–${ti.hi}` : `Z${w.step.tgt.zone}`; q('#hWTU').textContent = ti.unit;
         q('#hWP').textContent = ti.val ?? '–'; q('#hWP').nextElementSibling.firstChild.textContent = `${ti.unit} · `;
       } else { const noT = free && !!w.step.type; q('#hWT').textContent = noT ? '–' : w.target; q('#hWTU').textContent = noT ? '' : 'W'; /* a builder step with no target: nothing to hit (an old free test block still shows its pace) */ q('#hWP').textContent = sp === 'ok' ? pShow : '–'; q('#hWP').nextElementSibling.firstChild.textContent = 'W · '; }
-      q('#hWRc').hidden = sp !== 'lost';
+      { const rc = q('#hWRc'), tx = sp === 'lost' ? 'Reconnect' : 'Connect'; rc.hidden = sp === 'ok'; if (rc.textContent !== tx) rc.textContent = tx; }
       if (ei) { // no clock: what is left until the step ends, or the lap button
         q('#hWLeft').textContent = ei.text; q('#hWLeftL').textContent = ei.sub; q('#hWTime').textContent = '+' + fmtTime(Math.floor(w.inStep));
         arc.setAttribute('stroke-dasharray', `${(C * (ei.frac == null ? 1 : Math.max(0, Math.min(1, 1 - ei.frac)))).toFixed(1)} ${C.toFixed(1)}`);
@@ -1242,7 +1244,7 @@ export class RideSession {
     this.q('#pauseOverlay')?.remove();
     const o = document.createElement('div'); o.className = 'paused'; o.id = 'pauseOverlay';
     o.innerHTML = `<div class="box"><div class="label">${fmtKm(this.lapOff + this.d)} km · ${fmtTime(this.elapsed)}</div><h2 class="display">Pause</h2>
-      <div class="row-actions padmenu"><button class="btn" id="pResume">Resume</button><button class="btn ghost" id="pOpts">Options</button><button class="btn ghost" id="pSetup">Workout &amp; mode</button><button class="btn ghost" id="pSet">Settings</button>${this.state.trainer.connected ? '' : `${this.state.trainer.device ? '<button class="btn ghost" id="pRejoin">Reconnect trainer</button>' : ''}<button class="btn ghost" id="pConn">${this.state.trainer.device ? 'Choose trainer …' : 'Connect trainer'}</button>`}${this.state.hr?.connected || !(this._hadHr || this.state.hr?.device || rememberedDevice('hr')) ? '' : '<button class="btn ghost" id="pHr">Connect heart rate</button>'}<button class="btn ghost" id="pSave">Finish &amp; save</button><button class="btn ghost" id="pDiscard">Discard</button>${this.group?.voice?.on ? '<button class="btn ghost" id="pVoice">Voice chat off</button>' : ''}${this.group ? this.group.others().filter(r => r.riding || r.d > 0).slice(0, 4).map((r, i) => `<button class="btn ghost" data-jump="${i}">⇢ Jump to ${esc(r.name)}</button>`).join('') : this.autopilot ? '' : '<button class="btn ghost" id="pGroup">Open group</button>'}${this.presence?.on ? '<button class="btn ghost" id="pInvite">Invite friends</button>' : ''}</div>
+      <div class="row-actions padmenu"><button class="btn" id="pResume">Resume</button><button class="btn ghost" id="pOpts">Options</button><button class="btn ghost" id="pSetup">Workout &amp; mode</button><button class="btn ghost" id="pSet">Settings</button>${this.state.trainer.connected ? '' : `${this.state.trainer.device ? '<button class="btn ghost" id="pRejoin">Reconnect trainer</button>' : ''}<button class="btn ghost" id="pConn">${this.state.trainer.device ? 'Choose trainer …' : 'Connect trainer'}</button>`}${this.state.hr?.connected ? '' : '<button class="btn ghost" id="pHr">Connect heart rate</button>'}<button class="btn ghost" id="pSave">Finish &amp; save</button><button class="btn ghost" id="pDiscard">Discard</button>${this.group?.voice?.on ? '<button class="btn ghost" id="pVoice">Voice chat off</button>' : ''}${this.group ? this.group.others().filter(r => r.riding || r.d > 0).slice(0, 4).map((r, i) => `<button class="btn ghost" data-jump="${i}">⇢ Jump to ${esc(r.name)}</button>`).join('') : this.autopilot ? '' : '<button class="btn ghost" id="pGroup">Open group</button>'}${this.presence?.on ? '<button class="btn ghost" id="pInvite">Invite friends</button>' : ''}</div>
       <div class="hint pad-hint" style="margin-top:12px;opacity:.7">🎮 D-pad to choose · A ok · B back</div></div>`;
     this.el.append(o);
     o.querySelector('#pResume').onclick = () => this._resume();
@@ -1286,13 +1288,14 @@ export class RideSession {
     const b = this.q('#pConn'); if (b) { b.disabled = true; b.textContent = 'Connecting …'; }
     try { const m = await import('./app.js'); await m.connectTrainer(); } catch (e) { this._flash('Connection failed: ' + (e?.message || e), 4000); }
     if (this.state.trainer.connected) { this._trainerUp(); this._flash('✓ ' + (this.state.trainer.device?.name || 'Trainer') + ' connected'); }
+    else if (this.state.trainer.device) this.state.trainer.rejoinNow?.()?.catch?.(() => {}); // list closed: the quiet loop goes on
     if (this.paused && !this.finished) this._pause();
   }
   /** a heart rate strap from the pause menu (after a reload the browser may need the chooser once more) */
   async _connHr() {
     const b = this.q('#pHr'); if (b) { b.disabled = true; b.textContent = 'Connecting …'; }
     try { const m = await import('./app.js'); await m.connectHR(false); } catch (e) { this._flash('Connection failed: ' + (e?.message || e), 4000); }
-    if (this.state.hr?.connected) this._flash('✓ Heart rate connected');
+    if (this.state.hr?.connected) this._flash('✓ Heart rate connected'); else if (this.state.hr?.device) this.state.hr.rejoinNow?.()?.catch?.(() => {}); // list closed: the quiet loop goes on
     if (this.paused && !this.finished) this._pause();
   }
   /** laps also in the ride (like on the route page): 1 → 2 → 3 → 4 → 5 → 10 → 1, never below the lap you are on */

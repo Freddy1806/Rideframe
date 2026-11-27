@@ -130,7 +130,9 @@ const FAKE = ({ fails, watts }) => {
     await p.waitForTimeout(800); ok(await p.evaluate(() => document.querySelector('#hPowS').hidden && window.__ride.source === 'trainer'), 'the watts flow again, the lost line is gone');
     // the manual Reconnect button at any time: wakes the loop at once (a 10 s pause would otherwise come first)
     await p.evaluate(async () => { (await import('/js/rejoin.js')).REJOIN.delays = [10000]; const d = window.__fake; d.fails = 0; d.gatt.connected = false; d.dispatchEvent(new Event('gattserverdisconnected')); });
+    await p.evaluate(() => { window.__picks = 0; const bt = navigator.bluetooth || {}; bt.requestDevice = async () => { window.__picks++; throw Object.assign(new Error('User cancelled the requestDevice() chooser.'), { name: 'NotFoundError' }); }; if (!navigator.bluetooth) Object.defineProperty(navigator, 'bluetooth', { value: bt, configurable: true }); });
     await p.waitForSelector('#hWRc:not([hidden])', { timeout: 6000 }); await p.click('#hWRc');
+    await p.waitForTimeout(300); ok(await p.evaluate(() => window.__picks) === 1, 'Reconnect also opens the browser\'s device list in the same tap (owner 27.11.: "the popup does not open")');
     await p.waitForFunction(() => window.__ride.state.trainer.connected, null, { timeout: 3000 }).then(() => ok(true, 'Reconnect button: back at once, without the 10 s wait'), () => ok(false, 'Reconnect button: back at once'));
 
     // ---- 4. offline: the ride goes on and is stored locally; the account gets it when the line is back ----

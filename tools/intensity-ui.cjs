@@ -294,7 +294,7 @@ function fakePad() { // a standard-mapping gamepad; window.__pad.press(i) holds 
       // nothing connected, no test watts: "–" and "No connection" / "No sensor" instead of 0 W / 0 bpm
       await q2.waitForTimeout(400);
       const nc = await q2.evaluate(() => ({ p: document.querySelector('#hPow').textContent, ps: document.querySelector('#hPowS').textContent, psh: document.querySelector('#hPowS').hidden, hr: document.querySelector('#hBpm').textContent, hs: document.querySelector('#hHrS').textContent, cad: document.querySelector('#hCad').textContent, rc: document.querySelectorAll('#hPowS .sens-rc').length }));
-      ok(nc.p === '–' && !nc.psh && /No connection/.test(nc.ps) && !nc.rc && nc.hr === '–' && /No sensor/.test(nc.hs) && nc.cad === '–', 'nothing connected: power, cadence, heart rate "–" with "No connection" / "No sensor" (no reconnect)', JSON.stringify(nc));
+      ok(nc.p === '–' && !nc.psh && /No connection/.test(nc.ps) && /Connect/.test(nc.ps) && nc.rc === 1 && nc.hr === '–' && /No sensor/.test(nc.hs) && nc.cad === '–', 'nothing connected: power, cadence, heart rate "–" with "No connection" / "No sensor" and a Connect button each for trainer and strap', JSON.stringify(nc));
       await q2.keyboard.press('w'); await q2.waitForTimeout(150);
       ok(await q2.evaluate(() => !window.__ride.wAdj && !document.querySelector('#hWAdj') && !document.querySelector('#hWork')), 'free ride: no workout bar, W does nothing');
       await q2.keyboard.press('ArrowUp'); await q2.waitForTimeout(100);

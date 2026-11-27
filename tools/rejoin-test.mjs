@@ -72,3 +72,16 @@ test('use() on a device that is off: a few tries in the background, no throw', a
   assert.equal(await t.use(dev, 3), false); await wait(80); assert.equal(dev.tries, 1 + 3, 'one at once, three more, then quiet');
   t.disconnect();
 });
+
+test('Rejoin: a try that never answers (Chrome gatt.connect to a sleeping device) is given up, the next one connects', async () => {
+  let tries = 0, cut = 0;
+  const dev = { gatt: { connected: true, disconnect() { cut++; } } };
+  const rj = new Rejoin({ device: () => dev, open: () => ++tries === 1 ? new Promise(() => {}) : Promise.resolve(), wanted: () => true, delays: [2], openMs: 30 });
+  assert.equal(await rj.start(), true); assert.equal(tries, 2, 'the hanging try did not block the loop'); assert.equal(cut, 1, 'the half-open link is cut before the next try');
+});
+test('Rejoin: kick() while a try is running makes the next try follow at once', async () => {
+  let tries = 0; const t0 = Date.now();
+  const rj = new Rejoin({ device: () => ({}), open: async () => { tries++; await wait(20); if (tries < 2) throw new Error('no'); }, wanted: () => true, delays: [1, 10000] });
+  const p = rj.start(); await wait(10); assert.equal(tries, 1); rj.kick();
+  assert.equal(await p, true); assert.ok(Date.now() - t0 < 2000, 'no 10 s pause after the kick');
+});

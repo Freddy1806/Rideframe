@@ -3,7 +3,7 @@
 // pause (capped at 10 s, cheap), and where the browser can (Chrome watchAdvertisements) it tries the moment the device is seen.
 // A user's disconnect (wanted() false) or stop() ends it. start() while it runs returns the same loop: never two at once.
 // kick() (the Reconnect button) tries right away. Timers are injectable (tools/rejoin-test.mjs).
-export const REJOIN = { delays: [1000, 2000, 3000, 5000, 8000, 10000] }; // the pause before each try; the last one repeats
+export const REJOIN = { delays: [1000, 2000, 3000, 5000, 8000, 10000], openMs: 15000 }; // the pause before each try (the last one repeats); how long one try may take
 
 export class Rejoin {
   /** o: { device: () => BluetoothDevice, open: () => Promise (connect + set up), wanted: () => bool, on(state, n): 'lost' |
@@ -12,12 +12,12 @@ export class Rejoin {
   get running() { return !!this.loop; }
   /** max: tries before only an advertisement or a kick wakes it (a reopen after a reload: a few tries, then quiet) */
   start(max) {
-    if (this.loop) return this.loop;
+    if (this.loop) return this._stop ? this.loop.then(() => this.start(max)) : this.loop; // a stopped loop still winding down: a new one right after it
     this._stop = false; this.n = 0; this._max = max ?? this.o.max ?? Infinity;
     return this.loop = this._run().finally(() => { this.loop = null; this._unwatch(); });
   }
   /** try now (a tap on Reconnect, or an advertisement): wakes the waiting loop, or starts one */
-  kick() { if (this.loop) { this._wake?.(); return this.loop; } return this.start(); }
+  kick() { if (this.loop) { if (this._wake) this._wake(); else this._again = true; return this.loop; } return this.start(); } // mid-try: the next try follows without a pause
   stop() { this._stop = true; this._wake?.(); }
   _ok() { return !this._stop && this.o.wanted(); }
   async _run() {
@@ -25,11 +25,13 @@ export class Rejoin {
     o.on?.('lost', 0); this._watch();
     while (this._ok()) {
       const ms = this.n < max ? delays[Math.min(this.n, delays.length - 1)] : 6e5; // after max tries: only an advertisement (or a kick) wakes it
-      await this._sleep(ms);
+      if (this._again) this._again = false; else await this._sleep(ms);
       if (!this._ok()) break;
       this.n++; o.on?.('try', this.n);
-      try { await o.open(); if (!this._ok()) break; return this._done(); }
-      catch { try { const d = o.device(); if (d?.gatt?.connected) d.gatt.disconnect(); } catch {} } // half set up: start clean next time
+      // Chrome's gatt.connect() to a sleeping device never answers (Freddy 27.11.: "Reconnect" did nothing): a try that hangs is given up
+      const d0 = o.device(); let tm; const late = new Promise((_, rej) => { tm = setTimeout(() => rej(new Error('timeout')), o.openMs ?? REJOIN.openMs); });
+      try { await Promise.race([o.open(), late]); clearTimeout(tm); if (!this._ok()) break; return this._done(); }
+      catch { clearTimeout(tm); try { if (!this._stop && d0 === o.device() && d0?.gatt?.connected) d0.gatt.disconnect(); } catch {} } // half set up: start clean next time
     }
     o.on?.('idle', this.n); return false;
   }

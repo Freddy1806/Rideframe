@@ -50,11 +50,12 @@ export class Trainer extends EventTarget {
   emit(type, detail) { this.dispatchEvent(new CustomEvent(type, { detail })); }
 
   async connect() {
-    this.rj.stop(); // a fresh chooser (last resort in the ride): the old device's reconnect loop ends
     const dev = await pickDevice(this.pmOnly ? { filters: [{ services: [CPS] }], optionalServices: [CPS, FTMS, U(0x180a)] } : {
       filters: [{ services: [FTMS] }, { services: [CPS] }, { namePrefix: 'KICKR' }],
       optionalServices: [FTMS, CPS, WAHOO_CP, 'a026ee01-0a7d-4ab3-97fa-f1500f9feb8b', U(0x180a)],
     });
+    this.rj.stop(); // a device was picked: the old reconnect loop ends (a closed list leaves it running)
+    await new Promise(r => setTimeout(r, 0)); // the stopped loop lets go first
     this._adopt(dev);
     try { await this._setup(); } catch (e) { this._closing = true; this.rj.stop(); throw e; } // nothing set up: no loop behind the message
     this._link('ok', 0);
@@ -295,11 +296,12 @@ export class HeartRate extends EventTarget {
       on: s => { this.rejoining = s === 'lost' || s === 'try'; if (s === 'back') { rememberDevice('hr', this.device); this.dispatchEvent(new CustomEvent('reconnected')); } this.dispatchEvent(new Event('change')); } });
   }
   async connect(all = false) {
-    this.closing = false; this.rj.stop();
+    this.closing = false;
     // straps only advertise while worn (moist electrodes) and often hide the HR service in their advert: also match common names
     const names = ['HRM', 'Polar', 'TICKR', 'Wahoo', 'Garmin', 'COOSPO', 'Coospo', 'Magene', 'Suunto', 'Decathlon', 'Kalenji', 'XOSS', 'iGPSPORT', 'H10', 'H9', 'Verity', 'Forerunner', 'fenix', 'Apple Watch', 'Whoop', 'WHOOP', 'Amazfit', 'Scosche', 'Rhythm', 'CooSpo', 'Heart'];
     const dev = await pickDevice(all ? { acceptAllDevices: true, optionalServices: [HRS, BAT] }
       : { filters: [{ services: [HRS] }, ...names.map(namePrefix => ({ namePrefix }))], optionalServices: [HRS, BAT] });
+    this.rj.stop(); await new Promise(r => setTimeout(r, 0)); // picked: the old loop ends (a closed list leaves it running)
     this._adopt(dev);
     try { await this._open(); } catch (e) { this.closing = true; this.rj.stop(); throw e; } // the wrong device picked: no loop behind the message
     rememberDevice('hr', dev);
@@ -354,7 +356,7 @@ export class CadenceSensor extends EventTarget {
     this.rj = new Rejoin({ device: () => this.device, open: () => this._open(), wanted: () => !!this.device && !this.closing, on: () => this.dispatchEvent(new Event('change')) });
   }
   async connect() {
-    this.closing = false; this.rj.stop();
+    this.closing = false;
     const dev = await pickDevice({ filters: [{ services: [CSC] }], optionalServices: [CSC, BAT] });
     if (this.device !== dev) { try { this.device?.removeEventListener('gattserverdisconnected', this._h.drop); } catch {} this.device = dev; dev.addEventListener('gattserverdisconnected', this._h.drop); }
     await this._open();

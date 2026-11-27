@@ -813,8 +813,7 @@ async function connectHR(all) {
   if (all instanceof Event) all = false;
   if (!navigator.bluetooth) return toast('Bluetooth only works in Chrome or Edge (not Safari/Firefox).', 6000);
   if (state.hr?.connected) { if (confirm('Disconnect HR strap?')) { state.hr.disconnect(true); updateHrPill(); } return; }
-  state.hr?.disconnect?.();
-  try { newHr();
+  try { if (!state.hr) newHr(); // the same strap object: a closed device list leaves a dropped strap's quiet reconnect running
     await state.hr.connect(!!all); updateHrPill(); toast('HR strap connected' + (state.hr.battery != null ? ` · battery ${state.hr.battery} %` : '')); if (document.querySelector('#hrBtn')) settings(); }
   catch (e) {
     if (e.name === 'NotFoundError' && /adapter|Bluetooth/i.test(e.message) && !/User cancelled|chooser/i.test(e.message)) return toast('Bluetooth is off or Chrome is not allowed to use it (Mac: System Settings > Privacy > Bluetooth > allow Chrome).', 8000);
