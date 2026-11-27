@@ -113,7 +113,9 @@ export async function stravaApi(req, res, path) {
       const b = await body(req), fd = new FormData();
       fd.append('file', new Blob([b.tcx], { type: 'application/xml' }), 'rideframe.tcx');
       fd.append('data_type', 'tcx'); fd.append('name', String(b.name || 'RIDEFRAME').slice(0, 200));
-      fd.append('description', String(b.description || '').slice(0, 2000)); fd.append('trainer', b.outdoor ? '0' : '1');
+      fd.append('description', String(b.description || '').slice(0, 2000)); // 27.11. (owner: the climbing must reach Strava, also in ERG): Strava drops the elevation of an activity flagged as trainer (all six
+      // RIDEFRAME rides of 11.-21.11. show 0 m, also the one with GPS), so a ride whose file carries altitude is not flagged
+      fd.append('trainer', b.outdoor || /<AltitudeMeters>/.test(String(b.tcx)) ? '0' : '1');
       if (b.external_id) fd.append('external_id', String(b.external_id).slice(0, 100));
       const r = await fetch(API + '/uploads', { method: 'POST', headers: { Authorization: 'Bearer ' + tok }, body: fd });
       const j = await r.json(); return send(res, r.ok ? 200 : r.status, r.ok ? { id: sid(j), status: j.status, error: j.error } : { error: j.message || 'Upload failed' }), true;
@@ -161,7 +163,8 @@ export async function stravaApi(req, res, path) {
       const r = await fetch(`${API}/uploads/${m[1]}`, { headers: { Authorization: 'Bearer ' + tok } }), j = await r.json();
       const act = sid(j, 'activity_id'); // activity_id_str ?? activity_id
       if (act && new URL(req.url, 'http://x').searchParams.get('indoor') === '1') { // indoor ride only (outdoor rides and runs stay as they are): mark it as a virtual ride on the trainer (best effort)
-        fetch(`${API}/activities/${act}`, { method: 'PUT', headers: { Authorization: 'Bearer ' + tok, 'Content-Type': 'application/json' }, body: JSON.stringify({ sport_type: 'VirtualRide', trainer: true }) }).catch(() => {});
+        fetch(`${API}/activities/${act}`, { method: 'PUT', headers: { Authorization: 'Bearer ' + tok, 'Content-Type': 'application/json' }, body: JSON.stringify({ sport_type: 'VirtualRide' }) }) // no trainer flag: it would drop the climbing
+          .then(x => { if (!x.ok) console.log('Strava: virtual ride not set for ' + act + ' (' + x.status + ')'); }).catch(() => {});
       }
       return send(res, 200, { status: j.status, error: j.error, activity_id: act, activity_id_str: act }), true;
     }

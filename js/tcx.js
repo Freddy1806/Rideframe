@@ -15,6 +15,9 @@ export function routeFns(track) {
 const xml = v => String(v).replace(/[<>&"']/g, c => ({ '<': '&lt;', '>': '&gt;', '&': '&amp;', '"': '&quot;', "'": '&apos;' })[c]);
 
 /** samples: [t s, distance m, watts, km/h, rpm, bpm]; eleAt(d) adds altitude so Strava shows the climbing */
+// 27.11.: a file with altitude names a device "with barometer", so Strava keeps the file's climbing instead of looking it up on its map
+// (VERIFY on a real upload; the rule is documented by Strava for the creator of a GPX)
+const CREATOR = '<Creator xsi:type="Device_t"><Name>RIDEFRAME with barometer</Name><UnitId>0</UnitId><ProductID>0</ProductID><Version><VersionMajor>1</VersionMajor><VersionMinor>0</VersionMinor></Version></Creator>';
 export function toTCX(rec, name, eleAt = null) {
   name = xml(name); const d0 = rec.startD || 0, J = rec.jumps || [], jd = t => J.reduce((m, [tj, sk]) => tj <= t ? m + sk : m, 0); // jumps to friends: the map follows the jump, the distance does not
   const DUR = rec.elapsed || rec.duration, start = new Date(rec.date - DUR * 1000) /* outdoor: sample times are wall-clock seconds incl. pauses */, iso = t => new Date(start.getTime() + t * 1000).toISOString();
@@ -37,10 +40,11 @@ export function toTCX(rec, name, eleAt = null) {
       + (hrs.length ? `<AverageHeartRateBpm><Value>${Math.round(hrs.reduce((a, b) => a + b, 0) / hrs.length)}</Value></AverageHeartRateBpm><MaximumHeartRateBpm><Value>${Math.max(...hrs)}</Value></MaximumHeartRateBpm>` : '')
       + `<Intensity>Active</Intensity><TriggerMethod>Manual</TriggerMethod><Track>${idx.map(i => pts[i]).join('')}</Track></Lap>`);
   }
+  const alt = !rec.outdoor && pts.some(p => p.includes('<AltitudeMeters>')); // virtual routes only: an outdoor ride's GPS altitude stays Strava's to correct
   return `<?xml version="1.0" encoding="UTF-8"?>
-<TrainingCenterDatabase xmlns="http://www.garmin.com/xmlschemas/TrainingCenterDatabase/v2">
+<TrainingCenterDatabase xmlns="http://www.garmin.com/xmlschemas/TrainingCenterDatabase/v2" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
 <Activities><Activity Sport="${rec.sport === 'run' ? 'Running' : 'Biking'}"><Id>${start.toISOString()}</Id>
-${laps.join('\n')}<Notes>RIDEFRAME · ${name}</Notes></Activity></Activities></TrainingCenterDatabase>`;
+${laps.join('\n')}<Notes>RIDEFRAME · ${name}</Notes>${alt ? CREATOR : ''}</Activity></Activities></TrainingCenterDatabase>`;
 }
 
 /** Saves the .tcx and opens Strava's upload page next to it. */
