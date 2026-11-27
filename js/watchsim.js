@@ -254,7 +254,7 @@ function tapAt(u, v, f) {
   if (s === SCR.TREC) { if (F.tr && F.tr.pg) return ev('tap'); // the stats page: back to the ERG page
     if (v > L.t0 && v < L.t1) return ev('item', u < .31 ? 0 : u > .69 ? 1 : 2); // - / + (the whole side) and the target (step size)
     if (v > .78 && F.tr && F.tr.st !== 'run') return ev('start'); return; } // the resume pill
-  if (s === SCR.TSCAN && !tList()) return ev('tap');
+  if (s === SCR.THR || s === SCR.TSCAN && !tList()) return ev('tap');
   if (s === SCR.PAUSE) { const P = F.pz || {}; // conf: the Discard pill = yes, elsewhere = no; else Discard row = ask, the top = resume
     if (P.conf) return ev(Math.abs(v - PAUSE_LAY.discard) < .06 ? 'start' : 'back');
     if (Math.abs(v - PAUSE_LAY.discard) < .055) return ev('item', 1); if (v < .62) return ev('item', 0); return; }

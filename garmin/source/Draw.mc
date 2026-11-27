@@ -282,6 +282,7 @@ module Draw {
         else if (s == S_TREC) { drawTRec(dc, F, S, P, now); }
         else if (s == S_TEND) { drawTEnd(dc, F, S, P); }
         else if (s == S_TPICK) { drawTPick(dc, F, S, P); }
+        else if (s == S_THR) { drawTHr(dc, F, S, P, now); }
         else if (s == S_TSUM) { drawTSum(dc, F, S, P); }
         else { drawHome(dc, F, S, P, sum); }
     }
@@ -1035,13 +1036,32 @@ module Draw {
             put(dc, c, y, XT, t, (S * 0.74).toNumber(), i == 0 ? P.fg : (nm ? P.acc : P.lbl), i == 1 && nm, R0); yb = y + dn(dc, XT, t);
         }
     }
+    // 27.11.2: the heart rate step: the heart, Searching (where a strap is paired) or Connected with the value, START / SKIP
+    function drawTHr(dc as Dc, F as Flow, S as Number, P as Palette, now as Number) as Void {
+        var c = S / 2, on = F.hrOn(now), w = (S * 0.74).toNumber();
+        put(dc, c, S * 0.12, XT, "HEART RATE|HR", S, P.dim, false, R0);
+        dc.setColor(on ? P.hr : P.faint, Graphics.COLOR_TRANSPARENT); dc.fillCircle(c, S * 0.3, S * 0.09); heart(dc, c, S * 0.3, S * 0.1, on ? P.ink : P.fg);
+        var a = on ? "Connected" : "Searching", f = byInk(dc, [ME, SM, XT], S * 0.12), y = below(dc, S * 0.39, f, S * 0.47); put(dc, c, y, f, a, S, on ? P.good : P.fg, false, R0);
+        var b = on ? F.hr.toString() + " bpm" : "Strap: watch menu, Sensors|Pair it in Sensors|In Sensors", y1 = below(dc, y + dn(dc, f, "g"), XT, S * 0.58);
+        put(dc, c, y1, XT, b, w, on ? P.fg : P.lbl, false, R0);
+        if (!on) { var y2 = below(dc, y1 + dn(dc, XT, "g"), XT, S * 0.65); put(dc, c, y2, XT, "or ride without", w, P.lbl, false, R0); }
+        var py = S * 0.81, ph = S * 0.13, t = on ? "START" : "SKIP";
+        startHint(dc, S, P); pill(dc, c, py, S * 0.42, ph, P.acc); put(dc, c, py, inPill(dc, t, [SM, XT], S * 0.38, ph), t, S, P.ink, false, R0);
+    }
+    // 27.11.2: two small marks at the very top of the ride: the trainer (green connected, white without control, red lost) and the heart
+    // (red while a heart rate comes, grey without)
+    function linkMarks(dc as Dc, F as Flow, S as Number, P as Palette, now as Number) as Void {
+        var v = F.link.shown(), y = S * 0.046;
+        icon(dc, "trainer", S / 2 - S * 0.04, y, S * 0.045, v == TL_READY ? P.good : (v == TL_REFUSED ? P.fg : P.bad));
+        heart(dc, S / 2 + S * 0.04, y, S * 0.036, F.hrOn(now) ? P.hr : P.dim);
+    }
     // the ERG ride: the time, the target big with - / + beside it, the trainer's power, cadence, heart rate below; a stats page.
     // gT0 .. gT1: the target's zone (the taps on - / + / the target, the wheel)
     function drawTRec(dc as Dc, F as Flow, S as Number, P as Palette, now as Number) as Void {
         var R = F.tr;
         if (R == null) { return; }
         var L = F.link, v = L.shown(), paused = R.st != RS_RUN, c = S / 2, G = gap(S), W = F.wk;
-        recRing(dc, S, P, !paused); pageDots(dc, S, P, 2, R.pg);
+        recRing(dc, S, P, !paused); pageDots(dc, S, P, 2, R.pg); linkMarks(dc, F, S, P, now);
         if (R.pg != 0) { trStats(dc, S, P, R); return; }
         // 27.11.: in a workout the time left in the step (orange in a hard one), its label / counter, the offset, the next step and the time left
         var ct = clock(W != null ? W.left(R.t) : R.t), tf = fontIn(dc, ct, [NMI, ME, SM, XT], (S * 0.5).toNumber(), S * 0.1), ty = S * 0.13 > up(dc, tf) + S * 0.075 ? S * 0.13 : up(dc, tf) + S * 0.075;

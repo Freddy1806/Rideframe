@@ -40,7 +40,7 @@ function rec(sp, o = {}) {
 const ROUTES = [{ id: 'r1', name: 'Riverside loop around the old harbour', dist: 123456, climb: 2345 }, { id: 'r2', name: 'Lake', dist: 8000, climb: 0 }];
 const routeOf = () => { const pts = []; for (let i = 0; i <= 40; i++) { const a = i / 40 * Math.PI * 1.7 - 2.2; pts.push([.5 + .45 * Math.cos(a), .5 + .45 * Math.sin(a)]); } return { name: ROUTES[0].name, len: 123456, pts, turns: [{ at: 24500, dir: 'L', txt: 'Harbour Road North' }] }; };
 function trainer(st, o = {}) {
-  const F = mk({ last: 'trainer' }); F.hr = 188; const L = F.link = newLink('');
+  const F = mk({ last: 'trainer' }); F.hr = 188; F.hrAt = NOW; const L = F.link = newLink('');
   L.list = [{ name: 'KICKR CORE 2 5A1F', ftms: true }, { name: 'Assioma DUO power meter', ftms: false }, { name: 'Tacx Neo 2T', ftms: true }];
   L.st = st; L.name = 'KICKR CORE 2 5A1F'; L.ctl = o.ctl !== false; L.ever = !!o.ever; L.pw = 1250; L.cad = 120; L.at = NOW;
   if (o.empty) L.list = [];
@@ -132,6 +132,9 @@ export const SCENES = [
   ['trec-stats', 'Trainer ride: stats page', () => ({ F: ride({ pg: 1 }) })],
   ['tend', 'Trainer menu', () => { const F = ride({ paused: true }); F.scr = SCR.TEND; F.sel = 1; return { F }; }],
   ['tend-conf', 'Trainer: discard ride?', () => { const F = ride(); F.scr = SCR.TEND; F.tConf = true; F.sel = 1; return { F }; }],
+  ['thr', 'Trainer: heart rate found', () => { const F = trainer('ready'); F.scr = SCR.THR; return { F }; }],
+  ['thr-none', 'Trainer: no heart rate yet', () => { const F = trainer('ready'); F.hr = 0; F.scr = SCR.THR; return { F }; }],
+  ['trec-nohr', 'Trainer ride: lost, no heart rate', () => { const F = ride(); F.link.st = 'lost'; F.hr = 0; return { F }; }],
   ['tpick', 'Trainer: Free ride or a workout (long name)', () => { const F = trainer('ready'); F.rides = [WKDEF, { id: 'w2', n: '30 / 15, 3 x 13', s: [[30, 370, null, 1, '30/15']] }]; F.scr = SCR.TPICK; F.sel = 1; return { F }; }],
   ['tpick-free', 'Trainer: Free ride, still connecting', () => { const F = trainer('conn'); F.scr = SCR.TPICK; F.sel = 0; return { F }; }],
   ['tscan-chosen', 'Trainer: connected, a workout chosen', () => { const F = trainer('ready'); F.rides = [WKDEF]; F.tw = 1; return { F }; }],

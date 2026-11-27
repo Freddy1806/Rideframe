@@ -57,6 +57,9 @@ const DRAG_MIN = 0.03;
 const HOME_FIT = 4;
 const HOME_Y0 = 0.27;
 const HOME_DY = 0.155;
+const S_THR = 24;          // 27.11.2: the heart rate step between the choice and the ride
+const HR_LIVE_S = 15;      // a heart rate older than this is not there any more
+const HR_SHOW_S = 2;       // the step shows a heart rate this long, then the ride starts by itself
 const S_TPICK = 23;        // 27.11.: the trainer: Free ride (ERG) or a workout (rideList)
 // events (js: the ev strings of handle())
 const E_UP = 1;
@@ -119,7 +122,7 @@ const FREE_ROW = "Free";
 const FREE_RIDE = "Free ride (ERG)";   // 27.11.: js FREE_RIDE
 const WK_DONE_S = 30;                  // "Workout done" shows this long
 // js/watchflow.js VERSION: the menu title shows it
-const RF_VERSION = "27.11.1";
+const RF_VERSION = "27.11.2";
 // pairing states / sum states
 const P_ENTER = 0;
 const P_SENDING = 1;
@@ -378,6 +381,8 @@ class Flow {
     var wk as TWork or Null = null;
     var tw as Number = -1;                                      // the choice on S_TPICK: -1 none, 0 free ride, k = rideList()[k - 1]
     var wkDone as Number = 0;
+    var hrAt as Number = 0;                                     // 27.11.2: the second the last heart rate came (hrOn)
+    var thr as Number = 0;                                      // S_THR: the second from which a heart rate was there (0 none)
 
     // js: newFlow(setup, { paired, queue, cfg, last })
     function initialize(setupIn, isPaired as Boolean, q, cfgIn, lastIn, trainerIn, tgtIn) {
@@ -1110,11 +1115,19 @@ class Flow {
     }
     // + / - in a workout: d W on the offset of the step now, sent at once (paused: on the resume)
     function wkStep(d as Number, now as Number) as Void { var W = wk; if (W == null) { return; } W.tune(d); wkApply(now); }
+    // 27.11.2 (js hrOn, tHr, onTHr): the heart rate step. A watch app cannot pair a strap (the watch's Sensors menu does), so the step only
+    // waits for a heart rate; one is shown HR_SHOW_S seconds, then the ride starts; START (a tap) starts at once; BACK = the trainer's state
+    function hrOn(now as Number) as Boolean { return hr > 0 && now - hrAt <= HR_LIVE_S; }
+    function tHr(now as Number) as Void { sel = 0; thr = hrOn(now) ? now : 0; scr = S_THR; }
+    function onTHr(ev as Number, now as Number) as Void {
+        if (ev == E_START || ev == E_TAP) { tBegin(now); }
+        else if (ev == E_BACK) { sel = 0; scr = S_TSCAN; }
+    }
     function tPick() as Void { sel = tw > 0 ? tw : 0; scr = S_TPICK; }
     // S_TPICK row i: 0 = free ride, else that workout; connected: the ride starts, else back to the trainer's state until it is
     function tChoose(i as Number, now as Number) as Void {
         tw = i; var v = link.shown();
-        if (v == TL_READY || v == TL_REFUSED) { tBegin(now); } else { sel = 0; scr = S_TSCAN; }
+        if (v == TL_READY || v == TL_REFUSED) { tHr(now); } else { sel = 0; scr = S_TSCAN; }
     }
 
     /* ---- 23.11.: the indoor trainer (js/watchflow.js tOpen, tBegin, tTarget, tPause, tResume, tFinish, tDiscard, tSecs, onTScan, onTRec) ---- */
@@ -1175,7 +1188,7 @@ class Flow {
         // 27.11.: START (a tap) opens the choice (S_TPICK), also while connecting; once chosen and connected START rides (refused: ride
         // anyway, the power is recorded); UP / DOWN open the choice again
         var go = v == TL_READY || v == TL_REFUSED;
-        if (ev == E_START || ev == E_TAP) { if (go && tw >= 0) { tBegin(now); } else if (go || v == TL_CONN) { tPick(); } }
+        if (ev == E_START || ev == E_TAP) { if (go && tw >= 0) { tHr(now); } else if (go || v == TL_CONN) { tPick(); } }
         else if (ev == E_UP || ev == E_DOWN) { if (go || v == TL_CONN) { tPick(); } }
         else if (ev == E_BACK) { link.stop(); link.want = ""; tw = -1; link.scan(now); sel = 0; }   // cancel: the list, no automatic connect this time
     }
@@ -1200,6 +1213,7 @@ class Flow {
     function handle(ev as Number, now as Number, arg) as Void {
         if (ev == E_HR) {
             hr = numOf(arg);
+            if (hr > 0) { hrAt = now; }
             if (start != 0 && hr > 0) { hrN++; hrSum += hr; if (hr > hrMax) { hrMax = hr; } }
             return;
         }
@@ -1217,6 +1231,7 @@ class Flow {
         }
         if (ev == E_TICK) { // arg = System.getTimer() (RideframeApp.onTick)
             link.tick(now); tSecs(now);
+            if (scr == S_THR) { if (!hrOn(now)) { thr = 0; } else if (thr == 0) { thr = now; } if (thr != 0 && now - thr >= HR_SHOW_S) { tBegin(now); return; } }
             if (scr == S_PAUSE && pzHolding && numOf(arg) - pzHold >= HOLD_MS) { endPaused(now); return; }
             var f = flash;
             if (f != null) { if (now >= numOf(f["until"])) { flash = null; } }
@@ -1233,6 +1248,7 @@ class Flow {
         var s = scr;
         var isList = s == S_PICK || s == S_MENU || s == S_HOME || s == S_MORE || s == S_SMODE || s == S_RPICK || s == S_END || s == S_SAVEQ || s == S_TEND || s == S_TPICK;
         var paged = isList || s == S_REC || s == S_PAUSE || s == S_SUM || s == S_TSCAN;
+        if (s == S_THR) { onTHr(ev, now); return; }
         if (s == S_TREC) { onTRec(ev, now, arg); return; } // before the swipe mapping: swipe up / down is the stats page there, UP / DOWN the watts
         // 23.11.7: a swipe on a list (only when no drag events came: FlowDelegate swallows the swipe that ends a drag) moves it SWIPE_ROWS
         // rows with the finger, no wrapping; the data pages and the summary a page; a number counts up

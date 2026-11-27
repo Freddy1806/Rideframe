@@ -4,7 +4,7 @@
 // tools/watch-layout-test.mjs compares the numbers of both files function by function.
 import { G } from './watchdc.js';
 import { SCR, HOME, curEx, setNo, restLeft, clock, homeItems, homeTop, listItems, workouts, planItem, pickRows, doneOf, prefillOf, lastSet, lastTxt, recPages, routeInfo,
-  holdPart, pausedTime, stepOf, HOME_FIT, VERSION, loading, rides } from './watchflow.js';
+  holdPart, pausedTime, stepOf, HOME_FIT, VERSION, loading, rides, hrOn } from './watchflow.js';
 import { FIELDS, fieldText, labelOf } from './watchfields.js';
 import { shown, live as tLive, nextTarget, wkLeft, wkTotLeft, wkShown, wkNextW, wkAdj, wkDur } from './watchtrainer.js';
 import { groupOf } from './sports.js';
@@ -167,6 +167,7 @@ export function screen(dc, F, P, now, sum, ui = {}) {
   else if (s === SCR.TEND) drawTEnd(dc, F, S, P);
   else if (s === SCR.TSUM) drawTSum(dc, F, S, P);
   else if (s === SCR.TPICK) drawTPick(dc, F, S, P);
+  else if (s === SCR.THR) drawTHr(dc, F, S, P, now);
   else if (s === SCR.GLANCE) drawGlance(dc, S, P, sum);
   else drawHome(dc, F, S, P, sum);
 }
@@ -809,12 +810,31 @@ function drawTScan(dc, F, S, P) {
     put(dc, c, y, XT, t, T(S * .74), i === 0 ? P.fg : (nm ? P.acc : P.lbl), i === 1 && nm, R0); yb = y + dn(dc, XT, t);
   }
 }
+// 27.11.2: the heart rate step: the heart, Searching (where a strap is paired) or Connected with the value, START / SKIP
+function drawTHr(dc, F, S, P, now) {
+  const c = S / 2, on = hrOn(F, now), w = T(S * .74);
+  put(dc, c, S * .12, XT, 'HEART RATE|HR', S, P.dim, false, R0);
+  dc.setColor(on ? P.hr : P.faint); dc.fillCircle(c, S * .3, S * .09); heart(dc, c, S * .3, S * .1, on ? P.ink : P.fg);
+  const a = on ? 'Connected' : 'Searching', f = byInk(dc, [ME, SM, XT], S * .12), y = below(dc, S * .39, f, S * .47); put(dc, c, y, f, a, S, on ? P.good : P.fg, false, R0);
+  const b = on ? F.hr + ' bpm' : 'Strap: watch menu, Sensors|Pair it in Sensors|In Sensors', y1 = below(dc, y + dn(dc, f, 'g'), XT, S * .58);
+  put(dc, c, y1, XT, b, w, on ? P.fg : P.lbl, false, R0);
+  if (!on) { const y2 = below(dc, y1 + dn(dc, XT, 'g'), XT, S * .65); put(dc, c, y2, XT, 'or ride without', w, P.lbl, false, R0); }
+  const py = S * .81, ph = S * .13, t = on ? 'START' : 'SKIP';
+  startHint(dc, S, P); pill(dc, c, py, S * .42, ph, P.acc); put(dc, c, py, inPill(dc, t, [SM, XT], S * .38, ph), t, S, P.ink, false, R0);
+}
+// 27.11.2: two small marks at the very top of the ride: the trainer (green connected, white without control, red lost) and the heart
+// (red while a heart rate comes, grey without)
+function linkMarks(dc, F, S, P, now) {
+  const v = shown(F.link), y = S * .046;
+  icon(dc, 'trainer', S / 2 - S * .04, y, S * .045, v === 'ready' ? P.good : (v === 'refused' ? P.fg : P.bad));
+  heart(dc, S / 2 + S * .04, y, S * .036, hrOn(F, now) ? P.hr : P.dim);
+}
 const avgPw = R => R.t ? Math.round(R.pwSum / R.t) : 0;
 // the ERG ride: the time, the target big with - / + beside it, the trainer's power, cadence, heart rate below; a stats page
 function drawTRec(dc, F, S, P, now, ui) {
   const R = F.tr; if (!R) return;
   const L = F.link, v = shown(L), paused = R.st !== 'run', c = S / 2, G = gap(S), W = F.wk;
-  recRing(dc, S, P, !paused); pageDots(dc, S, P, 2, R.pg);
+  recRing(dc, S, P, !paused); pageDots(dc, S, P, 2, R.pg); linkMarks(dc, F, S, P, now);
   if (R.pg !== 0) { trStats(dc, S, P, R); return; }
   // 27.11.: in a workout the time left in the step (orange in a hard one), its label / counter, the offset, the next step and the time left
   const ct = clock(W ? wkLeft(W, R.t) : R.t), tf = fontIn(dc, ct, [NMI, ME, SM, XT], T(S * .5), S * .1), ty = S * .13 > up(dc, tf) + S * .075 ? S * .13 : up(dc, tf) + S * .075;

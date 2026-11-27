@@ -17,7 +17,7 @@ import { compact, defaults, FIELDS, TOP } from './watchfields.js';
 import { newLink, scan as tScan, connect as tConnect, stop as tStop, setTarget, bleEv, linkTick, live, shown, newRide, nextTarget, nextStep, newBlock, rideSec, rideSum, rideBody, W_START, W_MIN, W_MAX, W_PAUSE, HOLD_W,
   newWk, wkAt, wkTarget, wkTune, wkLeft, wkEasy, wkFallback, WK_FB_ID } from './watchtrainer.js';
 export const SCR = { HOME: 'home', START: 'start', SMODE: 'smode', PICK: 'pick', SET: 'set', REST: 'rest', MENU: 'menu', SUM: 'sum', PAIR: 'pair', GLANCE: 'glance',
-  MORE: 'more', READY: 'ready', REC: 'rec', PAUSE: 'pause', RSUM: 'rsum', RPICK: 'rpick', END: 'end', SAVEQ: 'saveq', TSCAN: 'tscan', TREC: 'trec', TEND: 'tend', TSUM: 'tsum', TPICK: 'tpick' };
+  MORE: 'more', READY: 'ready', REC: 'rec', PAUSE: 'pause', RSUM: 'rsum', RPICK: 'rpick', END: 'end', SAVEQ: 'saveq', TSCAN: 'tscan', TREC: 'trec', TEND: 'tend', TSUM: 'tsum', TPICK: 'tpick', THR: 'thr' };
 export const KG_STEP = 2.5, KG_HOLD = 10, KG_MAX = 500, REPS_HOLD = 5, REPS_MAX = 100, SEC_STEP = 5, SEC_HOLD = 15, SEC_MAX = 600, REST_STEP = 15, PR_SECS = 3;
 export const LAP_M = { run: 1000, ride: 5000, other: 1000 }, LAP_SECS = 5, SEG_SECS = 5, PAUSE_MS = .7; // auto lap distance, banner and result seconds, auto pause below 0.7 m/s
 export const MENU = { EX: 'Change exercise', SKIP: 'Skip exercise', UNDO: 'Undo last set', FIN: 'Finish', PAUSE: 'Pause', SYNC: 'Sync now', PAIR: 'Pair with phone' };
@@ -27,7 +27,7 @@ export const TEND_ROWS = ['Resume', 'Stats page', 'Finish & save', 'Discard'];
 /** 23.11.: the strength list: the exercises (free), then the saved workouts (the phone's and those saved on the watch) */
 export const FREE = 'Free';
 /** shown in the menu title on the watch and in the preview, so the user can tell which file is on the watch; raise it with every watch file (garmin/source/Flow.mc VERSION) */
-export const VERSION = '27.11.1';
+export const VERSION = '27.11.2';
 /** BACK from the exercise list once sets are logged: nothing is lost without a second step */
 export const END_ROWS = ['Keep training', 'Finish & save', 'Discard'];
 /** the pause screen (every mode): BACK held this long (or a finger on the "Hold to finish" pill) saves; the short-press hint shows this long */
@@ -54,7 +54,7 @@ const clamp = (v, lo, hi) => Math.max(lo, Math.min(hi, v));
 export function newFlow(setup, o = {}) {
   const F = { setup: { ex: [], rest: 90 }, list: [], cfg: o.cfg && o.cfg.run ? o.cfg : compact(defaults()), last: HOME[o.last] ? o.last : 'run', paired: o.paired !== false, queue: o.queue || [], newId: o.id || rid,
     scr: o.scr || SCR.HOME, back: SCR.HOME, sel: 0, menu: [], cur: 0, focus: 0, kg: 0, reps: 0, sets: [], start: 0, restEnd: 0, restLen: 0, plan: null, endConf: false, saveq: null,
-    flash: null, sum: null, pz: null, pauseT: 0, hr: 0, hrN: 0, hrSum: 0, hrMax: 0, pair: { d: [0, 0, 0, 0, 0, 0], i: 0, st: 'enter' }, cues: [], out: [],
+    flash: null, sum: null, pz: null, pauseT: 0, hr: 0, hrAt: 0, thr: 0, hrN: 0, hrSum: 0, hrMax: 0, pair: { d: [0, 0, 0, 0, 0, 0], i: 0, st: 'enter' }, cues: [], out: [],
     sp: 'run', type: '', rec: null, seg: null, route: null, rsum: null, routes: null, routeId: null, nav: null,
     link: newLink(o.trainer || ''), tr: null, tsum: null, tbody: null, tTgt: o.tgt >= W_MIN && o.tgt <= W_MAX ? o.tgt : W_START, tConf: false,
     rides: [], ftp: 0, wk: null, tw: -1, wkDone: 0 };
@@ -475,13 +475,23 @@ function onTScan(F, ev, now, arg) {
   // 27.11.: START (a tap) opens the choice Free ride / a workout (TPICK), also while connecting; once chosen and connected START rides
   // (refused: ride anyway, the power is recorded); UP / DOWN open the choice again
   const go = v === 'ready' || v === 'refused';
-  if (ev === 'start' || ev === 'tap') { if (go && F.tw >= 0) tBegin(F, now); else if (go || v === 'conn') tPick(F); }
+  if (ev === 'start' || ev === 'tap') { if (go && F.tw >= 0) tHr(F, now); else if (go || v === 'conn') tPick(F); }
   else if (ev === 'up' || ev === 'down') { if (go || v === 'conn') tPick(F); }
   else if (ev === 'back') { tStop(L); L.want = ''; F.tw = -1; tScan(L, now); F.sel = 0; } // cancel: back to the list, no automatic connect this time
 }
+/* ---- 27.11.2: the heart rate step between the choice and the ride (THR). A watch app cannot pair a strap (the watch's own Sensors menu
+ *      does), so the step only waits for a heart rate: one that came in the last HR_LIVE_S seconds is shown HR_SHOW_S seconds, then the ride
+ *      starts by itself; START (a tap) starts at once, with or without one; BACK = the trainer's state. ---- */
+export const HR_LIVE_S = 15, HR_SHOW_S = 2;
+export const hrOn = (F, now) => F.hr > 0 && now - F.hrAt <= HR_LIVE_S;
+function tHr(F, now) { F.sel = 0; F.thr = hrOn(F, now) ? now : 0; F.scr = SCR.THR; }
+function onTHr(F, ev, now) {
+  if (ev === 'start' || ev === 'tap') tBegin(F, now);
+  else if (ev === 'back') { F.sel = 0; F.scr = SCR.TSCAN; }
+}
 function tPick(F) { F.sel = F.tw > 0 ? F.tw : 0; F.scr = SCR.TPICK; }
 /** TPICK row i: 0 = free ride, else that workout; connected: the ride starts, else back to the trainer's state until it is */
-function tChoose(F, i, now) { F.tw = i; const v = shown(F.link); if (v === 'ready' || v === 'refused') tBegin(F, now); else { F.sel = 0; F.scr = SCR.TSCAN; } }
+function tChoose(F, i, now) { F.tw = i; const v = shown(F.link); if (v === 'ready' || v === 'refused') tHr(F, now); else { F.sel = 0; F.scr = SCR.TSCAN; } }
 /** TREC: UP / DOWN (and the - / + zones, item 0 / 1) = a step, held = 25 W; a tap on the target (item 2) = step size 5 / 10 / 25;
  *  START = pause / resume; BACK (BACK held, swipe left / right) = the menu; swipe up / down = the stats page */
 function onTRec(F, ev, now, arg) {
@@ -503,7 +513,7 @@ function onTRec(F, ev, now, arg) {
  *  holdStart / holdEnd (BACK pressed / released, or a finger on the pause screen's "Hold to finish" pill) */
 export function handle(F, ev, now, arg) {
   const ev0 = ev;
-  if (ev === 'hr') { F.hr = arg || 0; if (F.start && arg > 0) { F.hrN++; F.hrSum += arg; F.hrMax = Math.max(F.hrMax, arg); } return; }
+  if (ev === 'hr') { F.hr = arg || 0; if (arg > 0) F.hrAt = now; if (F.start && arg > 0) { F.hrN++; F.hrSum += arg; F.hrMax = Math.max(F.hrMax, arg); } return; }
   if (ev === 'sample') { sample(F, now, arg || {}); return; }
   if (ev === 'seg') { segment(F, now, arg); return; }
   if (ev === 'ble') { const w = F.link.want; bleEv(F.link, now, arg); if (F.link.want && F.link.want !== w) F.out.push({ k: 'trainer' }); return; } // the trainer's radio (js/watchtrainer.js)
@@ -514,6 +524,7 @@ export function handle(F, ev, now, arg) {
   }
   if (ev === 'tick') {
     linkTick(F.link, now); tSecs(F, now);
+    if (F.scr === SCR.THR) { const on = hrOn(F, now); if (!on) F.thr = 0; else if (!F.thr) F.thr = now; if (F.thr && now - F.thr >= HR_SHOW_S) { tBegin(F, now); return; } }
     if (F.scr === SCR.PAUSE && F.pz && F.pz.hold && now - F.pz.hold >= HOLD_S) { endPaused(F, now); return; }
     if (F.flash && now >= F.flash.until) F.flash = null;
     if (F.seg && F.seg.k === 'end' && now >= F.seg.until) F.seg = null;
@@ -525,6 +536,7 @@ export function handle(F, ev, now, arg) {
   if (ev === 'swipeLeft') ev = 'menu';
   if (ev === 'swipeRight') ev = 'back';
   const s = F.scr, list = [SCR.PICK, SCR.MENU, SCR.HOME, SCR.MORE, SCR.SMODE, SCR.RPICK, SCR.END, SCR.SAVEQ, SCR.TEND, SCR.TPICK].includes(s), paged = list || s === SCR.REC || s === SCR.PAUSE || s === SCR.SUM || s === SCR.TSCAN;
+  if (s === SCR.THR) { onTHr(F, ev, now); return; }
   if (s === SCR.TREC) { onTRec(F, ev, now, arg); return; } // before the swipe mapping: swipe up / down is the stats page there, UP / DOWN the watts
   // 23.11.7: a swipe on a list (only when no drag events came: FlowDelegate / watchsim swallow the swipe that ends a drag) moves it
   // SWIPE_ROWS rows with the finger, no wrapping; the data pages and the summary a page; a number counts up

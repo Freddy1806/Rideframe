@@ -77,6 +77,7 @@ function smokeWalk(logger as Logger) as Boolean {
     SmokeKit.smokeEv(T, dc, P, seen, E_ITEM, tn, T.homeItems().indexOf("trainer"));
     SmokeKit.smokeTrainer(T, dc, P, seen, tn);
     SmokeKit.smokeEv(T, dc, P, seen, E_START, tn, null);                        // ride
+    if (T.scr == S_THR) { SmokeKit.smokeEv(T, dc, P, seen, E_START, tn, null); } // 27.11.2: the heart rate step skipped
     for (var i = 0; i < 40; i++) {
         tn++;
         SmokeKit.smokeEv(T, dc, P, seen, E_TICK, tn, System.getTimer());
