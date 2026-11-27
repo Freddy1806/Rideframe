@@ -38,7 +38,7 @@ def do_login(base: Path, tokens: Path) -> int:
     os.chmod(tokens, 0o700)
     def code() -> str:  # the 6 digits Garmin sends now; anything else (a password typed by habit) is asked again and never echoed back
         while True:
-            c = input("6-digit code Garmin just sent you (e-mail or SMS, digits only): ").strip().replace(" ", "")
+            c = getpass.getpass("6-digit code Garmin just sent you (e-mail or SMS; not shown while typing): ").strip().replace(" ", "")
             if c.isdigit() and 4 <= len(c) <= 8:
                 return c
             print("That is not the code. Look in your mail for the message from Garmin and type its digits.")
