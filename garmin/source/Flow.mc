@@ -1076,9 +1076,9 @@ class Flow {
     }
     // js: rides(F): the built-in 30 / 15 first when the server has not sent it (yet), then the server's
     function rideList() as Array<Dictionary> {
-        var r = [] as Array<Dictionary>, has = false;
-        for (var k = 0; k < rides.size(); k++) { if (WK_FB_ID.equals(strOf(rides[k]["id"]))) { has = true; } }
-        if (!has) { r.add(wkFallback(ftp)); }
+        var r = [] as Array<Dictionary>, seen = false;
+        for (var k = 0; k < rides.size(); k++) { if (WK_FB_ID.equals(strOf(rides[k]["id"]))) { seen = true; } }
+        if (!seen) { r.add(wkFallback(ftp)); }
         r.addAll(rides);
         return r;
     }
