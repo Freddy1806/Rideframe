@@ -200,7 +200,8 @@ export function workoutState(w, t, ftp, o = {}) {
   setFtp(ftp); const hardAdj = o.hardAdj || 0, easyAdj = o.easyAdj || 0, rampIn = o.rampIn ?? w.rampIn ?? 10, rampOut = o.rampOut ?? w.rampOut ?? 5, steps = w.steps; // short on / off sets bring their own short ramps
   const W0 = (st, into) => { const b = Math.round(pctAt(st, into) / 100 * ftp); return isHard(st) ? tunedTarget(st, b, hardAdj) : easyAdj && !st.free ? Math.max(50, b + easyAdj) : b; };
   // intervals are counted within their series ("VO2max 2/5" is 2 of 5; the openers before it are their own series of 3)
-  const stem = x => (x?.label || '').replace(/\s*\d+\/\d+$/, ''), series = x => steps.filter(y => isHard(y) && stem(y) === stem(x));
+  // (a builder workout's repeat blocks are series of their own: three sets "Bike 1/13 … 13/13" are 3 × 13, not 1 of 39 with the sprints before)
+  const stem = x => (x?.label || '').replace(/\s*\d+\/\d+$/, '') + (x?.rep?.at != null ? '#' + x.rep.at : ''), series = x => steps.filter(y => isHard(y) && stem(y) === stem(x));
   const total = workoutDuration(w), main = steps.filter(isHard).map(stem).sort((a, b) => series({ label: b }).length - series({ label: a }).length)[0];
   const hardCount = steps.filter(x => isHard(x) && stem(x) === main).length;
   const ea = (p, st) => ftp && easyAdj && !st.free ? Math.max(50, p / 100 * ftp + easyAdj) / ftp * 100 : p; // the easy parts' offset (charts)

@@ -76,14 +76,16 @@ export function openBuilder({ draft, saved = false, ftp = 0, hrMax = 0, route = 
       <div class="wbtoast" id="wbToast" role="status" hidden><span></span><button type="button" class="btn ghost small" id="wbUndo">Undo</button></div></div>`;
     document.body.append(m);
     const box = $('.wb', m), list = $('#wbList', m);
-    const err = t => { $('#mwErr', m).textContent = t || ''; };
+    const err = t => { $('#mwErr', m).textContent = t || ''; const se = sheet?.el.querySelector('.wbserr'); if (se) se.textContent = t || ''; }; // the phone's sheet covers #mwErr: it says it too
 
     /* ---------- the model by path: "i" = item i, "i.j" = step j of the repeat at i ---------- */
     const get = p => { const [i, j] = String(p).split('.').map(Number); const x = w.steps[i]; return j == null || Number.isNaN(j) ? x : x?.steps?.[j]; };
     const arrOf = p => { const [i, j] = String(p).split('.').map(Number); return j == null || Number.isNaN(j) ? w.steps : w.steps[i].steps; };
     const pathOf = obj => { for (const [i, x] of w.steps.entries()) { if (x === obj) return String(i); if (x.repeat) { const j = x.steps.indexOf(obj); if (j >= 0) return `${i}.${j}`; } } return ''; };
-    const count = () => M.countSteps(w.steps);
-    const tidy = () => { w.steps = w.steps.filter(x => !x.repeat || x.steps.length); for (const x of w.steps) if (x.repeat && !(x.steps.length > 1 && /^(recover|rest)$/.test(x.steps.at(-1).type))) delete x.skipLast; };
+    const count = () => M.countSteps(w.steps), tooMany = () => `At most ${M.LIM.steps} steps with the repeats counted.`;
+    // empty repeats go; a repeat's "skip the last recovery" tick stays while a step passes through the block or a type changes
+    // for a moment (it counts only where it applies: M.skips; the validator drops it on save where it does not)
+    const tidy = () => { w.steps = w.steps.filter(x => !x.repeat || x.steps.length); };
 
     /* ---------- HTML ---------- */
     const durHTML = (s, pre = '') => { const d = s.dur, n = `${pre}`;
@@ -133,7 +135,10 @@ export function openBuilder({ draft, saved = false, ftp = 0, hrMax = 0, route = 
     const scroller = () => phone() ? box : box; // the box scrolls (css): the page behind stays put
     const drawList = (focus = null) => {
       const top = scroller().scrollTop;
+      // a value typed out of range is not in the model: it stays as typed and marked on the step it belongs to (by the object, its path may change)
+      const bad = [...list.querySelectorAll('.bad[data-f]')].map(e => ({ o: get(e.closest('[data-p]')?.dataset.p ?? ''), f: e.dataset.f, v: e.value })).filter(b => b.o);
       list.innerHTML = w.steps.map((x, i) => x.repeat ? repHTML(x, i) : cardHTML(x, String(i))).join('');
+      for (const b of bad) { const p = pathOf(b.o), e = p && [...list.querySelectorAll(`[data-f="${b.f}"]`)].find(x => x.closest('[data-p]').dataset.p === p); if (e) { e.value = b.v; e.classList.add('bad'); e.setAttribute('aria-invalid', 'true'); } }
       scroller().scrollTop = top; refresh();
       if (focus) { const el = typeof focus === 'string' ? $(focus, m) : focus; el?.focus({ preventScroll: true }); }
       const full = count() >= M.LIM.steps; $('#wbAddStep', m).disabled = full; $('#wbAddRep', m).disabled = count() + 2 > M.LIM.steps;
@@ -170,12 +175,14 @@ export function openBuilder({ draft, saved = false, ftp = 0, hrMax = 0, route = 
     const openSheet = p => {
       closeSheet(); sel = p; const el = document.createElement('div'); el.className = 'wbsheetwrap';
       el.innerHTML = `<div class="wbsheet" role="dialog" aria-label="Edit step"><div class="wbshead"><b></b><span class="wbsp"></span>${moveBtns(p, 'step')}<button type="button" class="wbicon wbdel" data-a="del" aria-label="Delete step" title="Delete step">✕</button></div>
-        <div class="wbsbody" data-p="${p}"></div><div class="wbsfoot"><button type="button" class="btn small mwsave" data-a="done">Done</button></div></div>`;
+        <div class="wbsbody" data-p="${p}"></div><div class="wbsfoot"><p class="mwerr wbserr" role="alert"></p><button type="button" class="btn small mwsave" data-a="done">Done</button></div></div>`;
       m.append(el); sheet = { p, el }; sheetBody();
-      el.addEventListener('click', e => { if (e.target === el) closeSheet(); });
+      el.addEventListener('click', e => { if (e.target === el) tryClose(); });
       el.querySelector('.wbsheet [data-f="type"]')?.focus({ preventScroll: true });
       list.querySelectorAll('.wbcard').forEach(c => c.classList.toggle('sel', c.dataset.p === p)); refresh();
     };
+    /** Done, the backdrop, Escape: not while a value in the sheet is out of range (it would be dropped without a word) */
+    function tryClose() { const bad = sheet?.el.querySelector('.bad'); if (bad) { bad.focus(); return err('A value is out of range: fix the marked field first.'); } closeSheet(); }
     function closeSheet() { if (!sheet) return; const p = sheet.p; sheet.el.remove(); sheet = null; list.querySelector(`.wbcard[data-p="${p}"] .wbopen`)?.focus({ preventScroll: true }); }
 
     /* ---------- changes ---------- */
@@ -183,12 +190,12 @@ export function openBuilder({ draft, saved = false, ftp = 0, hrMax = 0, route = 
     const toast = (text, steps) => { undo = steps; const t = $('#wbToast', m); t.querySelector('span').textContent = text; t.hidden = false; clearTimeout(toastT); toastT = setTimeout(() => { t.hidden = true; undo = null; }, 7000); };
     $('#wbUndo', m).onclick = () => { if (!undo) return; w.steps = undo; undo = null; $('#wbToast', m).hidden = true; closeSheet(); drawList(); err(); };
     const del = p => { const before = snapshot(), x = get(p), arr = arrOf(p);
-      if (!x.repeat && w.steps.length === 1 && arr === w.steps) return err('A workout needs at least one step.');
+      if (w.steps.length === 1 && (arr === w.steps || arr.length === 1)) return err('A workout needs at least one step.'); // the last step, the last repeat, the last step of the only repeat
       arr.splice(arr.indexOf(x), 1); tidy(); closeSheet(); sel = ''; drawList(); err();
       toast(x.repeat ? 'Repeat deleted' : 'Step deleted', before); $('#wbUndo', m).focus({ preventScroll: true }); };
     /** ↑ / ↓ (buttons, keys on the drag handle): items swap; a step goes into a neighbouring repeat block and out at its ends */
     const move = (p, d) => {
-      const x = get(p), [i, j] = p.split('.').map(Number), inRep = !Number.isNaN(j) && j != null;
+      const x = get(p), [i, j] = p.split('.').map(Number), inRep = !Number.isNaN(j) && j != null, before = snapshot();
       if (inRep) { const r = w.steps[i], a = r.steps, k = j + d;
         if (k >= 0 && k < a.length) [a[j], a[k]] = [a[k], a[j]];
         else { a.splice(j, 1); w.steps.splice(d < 0 ? i : i + 1, 0, x); }
@@ -196,20 +203,23 @@ export function openBuilder({ draft, saved = false, ftp = 0, hrMax = 0, route = 
         if (k < 0 || k >= w.steps.length) return;
         if (!x.repeat && n?.repeat && n.steps.length < M.L2.inRep) { w.steps.splice(i, 1); d < 0 ? n.steps.push(x) : n.steps.unshift(x); }
         else [w.steps[i], w.steps[k]] = [w.steps[k], w.steps[i]]; }
-      tidy(); const np = pathOf(x); sel = np; drawList(); if (sheet) { sheet.p = np; sheetBody(); }
+      tidy(); if (count() > M.LIM.steps) { w.steps = before; drawList(); return err(tooMany()); } // into a repeat ×N it stands N times
+      const np = pathOf(x); sel = np; drawList(); if (sheet) { sheet.p = np; sheetBody(); }
       const g = list.querySelector(`[data-drag="${np}"]`); (document.activeElement?.dataset?.a === 'up' || document.activeElement?.dataset?.a === 'down') && !sheet
         ? list.querySelector(`[data-p="${np}"] [data-a="${d < 0 ? 'up' : 'down'}"]`)?.focus({ preventScroll: true }) : !sheet && g?.focus({ preventScroll: true });
       g?.closest('[data-p]')?.scrollIntoView({ block: 'nearest' }); err(); };
+    /** where a new step or repeat goes: before the cool-down when the workout ends with one (it stays the last step), else at the end */
+    const addAt = () => { const l = w.steps.at(-1); return w.steps.length > 1 && !l.repeat && l.type === 'cooldown' ? w.steps.length - 1 : w.steps.length; };
     const add = (item, into = null) => {
-      const n = item.repeat ? item.repeat * item.steps.length : 1; if (count() + n > M.LIM.steps) return err(`At most ${M.LIM.steps} steps with the repeats counted.`);
-      if (into != null) { const r = w.steps[into]; if (r.steps.length >= M.L2.inRep) return err(`At most ${M.L2.inRep} steps in a repeat.`); r.steps.push(item); } else w.steps.push(item);
+      const n = item.repeat ? item.repeat * item.steps.length : into != null ? w.steps[into].repeat : 1; if (count() + n > M.LIM.steps) return err(`At most ${M.LIM.steps} steps with the repeats counted.`);
+      if (into != null) { const r = w.steps[into]; if (r.steps.length >= M.L2.inRep) return err(`At most ${M.L2.inRep} steps in a repeat.`); r.steps.push(item); } else w.steps.splice(addAt(), 0, item);
       tidy(); const p = pathOf(item.repeat ? item : item); sel = item.repeat ? '' : p; drawList(); err();
       const el = list.querySelector(`[data-p="${p}"]`); el?.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
       if (phone() && !item.repeat) openSheet(p); else el?.querySelector(item.repeat ? '[data-f="rep"]' : '[data-f="type"]')?.focus({ preventScroll: true });
     };
     $('#wbAddStep', m).onclick = () => add(M.newStep('work'));
     $('#wbAddRep', m).onclick = () => add(M.newRepeat());
-    const setRep = (i, n) => { const r = w.steps[i], other = count() - r.repeat * r.steps.length, max = Math.min(M.L2.rep[1], Math.floor((M.LIM.steps - other + (r.skipLast ? 1 : 0)) / r.steps.length));
+    const setRep = (i, n) => { const r = w.steps[i], other = count() - (r.repeat * r.steps.length - (M.skips(r) ? 1 : 0)), max = Math.min(M.L2.rep[1], Math.floor((M.LIM.steps - other + (M.skips(r) ? 1 : 0)) / r.steps.length));
       r.repeat = Math.max(1, Math.min(max, n)); return r.repeat; };
 
     // values: written into the model while typing (when valid), the field itself is never redrawn
@@ -257,8 +267,9 @@ export function openBuilder({ draft, saved = false, ftp = 0, hrMax = 0, route = 
       if (f === 'skip') { w.steps[+host.dataset.p].skipLast = el.checked; tidy(); return refresh(); }
       if (f === 'rep') { el.value = w.steps[+host.dataset.p].repeat; el.classList.remove('bad'); return; }
       if (el.tagName === 'SELECT') return setKind(host.dataset.p, f, el.value);
-      // leaving a value field: back to the last good value, written the way it is stored (1:5 → 1:05)
-      const s = get(host.dataset.p); if (!s) return;
+      // leaving a value field: written the way it is stored (1:5 → 1:05). A value out of range stays as typed and marked (Save and
+      // the sheet's Done refuse it) instead of quietly going back to the old one, which a click on Save would then have stored
+      const s = get(host.dataset.p); if (!s || el.classList.contains('bad')) return;
       const back = { sec: () => M.fmtDur(s.dur.sec), km: () => s.dur.m / 1000, kcal: () => s.dur.kcal, bpm: () => s.dur.bpm, dw: () => s.dur.w, pct: () => s.target.pct, pct2: () => s.target.pct2 ?? '', lo: () => s.target.lo, hi: () => s.target.hi, '2lo': () => s.target2?.lo, '2hi': () => s.target2?.hi }[f];
       if (back) { el.value = back(); el.classList.remove('bad'); el.removeAttribute('aria-invalid'); err(); }
     });
@@ -266,7 +277,7 @@ export function openBuilder({ draft, saved = false, ftp = 0, hrMax = 0, route = 
     m.addEventListener('click', e => {
       const b = e.target.closest('[data-a]'); if (!b || !m.contains(b)) return;
       const a = b.dataset.a, host = sheet?.el.contains(b) ? { dataset: { p: sheet.p } } : b.closest('[data-p]'), p = host?.dataset.p;
-      if (a === 'done') return closeSheet();
+      if (a === 'done') return tryClose();
       if (p == null) return;
       if (a === 'open') return openSheet(p);
       if (a === 'del') return del(p);
@@ -316,9 +327,10 @@ export function openBuilder({ draft, saved = false, ftp = 0, hrMax = 0, route = 
       if (cancel || !d.slot || !d.moved) return;
       const item = get(d.p), beforeObj = d.slot.before != null ? get(d.slot.before) : null, target = d.slot.rep != null ? w.steps[d.slot.rep] : null;
       if (target && target.steps.length >= M.L2.inRep && !target.steps.includes(item)) return err(`At most ${M.L2.inRep} steps in a repeat.`);
-      const from = arrOf(d.p); from.splice(from.indexOf(item), 1);
+      const before = snapshot(), from = arrOf(d.p); from.splice(from.indexOf(item), 1);
       const arr = target ? target.steps : w.steps, at = beforeObj ? arr.indexOf(beforeObj) : arr.length; arr.splice(at < 0 ? arr.length : at, 0, item);
-      tidy(); const np = pathOf(item); sel = item.repeat ? '' : np; drawList(); err();
+      tidy(); if (count() > M.LIM.steps) { w.steps = before; drawList(); return err(tooMany()); }
+      const np = pathOf(item); sel = item.repeat ? '' : np; drawList(); err();
       list.querySelector(`[data-drag="${np}"]`)?.focus({ preventScroll: true });
     };
     const onUp = e => dragEnd(e, false), onCancel = e => dragEnd(e, true);
@@ -356,7 +368,12 @@ export function openBuilder({ draft, saved = false, ftp = 0, hrMax = 0, route = 
         buttons: [{ label: 'Keep editing', value: 'keep' }, { label: 'Discard', value: 'discard', cls: 'danger' }, { label: 'Save', value: 'save', cls: 'mwsave' }] }); asking = false;
       if (v === 'discard') close(null); else if (v === 'save') save(false); else $('#mwCancel', m)?.focus();
     };
-    const onKey = e => { if (e.key !== 'Escape' || document.querySelector('.mwask')) return; e.stopPropagation(); e.preventDefault(); if (drag) return dragEnd(null, true); if (sheet) return closeSheet(); leave(); };
+    const onKey = e => {
+      if (e.key === 'Tab' && !document.querySelector('.mwask')) { // aria-modal: Tab goes round inside the builder (or its open sheet), never to the page behind it
+        const root = sheet?.el || box, f = [...root.querySelectorAll('button, input, select, textarea, [tabindex]:not([tabindex="-1"])')].filter(x => !x.disabled && x.getClientRects().length && !x.closest('[hidden]'));
+        const i = f.indexOf(document.activeElement), to = !root.contains(document.activeElement) ? f[0] : e.shiftKey && i === 0 ? f.at(-1) : !e.shiftKey && i === f.length - 1 ? f[0] : null;
+        if (to) { e.preventDefault(); to.focus(); } return; }
+      if (e.key !== 'Escape' || document.querySelector('.mwask')) return; e.stopPropagation(); e.preventDefault(); if (drag) return dragEnd(null, true); if (sheet) return tryClose(); leave(); };
     document.addEventListener('keydown', onKey, true);
     const save = async asNew => {
       const name = String(w.name || '').trim().replace(/\s+/g, ' ');

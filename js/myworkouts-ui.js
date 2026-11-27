@@ -107,7 +107,7 @@ export async function profileSection(el, ctx) {
       <div class="mwest"><label for="mwB20">Best 20 min</label><input type="number" id="mwB20" min="60" max="700" step="1" inputmode="numeric" placeholder="W"><span>× 0.95 =</span><b id="mwEst">–</b><button type="button" class="btn ghost ksmall" id="mwUse" disabled>Use as FTP</button></div>
       ${storeMode() === 'local' ? '<p class="hint mwhint">Saved in this browser only. Sign in to keep them private in your account on every device.</p>' : ''}
       ${up.length ? `<div class="mwupbox"><span>${up.length} ${up.length === 1 ? 'workout' : 'workouts'} from this browser not in your account yet.</span><button type="button" class="btn ghost ksmall" id="mwUpP">Upload</button></div>` : ''}
-      <div class="mwlist">${list.length ? list.map(w => { const st = statsOf(w); return `<div class="mwitem" data-id="${esc(w.id)}">
+      <div class="mwlist">${list.length ? list.map(w => { const st = statsOf(w, ftp || undefined); return `<div class="mwitem" data-id="${esc(w.id)}">
         <div class="mwitop"><b>${esc(w.name)}</b><small>${st.exact ? '' : '~'}${fmtTime(st.sec)} · ${st.steps} steps${st.avg ? ` · avg ${st.avg} %` : ''}${w.routeName ? ` · for ${esc(w.routeName)}` : ''}</small></div>
         ${chartSVG(toV2(w).steps, { h: 34, cls: 'mwthumb', ftp: +ctx.ftp() || undefined })}
         <div class="mwiacts"><button type="button" class="btn ghost ksmall" data-ed="${esc(w.id)}">Edit</button><button type="button" class="btn ghost ksmall" data-dup="${esc(w.id)}">Duplicate</button><button type="button" class="btn ghost ksmall mwdanger" data-del="${esc(w.id)}">Delete</button></div></div>`; }).join('')

@@ -142,8 +142,9 @@ const layoutOf = (page, root) => page.evaluate(root => {
     ok(JSON.stringify(await kinds()) === JSON.stringify(['warmup/lap/none', 'work/time/none', 'cooldown/lap/none']), 'new: warm up and cool down until the lap button, one bike step of 10:00 between: ' + (await kinds()).join(', '));
     ok(/~/.test(await D.textContent('#mwTotal')) && await D.locator('#mwGraph rect[fill="url(#wbHatch)"]').count() === 2, 'new: the open steps are estimated (~) and hatched in the chart');
     if (SHOTS) await D.screenshot({ path: `${SHOTS}/desktop_new_workout.png` });
-    await D.click('#wbAddStep'); ok(await cards(D) === 4 && await D.evaluate(() => document.activeElement?.dataset.f) === 'type', 'Add a step: appended at the end, its step type has the focus');
-    const s3 = '.wbcard[data-p="3"]';
+    await D.click('#wbAddStep'); ok(await cards(D) === 4 && await D.evaluate(() => document.activeElement?.closest('[data-p]')?.dataset.p + ':' + document.activeElement?.dataset.f) === '2:type' && await D.inputValue('.wbcard[data-p="3"] [data-f="type"]') === 'cooldown',
+      'Add a step: in before the cool-down (it stays the last step), its step type has the focus');
+    const s3 = '.wbcard[data-p="2"]';
     await D.selectOption(`${s3} [data-f="type"]`, 'other'); ok(await D.evaluate(s => getComputedStyle(document.querySelector(s)).borderLeftColor, s3) === 'rgb(176, 97, 255)', 'step type “Other”: the card edge turns its colour');
     // every duration type: its own input, the summary follows
     const durs = { time: '[data-f="sec"]', distance: '[data-f="km"]', lap: '.wbhint:has(b)', calories: '[data-f="kcal"]', hr: '[data-f="bpm"]', power: '[data-f="dw"]' };
@@ -172,17 +173,19 @@ const layoutOf = (page, root) => page.evaluate(root => {
       await D.evaluate(s => { for (const f of ['type', 'dk', 'tk']) { const e = document.querySelector(`${s} [data-f="${f}"]`); e.size = 0; e.removeAttribute('style'); } }, s3);
     }
     // Add repeat: × 2 with a bike and a recover step, the stepper, skip last recovery
-    await D.click('#wbAddRep'); const R = '.wbrep[data-p="4"]';
-    ok(await D.locator(R).count() === 1 && await D.inputValue(`${R} [data-f="rep"]`) === '2' && await D.locator(`${R} .wbcard`).count() === 2, 'Add repeat: a block × 2 with a bike and a recover step');
+    await D.click('#wbAddRep'); const R = '.wbrep[data-p="3"]';
+    ok(await D.locator(R).count() === 1 && await D.inputValue('.wbcard[data-p="4"] [data-f="type"]') === 'cooldown' && await D.inputValue(`${R} [data-f="rep"]`) === '2' && await D.locator(`${R} .wbcard`).count() === 2, 'Add repeat: a block × 2 with a bike and a recover step, before the cool-down');
     await D.click(`${R} [data-a="rep+"]`); await D.click(`${R} [data-a="rep+"]`); ok(await D.inputValue(`${R} [data-f="rep"]`) === '4', '+ + : × 4');
     await D.click(`${R} [data-a="rep-"]`); ok(await D.inputValue(`${R} [data-f="rep"]`) === '3', '− : × 3');
     await D.check(`${R} [data-f="skip"]`); ok(await total(D) === 4 + 3 * 2 - 1, `skip the last recovery: ${await total(D)} steps`);
-    await D.selectOption(`${R} .wbcard[data-p="4.0"] [data-f="tk"]`, 'ftp'); await D.fill(`${R} .wbcard[data-p="4.0"] [data-f="pct"]`, '115');
-    // drag by mouse: the cool-down (step 3 of 5) to the very end
+    await D.selectOption(`${R} .wbcard[data-p="3.0"] [data-f="tk"]`, 'ftp'); await D.fill(`${R} .wbcard[data-p="3.0"] [data-f="pct"]`, '115');
+    // drag by mouse: the cool-down (step 5 of 5) above the repeat, then back to the very end
     const dragTo = async (from, to, where = 'below') => { await D.evaluate(([f, t]) => { const a = document.querySelector(f).closest('.wbcard, .wbrep'), b = document.querySelector(t); (a.compareDocumentPosition(b) & Node.DOCUMENT_POSITION_PRECEDING ? b : a).scrollIntoView({ block: 'start' }); }, [from, to]); /* the upper one at the top: both in view */ const a = await D.locator(`${from}`).boundingBox(), t = await D.locator(to).boundingBox();
       await D.mouse.move(a.x + a.width / 2, a.y + a.height / 2); await D.mouse.down(); await D.mouse.move(a.x + a.width / 2, a.y + 30, { steps: 4 });
       const y = where === 'below' ? t.y + t.height - 4 : where === 'above' ? t.y + 4 : t.y + t.height / 2; await D.mouse.move(t.x + t.width / 2, y, { steps: 10 }); await D.waitForTimeout(80); return y; };
-    await dragTo('.wbcard[data-p="2"] .wbgrip', R, 'below');
+    await dragTo('.wbcard[data-p="4"] .wbgrip', R, 'above'); await D.mouse.up(); await D.waitForTimeout(100);
+    ok(await D.inputValue('.wbcard[data-p="3"] [data-f="type"]') === 'cooldown' && await D.locator('.wbrep[data-p="4"]').count() === 1, 'mouse drag: the cool-down above the repeat');
+    await dragTo('.wbcard[data-p="3"] .wbgrip', '.wbrep[data-p="4"]', 'below');
     if (SHOTS) await D.screenshot({ path: `${SHOTS}/desktop_drag_in_progress.png` });
     await D.mouse.up(); await D.waitForTimeout(100);
     ok(JSON.stringify((await kinds()).filter((_, i, a) => i === 0 || i === a.length - 1)) === JSON.stringify(['warmup/lap/none', 'cooldown/lap/none']) && await D.getAttribute('#wbList > :last-child', 'data-p') === '4' && await D.locator('#wbList > :last-child .wbtype').inputValue() === 'cooldown',
@@ -199,6 +202,25 @@ const layoutOf = (page, root) => page.evaluate(root => {
     await dragTo('.wbrep .wbrephead .wbgrip', '.wbcard[data-p="2"]', 'above'); await D.mouse.up(); await D.waitForTimeout(100);
     ok(await D.getAttribute('#wbList > :nth-child(3)', 'class').then(c => /wbrep/.test(c)) && await D.locator('.wbrep .wbcard').count() === 2, 'mouse drag: the repeat block moves as a whole');
     ok(await D.isChecked('.wbrep [data-f="skip"]'), 'the block still skips its last recovery after all the moves');
+    // audit 27.11.: a step moved down through a repeat (in at the top, past its last recovery, out at the bottom) took the block's
+    // "skip the last recovery" with it (3 sets of 13 × 30/15 got 45 s and 3 steps longer); and back up the other way
+    const tk0 = await total(D), focP = () => D.evaluate(() => document.activeElement?.closest('[data-p]')?.dataset.p);
+    await D.click('.wbcard[data-p="1"] [data-a="down"]'); for (let k = 0; k < 3; k++) await D.click(`.wbcard[data-p="${await focP()}"] [data-a="down"]`);
+    ok(await D.isChecked('.wbrep [data-f="skip"]') && await total(D) === tk0 && await D.locator('.wbrep .wbcard').count() === 2 && await D.getAttribute('#wbList > :nth-child(2)', 'class').then(c => /wbrep/.test(c)),
+      `↓ ↓ ↓ ↓: a step through the whole repeat and out below it, the block still skips its last recovery (${await total(D)} steps, as before)`);
+    for (let k = 0; k < 4; k++) await D.click(`.wbcard[data-p="${await focP()}"] [data-a="up"]`);
+    ok(await D.isChecked('.wbrep [data-f="skip"]') && await total(D) === tk0 && await D.getAttribute('#wbList > :nth-child(3)', 'class').then(c => /wbrep/.test(c)), '↑ ↑ ↑ ↑: and back the same way, still skipping');
+    await D.selectOption('.wbrep .wbcard[data-p="2.1"] [data-f="type"]', 'work'); ok(await total(D) === tk0 + 1, 'the last step of the block made a bike step: nothing to skip'); await D.selectOption('.wbrep .wbcard[data-p="2.1"] [data-f="type"]', 'recover');
+    ok(await D.isChecked('.wbrep [data-f="skip"]') && await total(D) === tk0, 'and back to recover: the tick is still there and counts again');
+    // audit 27.11.: a value out of range went back to the old one when the field was left, so a click on Save stored the old value without a word
+    const so = '.wbcard[data-p="3"] [data-f="sec"]';
+    await D.fill(so, '0:02'); await D.click('#mwSave');
+    ok(await D.locator('.mwbox').count() === 1 && await D.inputValue(so) === '0:02' && await D.getAttribute(so, 'aria-invalid') === 'true' && /out of range/.test(await D.textContent('#mwErr')), 'a time out of range (2 s) stays as typed and marked when the field is left; Save refuses it');
+    await D.click('#wbAddStep'); ok(await D.getAttribute(so, 'aria-invalid') === 'true' && await D.inputValue(so) === '0:02', 'a redraw of the list (Add a step) keeps it marked'); await D.click('.wbcard[data-p="4"] [data-a="del"]');
+    await D.fill(so, '12:30'); await D.press(so, 'Tab'); ok(!(await D.locator('.wb .bad').count()), 'fixed: nothing marked');
+    // audit 27.11.: Tab left the builder (aria-modal) for the page behind it
+    await D.focus('#mwSave'); let inside = true; for (let k = 0; k < 4; k++) { await D.keyboard.press('Tab'); inside &&= await D.evaluate(() => !!document.activeElement?.closest('.wb')); }
+    await D.keyboard.press('Shift+Tab'); inside &&= await D.evaluate(() => !!document.activeElement?.closest('.wb')); ok(inside, 'Tab / Shift+Tab stay inside the builder');
     if (SHOTS) { await D.evaluate(() => { document.querySelector('.wb').scrollTop = 0; }); await D.screenshot({ path: `${SHOTS}/desktop_repeat_and_chart.png` }); }
     const lay = await layoutOf(D, '.wb'); ok(!lay.bad.length && lay.sw <= lay.iw, `desktop builder: ${lay.n} controls, none overlapping, no sideways scrolling ${lay.bad.join(' | ')}`);
     await D.fill('#mwName', 'Builder test'); await D.fill('#wbNotes', 'All the options');
@@ -273,6 +295,13 @@ const layoutOf = (page, root) => page.evaluate(root => {
     ok(/Power zone 5/.test(await P.textContent('.wbrep .wbcard[data-p$=".0"] .wbsumtxt')), 'phone sheet: the target type changes, the card follows');
     pl = await layoutOf(P, '.wbsheet'); ok(!pl.bad.length, `phone sheet: ${pl.n} controls, none overlapping, inside 360 px ${pl.bad.join(' | ')}`);
     if (SHOTS) await P.screenshot({ path: `${SHOTS}/phone_step_edit.png` });
+    // audit 27.11.: Done closed the sheet over a value out of range, and the old value was kept without a word
+    await P.fill('.wbsheet [data-f="sec"]', '0:01'); await P.tap('.wbsheet [data-a="done"]'); await P.waitForTimeout(150);
+    ok(await P.locator('.wbsheet').count() === 1 && /out of range/.test(await P.textContent('.wbsheet .wbserr')), 'phone sheet: Done refuses a time out of range and says so in the sheet');
+    await P.fill('.wbsheet [data-f="sec"]', '3:30'); await P.locator('.wbsheet [data-f="sec"]').blur();
+    // audit 27.11.: thumb-sized controls on the phone (the repeat's − / + / ✕ were 34 px, "+ Add a step to the repeat" 23 px)
+    const tiny = await P.evaluate(() => [...document.querySelectorAll('.wb :is(button, input, select), .wbsheet :is(button, input, select)')].filter(e => e.type !== 'checkbox' && e.getClientRects().length).map(e => [e, e.getBoundingClientRect()]).filter(([, r]) => r.height < 40 || r.width < 36).map(([e, r]) => `${Math.round(r.width)}×${Math.round(r.height)} ${e.outerHTML.slice(0, 50)}`));
+    ok(!tiny.length, `phone: every control at least 40 px high and 36 px wide ${tiny.slice(0, 4).join(' | ')}`);
     await P.tap('.wbsheet [data-a="done"]'); await P.waitForSelector('.wbsheet', { state: 'detached' });
     // drag by touch (real touch events: Chrome turns them into pointer events): the first card below the second
     const cdp = await pctx.newCDPSession(P), touch = (type, x, y) => cdp.send('Input.dispatchTouchEvent', { type, touchPoints: type === 'touchEnd' ? [] : [{ x, y, id: 1 }] });
@@ -291,6 +320,12 @@ const layoutOf = (page, root) => page.evaluate(root => {
     ok((await listOf(token)).find(w => w.id === saved.id).steps.find(x => x.repeat).steps[0].target.pct === 125, 'phone: Discard keeps the stored workout');
     await P.click('#mwNew'); await P.waitForSelector('.mwbox.wb'); await P.click('#wbAddRep'); await P.waitForTimeout(150);
     pl = await layoutOf(P, '.wb'); ok(pl.sw <= pl.iw && !pl.bad.length, `phone: a new workout with a repeat block fits 360 px without overlaps ${pl.bad.join(' | ')}`);
+    // audit 27.11.: the last step of the only repeat (or the only repeat) could be deleted: an empty workout that Save then refused
+    for (let k = 0; k < 4 && await P.locator('#wbList > .wbcard').count(); k++) { await P.tap('#wbList > .wbcard .wbopen'); await P.waitForSelector('.wbsheet'); await P.tap('.wbsheet [data-a="del"]'); await P.waitForTimeout(100); }
+    await P.tap('.wbrep .wbcard[data-p="0.1"] .wbopen'); await P.tap('.wbsheet [data-a="del"]'); await P.waitForTimeout(100);
+    await P.tap('.wbrep .wbcard[data-p="0.0"] .wbopen'); await P.tap('.wbsheet [data-a="del"]'); await P.waitForTimeout(100);
+    ok(await P.locator('.wbrep .wbcard').count() === 1 && /at least one step/.test(await P.textContent('.wbsheet .wbserr')), 'phone: the only step of the only repeat cannot be deleted (says so in the sheet)');
+    await P.tap('.wbsheet [data-a="done"]'); await P.tap('.wbrep [data-a="del"]'); ok(await P.locator('.wbrep').count() === 1 && /at least one step/.test(await P.textContent('#mwErr')), 'phone: nor the only repeat');
     await P.click('#mwCancel'); await P.waitForSelector('.mwask'); await P.click('.mwask button:has-text("Discard")'); await P.waitForSelector('.mwbox', { state: 'detached' });
     await P.goto(BASE + '/pure.html'); await P.waitForTimeout(800); await P.click('[data-m="work"]'); await P.waitForSelector('#pWork');
     ok(await P.locator('#pWork option', { hasText: 'My VO2' }).count() === 1, 'indoor page: “My VO2” selectable');
@@ -353,7 +388,7 @@ const layoutOf = (page, root) => page.evaluate(root => {
     ok(await G.locator('#wbList .wbcard').count() === n1 + 1, 'pad: A adds a step');
     ok(await padTo('#mwSave'), 'pad: reaches Save workout'); await press('A'); await G.waitForSelector('.mwbox', { state: 'detached' }); await G.waitForTimeout(300);
     const padW = (await listOf(token)).find(w => w.name === nm);
-    ok(!!padW && padW.v === 2 && padW.steps[1].target.pct === p0 + 2 && padW.steps.at(-1).type === 'work', 'pad: saved on the server with the value and the new step');
+    ok(!!padW && padW.v === 2 && padW.steps[1].target.pct === p0 + 2 && padW.steps.at(-2).type === 'work' && padW.steps.at(-1).type === 'cooldown', 'pad: saved on the server with the value and the new step (in before the cool-down)');
     ok(await padTo('#wMine'), 'pad: reaches “My workouts”'); await press('A'); await G.waitForURL(/profil\.html/); await G.waitForSelector('.mwitem'); await G.waitForTimeout(500);
     await press('down');
     const del = `.mwitem[data-id="${padW?.id}"] [data-del]`;

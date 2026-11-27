@@ -216,6 +216,9 @@ export const EST = { lap: 300, hr: 300, power: 180, kmh: 30, kmhPct: 70 }; // la
 const cleanML = (s, n) => String(s ?? '').replace(/\r\n?/g, '\n').replace(/[\u0000-\u0009\u000b-\u001f\u007f<>]/g, '').replace(/[ \t]+/g, ' ').replace(/\n{3,}/g, '\n\n').trim().slice(0, n);
 export const isV2 = w => !!w && w.v === 2;
 const inR = (v, [lo, hi]) => Number.isFinite(v) && v >= lo && v <= hi;
+/** does this repeat really skip its last step? Only ×2 or more, two steps or more, the last a recovery or rest. The builder
+ *  keeps the rider's tick while a step passes through the block (a move, a type change), so the flag counts only when it applies */
+export const skips = x => !!x?.skipLast && x.repeat > 1 && x.steps?.length > 1 && /^(recover|rest)$/.test(x.steps.at(-1).type);
 
 function vDur(d) {
   if (!d || typeof d !== 'object') return { error: 'duration missing' };
@@ -265,7 +268,7 @@ function validateV2(b, id, name, base, routeId) {
       const inner = [];
       for (const [j, s] of x.steps.entries()) { if (s && typeof s === 'object' && 'repeat' in s) return { error: `Repeat ${i + 1}: no repeat inside a repeat.` };
         const v = vStep(s, `Step ${i + 1}.${j + 1}`); if (v.error) return v; inner.push(v.s); }
-      const rep = { repeat: r, steps: inner }; if (x.skipLast === true && r > 1 && inner.length > 1 && /^(recover|rest)$/.test(inner.at(-1).type)) rep.skipLast = true;
+      const rep = { repeat: r, steps: inner }; if (x.skipLast === true && skips({ ...rep, skipLast: true })) rep.skipLast = true;
       n += r * inner.length - (rep.skipLast ? 1 : 0); steps.push(rep);
     } else { const v = vStep(x, `Step ${i + 1}`); if (v.error) return v; steps.push(v.s); n++; }
   }
@@ -282,7 +285,8 @@ export function flatSteps(steps) {
   const out = [];
   steps.forEach((x, i) => {
     if (!x.repeat) return out.push({ ...x, rep: null, path: String(i) });
-    for (let k = 1; k <= x.repeat; k++) x.steps.forEach((s, j) => { if (x.skipLast && k === x.repeat && j === x.steps.length - 1) return; out.push({ ...s, rep: { at: i, k, n: x.repeat }, path: `${i}.${j}` }); });
+    const skip = skips(x);
+    for (let k = 1; k <= x.repeat; k++) x.steps.forEach((s, j) => { if (skip && k === x.repeat && j === x.steps.length - 1) return; out.push({ ...s, rep: { at: i, k, n: x.repeat }, path: `${i}.${j}` }); });
   });
   return out;
 }
@@ -390,7 +394,7 @@ function rideStep(s) {
   } else { const p = stepPct(s); o.pct = p.pct; if (p.pct2 != null) o.pct2 = p.pct2; if (p.rlo != null) { o.rlo = p.rlo; o.rhi = p.rhi; } o.dur = estSec(s); }
   if (!stepPct(s).erg) { o.free = true; if (t.kind !== 'none') o.tgt = { ...t }; }
   if (s.target2) o.tgt2 = { ...s.target2 };
-  if (s.rep) o.rep = { k: s.rep.k, n: s.rep.n };
+  if (s.rep) o.rep = { k: s.rep.k, n: s.rep.n, at: s.rep.at }; // at: which repeat block (js/workouts.js counts each block as its own series)
   return o;
 }
 /** a v2 workout in the shape of the built-ins (see toRide) */
@@ -431,8 +435,8 @@ export function describe2(steps) {
   const one = s => `${s.label || typeName(s.type)} ${s.dur.kind === 'lap' ? 'lap' : durText(s.dur)}${s.target.kind === 'none' ? '' : ' ' + tgtText(s.target).replace(/ · .*$/, '')}`;
   return steps.map(x => x.repeat ? `${x.repeat} × (${x.steps.map(one).join(' / ')})` : one(x)).join(', ');
 }
-/** list stats for any saved workout (old or v2): { sec, exact, avg, steps } */
-export function statsOf(w) { if (isV2(w)) return summary2(w.steps); const sec = totalSec(w.steps); return { sec, exact: true, avg: avgPct(w.steps), steps: w.steps.length, m: 0, mExact: false }; }
+/** list stats for any saved workout (old or v2): { sec, exact, avg, steps }; ftp: the rider's (estimates of open steps and custom watts depend on it) */
+export function statsOf(w, ftp = ftpNow()) { if (isV2(w)) return summary2(w.steps, ftp); const sec = totalSec(w.steps); return { sec, exact: true, avg: avgPct(w.steps), steps: w.steps.length, m: 0, mExact: false }; }
 
 /** the chart of the builder: one bar per step (width = time, estimated for open steps, height = % FTP), coloured by the step
  *  type; open steps hatched, repeats with a bracket below. mark = path of the step to outline. */
