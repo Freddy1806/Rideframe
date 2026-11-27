@@ -2,7 +2,8 @@
 // fitness must not count runs, rides without a power meter and strength as zero). 100 points = one hour at threshold.
 // Source per activity, best first: watts (TSS) -> heart rate (share of heart-rate reserve) -> running pace against the
 // own threshold pace -> duration with a fixed factor. Pure functions; profil.js draws them.
-import { normPower, best, estimateFTP } from './stats.js';
+import { normPower, best, estimateFTP, ftpEvidence, ftpUpdate } from './stats.js';
+export { ftpEvidence, ftpUpdate };
 import { e1rm } from './kraftlib.js';
 import { groupOf, famOf } from './sports.js';
 
@@ -20,8 +21,12 @@ export function profileOf(S = {}, acts = []) {
   const rides = acts.filter(isBike), runs = acts.filter(a => sportOf(a) === 'run');
   const hrSeen = Math.max(0, ...acts.filter(a => !a.kraft).map(a => Math.max(+a.maxHr || 0, ...col(a, 5))));
   const thr = runs.filter(r => r.duration >= 900 && r.distance > 1500).map(r => r.distance / r.duration); // m/s of every run of 15+ min
+  // FTP (27.11.): every kind of evidence of the last 90 days (stats.js ftpEvidence), also the summaries of rides without samples
+  // as floors; ftpEst keeps its shape { w, from } (+ lo, hi, confidence, sources) and is null without a real estimate, ftpEv
+  // is the whole evidence (w may be null with only a floor: "at least … W")
+  const o = S.hrMax ? { hrMax: S.hrMax } : {}, ev = ftpEvidence(rides, o);
   return { kg: S.riderKg || 75, ftp: S.ftp || 0, hrMax: S.hrMax || (hrSeen > 120 ? hrSeen : 0), hrRest: S.hrRest || 60,
-    runThr: thr.length ? Math.max(...thr) * 0.97 : 0, ftpEst: estimateFTP(rides.filter(r => (r.samples || []).length >= 120).sort((a, b) => a.date - b.date)) || null, hrSeen };
+    runThr: thr.length ? Math.max(...thr) * 0.97 : 0, ftpEst: estimateFTP(rides, 42, { ...o, ev }) || null, ftpEv: ev, hrSeen };
 }
 
 const PER_H = { run: 60, walk: 25, other: 35 }; // points per hour without watts, heart rate or pace (45 = steady endurance)
