@@ -121,5 +121,5 @@ body.hasnav #body { padding-bottom: calc(env(safe-area-inset-bottom) + 92px); } 
 .bcc.brec { border-color: color-mix(in srgb, var(--a-rec, #a5b4ff) 26%, var(--line)); } .bcc.brec .label { color: var(--a-rec, #a5b4ff); }
 .bcc.bnone > small { white-space: normal; font-weight: 700; margin-top: 4px; }
 .binfo { width: 28px; height: 28px; margin-left: auto; border-radius: 50%; border: 1px solid var(--line-2); font: italic 800 14px/1 Georgia, serif; color: var(--muted); position: relative; }
-.binfo::after { content: ''; position: absolute; inset: -8px; } /* 44 px to tap */
+.binfo::after { content: ''; position: absolute; inset: -8px 0 -8px -16px; } /* 44 px to tap, nothing past the edge */
 @media (min-width: 560px) { .bcomp { grid-template-columns: repeat(4, minmax(0, 1fr)); } }

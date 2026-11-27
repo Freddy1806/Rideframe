@@ -207,7 +207,7 @@ async function page(root) {
     root.innerHTML = `<header class="ptop"><div class="pbrand"><b>RIDEFRAME </b><span>Activities</span></div>
         ${D.acts.length ? `<button type="button" class="fhbtn${f !== 'all' ? ' on' : ''}" id="fFilter" aria-expanded="${fOpen}" aria-controls="fChips">${icon('list', 'fsico')}<span>${esc(fl)}</span></button>` : ''}
         <button type="button" class="pgear hbtn fplus" id="fPlus" aria-label="Add or import activities" aria-expanded="${mOpen}" aria-controls="fMenu">${icon('plus', 'gico')}</button>
-        <a class="btn ghost ksmall fstats" href="statistik.html" id="fStats">${icon('chart', 'fsico')}Stats</a>
+        <a class="btn ghost ksmall fstats" href="statistik.html" id="fStats" aria-label="Stats">${icon('chart', 'fsico')}<span class="fstl">Stats</span></a>
         <div class="fmenu" id="fMenu" role="menu" ${mOpen ? '' : 'hidden'}><button type="button" role="menuitem" id="fAdd">${icon('plus', 'fsico')}Add activity</button>
           <button type="button" role="menuitem" id="fImp" ${st?.configured ? '' : 'hidden'} ${busy ? 'disabled' : ''}>${icon('list', 'fsico')}${reco ? 'Reconnect Strava' : 'Import from Strava'}</button>
           <button type="button" role="menuitem" id="fFile">${icon('other', 'fsico')}Import file</button></div></header>

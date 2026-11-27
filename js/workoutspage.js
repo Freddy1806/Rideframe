@@ -80,7 +80,7 @@ function detail(k, w) {
       <a class="btn wkstart" href="${esc(w.href)}">Start${k === 'ride' ? ' on the indoor trainer' : k === 'run' ? ' a run' : ''}</a>
       ${acc ? `<div class="wkplan"><label class="trf"><span>Plan it for</span><input type="date" id="wkDay" value="${dayKey(Date.now())}"></label><button type="button" class="btn ghost" id="wkPlan">Plan</button></div>` : '<p class="phint">Sign in to plan it for a day.</p>'}
       ${err ? `<p class="phint perr" role="alert">${esc(err)}</p>` : ''}
-      <div class="pfoot">${personal || k === 'run' ? '<button class="btn ghost" id="wkEdit">Edit</button><button class="btn ghost" id="wkDup">Duplicate</button>' : ''}
+      <div class="pfoot">${personal || k === 'run' ? '<button class="btn ghost" id="wkEdit">Edit</button><button class="btn ghost" id="wkDup">Duplicate</button><button class="btn ghost" id="wkDel">Delete</button>' : ''}
         ${builtin ? '<button class="btn ghost" id="wkCust">Customise</button>' : ''}${k === 'strength' && w.group === 'watch' ? '<button class="btn ghost" id="wkWatch">Edit</button>' : ''}<button class="btn ghost" id="wkX">Close</button></div></div>`;
     const close = () => s.remove();
     $('#wkX', s).onclick = close;
@@ -96,6 +96,10 @@ function detail(k, w) {
       try { if (k === 'run') { const R = await import('./runworkouts.js'); await R.saveRun({ ...w.w, id: R.newRunId(), name: (w.name + ' copy').slice(0, 40) }); }
         else { const st = await import('./myworkouts-store.js'), M = await import('./myworkouts.js'); const p = st.personalById(w.id); await st.savePersonal({ ...p, id: M.newId(), name: (p.name.slice(0, 35)) + ' copy' }); }
         close(); await reload(); } catch (e) { err = e.message; draw(); } });
+    $('#wkDel', s)?.addEventListener('click', async () => { const { ask } = await import('./myworkouts-ui.js');
+      if (await ask({ title: `Delete “${w.name}”?`, text: 'It is removed from your workouts for good.', buttons: [{ label: 'Keep it', value: null }, { label: 'Delete', value: 'del', cls: 'danger' }] }) !== 'del') return;
+      try { if (k === 'run') await (await import('./runworkouts.js')).deleteRun(w.id); else await (await import('./myworkouts-store.js')).deletePersonal(w.id);
+        close(); await reload(); } catch (e) { err = 'Not deleted: ' + e.message; draw(); } });
     $('#wkCust', s)?.addEventListener('click', async () => { close(); const M = await import('./myworkouts.js'); rideEditor(M.fromBuiltin2(w.w), false); });
     $('#wkWatch', s)?.addEventListener('click', () => { close(); create('strength'); });
   };

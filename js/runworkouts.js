@@ -98,7 +98,7 @@ export function openRunBuilder({ draft = null, hrMax = 0 } = {}) {
       q('#rwAddI').onclick = () => { if (w.rows.length < RLIM.rows) w.rows.push({ t: 'i', n: 4, on: 4, off: 2, tgt: 'threshold' }); draw(); };
       q('#rwAddB').onclick = () => { if (w.rows.length < RLIM.rows) w.rows.push({ t: 'b', min: 20, tgt: 'steady' }); draw(); };
       q('#rwX')?.addEventListener('click', () => close(null));
-      q('#rwDel')?.addEventListener('click', async () => { if (!confirm('Delete this run workout?')) return; await deleteRun(draft.id); close({ deleted: draft.id }); });
+      q('#rwDel')?.addEventListener('click', async () => { const { ask } = await import('./myworkouts-ui.js'); if (await ask({ title: 'Delete this run workout?', text: 'It is removed from your workouts for good.', buttons: [{ label: 'Keep it', value: null }, { label: 'Delete', value: 'del', cls: 'danger' }] }) !== 'del') return; await deleteRun(draft.id); close({ deleted: draft.id }); });
       q('#rwOk').onclick = async () => { w.name = q('#rwName').value; const r = validateRun(w); if (r.error) { err = r.error; return draw(); }
         try { await saveRun(r.w); close({ saved: r.w }); } catch (e) { err = e.message; draw(); } };
     };

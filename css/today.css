@@ -125,7 +125,7 @@ button.tdlink { background: none; border: 0; min-height: 44px; font-family: inhe
 .tdbig .tdok { justify-self: start; min-height: 44px; }
 .tdnone { display: flex; flex-direction: column; gap: 10px; padding: 14px; border-radius: 16px; background: var(--ink-2); border: 1px solid var(--line); }
 .tdnone > b { font-size: 17px; font-weight: 900; }
-.tdnb { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; } .tdnb .btn { height: 44px; display: flex; align-items: center; justify-content: center; text-decoration: none; white-space: nowrap; padding: 0 8px; }
+.tdnb { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; } .tdnb .btn { height: 44px; min-width: 0; display: flex; align-items: center; justify-content: center; text-decoration: none; white-space: nowrap; padding: 0 6px; font-size: 12px; letter-spacing: .03em; }
 .tdsugl { margin: 0; font-size: 12.5px; color: var(--muted); font-weight: 600; line-height: 1.35; } .tdsugl b { color: var(--paper); font-weight: 800; }
 button.tdday { width: 100%; background: none; border: 0; font-family: inherit; color: inherit; cursor: pointer; min-height: 56px; }
 button.tdday:active { background: var(--ink-2); }
@@ -165,3 +165,5 @@ button.tdday:active { background: var(--ink-2); }
 .wdday { max-width: 220px; }
 #wdSheet .pfoot, #wpSheet .pfoot { flex-wrap: wrap; } #wdSheet .pfoot .btn { flex: 1 1 auto; }
 @media (max-width: 420px) { #handy .pbrand { font-size: 19px !important; } #handy .ptop .ppill { padding: 0 10px; gap: 6px; } }
+@media (max-width: 380px) { #handy .pbrand { font-size: 16px !important; } #handy .ptop { gap: 6px; } #handy .ptop .ppill:not(.on) i { display: none; } }
+@media (max-width: 380px) { .tdnb { grid-template-columns: minmax(0, 1fr); } } /* narrow phones: the two buttons one under the other, never cut */

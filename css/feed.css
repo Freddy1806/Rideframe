@@ -93,3 +93,5 @@ button.hrow { width: 100%; text-align: left; font: inherit; color: inherit; }
 .fmenu button { display: flex; align-items: center; gap: 10px; min-height: 48px; padding: 0 12px; border-radius: 10px; font: inherit; font-size: 15px; font-weight: 800; color: var(--paper); text-align: left; }
 .fmenu button:active { background: var(--ink-2); } .fmenu .fsico { color: var(--accent); }
 @media (max-width: 370px) { #feed .fstats { padding: 0 10px; } .fhbtn { padding: 0 10px; } }
+@media (max-width: 420px) { #feed .fstats { width: 44px; padding: 0; border-radius: 99px; } #feed .fstl { display: none; } } /* 27.11.: Filter, + and Stats beside the title: Stats as its icon on a phone */
+@media (max-width: 400px) { .fhbtn { max-width: 34vw; } }
