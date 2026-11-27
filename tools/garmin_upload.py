@@ -36,8 +36,17 @@ def do_login(base: Path, tokens: Path) -> int:
     pw = getpass.getpass("Garmin password (not shown, not stored): ")
     tokens.mkdir(parents=True, exist_ok=True)
     os.chmod(tokens, 0o700)
-    g = Garmin(email=email, password=pw, prompt_mfa=lambda: input("Code from Garmin (e-mail or app): ").strip())
-    g.login(str(tokens))
+    def code() -> str:  # the 6 digits Garmin sends now; anything else (a password typed by habit) is asked again and never echoed back
+        while True:
+            c = input("6-digit code Garmin just sent you (e-mail or SMS, digits only): ").strip().replace(" ", "")
+            if c.isdigit() and 4 <= len(c) <= 8:
+                return c
+            print("That is not the code. Look in your mail for the message from Garmin and type its digits.")
+    g = Garmin(email=email, password=pw, prompt_mfa=code)
+    try:
+        g.login(str(tokens))
+    except Exception as e:
+        log(base, f"login failed ({type(e).__name__}): wrong password or code, or Garmin refused. Run --login again."); return 4
     g.client.dump(str(tokens))  # the library saves by itself but stays silent when that fails: once more, loudly
     if not any(tokens.iterdir()):
         log(base, "login worked but no token file was written"); return 6
