@@ -43,7 +43,7 @@ const BTN = { A: 0, B: 1, L: 4, R: 5, START: 9, up: 12, down: 13, left: 14, righ
     await press('down'); const c0 = await cur();
     ok(!!c0 && !c0.topbar, `first press: focus on the first control of the screen (${c0?.text})`);
     ok(c0?.ring === 'rgb(255, 90, 31)' && parseFloat(c0.ringW) >= 3, `focus ring is orange #ff5a1f, ${c0?.ringW} (${c0?.ring})`);
-    ok(await p.evaluate(() => getComputedStyle(document.querySelector('#pnHint')).display !== 'none' && document.querySelector('#pnHint').textContent === 'D-pad move · A select · B back'), 'hint line "D-pad move · A select · B back" shown while the pad is used');
+    ok(await p.evaluate(() => getComputedStyle(document.querySelector('#pnHint')).display === 'none'), 'no pad hint line while moving (the layout lives in Settings → Controller)');
     await press('right'); const cR = await cur(); ok(cR && cR.x > c0.x && Math.abs(cR.y - c0.y) < 20, `right: ${c0.text} → ${cR?.text}`);
     await press('left'); const cL = await cur(); ok(cL && cL.text === c0.text, `left: back to ${cL?.text}`);
     await press('down'); const cD = await cur(); ok(cD && cD.y > c0.y, `down: ${c0.text} → ${cD?.text}`);
@@ -71,10 +71,12 @@ const BTN = { A: 0, B: 1, L: 4, R: 5, START: 9, up: 12, down: 13, left: 14, righ
     if (sel) {
       const v0 = await p.inputValue('#' + sel.id);
       await press('A'); ok(await p.evaluate(() => window.__padnav.editing), 'A on a list field: edit mode');
+      ok(await p.evaluate(() => getComputedStyle(document.querySelector('#pnHint')).display !== 'none' && /change/.test(document.querySelector('#pnHint').textContent)), 'while a value is being changed, one short hint says how (the only state the screen does not show)');
       await shot('04_select_editing');
       await press('down'); const v1 = await p.inputValue('#' + sel.id); ok(v1 !== v0, `↓ while editing changes the value (${v0} → ${v1})`);
       await press('up'); ok(await p.inputValue('#' + sel.id) === v0, '↑ steps back');
       await press('B'); ok(!(await p.evaluate(() => window.__padnav.editing)) && await p.locator('#main #rideBtn').isVisible(), 'B leaves edit mode, still on the route page');
+      ok(await p.evaluate(() => getComputedStyle(document.querySelector('#pnHint')).display === 'none'), 'and the hint is gone again');
     }
     await press('B'); await p.waitForTimeout(200); ok(!(await p.locator('#main #rideBtn').count()) && await p.locator('.card[data-id]').count() > 0, 'B: back from the route to the library');
     await press('B'); ok(await view() === 'library' && await p.locator('.card[data-id]').count() > 0, 'B again: stays on the main menu');
@@ -93,11 +95,12 @@ const BTN = { A: 0, B: 1, L: 4, R: 5, START: 9, up: 12, down: 13, left: 14, righ
       await shot('05_settings_slider');
       await press(atMax ? 'right' : 'left'); ok(+await p.inputValue('#' + rg.id) === v0, `and back (${v0})`);
     }
-    const ct = await seek('down', c => c.id === 'ctBtn', 10); ok(!!ct, 'down reaches "Test controller"');
+    const tc = await seek('up', c => c.text === 'Controller', 60); ok(!!tc, 'up reaches the “Controller” tab');
+    await press('A'); await p.waitForTimeout(200); ok(await p.locator('#main .ctab').count() >= 2, 'A on it: the button layout');
+    const ct = await seek('down', c => c.id === 'ctBtn', 20); ok(!!ct, 'down reaches "Test controller"');
     await press('A'); await p.waitForTimeout(200); ok(await p.locator('#ctLog').isVisible(), 'A opens the controller test window');
     await press('down'); const m1 = await cur(); ok(m1?.modal, `the focus stays inside the window (${m1?.text})`);
-    ok(await p.evaluate(() => /Gamepad in the menus/.test(document.querySelector('.modal').textContent)), 'the controller window lists the menu controls');
-    ok(await p.evaluate(() => /Test pad/.test(document.querySelector('#ctPad').textContent) && !document.querySelector('#ctSwap').hidden && /Zwift Click \/ Di2/.test(document.querySelector('#ctScan').textContent) && /set to D on a Mac/.test(document.querySelector('.modal').textContent)), 'controller window: the pad is named, Swap A / B offered, "Find device" is for Zwift Click / Di2, switch D on a Mac');
+    ok(await p.evaluate(() => /Test pad/.test(document.querySelector('#ctPad').textContent) && !document.querySelector('#ctSwap').hidden && /Find device/.test(document.querySelector('#ctScan').textContent) && /Zwift Click \/ Di2/.test(document.querySelector('.modal').textContent) && !/D-pad move/.test(document.querySelector('.modal').textContent)), 'controller window: the pad is named, Swap A / B offered, "Find device" for Zwift Click / Di2, no layout table (that is the Controller tab)');
     await shot('06_modal_focus');
     await press('B'); await p.waitForTimeout(150); const m2 = await cur();
     ok(!(await p.locator('#ctLog').count()) && m2?.id === 'ctBtn', `B closes the window, the focus returns to ${m2?.id}`);
@@ -129,7 +132,7 @@ const BTN = { A: 0, B: 1, L: 4, R: 5, START: 9, up: 12, down: 13, left: 14, righ
     const after = await cur(); ok((after?.id || null) === (before?.id || null) && !after?.ride, 'D-pad and arrow keys in the ride do not move the menu focus');
     await press('START'); await p.waitForTimeout(200); ok(await p.locator('#pauseOverlay #pResume').isVisible(), 'Start opens the ride\'s pause menu (unchanged)');
     await press('down'); const out = await p.evaluate(() => [...document.querySelectorAll('#pauseOverlay .padmenu button')].map(x => x.style.outline));
-    ok(out.some((o, i) => i > 0 && /3px/.test(o)) && !/3px/.test(out[0] || ''), 'D-pad ↓ in the pause menu moves the ride\'s own highlight');
+    ok(/3px/.test(out[0] || '') && !/3px/.test(out.at(-1) || ''), 'D-pad ↓ in the pause menu moves the ride\'s own highlight (from Resume at the bottom to the top of the list)');
     ok(await p.evaluate(() => document.activeElement?.id) === 'pSetup', 'the pause list: ↓ from Resume is “Workout & mode”');
     await padTo('#pOpts');
     ok(!(await p.locator('.ride .pn-focus').count()), 'no padnav focus inside the ride');

@@ -168,7 +168,7 @@ function fakePad() { // a standard-mapping gamepad; window.__pad.press(i) holds 
     await p.evaluate(() => window.__pad.press(9)); await p.waitForSelector('#pSetup');
     await p.click('#pSetup'); await p.waitForSelector('#oAdjUp');
     const opt = await p.textContent('#pauseOverlay');
-    ok(/Target.*intervals now \+10 W/.test(opt) && /Target \+5 W/.test(opt) && /Target −5 W/.test(opt) && /L \/ R or D-pad up \/ down: target ±5 W/.test(opt) && /W \/ S/.test(opt), 'pause → Workout & mode: the target items and the key / pad help', opt);
+    ok(/Target.*intervals \+10 W/.test(opt) && /\+5 W/.test(await p.textContent('#oAdjUp')) && /−5 W/.test(await p.textContent('#oAdjDn')) && !/D-pad|W \/ S/.test(opt), 'pause → Workout & mode: the target items, no key / pad help (that is Settings → Controller)', opt);
     await p.click('#oAdjDn'); await p.waitForTimeout(200); ok((await H()).a === 5, 'Workout & mode "Target −5 W" works (in an interval: the intervals)');
     await p.click('#oAdjUp'); await p.waitForTimeout(200); ok((await H()).a === 10, 'Workout & mode "Target +5 W" works');
     await p.click('#mBack'); await p.click('#pOpts'); await p.waitForSelector('[data-wb]');

@@ -8,14 +8,22 @@ const CANDIDATES = [
   '00000001-19ca-4651-86e5-fa29dcdd09d1',                         // Zwift Click / Play
   'a026ee01-0a7d-4ab3-97fa-f1500f9feb8b', 'a026e005-0a7d-4ab3-97fa-f1500f9feb8b',
 ];
-// what each gamepad button does during a ride (standard mapping; same numbers as js/ride.js _pollPad)
-export const PAD_MAP = [['L / R', 'Gears: easier / harder · ERG (workout or free ride): −5 / +5 W'], ['L2 / R2', 'ERG: −1 / +1 W'], ['D-pad ↓ / ↑', 'The same as L / R'], ['D-pad →', 'Workout: next step (like the lap key of a bike computer)'],
-  ['A', 'Accept challenge'], ['B', 'Switch display'], ['X', 'Photo'], ['Y', 'Switch camera'], ['Select (−)', 'Shifting: on the bike / virtual / auto / ERG'],
-  ['Start (+) / Home', 'Pause menu (D-pad to choose, A ok, B back; camera, bars, view, music and voice are in Options)']];
-// the same pad outside the ride, in every menu and window (js/padnav.js)
-export const MENU_MAP = [['D-pad / left stick', 'Move between buttons, lists and fields'], ['A', 'Select (on a list field: A, then ↑ ↓ to change, A to confirm)'],
-  ['B', 'Back: closes the window, otherwise one screen back'], ['D-pad ← → on a slider', 'Change the value'], ['L / R', 'Previous / next tab'],
-  ['Keyboard', 'Arrow keys, Enter and Escape work the same in the menus']];
+// The button layout has ONE home (owner 27.11. evening, "like in Minecraft"): Settings → Controller (js/app.js), no pad hints in
+// the windows. Each row is [button, what it does]; kept true to js/ride.js _pollPad / _key and js/padnav.js.
+/** the gamepad while riding (standard mapping; the same numbers as js/ride.js _pollPad) */
+export const PAD_RIDE = [['Start (+) / Home', 'Pause menu · Resume'], ['L / R', 'Gear easier / harder · workout or ERG: target −5 / +5 W'], ['D-pad ↓ / ↑', 'The same as L / R'],
+  ['L2 / R2', 'Workout or ERG: target −1 / +1 W'], ['D-pad →', 'Workout: next step'], ['D-pad ← / →', 'Open world: the road at a junction'],
+  ['A', 'Accept a challenge · let a friend join'], ['B', 'Switch display · a friend: not now'], ['X', 'Photo'], ['Y', 'Switch camera'], ['Select (−)', 'Shifting mode']];
+/** the gamepad in the menus: the pause menu (js/ride.js) and every page and window outside the ride (js/padnav.js) */
+export const PAD_MENU = [['D-pad', 'Move'], ['Left stick', 'Move (outside the ride)'], ['A', 'Select · on a list or number: ↑ ↓ change, A done'], ['B', 'Back · closes the window'],
+  ['L / R', 'Previous / next tab · a number: one step'], ['D-pad ← → on a slider', 'Change the value'], ['Start (+)', 'In the pause menu: Resume']];
+/** the keyboard while riding (js/ride.js _key) */
+export const KEYS_RIDE = [['Space', 'Pause · Resume'], ['Esc', 'Pause menu · one level back'], ['Q / E', 'Gear easier / harder (also , . − + PgDn PgUp)'], ['G', 'Shifting mode'],
+  ['W / S', 'Workout or ERG: target +5 / −5 W (Shift: 1 W)'], ['↑ / ↓', 'Without a trainer: test watts, never saved · with one in a workout: target ±1 W'],
+  ['← / →', 'Open world: the road at a junction'], ['X', 'Workout: next step'], ['L', 'Workout: interval display'], ['O', 'Workout & mode'], ['V / C', 'Switch camera'],
+  ['[ / ]', 'Field of view wider / narrower'], ['I', 'Switch display'], ['H', 'Handlebars'], ['M', 'Music on / off'], ['N', 'Next song'], ['K', 'Accept a challenge'], ['F', 'Full screen']];
+/** the keyboard in the menus */
+export const KEYS_MENU = [['Tab / Shift+Tab', 'Move (the pause menu too)'], ['Arrow keys', 'Move (outside the ride)'], ['Enter', 'Select'], ['Esc', 'Back · closes the window']];
 /** pressed state per standard button index, so the printed letters mean the same on every pad; the one helper for the ride
  *  (js/ride.js) and the menus (js/padnav.js). Only a pad that reports itself as a Switch controller (Switch Pro, Joy-Con,
  *  Nintendo vendor 057e, which is also what an 8BitDo in switch position "S" pretends to be) is read by position by Chrome
@@ -69,20 +77,14 @@ const ACT = ['Accept challenge / menu ok', 'Switch display / back', 'Photo', 'Sw
 const hex = dv => [...new Uint8Array(dv.buffer, dv.byteOffset, dv.byteLength)].map(b => b.toString(16).padStart(2, '0')).join(' ');
 
 export function openControllerTest() {
-  const m = document.createElement('div'); m.className = 'modal';
-  m.innerHTML = `<div class="box" style="width:min(820px,94vw)">
-    <div class="label">Bluetooth</div><h2 class="display" style="margin-top:10px">Test<br>controller</h2>
-    <p><b>Gamepad</b> (e.g. 8BitDo Micro, switch on the back set to D on a Mac, S if D does not work): pair it in the computer's Bluetooth settings, then just press a button here. It shows up below by itself, no search needed.
-      <b>Zwift Click / Di2</b>: “Find device”, choose it (Di2: shift once first so it wakes up), then press the buttons. Every message shows up below, keyboard too.</p>
-    <p id="ctPad" class="hint" style="margin-top:8px"></p>
-    <details style="margin:6px 0 10px"><summary style="cursor:pointer"><b>Gamepad buttons during a ride</b> (e.g. 8BitDo Micro, switch on the back set to D on a Mac, S if D does not work)</summary>
-      <table style="margin-top:8px;border-collapse:collapse">${PAD_MAP.map(([k, v]) => `<tr><td style="padding:2px 14px 2px 0;white-space:nowrap"><b>${k}</b></td><td>${v}</td></tr>`).join('')}</table>
-      <p style="margin-top:8px"><b>Keyboard in a workout</b>: W / S target +5 / −5 W (Shift 1 W); with a trainer connected the arrow keys ↑ / ↓ move it 1 W (Shift 5 W) and never set test watts. Hard intervals and easy parts keep their own offset. L switches the interval display (big / compact / focus). X ends the step running now (next step).</p>
-      <p style="margin-top:8px"><b>Zwift Click + / −</b>: Gear harder / easier (connect it in Settings → Trainer)</p></details>
-    <details style="margin:0 0 10px"><summary style="cursor:pointer"><b>Gamepad in the menus</b> (everywhere outside the ride, like a TV remote)</summary>
-      <table style="margin-top:8px;border-collapse:collapse">${MENU_MAP.map(([k, v]) => `<tr><td style="padding:2px 14px 2px 0;white-space:nowrap"><b>${k}</b></td><td>${v}</td></tr>`).join('')}</table></details>
-    <div class="actions" style="justify-content:flex-start"><button class="btn small" id="ctScan" title="Only for Zwift Click, Di2 and other Bluetooth buttons; gamepads need no search">Find device (Zwift Click / Di2)</button><button class="btn ghost small" id="ctSwap" hidden>Swap A / B</button><button class="btn ghost small" id="ctCopy">Copy log</button><button class="btn ghost small" id="ctClose">Close</button></div>
-    <pre id="ctLog" style="margin-top:18px;height:340px;overflow:auto;background:#000;border:1px solid var(--line-2);border-radius:4px;padding:12px;font:12px/1.5 ui-monospace,Menlo,monospace;white-space:pre-wrap"></pre></div>`;
+  const m = document.createElement('div'); m.className = 'modal ctmodal';
+  if (document.querySelector('.modal.rideset')) m.style.zIndex = '70'; // opened from the Settings over the ride: above that sheet
+  m.innerHTML = `<div class="box ctbox">
+    <div class="mhead"><button type="button" class="btn ghost rmback" id="ctClose">‹ Back</button><h2 class="display">Test controller</h2></div>
+    <p class="mline">Gamepad: pair it in Bluetooth, then press any button. Zwift Click / Di2: Find device.</p>
+    <p id="ctPad" class="hint"></p>
+    <pre id="ctLog" class="ctlog"></pre>
+    <div class="mfoot"><div class="mfl"><button type="button" class="btn ghost small" id="ctSwap" hidden>Swap A / B</button><button type="button" class="btn ghost small" id="ctCopy">Copy log</button></div><button type="button" class="btn" id="ctScan">Find device</button></div></div>`;
   document.body.append(m);
   const logEl = m.querySelector('#ctLog');
   const log = s => { logEl.textContent += `${new Date().toLocaleTimeString('en-GB')}.${String(Date.now() % 1000).padStart(3, '0')}  ${s}\n`; logEl.scrollTop = 1e9; };

@@ -1,8 +1,8 @@
 /* ride setup in the pause overlay (js/ridesetup.js): workout, mode and shifting. Orange is the only accent. */
-.paused .box.rsbox { --rs: #ff5a1f; background: rgba(12,12,12,.94); width: min(920px, calc(100vw - 32px)); max-height: calc(100dvh - 32px); overflow-y: auto; text-align: left; padding: 24px 28px 22px; }
+.paused .box.rsbox { --rs: #ff5a1f; background: rgba(12,12,12,.94); width: min(920px, calc(100vw - 32px)); max-height: calc(100dvh - 32px); overflow: hidden; text-align: left; padding: 20px 28px 0;
+  display: flex; flex-direction: column; }
 .paused .box.rsbox h2 { font-size: clamp(34px, 6vw, 64px); margin: 6px 0 14px; }
 .rs { display: flex; flex-direction: column; gap: 16px; }
-.rs .rsgo { align-self: flex-start; }
 .rsg .rsl { font-size: 11px; font-weight: 800; letter-spacing: .14em; text-transform: uppercase; color: var(--muted, #9a9a9a); margin-bottom: 8px; }
 .rsg .rscur { text-transform: none; letter-spacing: 0; font-weight: 600; color: var(--paper, #f4f1ea); margin-left: 6px; }
 .rsrow { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 8px; }
@@ -17,18 +17,15 @@
 .rsopt:disabled { opacity: .45; cursor: default; }
 .rsopt:focus-visible { outline: 3px solid var(--rs); outline-offset: 3px; }
 .rsmini { display: block; width: 100%; margin-top: 4px; } .rsmini svg { display: block; width: 100%; height: 18px; }
-.rsbox .pad-hint { margin-top: 14px; opacity: .7; font-size: 12px; }
-@media (max-width: 640px) { .paused .box.rsbox { padding: 18px 16px; } .rsrow { grid-template-columns: minmax(0, 1fr); } .rsw { grid-template-columns: minmax(0, 1fr); } }
+@media (max-width: 640px) { .paused .box.rsbox { padding: 16px 16px 0; } .rsrow { grid-template-columns: minmax(0, 1fr); } .rsw { grid-template-columns: minmax(0, 1fr); } }
 .rsnote { margin-top: 8px; font-size: 12.5px; line-height: 1.4; color: var(--muted, #9a9a9a); display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; }
 .rsnote .btn { padding: 6px 12px; font-size: 13px; } .rsdev { color: var(--paper, #f4f1ea); font-weight: 700; }
 
 /* adjust step (js/ridesetup.js openAdjust) */
 .rsoff .rsl { margin-bottom: 0; }
-.paused .box.rsbox h2.rsah { font-size: clamp(26px, 4vw, 44px); margin: 6px 0 6px; }
 .rsasum { display: flex; align-items: center; gap: 16px; font-size: 13px; font-weight: 700; color: var(--muted, #9a9a9a); margin-bottom: 14px; }
 .rsasum .rsabig { flex: 1; min-width: 0; }
-.rsarow0 { display: flex; flex-wrap: wrap; gap: 8px; }
-.rsarow0 [aria-pressed="true"] { border-color: var(--rs); color: var(--rs); }
+.rmfl [aria-pressed="true"] { border-color: var(--rs); color: var(--rs); }
 .rsa { display: flex; flex-direction: column; gap: 6px; }
 .rsar { display: grid; grid-template-columns: minmax(120px, 1.4fr) auto auto auto; align-items: center; gap: 14px; padding: 8px 12px; border-radius: 12px; border: 1.5px solid rgba(255,255,255,.12); }
 .rsar.off { opacity: .45; }
@@ -44,18 +41,31 @@
 .rs .rshr { align-self: flex-start; }
 
 /* ---------------- the pause menu and its sheets (js/ridemenus.js, owner 27.11.): the look of Workout & mode everywhere ---------------- */
-.paused .box.rsbox .pad-hint { margin-top: 14px; opacity: .7; font-size: 12px; }
 .paused .box.rsbox .btn { min-height: 40px; }
-.rmtop { display: flex; flex-wrap: wrap; gap: 8px; }
-.rmtop .btn { height: 48px; }
+/* the frame of every window (owner 27.11. evening): "‹ Back" top left, the title once; the body scrolls between head and
+   foot; the primary action bottom right, secondary / destructive ones bottom left */
+.rmhead { flex: none; display: flex; align-items: center; gap: 16px; min-width: 0; padding-bottom: 14px; }
+.rmhead .rmback { flex: none; height: 44px; padding: 0 16px; font-size: 13px; }
+.paused .box.rsbox .rmhead h2 { margin: 0; min-width: 0; line-height: 1; overflow-wrap: anywhere; }
+.rmhead .rmstat { margin-left: auto; flex: none; font-size: 13px; font-weight: 700; color: var(--muted, #9a9a9a); font-variant-numeric: tabular-nums; white-space: nowrap; }
+.paused .box.rsbox > .padmenu.rs, .paused .box.rsbox > .padmenu.pmlist { flex: 1 1 auto; min-height: 0; overflow-y: auto; margin: 0 -8px; padding: 4px 8px 8px; }
+.rmfoot { flex: none; display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 14px 0 20px; margin-top: 6px; border-top: 1px solid rgba(255,255,255,.08); }
+.rmfl { display: flex; flex-wrap: wrap; gap: 8px; min-width: 0; }
+.rmfoot > .btn { flex: none; margin-left: auto; }
+.rmfoot .btn { height: 48px; }
+/* the (i) that shows a sentence one may want */
+.rsinfo { margin-left: 8px; width: 20px; height: 20px; border-radius: 50%; border: 1.5px solid rgba(255,255,255,.35); background: transparent; color: inherit; font: italic 700 11px/1 Georgia, serif; text-transform: none; letter-spacing: 0; cursor: pointer; vertical-align: 1px; padding: 0; }
+.rsinfo[aria-expanded="true"], .rsinfo:hover { border-color: var(--rs); color: var(--rs); }
+.rsinfo:focus-visible { outline: 3px solid var(--rs); outline-offset: 2px; }
+.rsinfotext { margin: 0 0 8px; }
 .rsrow2 { grid-template-columns: repeat(2, minmax(0, 1fr)); } .rsrow3 { grid-template-columns: repeat(3, minmax(0, 1fr)); }
 .rshud { grid-template-columns: repeat(auto-fit, minmax(118px, 1fr)); }
 .rslaps { grid-template-columns: repeat(auto-fit, minmax(86px, 1fr)); }
 .rsopt { min-height: 48px; justify-content: center; }
 .rsnote .rscur { margin: 0; }
-/* the pause list: one column of big entries, a one-line hint under each name */
-.paused .box.rsbox.pmbox { width: min(540px, calc(100vw - 32px)); padding: 22px 24px 18px; }
-.paused .box.rsbox.pmbox h2 { font-size: clamp(40px, 5.2vw, 72px); margin: 4px 0 14px; }
+/* the pause list: one column of big entries, a status line under a name where there is one */
+.paused .box.rsbox.pmbox { width: min(540px, calc(100vw - 32px)); padding: 20px 24px 0; }
+.paused .box.rsbox.pmbox h2 { font-size: clamp(40px, 5.2vw, 72px); }
 .pmlist { display: flex; flex-direction: column; gap: 6px; }
 .pmi { display: flex; align-items: center; gap: 14px; min-height: 56px; padding: 9px 16px; border-radius: 12px; border: 1.5px solid rgba(255,255,255,.12); background: rgba(255,255,255,.04);
   color: var(--paper, #f4f1ea); font: inherit; text-align: left; cursor: pointer; transition: border-color .12s, background .12s; }
@@ -66,7 +76,12 @@
 .pmi:hover { border-color: rgba(255,255,255,.32); }
 .pmi.rmgo { background: var(--rs); border-color: var(--rs); color: #0b0b0b; } .pmi.rmgo small, .pmi.rmgo > i { color: rgba(11,11,11,.72); }
 .pmi:focus-visible { outline: 3px solid var(--rs); outline-offset: 3px; }
-#pEnd { margin-top: 6px; }
+/* Ride together: one row, the code and one button (owner 27.11. evening) */
+.pmrow { display: flex; align-items: center; gap: 12px; min-height: 56px; padding: 8px 8px 8px 16px; border-radius: 12px; border: 1.5px solid rgba(255,255,255,.12); background: rgba(255,255,255,.04); }
+.pmrow > b { flex: none; font-size: 16px; font-weight: 800; }
+.pmrow > small { min-width: 0; font-size: 12.5px; color: var(--muted, #9a9a9a); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.pmrow .pmcode { flex: none; font-size: 19px; font-weight: 800; letter-spacing: .08em; font-variant-numeric: tabular-nums; }
+.pmrow > .btn { flex: none; margin-left: auto; height: 40px; padding: 0 14px; }
 /* on / off switches */
 .rmtog { flex-direction: row; align-items: center; justify-content: space-between; gap: 14px; }
 .rmtog span { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
@@ -95,21 +110,15 @@
 .dvbtns { display: flex; flex-wrap: wrap; gap: 8px; }
 .dvbtns .btn.small { height: 40px; font-size: 12.5px; }
 .rmwarn { border-color: #ff6b6b !important; color: #ff6b6b !important; }
-/* Ride together */
-.rmcode { display: flex; align-items: center; flex-wrap: wrap; gap: 12px 18px; }
-.rmcode b { font-size: clamp(34px, 5vw, 52px); font-weight: 800; letter-spacing: .12em; font-variant-numeric: tabular-nums; line-height: 1; }
-.rmrider { padding: 12px 14px; border-radius: 12px; border: 1.5px dashed rgba(255,255,255,.14); } .rmrider b { display: block; font-size: 15px; } .rmrider small { font-size: 12px; color: var(--muted, #9a9a9a); }
-.rs .invlist { margin: 0; }
-.rs .invlist .rsopt b { display: flex; align-items: center; gap: 10px; }
 /* End ride */
-.paused .box.rsbox.rmsmall { width: min(540px, calc(100vw - 32px)); }
-.rmtext { margin: 0 0 16px; font-size: 14px; line-height: 1.45; color: var(--muted, #9a9a9a); }
-.rmend { display: flex; flex-wrap: wrap; gap: 10px; }
-.rmend .btn { height: 52px; }
-.modal.rideset.ctride .box { margin-top: 24px; }
-@media (max-height: 760px) { .paused .box.rsbox.pmbox h2 { font-size: 48px; margin-bottom: 10px; } .pmi { min-height: 52px; padding: 7px 16px; } }
+.paused .box.rsbox.rmsmall { width: min(600px, calc(100vw - 32px)); }
+.paused .box.rsbox.rmsmall .rmhead h2 { font-size: clamp(28px, 2.8vw, 40px); }
+.paused .box.rsbox .rmhead h2.rsah { font-size: clamp(24px, 2.6vw, 38px); }
+.rmtext { margin: 0 0 8px; font-size: 14px; line-height: 1.45; color: var(--muted, #9a9a9a); }
+.paused.goalask .box.rsbox h2 { font-size: clamp(40px, 5vw, 64px); }
+@media (max-height: 760px) { .paused .box.rsbox.pmbox h2 { font-size: 48px; } .pmi, .pmrow { min-height: 52px; padding-top: 6px; padding-bottom: 6px; } .rmfoot { padding-bottom: 16px; } }
 @media (max-width: 640px) { .rsrow3, .rsrow2 { grid-template-columns: minmax(0, 1fr); } .rshud { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
 /* the sheets' titles stay modest so the content starts high (a 1280 × 720 laptop) */
-.paused .box.rsbox:not(.pmbox) h2 { font-size: clamp(30px, 3.6vw, 48px); margin: 4px 0 14px; }
-.paused .box.rsbox:not(.pmbox) h2.rsah { font-size: clamp(26px, 3.4vw, 44px); }
+.paused .box.rsbox:not(.pmbox) h2 { font-size: clamp(30px, 3.6vw, 48px); }
 .paused .box.rsbox.rmmid { width: min(720px, calc(100vw - 32px)); }
+@media (max-width: 640px) { .rmhead { gap: 10px; } .rmhead .rmstat { display: none; } .rmfoot { flex-wrap: wrap; } }
