@@ -1301,10 +1301,16 @@ module Draw {
         }
     }
     // BACK on the ride (28.11.: "it must be obvious this is a menu and not a pause"): RIDE MENU, the line under the rows says the ride goes
-    // on ("Riding 12:34, 180 W", green; "Paused 12:34", orange); Back to ride (Resume when paused), Finish & save, Discard (asks once more)
+    // on ("Riding 12:34, 180 W", green; "Paused 12:34", orange); Back to ride (Resume when paused), +5 W, -5 W (27.11.5), Finish & save,
+    // Discard (asks once more)
     function drawTEnd(dc as Dc, F as Flow, S as Number, P as Palette) as Void {
         var R = F.tr, ex = [] as Array;
-        if (R != null) { var run = R.st == RS_RUN, a = (run ? "Riding " : "Paused ") + clock(R.t); ex = [[a + ", " + R.tgt.toString() + " W|" + a, run ? P.good : P.acc, false]] as Array; }
+        // 27.11.5: the target the menu's + / - change, in a workout with its offset: "Riding 12:34, 285 W (+10)"
+        if (R != null) {
+            var run = R.st == RS_RUN, a = (run ? "Riding " : "Paused ") + clock(R.t), W = F.wk, aj = W != null ? W.adj() : 0;
+            var w = R.tgt.toString() + " W" + (aj != 0 ? " (" + sgnTxt(aj) + ")" : "");
+            ex = [[a + ", " + w + "|" + w, run ? P.good : P.acc, false]] as Array;
+        }
         list(dc, F, S, P, F.listItems(), F.tConf ? "DISCARD RIDE?" : "RIDE MENU", F.tConf ? "DISCARD?" : "MENU", true, null, null, ex);
     }
     /* ---- 27.11.4: the summary after a trainer ride, one question per page (js drawTSum ... tsPw; Flow.tsPages, F.sel = the page): what
@@ -1344,48 +1350,49 @@ module Draw {
     }
     // row j of k over the n units ridden: its first index (k runs as even as whole units allow)
     function tsFrom(n as Number, k as Number, j as Number) as Number { return j * n / k; }
-    // the row's label: "SET 2", "SET 1-2", "#3", "1-13"
-    function tsLab(U as Array<Number>, a as Number, b as Number, sets as Boolean) as String {
-        return (sets ? "SET " : (a == b ? "#" : "")) + (U[a] + 1).toString() + (a == b ? "" : "-" + (U[b] + 1).toString());
+    // the row's label under SET / #: "2", "1-2"
+    function tsLab(U as Array<Number>, a as Number, b as Number) as String {
+        return (U[a] + 1).toString() + (a == b ? "" : "-" + (U[b] + 1).toString());
     }
-    // Monkey C only: row j of a table (j < 0: the header hh)
-    function tsRow(hh as Array<String> or Null, a as Array<String>, b as Array<String>, d as Array<String>, j as Number) as Array<String> {
-        if (j < 0 && hh != null) { return hh; }
-        return [a[j], b[j], d[j]] as Array<String>;
-    }
-    // js tsTab: a small table in XTINY: a header row hh (or null, the label colour) and the rows [a (labels), b, d] (b in fg, d in cl[j]);
-    // the columns as wide as their widest text, the numbers right-aligned, the table centred, the rows from top; the ink bottom, -1 where a
-    // row does not fit above bot or inside the circle (at most 0.8 S wide: clear of the page dots)
-    function tsTab(dc as Dc, S as Number, P as Palette, hh as Array<String> or Null, a as Array<String>, b as Array<String>, d as Array<String>, cl as Array<Number>, top, bot, draw as Boolean) as Float {
-        var G = gap(S), sp = S * 0.05, rh = inkH(dc, XT) + G, h0 = hh != null ? 1 : 0, n = a.size() + h0, w = [0, 0, 0] as Array<Number>;
-        for (var k = 0; k < n; k++) {
-            var r = tsRow(hh, a, b, d, k - h0);
-            for (var q = 0; q < 3; q++) { var x = dc.getTextWidthInPixels(r[q], XT); if (x > w[q]) { w[q] = x; } }
+    // js tsTab (27.11.5): a Garmin-style table: the header hh (XTINY, grey) and the rows r (four texts each, in font f; cl[j] the colours of
+    // row j's texts; digits and capitals only: no descenders); the first column left-aligned, the others right-aligned, each as wide as its
+    // widest text, sp between them, the table centred, a row pitch of the ink and two gaps. The ink bottom, -1 where a line does not fit
+    // above bot or inside the circle (at most 0.8 S wide: clear of the page dots)
+    function tsTab(dc as Dc, S as Number, P as Palette, hh as Array<String>, r as Array<Array<String>>, cl as Array<Array<Number>>, f, sp, top, bot, draw as Boolean) as Float {
+        var G = gap(S), rh = up(dc, f) + dn(dc, f, "0") + 2 * G, n = r.size(), w = [0, 0, 0, 0] as Array<Number>;
+        for (var q = 0; q < 4; q++) {
+            w[q] = dc.getTextWidthInPixels(hh[q], XT);
+            for (var j = 0; j < n; j++) { var x = dc.getTextWidthInPixels(r[j][q], f); if (x > w[q]) { w[q] = x; } }
         }
-        var tw = w[0] + w[1] + w[2] + 2 * sp, x0 = S / 2.0 - tw / 2.0, y0 = top + up(dc, XT);
-        for (var k2 = 0; k2 < n; k2++) {
-            var y = y0 + k2 * rh;
-            if (y + dn(dc, XT, "g") > bot || tw > roomC(dc, S / 2, y, XT, "g", R0) || tw > S * 0.8) { return -1.0; }
+        var tw = w[0] + w[1] + w[2] + w[3] + 3 * sp, x0 = S / 2.0 - tw / 2.0, hy = top + up(dc, XT), y0 = hy + dn(dc, XT, "0") + 2 * G + up(dc, f);
+        if (tw > S * 0.8 || tw > roomC(dc, S / 2, hy, XT, "0", R0)) { return -1.0; }
+        for (var j1 = 0; j1 < n; j1++) {
+            var y = y0 + j1 * rh;
+            if (y + dn(dc, f, "0") > bot || tw > roomC(dc, S / 2, y, f, "0", R0)) { return -1.0; }
         }
         if (draw) {
-            var x1 = x0 + w[0] + sp + w[1], x2 = x0 + tw;
-            for (var k3 = 0; k3 < n; k3++) {
-                var j = k3 - h0, r3 = tsRow(hh, a, b, d, j), y3 = y0 + k3 * rh;
-                txtL(dc, x0, y3, XT, r3[0], P.lbl);
-                txtL(dc, x1 - dc.getTextWidthInPixels(r3[1], XT), y3, XT, r3[1], j < 0 ? P.lbl : P.fg);
-                txtL(dc, x2 - dc.getTextWidthInPixels(r3[2], XT), y3, XT, r3[2], j < 0 ? P.lbl : cl[j]);
+            var xs = [x0, x0 + w[0] + sp + w[1], x0 + w[0] + w[1] + w[2] + 2 * sp, x0 + tw] as Array;
+            for (var j2 = -1; j2 < n; j2++) {
+                var t = j2 < 0 ? hh : r[j2], ff = j2 < 0 ? XT : f, y2 = j2 < 0 ? hy : y0 + j2 * rh;
+                for (var q2 = 0; q2 < 4; q2++) {
+                    var xq = q2 == 0 ? xs[0] : xs[q2] - dc.getTextWidthInPixels(t[q2], ff);
+                    txtL(dc, xq, y2, ff, t[q2], j2 < 0 ? P.dim : cl[j2][q2]);
+                }
             }
         }
-        return y0 + (n - 1) * rh + dn(dc, XT, "g");
+        return y0 + (n - 1) * rh + dn(dc, f, "0");
     }
-    // js tsFit: the lowest top (not above lo) from which that table fits above bot and inside the circle (it moves up a gap at a time), -1 none
-    function tsFit(dc as Dc, S as Number, P as Palette, hh as Array<String> or Null, a as Array<String>, b as Array<String>, d as Array<String>, cl as Array<Number>, lo, bot) as Float {
-        var G = gap(S), n = a.size() + (hh != null ? 1 : 0), tt = bot - n * (inkH(dc, XT) + G) + G;
-        while (tt >= lo) {
-            if (tsTab(dc, S, P, hh, a, b, d, cl, tt, bot, false) >= 0) { return tt.toFloat(); }
-            tt -= G;
+    // js tsLine (27.11.5): one XTINY line of texts t in the colours cl, centred on y: a small space after the first, third ..., a wider one
+    // after the second ("136 AVG  169 MAX", "RECOVERY 60 S -56"); false where it does not fit inside the circle
+    function tsLine(dc as Dc, S as Number, P as Palette, y, t as Array<String>, cl as Array<Number>, draw as Boolean) as Boolean {
+        var sp = S * 0.022, w = 0.0, n = t.size();
+        for (var k = 0; k < n; k++) { w += dc.getTextWidthInPixels(t[k], XT) + (k < n - 1 ? (k % 2 == 1 ? 2 * sp : sp) : 0.0); }
+        if (w > roomC(dc, S / 2, y, XT, "0", R0)) { return false; }
+        if (draw) {
+            var x = S / 2.0 - w / 2.0;
+            for (var k1 = 0; k1 < n; k1++) { txtL(dc, x, y, XT, t[k1], cl[k1]); x += dc.getTextWidthInPixels(t[k1], XT) + (k1 % 2 == 1 ? 2 * sp : sp); }
         }
-        return -1.0;
+        return true;
     }
     // 1. what did I do: SAVED, the workout's name (or Free ride), the ride's time big, how much of the workout was done (all: green),
     // average power and kJ. Where it does not fit: the numbers' font shrinks, then the time's, then the name goes
@@ -1417,118 +1424,126 @@ module Draw {
             return;
         }
     }
-    // 2. did I hit the targets, did I fade: one bar per interval, under it per set (else per interval) the average watts and the difference
-    // to the target (green: at most 5 W under); more than four: runs of them; where the rows do not fit, fewer runs, then none
+    // js tsWhat (27.11.5): what the intervals were: "39 x 0:30 @ 370 W", only what they all have in common ("5 x 5:00", "5 INTERVALS @
+    // 300 W", "5 INTERVALS"; the target is the one sent)
+    function tsWhat(s as Dictionary) as String {
+        var n = numOf(s["ivN"]), d = numOf(s["ivS"]), w = numOf(s["ivW"]);
+        var a = d > 0 ? n.toString() + " x " + clock(d) : n.toString() + (n == 1 ? " INTERVAL" : " INTERVALS");
+        return w > 0 ? a + " @ " + w.toString() + " W|" + a : a;
+    }
+    // 2. did I hit the targets, did I fade (27.11.5: Garmin's lap table): under the title what the intervals were, then a table, per set
+    // (else per interval; more than four: runs of them, "1-2") the average watts without the ramp seconds, the difference to the target
+    // (green: at most 5 W under) and the peak heart rate; a set or interval cut short: a grey row. Where it does not fit: narrower columns,
+    // the header "W" for "AVG W", the rows' font shrinks, then fewer runs; the table sits a third down the room left where it fits there
     function tsIv(dc as Dc, S as Number, P as Palette, s as Dictionary, last as Boolean) as Void {
-        var G = gap(S), top = tsHead(dc, S, P, "INTERVALS") + 2 * G, bot = last ? tsDone(dc, S, P) : S * 0.9, U = tsUnits(s), nu = U.size(), sets = s["uS"] == true;
-        var uw = arrOf(s["uw"]), ut = arrOf(s["ut"]);
+        var G = gap(S), top = tsHead(dc, S, P, "INTERVALS"), bot = last ? tsDone(dc, S, P) : S * 0.9, U = tsUnits(s), nu = U.size(), sets = s["uS"] == true;
+        var uw = arrOf(s["uw"]), ut = arrOf(s["ut"]), uhp = arrOf(s["uhp"]), udn = arrOf(s["udn"]), ucn = arrOf(s["ucn"]);
+        var h0 = sets ? "SET" : "#", what = tsWhat(s), w0 = first(what), FR = [ME, SM, TI, XT] as Array;
+        var full = dc.getTextWidthInPixels(w0, TI) <= roomC(dc, S / 2, below(dc, top, TI, 0), TI, w0, R0); // all of it in TINY, else in XTINY where it fits there
         for (var k = nu < 4 ? nu : 4; k >= 0; k--) {
-            var a = [] as Array<String>, b = [] as Array<String>, d = [] as Array<String>, cl = [] as Array<Number>;
+            var r = [] as Array<Array<String>>, cl = [] as Array<Array<Number>>;
             for (var j = 0; j < k; j++) {
-                var f = tsFrom(nu, k, j), t = tsFrom(nu, k, j + 1) - 1, w = 0, g = 0;
-                for (var q = f; q <= t; q++) { w += numOf(uw[U[q]]); g += numOf(ut[U[q]]); }
+                var f = tsFrom(nu, k, j), t = tsFrom(nu, k, j + 1) - 1, w = 0, g = 0, hp = 0, cut = false;
+                for (var q = f; q <= t; q++) {
+                    var u = U[q], h = numOf(uhp[u]);
+                    w += numOf(uw[u]); g += numOf(ut[u]);
+                    if (h > hp) { hp = h; }
+                    if (u < udn.size() && u < ucn.size() && numOf(udn[u]) < numOf(ucn[u])) { cut = true; }
+                }
                 w = tsDiv(w, t - f + 1); g = tsDiv(g, t - f + 1);
-                a.add(tsLab(U, f, t, sets)); b.add(w.toString() + " W"); d.add(sgnTxt(w - g)); cl.add(w - g >= -5 ? P.good : P.bad);
+                r.add([tsLab(U, f, t), w.toString(), sgnTxt(w - g), hp > 0 ? hp.toString() : "--"] as Array<String>);
+                cl.add(cut ? [P.dim, P.dim, P.dim, P.dim] as Array<Number> : [P.fg, P.fg, w - g >= -5 ? P.good : P.bad, P.fg] as Array<Number>);
             }
-            var rt = k > 0 ? tsFit(dc, S, P, null, a, b, d, cl, top + S * 0.14 + 2 * G, bot) : bot, cb = rt - 2 * G;
-            if (rt < 0) { continue; }
-            tsBars(dc, S, P, s, top, k > 0 ? cb : bot);
-            if (k > 0) { tsTab(dc, S, P, null, a, b, d, cl, rt, bot, true); }
-            return;
+            for (var z = 0; z < 2; z++) {
+                var cf = z == (full ? 0 : 1) ? TI : XT, cy = below(dc, top, cf, 0), lo = cy + dn(dc, cf, "0") + 2 * G;
+                if (k == 0) { put(dc, S / 2, cy, cf, what, (S * 0.8).toNumber(), P.fg, false, R0); return; }
+                for (var st = 0; st < 3; st++) {
+                    var hh = [h0, st < 2 ? "AVG W" : "W", "+/-", "HR"] as Array<String>, sp = S * (st == 0 ? 0.06 : 0.035);
+                    for (var fi = 0; fi < FR.size(); fi++) {
+                        var fr = FR[fi], b = tsTab(dc, S, P, hh, r, cl, fr, sp, lo, bot, false);
+                        if (b < 0) { continue; }
+                        var mid = lo + (bot - b) / 3.0, tt = tsTab(dc, S, P, hh, r, cl, fr, sp, mid, bot, false) >= 0 ? mid : lo;
+                        put(dc, S / 2, cy, cf, what, (S * 0.8).toNumber(), P.fg, false, R0); tsTab(dc, S, P, hh, r, cl, fr, sp, tt, bot, true);
+                        return;
+                    }
+                }
+            }
         }
     }
-    // the intervals' bars between top and bot inside the circle (0.42 S): the scale from a little under the lowest watts / target to the
-    // highest; too many for 2 px each: neighbours averaged into one bar, no set gaps
-    function tsBars(dc as Dc, S as Number, P as Palette, s as Dictionary, top, bot) as Void {
-        var iw = arrOf(s["iw"]), it = arrOf(s["it"]), iu = arrOf(s["iu"]), n = iw.size(), c = S / 2.0;
-        if (n == 0 || bot - top < 4) { return; }
-        var hw = half(S, top, bot, 0.42), W = 2 * hw, ug = pw(S * 0.02), part = n > numOf(s["ivD"]), ng = 0;
-        if (s["uS"] == true) { for (var k = 1; k < n; k++) { if (numOf(iu[k]) != numOf(iu[k - 1])) { ng++; } } }
-        var m = 1, nb = n, slot = (W - ng * ug) / n;
-        if (slot < 2) { m = (2 * n / W).toNumber() + 1; nb = (n + m - 1) / m; ng = 0; slot = W / nb; }
-        var mn = 99999, mx = 0;
-        for (var k1 = 0; k1 < n; k1++) {
-            var a = numOf(iw[k1]), b = numOf(it[k1]);
-            if (a < mn) { mn = a; } if (b < mn) { mn = b; } if (a > mx) { mx = a; } if (b > mx) { mx = b; }
-        }
-        var lo0 = mn - (mx - mn) * 0.5 - mx * 0.05, lo = lo0 > 0 ? lo0 : 0.0, hi = mx + mx * 0.02 + 1, H = bot - top, bw = slot >= 3 ? slot - 1 : slot;
-        var x = c - hw;
-        for (var j = 0; j < nb; j++) {
-            var k0 = j * m, k2 = k0 + m < n ? k0 + m : n, sa = 0, sb = 0;
-            for (var q = k0; q < k2; q++) { sa += numOf(iw[q]); sb += numOf(it[q]); }
-            var fa = sa.toFloat() / (k2 - k0), fb = sb.toFloat() / (k2 - k0);
-            if (ng > 0 && k0 > 0 && numOf(iu[k0]) != numOf(iu[k0 - 1])) { x += ug; }
-            var ha0 = (fa - lo) / (hi - lo) * H, ha = ha0 > 2 ? ha0 : 2.0, hb = (fb - lo) / (hi - lo) * H;
-            dc.setColor(part && k2 == n ? P.dim : P.acc, Graphics.COLOR_TRANSPARENT); dc.fillRectangle(x, bot - ha, bw, ha);
-            dc.setColor(P.fg, Graphics.COLOR_TRANSPARENT); dc.fillRectangle(x, bot - hb - 1, slot, 2);
-            x += slot;
-        }
-    }
-    // 3. how hard was it for my body: average and max heart rate; the time in the five zones (only with the profile's zones) or else the
-    // heart rate over the ride; per set (else per interval) its peak and the recovery (the drop in the 60 s after it). No heart rate: one
-    // line. Where it does not fit: fewer rows (at least two), then the zones / the curve go, then the rows
+    // 3. how hard was it for my body: average and max heart rate; with the profile's zones the time in each (tsZones), else the heart rate
+    // over the ride; one line with the recovery (the average drop in the 60 s after the sets / intervals, where one was measured). No heart
+    // rate: one line. Where it does not fit: the numbers' font shrinks, then they go on one line ("136 AVG  169 MAX"), then the recovery
+    // line goes, then the zones / the curve
     function tsHr(dc as Dc, S as Number, P as Palette, s as Dictionary, last as Boolean) as Void {
         var c = S / 2, G = gap(S), top = tsHead(dc, S, P, "HEART RATE|HR"), bot = last ? tsDone(dc, S, P) : S * 0.9;
         if (numOf(s["hr"]) <= 0) {
             dc.setColor(P.faint, Graphics.COLOR_TRANSPARENT); dc.fillCircle(c, S * 0.38, S * 0.09); heart(dc, c, S * 0.38, S * 0.1, P.dim);
-            var nf = byInk(dc, [SM, XT], S * 0.1), ny = below(dc, S * 0.47, nf, S * 0.58); put(dc, c, ny, nf, "No heart rate|No HR", S, P.fg, false, R0);
-            var y1 = below(dc, ny + dn(dc, nf, "g"), XT, 0);
+            var nf = byInk(dc, [SM, XT], S * 0.1), ny0 = below(dc, S * 0.47, nf, S * 0.58); put(dc, c, ny0, nf, "No heart rate|No HR", S, P.fg, false, R0);
+            var y1 = below(dc, ny0 + dn(dc, nf, "g"), XT, 0);
             if (y1 + dn(dc, XT, "g") <= bot) { put(dc, c, y1, XT, "recorded", S, P.lbl, false, R0); }
             return;
         }
-        var v = [numOf(s["hr"]).toString(), "", numOf(s["maxHr"]).toString()] as Array<String>, l = ["AVG", "", "MAX"] as Array<String>, U = tsUnits(s), nu = U.size();
-        var zs = s["zs"] instanceof Array ? s["zs"] as Array : null, hs = arrOf(s["hs"]), uhp = arrOf(s["uhp"]), urec = arrOf(s["urec"]), sets = s["uS"] == true;
-        var cb = cols(dc, S, P, v, l, top, S * 0.27, bot, [NMI, ME, SM, XT], false), mt = (cb < 0 ? top : cb) + 2 * G;
-        if (cb >= 0) { cols(dc, S, P, v, l, top, S * 0.27, bot, [NMI, ME, SM, XT], true); }
-        var zt = 0, hn = 0;
+        var v = [numOf(s["hr"]).toString(), "", numOf(s["maxHr"]).toString()] as Array<String>, l = ["AVG", "", "MAX"] as Array<String>, FN = [NMI, ME, SM, XT] as Array;
+        var nv = [numOf(s["hr"]).toString(), "AVG", numOf(s["maxHr"]).toString(), "MAX"] as Array<String>, nc = [P.fg, P.lbl, P.fg, P.lbl] as Array<Number>;
+        var zs = s["zs"] instanceof Array ? s["zs"] as Array : null, hs = arrOf(s["hs"]), ur = arrOf(s["urec"]);
+        var zt = 0, hn = 0, rs = 0, rn = 0;
         if (zs != null) { for (var k = 0; k < 5; k++) { zt += numOf(zs[k]); } }
         for (var k1 = 0; k1 < hs.size(); k1++) { if (numOf(hs[k1]) > 0) { hn++; } }
-        var ex = zt > 0 || hn >= 2, kx = nu < 3 ? nu : 3, km = nu < 2 ? nu : 2, xh = zt > 0 ? S * 0.07 + G + inkH(dc, XT) : S * 0.1;
-        // the tries in order: [rows, with the zones / curve]
-        var tries = [] as Array<Array<Number>>;
-        if (ex) { for (var k2 = kx; k2 >= km && k2 > 0; k2--) { tries.add([k2, 1] as Array<Number>); } }
-        for (var k3 = kx; k3 >= km && k3 > 0; k3--) { tries.add([k3, 0] as Array<Number>); }
-        if (ex) { tries.add([0, 1] as Array<Number>); }
-        for (var k4 = km - 1; k4 > 0; k4--) { tries.add([k4, 0] as Array<Number>); }
-        var hh = ["", "PEAK", "REC"] as Array<String>, cl = [P.fg, P.fg, P.fg, P.fg] as Array<Number>;
-        for (var q = 0; q < tries.size(); q++) {
-            var kk = tries[q][0], on = tries[q][1] == 1, a = [] as Array<String>, b = [] as Array<String>, d = [] as Array<String>;
-            for (var j = 0; j < kk; j++) {
-                var uf = tsFrom(nu, kk, j), ul = tsFrom(nu, kk, j + 1) - 1, pk = 0, rs = 0, rn = 0;
-                for (var i = uf; i <= ul; i++) {
-                    var u = U[i], hp = numOf(uhp[u]), rv = numOf(urec[u]);
-                    if (hp > pk) { pk = hp; }
-                    if (rv != REC_NONE) { rs += rv; rn++; }
-                }
-                var r = rn > 0 ? tsDiv(rs, rn) : 0;
-                a.add(tsLab(U, uf, ul, sets)); b.add(pk > 0 ? pk.toString() : "--"); d.add(rn == 0 ? "--" : (r > 0 ? "-" + r.toString() : (r < 0 ? "+" + (-r).toString() : "0")));
-            }
-            var tt = kk > 0 ? tsFit(dc, S, P, hh, a, b, d, cl, on ? mt + xh + 2 * G : mt, bot) : bot;
-            if (kk > 0 && !on && tsTab(dc, S, P, hh, a, b, d, cl, mt, bot, false) >= 0) { tt = mt; } // alone: right under the numbers
-            var xb = kk > 0 ? tt - 2 * G : (bot < S * 0.82 ? bot : S * 0.82); // alone: not down into the narrow bottom of the round screen
-            if (tt < 0 || (on && xb - mt < xh)) { continue; }
-            if (on) { if (zt > 0 && zs != null) { tsZones(dc, S, P, zs, mt, xb); } else { tsCurve(dc, S, P, hs, mt, xb); } }
-            if (kk > 0) { tsTab(dc, S, P, hh, a, b, d, cl, tt, bot, true); }
+        for (var k2 = 0; k2 < ur.size(); k2++) { var x = numOf(ur[k2]); if (x != REC_NONE) { rs += x; rn++; } }
+        var rp = up(dc, XT) + dn(dc, XT, "0") + 2 * G, rd = rn > 0 ? tsDiv(rs, rn) : 0, ny = below(dc, top + G, XT, 0);
+        var rv = rd > 0 ? "-" + rd.toString() : (rd < 0 ? "+" + (-rd).toString() : "0");
+        var rt = [["RECOVERY 60 S", rv] as Array<String>, ["REC 60 S", rv] as Array<String>] as Array<Array<String>>, rcl = [P.lbl, P.fg] as Array<Number>;
+        // the tries in order: with the zones / the curve (q < 4), with the recovery line (q % 4 < 2), the numbers on one line (q odd)
+        for (var q = 0; q < 8; q++) {
+            var ex = q < 4, rc = q % 4 < 2, ln = q % 2 == 1;
+            if ((ex && zt <= 0 && hn < 2) || (rc && rn == 0)) { continue; }
+            var nb = bot - (rc ? rp : 0.0) - (ex ? (zt > 0 ? 5 * rp - 2 * G : S * 0.1) + 2 * G : 0.0), y0 = ex ? 0.0 : S * 0.27;
+            var ly0 = nb - dn(dc, XT, "0") < S * 0.3 ? nb - dn(dc, XT, "0") : S * 0.3, ly = ly0 > ny ? ly0 : ny; // the one line: lower where there is room (wider)
+            var cb = -1.0;
+            if (ln) { if (ly + dn(dc, XT, "0") <= nb && tsLine(dc, S, P, ly, nv, nc, false)) { cb = ly + dn(dc, XT, "0"); } }
+            else { cb = cols(dc, S, P, v, l, top + G, y0, nb, FN, false); }
+            if (cb < 0) { continue; }
+            var mt = cb + 2 * G, zb = bot - (rc ? rp : 0.0), eb = cb;
+            if (ex && zt > 0 && zs != null) { eb = tsZones(dc, S, P, zs, mt, zb, false); if (eb < 0) { continue; } }
+            else if (ex) { eb = rc ? (zb < S * 0.76 ? zb : S * 0.76) : (bot < S * 0.82 ? bot : S * 0.82); if (eb - mt < S * 0.1) { continue; } }
+            var ry = eb + 2 * G + up(dc, XT), ri = -1;
+            if (rc && ry + dn(dc, XT, "0") <= bot) { ri = tsLine(dc, S, P, ry, rt[0], rcl, false) ? 0 : (tsLine(dc, S, P, ry, rt[1], rcl, false) ? 1 : -1); }
+            if (rc && ri < 0) { continue; }
+            if (ln) { tsLine(dc, S, P, ly, nv, nc, true); } else { cols(dc, S, P, v, l, top + G, y0, nb, FN, true); }
+            if (ex && zt > 0 && zs != null) { tsZones(dc, S, P, zs, mt, zb, true); } else if (ex) { tsCurve(dc, S, P, hs, mt, eb); }
+            if (rc) { tsLine(dc, S, P, ry, rt[ri], rcl, true); }
             return;
         }
     }
-    // the five zones as bars between top and bot (the share under each, "%" where it fits), the zone colours
-    function tsZones(dc as Dc, S as Number, P as Palette, zs as Array, top, bot) as Void {
-        var c = S / 2.0, G = gap(S), ly = bot - dn(dc, XT, "0"), bb = ly - up(dc, XT) - G, H = bb - top, cl = [P.dim, P.wCool, P.wRec, P.acc, P.bad] as Array<Number>;
-        var zt = 0, mx = 1;
-        for (var k = 0; k < 5; k++) { var z = numOf(zs[k]); zt += z; if (z > mx) { mx = z; } }
-        if (zt <= 0) { return; }
-        var hw = half(S, top, bot, R0) - S * 0.04, sl = 2 * hw / 5, bw = sl * 0.6, pc = 2; // the shares with "%", without, none (font size setting)
-        for (var k1 = 0; k1 < 5; k1++) {
-            var p = tsDiv(100 * numOf(zs[k1]), zt).toString();
-            if (dc.getTextWidthInPixels(p + "%", XT) > sl - 2 && pc > 1) { pc = 1; }
-            if (dc.getTextWidthInPixels(p, XT) > sl - 2) { pc = 0; }
+    // js zTime (27.11.5): a zone's time: m:ss, from an hour h:mm
+    function zTime(x as Number) as String { return x < 3600 ? clock(x) : (x / 3600).toString() + ":" + ((x % 3600) / 60).format("%02d"); }
+    // js tsZones (27.11.5): the time in the five zones as Garmin shows it: a row each, Z5 on top: the label, a bar as long as the time (the
+    // longest zone the whole bar; the zone colours grey, blue, green, orange, red), the time right-aligned. The rows share their columns, as
+    // wide as the lowest row inside the circle allows; the ink bottom, -1 where they do not fit above bot or a bar would be shorter than 0.2 S
+    function tsZones(dc as Dc, S as Number, P as Palette, zs as Array, top, bot, draw as Boolean) as Float {
+        var c = S / 2.0, G = gap(S), zp = up(dc, XT) + dn(dc, XT, "0") + 2 * G, y0 = top + up(dc, XT), sp = S * 0.03;
+        var cl = [P.dim, P.wCool, P.wRec, P.acc, P.bad] as Array<Number>, tx = [] as Array<String>;
+        var hw = S * 0.36, wl = 0, wt = 0, mx = 1;
+        for (var k = 0; k < 5; k++) {
+            var y = y0 + k * zp, h = half(S, y - up(dc, XT), y + dn(dc, XT, "0"), R0), z = numOf(zs[4 - k]);
+            if (h < hw) { hw = h; }
+            if (z > mx) { mx = z; }
+            tx.add(zTime(z));
+            var a = dc.getTextWidthInPixels("Z" + (5 - k).toString(), XT), b = dc.getTextWidthInPixels(tx[k], XT);
+            if (a > wl) { wl = a; }
+            if (b > wt) { wt = b; }
         }
-        for (var k2 = 0; k2 < 5; k2++) {
-            var x = c - hw + sl * k2 + sl / 2, h0 = H * numOf(zs[k2]) / mx, h = h0 > 2 ? h0 : 2.0, p2 = tsDiv(100 * numOf(zs[k2]), zt);
-            dc.setColor(cl[k2], Graphics.COLOR_TRANSPARENT); dc.fillRectangle(x - bw / 2, bb - h, bw, h);
-            if (pc > 0) { txt(dc, x, ly, XT, p2.toString() + (pc > 1 ? "%" : ""), P.lbl); }
+        var bw = 2 * hw - wl - wt - 2 * sp, yb = y0 + 4 * zp + dn(dc, XT, "0");
+        if (yb > bot || bw < S * 0.2) { return -1.0; }
+        if (draw) {
+            for (var k1 = 0; k1 < 5; k1++) {
+                var y1 = y0 + k1 * zp, z1 = numOf(zs[4 - k1]), bl = bw * z1 / mx;
+                txtL(dc, c - hw, y1, XT, "Z" + (5 - k1).toString(), P.lbl);
+                if (z1 > 0) { dc.setColor(cl[4 - k1], Graphics.COLOR_TRANSPARENT); dc.fillRectangle(c - hw + wl + sp, y1 - up(dc, XT), bl > 2 ? bl : 2, up(dc, XT) + dn(dc, XT, "0")); }
+                txtL(dc, c + hw - dc.getTextWidthInPixels(tx[k1], XT), y1, XT, tx[k1], P.fg);
+            }
         }
+        return yb;
     }
     // the heart rate over the ride (the upload's series, one value per 10 s or more; 0 = none: a gap) between top and bot
     function tsCurve(dc as Dc, S as Number, P as Palette, hs as Array, top, bot) as Void {

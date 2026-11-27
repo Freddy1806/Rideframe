@@ -11,7 +11,7 @@
 // for the list (GET /api/watch/routes), O_ROUTE for one route; the app answers with setRoutes / setRoute. The route is kept in
 // the flat form of Feed.mc RouteTrack.face; routeNav takes the watch's own position on it.
 // 23.11.: the indoor trainer (ERG, js/watchflow.js tOpen ... onTRec): HOME -> S_TSCAN (find / connect, Trainer.mc TLink) -> S_TREC (target, - / +,
-// power, cadence, heart rate; 28.11.: the pages of tPages) <-> S_TEND (Back to ride / Resume, Finish & save, Discard) -> S_TSUM. E_BLE carries the radio's
+// power, cadence, heart rate; 28.11.: the pages of tPages) <-> S_TEND (Back to ride / Resume, +5 W, -5 W, Finish & save, Discard) -> S_TSUM. E_BLE carries the radio's
 // events (TrainerBle.mc), O_TRAINER keeps the trainer's name and the last target, O_SAVEACT with tsum saves the ride (tbody = the upload).
 // 23.11.7: E_WHEEL (a finger turning kg / reps / the trainer's target, wheel), lists 1:1 with the finger (dragRow), a swipe without drag
 // events moves a list SWIPE_ROWS rows, the six standard workouts (stdWorkouts) after the saved ones.
@@ -126,8 +126,11 @@ const WK_DONE_S = 30;                  // "Workout done" shows this long
 // after the target page while the config has none ("tp")
 const TEND_BACK = "Back to ride";
 const TEND_RESUME = "Resume";
+// 27.11.5 (js TEND_W): the menu's + / - (the fenix 8's held UP / DOWN are system keys): 5 W like the target page's + / - at the 5 W step (a
+// workout: its offset), the menu stays open for the next press
+const TEND_W = 5;
 // js/watchflow.js VERSION: the menu title shows it
-const RF_VERSION = "27.11.4";
+const RF_VERSION = "27.11.5";
 // pairing states / sum states
 const P_ENTER = 0;
 const P_SENDING = 1;
@@ -1149,6 +1152,13 @@ class Flow {
         link.setTarget(R.tgt, now); last = "trainer"; scr = S_TREC; cues.add(C_START);
     }
     // a new target: shown at once, sent when the line is free (latest wins); while paused it waits for the resume
+    // js: tPlus(F, d, now) (27.11.5): + / - d W (the target page's + / -, the menu's + / - 5 W): a workout the offset of the step now, a
+    // free ride the target on the grid of |d|
+    function tPlus(d as Number, now as Number) as Void {
+        var R = tr;
+        if (R == null) { return; }
+        if (wk != null) { wkStep(d, now); } else { tTarget(nextBy(R.tgt, d > 0 ? 1 : -1, d > 0 ? d : -d), now); }
+    }
     function tTarget(w as Number, now as Number) as Void {
         var R = tr;
         if (R == null || w == R.tgt) { return; }
@@ -1254,8 +1264,7 @@ class Flow {
         var plus = ev == E_UP_HOLD || a == 1, minus = ev == E_DOWN_HOLD || a == 0;
         if (plus || minus) {
             var t0 = R.tgt;
-            if (wk != null) { wkStep(plus ? R.step : -R.step, now); } // 27.11.: a workout: the offset
-            else { tTarget(R.nextTarget(plus ? 1 : -1, false), now); }
+            tPlus(plus ? R.step : -R.step, now);
             if (ev != E_ITEM && R.tgt != t0) { cues.add(C_TICK); }    // held on any page: felt, not only seen
         }
         else if (ev == E_ITEM) { R.nextStep(); }
@@ -1368,7 +1377,7 @@ class Flow {
                 else if (s == S_RPICK) { sel = 0; scr = S_READY; }
                 else if (s == S_PICK) { pickBack(); }
                 else if (s == S_END) { if (endConf) { endConf = false; sel = 2; } else { toPick(true); } } // BACK = keep training
-                else if (s == S_TEND) { if (tConf) { tConf = false; sel = 2; } else { scr = S_TREC; } }  // BACK = back to the ride (paused stays paused)
+                else if (s == S_TEND) { if (tConf) { tConf = false; sel = 4; } else { scr = S_TREC; } }  // BACK = back to the ride (paused stays paused)
                 else if (s == S_TPICK) { sel = 0; scr = S_TSCAN; }                                     // the trainer's state, still connected
                 else { reset(); } // SMODE: the strength screen; SAVEQ: = No
             }
@@ -1439,7 +1448,7 @@ class Flow {
         else if (s == S_TEND) {
             var R = tr;
             if (tConf) { r = ["Keep riding", "Discard ride"] as Array<String>; }
-            else { r = [R != null && R.st != RS_RUN ? TEND_RESUME : TEND_BACK, "Finish & save", "Discard"] as Array<String>; }
+            else { r = [R != null && R.st != RS_RUN ? TEND_RESUME : TEND_BACK, "+5 W", "-5 W", "Finish & save", "Discard"] as Array<String>; }
         }
         else if (s == S_TSCAN) { for (var i = 0; i < link.list.size(); i++) { r.add(strOf(link.list[i]["name"])); } }
         else if (s == S_TPICK) { r.add(FREE_RIDE); var l = rideList(); for (var i = 0; i < l.size(); i++) { r.add(strOf(l[i]["n"])); } }
@@ -1469,10 +1478,11 @@ class Flow {
         }
         else if (s == S_TEND) {
             var R = tr;
-            if (tConf) { if (i == 1) { tDiscard(); } else { tConf = false; sel = 2; } }   // the second step: Discard for real, or keep riding
+            if (tConf) { if (i == 1) { tDiscard(); } else { tConf = false; sel = 4; } }   // the second step: Discard for real, or keep riding
             else if (R == null) { scr = S_HOME; }
             else if (i == 0) { scr = S_TREC; if (R.st != RS_RUN) { tResume(now); } }    // Back to ride (Resume: a paused one goes on)
-            else if (i == 1) { tFinish(now); } else { tConf = true; sel = 0; }
+            else if (i == 1 || i == 2) { tPlus(i == 1 ? TEND_W : -TEND_W, now); }   // 27.11.5: + / - 5 W, the menu stays
+            else if (i == 3) { tFinish(now); } else { tConf = true; sel = 0; }
         }
         else if (s == S_TPICK) { tChoose(i, now); }
         else if (s == S_SAVEQ) { // the last row is No

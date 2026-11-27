@@ -100,14 +100,14 @@ test('pause: the clock stops, the trainer goes to 30 W; changes wait; resume sen
   for (let t = 1016; t <= 1030; t++) handle(F, 'tick', t); assert.equal(F.tr.t, 10, 'no seconds while paused');
   ev(F, K, 1030.5, 'start'); assert.equal(F.tr.st, 'run'); assert.equal(K.tgt, 110); for (let t = 1031; t <= 1035; t++) handle(F, 'tick', t); assert.equal(F.tr.t, 15);
 });
-test('27.11.3 menu: Back to ride / Finish & save / Discard (asks once more); it never pauses, BACK = back to the ride; Resume only when paused', () => {
+test('27.11.3 menu: Back to ride / +5 W / -5 W / Finish & save / Discard (asks once more); it never pauses, BACK = back to the ride; Resume only when paused', () => {
   const [F, K] = ride(); ev(F, K, 1010, 'swipeUp'); assert.equal(F.tr.pg, 1); ev(F, K, 1010, 'tap'); assert.equal(F.tr.pg, 0);
-  ev(F, K, 1010, 'back'); assert.equal(F.scr, SCR.TEND); assert.deepEqual(listItems(F), ['Back to ride', 'Finish & save', 'Discard']); assert.deepEqual(listItems(F), TEND_ROWS);
+  ev(F, K, 1010, 'back'); assert.equal(F.scr, SCR.TEND); assert.deepEqual(listItems(F), ['Back to ride', '+5 W', '-5 W', 'Finish & save', 'Discard']); assert.deepEqual(listItems(F), TEND_ROWS);
   assert.equal(F.tr.st, 'run', 'the menu does not pause'); assert.equal(K.tgt, 100, 'the trainer keeps the target');
   const t0 = F.tr.t; for (let t = 1011; t <= 1015; t++) handle(F, 'tick', t); assert.ok(F.tr.t >= t0 + 4, 'the clock runs on behind the menu');
   ev(F, K, 1015, 'back'); assert.equal(F.scr, SCR.TREC); assert.equal(F.tr.pg, 0); ev(F, K, 1015, 'menu'); assert.equal(F.scr, SCR.TEND, 'MENU too'); ev(F, K, 1015, ['item', 0]); assert.equal(F.scr, SCR.TREC);
-  ev(F, K, 1015, 'back', ['item', 2]); assert.deepEqual(listItems(F), ['Keep riding', 'Discard ride']);
-  ev(F, K, 1015, 'back'); assert.equal(F.sel, 2); assert.equal(F.scr, SCR.TEND); ev(F, K, 1015, 'start', 'down', 'start'); assert.equal(F.scr, SCR.HOME, 'discarded'); assert.equal(F.tr, null);
+  ev(F, K, 1015, 'back', ['item', 4]); assert.deepEqual(listItems(F), ['Keep riding', 'Discard ride']);
+  ev(F, K, 1015, 'back'); assert.equal(F.sel, 4); assert.equal(F.scr, SCR.TEND); ev(F, K, 1015, 'start', 'down', 'start'); assert.equal(F.scr, SCR.HOME, 'discarded'); assert.equal(F.tr, null);
   assert.ok(!F.out.some(o => o.k === 'saveAct')); assert.ok(!K.paired, 'the trainer is let go');
   const [G, K2] = ride(); ev(G, K2, 1010, 'start', 'back'); assert.equal(listItems(G)[0], 'Resume', 'paused: the first row says so'); assert.equal(G.tr.st, 'pause');
   ev(G, K2, 1010, 'back'); assert.equal(G.tr.st, 'pause', 'BACK leaves a pause paused'); ev(G, K2, 1010, 'back', ['item', 0]); assert.equal(G.tr.st, 'run', 'Resume ends it'); assert.equal(K2.tgt, 100);
@@ -115,7 +115,7 @@ test('27.11.3 menu: Back to ride / Finish & save / Discard (asks once more); it 
 test('finish: summary (time, avg / max power, NP, cadence, heart rate, kJ) and the upload body with the series', () => {
   const [F, K] = ride();
   for (let i = 1; i <= 120; i++) { const t = 1005 + i; handle(F, 'ble', t - .5, K.data(i <= 60 ? 200 : 250, 90)); handle(F, 'hr', t - .4, i <= 60 ? 130 : 150); handle(F, 'tick', t); }
-  assert.equal(F.tr.t, 120); ev(F, K, 1126, 'back', ['item', 1]);
+  assert.equal(F.tr.t, 120); ev(F, K, 1126, 'back', ['item', 3]);
   assert.equal(F.scr, SCR.TSUM); const s = F.tsum;
   assert.deepEqual([s.t, s.avgPw, s.maxPw, s.cad, s.hr, s.maxHr, s.kj], [120, 225, 250, 90, 140, 150, 27]);
   assert.ok(s.np >= 225 && s.np <= 250, `NP ${s.np}`); assert.equal(s.name, 'KICKR CORE 2 5A1F');
@@ -124,7 +124,7 @@ test('finish: summary (time, avg / max power, NP, cadence, heart rate, kJ) and t
   assert.equal(b.s.dt, 10); assert.equal(b.s.pw.length, 12); assert.deepEqual(b.s.pw.slice(5, 7), [200, 250]); assert.deepEqual(new Set(b.s.tgt), new Set([100])); assert.deepEqual(b.s.cad[0], 90);
   assert.ok(JSON.stringify(b).length < 1000);
   ev(F, K, 1130, 'start'); assert.equal(F.scr, SCR.HOME); assert.equal(homeItems(F)[0], 'trainer');
-  const [G, K2] = ride(); ev(G, K2, 1005, 'back', ['item', 1]); assert.equal(G.scr, SCR.HOME, 'nothing ridden: nothing saved'); assert.ok(!G.out.some(o => o.k === 'saveAct'));
+  const [G, K2] = ride(); ev(G, K2, 1005, 'back', ['item', 3]); assert.equal(G.scr, SCR.HOME, 'nothing ridden: nothing saved'); assert.ok(!G.out.some(o => o.k === 'saveAct'));
 });
 test('a long ride: the series stays at most 240 values (two become one, dt doubles), the body under 8 KB', () => {
   const R = newRide(0, 200); for (let i = 0; i < 4 * 3600; i++) rideSec(R, 150 + (i % 100), 85 + (i % 7), 140 + (i % 20));
@@ -268,9 +268,9 @@ test('a long hard step ramps in and out (js/workouts.js rampIn / rampOut), finis
   const W = newWk({ id: 'l', n: 'Long', s: [[60, 100, null, 0, 'Easy'], [120, 300, null, 1, 'VO2'], [60, 100, null, 0, 'Easy']] });
   const tr = wkTrack(W); assert.deepEqual(tr.slice(49, 61), [100, 100, 120, 140, 160, 180, 200, 220, 240, 260, 280, 300], 'the last 10 s up to 300');
   assert.deepEqual(tr.slice(180, 186), [300, 260, 220, 180, 140, 100], 'the first 5 s down');
-  const [F, K] = wkRide(); secs(F, K, 100); ev(F, K, F.tr.ts, 'back'); assert.equal(F.scr, SCR.TEND); ev(F, K, F.tr.ts, 'down', 'start');
+  const [F, K] = wkRide(); secs(F, K, 100); ev(F, K, F.tr.ts, 'back'); assert.equal(F.scr, SCR.TEND); ev(F, K, F.tr.ts, 'down', 'down', 'down', 'start');
   assert.equal(F.scr, SCR.TSUM); assert.equal(F.wk, null); assert.equal(F.tbody.type, 'VirtualRide'); assert.equal(F.tbody.moving, 100);
-  const [G, K2] = wkRide(); secs(G, K2, 5); ev(G, K2, G.tr.ts, 'back', 'down', 'down', 'start', 'down', 'start'); assert.equal(G.scr, SCR.HOME); assert.equal(G.wk, null);
+  const [G, K2] = wkRide(); secs(G, K2, 5); ev(G, K2, G.tr.ts, 'back', 'down', 'down', 'down', 'down', 'start', 'down', 'start'); assert.equal(G.scr, SCR.HOME); assert.equal(G.wk, null);
 });
 test('Monkey C: Trainer.mc TWork / Flow.mc have the JavaScript\'s constants, functions and the built-in 30 / 15 entry by entry; the version', () => {
   const tmc = readFileSync(new URL('../garmin/source/Trainer.mc', import.meta.url), 'utf8'), fmc = readFileSync(new URL('../garmin/source/Flow.mc', import.meta.url), 'utf8');
@@ -285,7 +285,7 @@ test('Monkey C: Trainer.mc TWork / Flow.mc have the JavaScript\'s constants, fun
     assert.deepEqual(mcS, js.s, `the 30 / 15 at FTP ${ftp}: Trainer.mc = js`);
   }
   assert.match(tmc, /"n" => "30\/15, 3 x 13", "ri" => 3, "ro" => 2/); assert.deepEqual([wkFallback(1).n, wkFallback(1).ri, wkFallback(1).ro], ['30/15, 3 x 13', 3, 2]);
-  assert.match(fmc, new RegExp(`RF_VERSION = "${VERSION.replace(/\./g, '\\.')}"`)); assert.equal(VERSION, '27.11.4');
+  assert.match(fmc, new RegExp(`RF_VERSION = "${VERSION.replace(/\./g, '\\.')}"`)); assert.equal(VERSION, '27.11.5');
 });
 
 test('27.11.2 the heart rate step: a live heart rate starts the ride after 2 s, none waits, START skips, BACK = the trainer; stale after 15 s', () => {
@@ -457,8 +457,69 @@ test('27.11.4 Monkey C: the summary\'s numbers, pages and buttons are in Trainer
   for (const [k, v] of [['T_BEST_N', BEST_N], ['IV_SKIP', IV_SKIP], ['HRR_S', HRR_S], ['REC_NONE', REC_NONE]]) assert.match(tmc, new RegExp(`const ${k} = ${v};`), k);
   for (const f of ['hrZones', 'rideReport', 'wkPrep', 'wkUnits', 'wkRec', 'wkFlush', 'wkClose']) assert.match(tmc, new RegExp(`js: ${f}\\(`), `Trainer.mc ports ${f}`);
   for (const f of ['function tsPages(', 'function setHrZones(', 'function onTSum(', 'tReport(su, R, W)', 'W.rec(R.t, p, hr, R.tgt)', 'R.zb = hrZ', 'if (s == S_TSUM) { onTSum(ev); return; }']) assert.ok(fmc.includes(f), 'Flow.mc ' + f);
-  for (const f of ['tsOver', 'tsIv', 'tsBars', 'tsHr', 'tsZones', 'tsCurve', 'tsPw', 'tsTab', 'tsFit']) assert.ok(dmc.includes(`function ${f}(`), 'Draw.mc ' + f);
+  for (const f of ['tsOver', 'tsIv', 'tsWhat', 'tsHr', 'tsZones', 'zTime', 'tsCurve', 'tsPw', 'tsTab', 'tsLine']) assert.ok(dmc.includes(`function ${f}(`), 'Draw.mc ' + f);
+  for (const f of ['tsBars', 'tsFit', 'tsRow']) assert.ok(!dmc.includes(`function ${f}(`), 'Draw.mc: no ' + f + ' (27.11.5)');
   assert.ok(del.includes('s == S_TSUM') && del.includes('v > 0.78 ? E_DONE : E_TAP'), 'FlowDelegate.mc: the last page\'s DONE');
   assert.ok(hl.includes('UserProfile.getHeartRateZones(UserProfile.HR_ZONE_SPORT_BIKING)') && app.includes('f.setHrZones(bikeZones())'), 'the profile\'s zones');
   assert.ok(sm.includes('smokeWalkSum') && sm.includes('E_DONE, un'), 'ZzSmokeTest walks the pages');
+});
+
+/* ---- 27.11.5: the summary as Garmin shows it: the intervals as a table under what they were, the heart rate zones as rows Z5 .. Z1 with
+ *      their time, one recovery line; the ride menu's + / - 5 W (the fenix 8's held UP / DOWN are system keys) ---- */
+import { render } from './watch-layout.mjs';
+import { SCENES } from './watch-scenes.mjs';
+import { Dc } from '../js/watchdc.js';
+import { screen, palette } from '../js/watchscreens.js';
+import { TEND_W } from '../js/watchflow.js';
+const scText = (id, k = 1) => render(SCENES.find(x => x[0] === id), 'fenix8solar47mm', k).texts;
+const has = (tx, t) => tx.some(x => x.t === t);
+
+test('27.11.5 the report: the intervals\' common length and target (else 0), per unit the intervals done / in it', () => {
+  const W = newWk(SETS), R = newRide(1000, 100); wkRun(W, R, W.tot + 30, rampPw, hrHard); wkClose(W);
+  const o = rideReport({}, R, W); assert.deepEqual([o.ivS, o.ivW, o.udn, o.ucn], [30, 400, [2, 2, 2], [2, 2, 2]], 'the opener and the 3 s kick are no intervals');
+  const V = newWk(SETS), Q = newRide(1000, 100); wkRun(V, Q, 60 + 10 + 3 + 60 + (2 * 45 + 90) * 2 + 20, rampPw, hrHard); wkClose(V);
+  assert.deepEqual(rideReport({}, Q, V).udn, [2, 2, 0], 'ended inside the third set');
+  const X = newWk({ id: 'x', n: 'X', s: [[5, [[60, 300, null, 1, 'VO2'], [60, 100, null, 0, 'Easy']]], [20, 300, null, 1, 'Sprint']] }), Xr = newRide(1000, 100);
+  wkRun(X, Xr, X.tot, rampPw, hrHard); wkClose(X); const p = rideReport({}, Xr, X); assert.deepEqual([p.ivS, p.ivW], [0, 300], '60 s and 20 s: no common length');
+  const Y = newWk({ id: 'y', n: 'Y', s: [[60, 300, null, 1, 'A'], [60, 100, null, 0, 'Easy'], [60, 320, null, 1, 'B']] }), Yr = newRide(1000, 100);
+  wkRun(Y, Yr, Y.tot, rampPw, hrHard); wkClose(Y); const q = rideReport({}, Yr, Y); assert.deepEqual([q.ivS, q.ivW], [60, 0], 'two targets: none shown');
+});
+
+test('27.11.5 intervals page: what they were, a table SET / # · AVG W · +/- · HR, a grey row for one cut short, no bars', () => {
+  const P = palette(false), t = scText('tsum-iv');
+  for (const x of ['INTERVALS', '39 x 0:30 @ 1000 W', 'SET', 'AVG W', '+/-', 'HR', '1', '2', '3', '995', '-5', '-12', '-18', '169', '168']) assert.ok(has(t, x), x);
+  assert.equal(t.find(x => x.t === '-5').col, P.good); assert.equal(t.find(x => x.t === '-12').col, P.bad);
+  const dc = render(SCENES.find(x => x[0] === 'tsum-iv'), 'fenix8solar47mm', 1); assert.equal(dc.shapes.filter(s => s.k === 'rect').length, 0, 'no bar chart');
+  const pt = scText('tsum-iv-part'); assert.equal(pt.find(x => x.t === '989').col, P.dim, 'set 2 cut short: grey'); assert.equal(pt.find(x => x.t === '995').col, P.fg);
+  const f = scText('tsum-iv-5'); for (const x of ['5 x 5:00 @ 1000 W', '#', '4-5']) assert.ok(has(f, x), x); assert.ok(!has(f, 'SET'));
+  assert.ok(has(scText('tsum-iv-1'), '1 x 20:00 @ 1000 W'));
+  const big = scText('tsum-iv', 1.45); for (const x of ['SET', '+/-', 'HR', '995']) assert.ok(has(big, x), 'font scale 1.45: ' + x);
+});
+
+test('27.11.5 heart rate page: AVG / MAX, zones Z5 on top .. Z1 with their time, one recovery line (the average drop); free ride: none', () => {
+  const t = scText('tsum-hr'), y = z => t.find(x => x.t === z).base;
+  for (const x of ['136', '169', 'AVG', 'MAX', 'Z5', 'Z4', 'Z3', 'Z2', 'Z1', '0:00', '3:44', '14:31', '11:23', '20:22', 'RECOVERY 60 S', '-56']) assert.ok(has(t, x), x);
+  assert.ok(y('Z5') < y('Z4') && y('Z4') < y('Z1'), 'Z5 on top'); assert.ok(!t.some(x => /%|PEAK|REC$/.test(x.t)), 'no percent, no table');
+  const s = render(SCENES.find(x => x[0] === 'tsum-hr'), 'fenix8solar47mm', 1).shapes.filter(x => x.k === 'rect'); assert.equal(s.length, 4, 'a bar per zone with time (Z5: 0:00 none)');
+  const fr = scText('tsum-hr-free'); assert.ok(has(fr, 'Z1') && !fr.some(x => x.t.startsWith('REC')), 'a free ride: zones, no recovery');
+  const cu = scText('tsum-hr-curve'); assert.ok(!has(cu, 'Z1') && has(cu, 'RECOVERY 60 S'), 'no zones: the curve and the recovery');
+  assert.ok(has(scText('tsum-hr', 1.45), 'Z1'), 'font scale 1.45: the zones stay');
+  const F = SCENES.find(x => x[0] === 'tsum-hr-free')[2]().F; F.tsum.zs = [3725, 60, 0, 0, 0]; const dc = new Dc({ dev: 'fenix8solar47mm', scale: 1 });
+  screen(dc, F, palette(false), 0, null, { hasTouch: true }); assert.ok(has(dc.texts, '1:02') && has(dc.texts, '1:00'), 'an hour and more: h:mm');
+});
+
+test('27.11.5 ride menu: +5 W / -5 W change the target (a workout: its offset) like the target page\'s + / -, the menu stays open', () => {
+  const [F, K] = ride(); ev(F, K, 1010, 'back'); assert.equal(TEND_W, 5); const w0 = F.tr.tgt;
+  ev(F, K, 1010, ['item', 1], ['item', 1]); assert.equal(F.scr, SCR.TEND, 'still the menu'); assert.equal(F.tr.tgt, w0 + 10); assert.equal(K.tgt, w0 + 10, 'sent');
+  ev(F, K, 1011, 'down', 'down', 'start'); assert.equal(F.sel, 2); assert.equal(F.tr.tgt, w0 + 5); assert.equal(F.scr, SCR.TEND);
+  F.tr.step = 25; ev(F, K, 1011, ['item', 1]); assert.equal(F.tr.tgt, w0 + 10, 'always 5 W, whatever the page\'s step'); assert.equal(F.tr.step, 25);
+  const [G, K2] = wkRide(); secs(G, K2, 30); ev(G, K2, G.tr.ts, 'back'); const a0 = G.tr.tgt;
+  ev(G, K2, G.tr.ts, ['item', 1], ['item', 1], ['item', 1], ['item', 2]); assert.equal(G.tr.tgt, a0 + 10); assert.equal(G.scr, SCR.TEND);
+  assert.equal(G.wk.ea + G.wk.ha, 10, 'the offset of the step now');
+  const dc = new Dc({ dev: 'fenix8solar47mm', scale: 1 }); screen(dc, G, palette(false), G.tr.ts, null, { hasTouch: true });
+  assert.ok(dc.texts.some(x => x.t.includes(G.tr.tgt + ' W (+10)')), 'the menu shows the target and the offset');
+  const [H, K3] = ride(); ev(H, K3, 1010, 'start', 'back', ['item', 1]); assert.equal(H.tr.st, 'pause', 'paused stays paused'); assert.equal(H.scr, SCR.TEND);
+  const fmc = readFileSync(new URL('../garmin/source/Flow.mc', import.meta.url), 'utf8'), tmc = readFileSync(new URL('../garmin/source/Trainer.mc', import.meta.url), 'utf8');
+  for (const f of ['"+5 W", "-5 W"', 'const TEND_W = 5;', 'function tPlus(', 'tPlus(i == 1 ? TEND_W : -TEND_W, now)', 'tPlus(plus ? R.step : -R.step, now)']) assert.ok(fmc.includes(f), 'Flow.mc ' + f);
+  assert.ok(tmc.includes('function nextBy(') && tmc.includes('o["ivS"]') && tmc.includes('o["udn"]'), 'Trainer.mc');
 });

@@ -309,11 +309,7 @@ class TRide {
         for (var i = 0; i < T_BEST_N; i++) { bw.add(0); }
     }
     // js: nextTarget(R, d, big): a step on, on the step grid, inside 30..1000 W
-    function nextTarget(d as Number, big as Boolean) as Number {
-        var k = big ? (step > TW_HOLD ? step : TW_HOLD) : step;
-        var v = d > 0 ? (tgt / k) * k + k : ((tgt + k - 1) / k) * k - k;
-        return v < TW_MIN ? TW_MIN : (v > TW_MAX ? TW_MAX : v);
-    }
+    function nextTarget(d as Number, big as Boolean) as Number { return nextBy(tgt, d, big ? (step > TW_HOLD ? step : TW_HOLD) : step); }
     // js: nextStep(s): 5 -> 10 -> 25 -> 5
     function nextStep() as Void { step = step == 5 ? 10 : (step == 10 ? 25 : 5); }
     function newBlock() as Void { bT0 = t; bSum = 0; bN = 0; }
@@ -380,6 +376,11 @@ const WK_WORK = 1;        // 28.11.: the step kinds (js WK_WORK, WK_WARM, WK_COO
 const WK_WARM = 2;
 const WK_COOL = 3;
 
+// js: nextBy(w, d, k) (27.11.5): w a step of k W on (d > 0) or back, on the grid of k, inside TW_MIN..TW_MAX
+function nextBy(w as Number, d as Number, k as Number) as Number {
+    var v = d > 0 ? (w / k) * k + k : ((w + k - 1) / k) * k - k;
+    return v < TW_MIN ? TW_MIN : (v > TW_MAX ? TW_MAX : v);
+}
 function wkNum(v) as Boolean { return v instanceof Number || v instanceof Float || v instanceof Double || v instanceof Long; }
 // js: hrZones(z) (27.11.4): the profile's heart rate zones (UserProfile.getHeartRateZones: min zone 1, max zone 1 ... max zone 5) when they
 // are 6 rising numbers 30..250, else null (then the summary shows no zones: nothing guessed)
@@ -398,7 +399,8 @@ function hrZones(z) as Array<Number> or Null {
 // js: rideReport(o, R, W) (27.11.4): the summary (Flow.tsum) = R.sum() + "name", with the workout W (null = a free ride): "wn", "wt" (s),
 // "wd" (s ridden of it), "ivN" / "ivD" (intervals in it / done), "uS" (sets), "uN" / "uD" (units / done), per interval "iw", "it", "iu", per
 // unit "uw", "ut" (average watts / target without the ramp seconds, 0 = not ridden), "uhp" (peak heart rate), "urec" (the drop, REC_NONE
-// none); "zs" (seconds per zone, only with zones), "hs" (the heart rate series of the upload)
+// none); "zs" (seconds per zone, only with zones), "hs" (the heart rate series of the upload). 27.11.5: "ivS" / "ivW" the intervals' length
+// (s) and target sent where all have the same (else 0), per unit "udn" / "ucn" its intervals done / in it (fewer done: cut short)
 function tReport(o as Dictionary, R as TRide, W as TWork or Null) as Void {
     if (R.zb != null) { o["zs"] = R.zs; }
     o["hs"] = R.sHr;
@@ -411,6 +413,14 @@ function tReport(o as Dictionary, R as TRide, W as TWork or Null) as Void {
     }
     o["wn"] = W.n; o["wt"] = W.tot; o["wd"] = R.t < W.tot ? R.t : W.tot; o["ivN"] = W.ivN; o["ivD"] = W.ivD; o["uS"] = W.uS; o["uN"] = nu; o["uD"] = ud;
     o["iw"] = W.iw; o["it"] = W.it; o["iu"] = W.iu; o["uw"] = uw; o["ut"] = ut; o["uhp"] = W.uHp; o["urec"] = W.uRec;
+    o["udn"] = W.uDn; o["ucn"] = W.uCnt;
+    var d = 0, tw = W.it.size() > 0 ? W.it[0] : 0;
+    for (var k = 0; k < W.dur.size(); k++) {
+        if (W.un[k] < 0) { continue; }
+        if (d == 0) { d = W.dur[k]; } else if (W.dur[k] != d) { d = -1; break; }
+    }
+    for (var k1 = 1; k1 < W.it.size(); k1++) { if (W.it[k1] != tw) { tw = 0; break; } }
+    o["ivS"] = d < 0 ? 0 : d; o["ivW"] = tw;
 }
 // js: wkDur(l): the length of entries in seconds, without expanding them (the TPICK sub line)
 function wkDur(l) as Number {

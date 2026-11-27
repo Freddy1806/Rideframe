@@ -106,6 +106,12 @@ function smokeWalk(logger as Logger) as Boolean {
     }
     SmokeKit.smokeEv(T, dc, P, seen, E_BACK, tn, null);                         // its menu (the ride goes on)
     Test.assertMessage(T.listItems()[0].equals("Back to ride"), "TEND: Back to ride");
+    // 27.11.5: the menu's +5 W / -5 W: the target moves, the menu stays open
+    var w0 = T.tr != null ? (T.tr as TRide).tgt : 0;
+    SmokeKit.smokeEv(T, dc, P, seen, E_ITEM, tn, T.listItems().indexOf("+5 W"));
+    SmokeKit.smokeEv(T, dc, P, seen, E_ITEM, tn, T.listItems().indexOf("+5 W"));
+    SmokeKit.smokeEv(T, dc, P, seen, E_ITEM, tn, T.listItems().indexOf("-5 W"));
+    Test.assertMessage(T.scr == S_TEND && T.tr != null && (T.tr as TRide).tgt != w0, "TEND: +5 W / -5 W move the target, the menu stays");
     SmokeKit.smokeEv(T, dc, P, seen, E_ITEM, tn, T.listItems().indexOf("Finish & save"));
     // 27.11.4: the summary's pages (a free ride: overview, heart rate, power): DOWN, wrapping, swipes, UP, a tap; START done
     Test.assertMessage(T.scr == S_TSUM && T.tsPages().size() == 3, "a free ride's summary: three pages");
@@ -129,6 +135,8 @@ function smokeWalk(logger as Logger) as Boolean {
     }
     // 27.11.4: Finish & save (in the middle of the workout): the summary with the intervals page, every page, the last page's DONE
     SmokeKit.smokeEv(U, dc, P, seen, E_MENU, un, null);
+    SmokeKit.smokeEv(U, dc, P, seen, E_ITEM, un, U.listItems().indexOf("+5 W"));      // 27.11.5: the workout's offset from the menu
+    Test.assertMessage(U.scr == S_TEND, "TEND in a workout: +5 W keeps the menu");
     SmokeKit.smokeEv(U, dc, P, seen, E_ITEM, un, U.listItems().indexOf("Finish & save"));
     Test.assertMessage(U.scr == S_TSUM && U.tsPages().size() == 4 && U.tsPages()[1].equals("iv"), "a workout's summary: four pages with the intervals");
     SmokeKit.smokeWalkSum(U, dc, P, seen, un);
