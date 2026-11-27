@@ -15,7 +15,7 @@
 // name and the last target, 'saveAct' with sum.sp 'trainer' saves the ride (F.tbody = the upload).
 import { compact, defaults, FIELDS, TOP } from './watchfields.js';
 import { newLink, scan as tScan, connect as tConnect, stop as tStop, setTarget, bleEv, linkTick, live, shown, newRide, nextTarget, nextStep, newBlock, rideSec, rideSum, rideBody, W_START, W_MIN, W_MAX, W_PAUSE,
-  newWk, wkAt, wkTarget, wkTune, wkLeft, wkEasy, wkFallback, WK_FB_ID } from './watchtrainer.js';
+  newWk, wkAt, wkTarget, wkTune, wkLeft, wkEasy, wkFallback, WK_FB_ID, wkRec, wkClose, rideReport, hrZones } from './watchtrainer.js';
 export const SCR = { HOME: 'home', START: 'start', SMODE: 'smode', PICK: 'pick', SET: 'set', REST: 'rest', MENU: 'menu', SUM: 'sum', PAIR: 'pair', GLANCE: 'glance',
   MORE: 'more', READY: 'ready', REC: 'rec', PAUSE: 'pause', RSUM: 'rsum', RPICK: 'rpick', END: 'end', SAVEQ: 'saveq', TSCAN: 'tscan', TREC: 'trec', TEND: 'tend', TSUM: 'tsum', TPICK: 'tpick', THR: 'thr' };
 export const KG_STEP = 2.5, KG_HOLD = 10, KG_MAX = 500, REPS_HOLD = 5, REPS_MAX = 100, SEC_STEP = 5, SEC_HOLD = 15, SEC_MAX = 600, REST_STEP = 15, PR_SECS = 3;
@@ -36,10 +36,15 @@ export function tPages(F) {
 }
 /** the page of the ride on screen (R.pg counts in tPages) */
 export function tPage(F) { const p = tPages(F); return F.tr ? p[F.tr.pg % p.length] : 'target'; }
+/** 27.11.4: the summary's pages after a trainer ride (F.sel counts in them): 'ov' what did I do, 'iv' the intervals (a workout with one
+ *  ridden), 'hr' heart rate, 'pw' power (the last: DONE) */
+export function tsPages(F) { const s = F.tsum, r = ['ov']; if (s && s.iw && s.iw.length > 0) r.push('iv'); r.push('hr', 'pw'); return r; }
+/** 27.11.4: the profile's cycling heart rate zones (the watch: UserProfile.getHeartRateZones; the preview: none or a demo), null = none */
+export function setHrZones(F, z) { F.hrZ = hrZones(z); }
 /** 23.11.: the strength list: the exercises (free), then the saved workouts (the phone's and those saved on the watch) */
 export const FREE = 'Free';
 /** shown in the menu title on the watch and in the preview, so the user can tell which file is on the watch; raise it with every watch file (garmin/source/Flow.mc VERSION) */
-export const VERSION = '27.11.3';
+export const VERSION = '27.11.4';
 /** BACK from the exercise list once sets are logged: nothing is lost without a second step */
 export const END_ROWS = ['Keep training', 'Finish & save', 'Discard'];
 /** the pause screen (every mode): BACK held this long (or a finger on the "Hold to finish" pill) saves; the short-press hint shows this long */
@@ -69,7 +74,7 @@ export function newFlow(setup, o = {}) {
     flash: null, sum: null, pz: null, pauseT: 0, hr: 0, hrAt: 0, thr: 0, hrN: 0, hrSum: 0, hrMax: 0, pair: { d: [0, 0, 0, 0, 0, 0], i: 0, st: 'enter' }, cues: [], out: [],
     sp: 'run', type: '', rec: null, seg: null, route: null, rsum: null, routes: null, routeId: null, nav: null,
     link: newLink(o.trainer || ''), tr: null, tsum: null, tbody: null, tTgt: o.tgt >= W_MIN && o.tgt <= W_MAX ? o.tgt : W_START, tConf: false,
-    rides: [], ftp: 0, wk: null, tw: -1, wkDone: 0 };
+    rides: [], ftp: 0, wk: null, tw: -1, wkDone: 0, wkSum: null, hrZ: null };
   setSetup(F, setup);
   if (!F.paired) F.scr = SCR.PAIR;
   return F;
@@ -437,8 +442,8 @@ function onPause(F, ev, now, arg) {
 function tOpen(F, now) { F.sel = 0; F.tw = -1; F.scr = SCR.TSCAN; if (F.link.st === 'off') tScan(F.link, now); }
 /** the ride starts: free ERG at the last target, or the workout chosen on TPICK (F.tw: 0 = free, k = rides(F)[k - 1]) at its first target */
 function tBegin(F, now) {
-  const k = F.tw, l = rides(F), W = k > 0 && k <= l.length ? newWk(l[k - 1]) : null; F.tw = -1; F.wk = W; F.wkDone = 0;
-  F.tr = newRide(now, W ? clamp(wkTarget(W, 0), W_MIN, W_MAX) : F.tTgt); F.tsum = null; F.tbody = null; F.tConf = false; setTarget(F.link, F.tr.tgt, now); F.last = 'trainer'; F.scr = SCR.TREC; F.cues.push('start');
+  const k = F.tw, l = rides(F), W = k > 0 && k <= l.length ? newWk(l[k - 1]) : null; F.tw = -1; F.wk = W; F.wkSum = W; F.wkDone = 0;
+  F.tr = newRide(now, W ? clamp(wkTarget(W, 0), W_MIN, W_MAX) : F.tTgt); F.tr.zb = F.hrZ; F.tsum = null; F.tbody = null; F.tConf = false; setTarget(F.link, F.tr.tgt, now); F.last = 'trainer'; F.scr = SCR.TREC; F.cues.push('start');
 }
 /* ---- 27.11.: a workout on the trainer (js/watchtrainer.js newWk ...): the watch steps through it by the ride's clock (R.t, so a pause keeps
  *      the place), each new target goes to the trainer at once (a ramp once a second), 3-2-1 before a hard step ('set'), one at its end
@@ -464,14 +469,15 @@ function tPause(F, now) { F.tr.st = 'pause'; setTarget(F.link, W_PAUSE, now); F.
 function tResume(F, now) { F.tr.st = 'run'; setTarget(F.link, F.tr.tgt, now); F.cues.push('start'); }
 function tFinish(F, now) {
   const R = F.tr; if (!R.t) { tDiscard(F); return; }
-  F.wk = null; F.wkDone = 0; const sum = rideSum(R); F.tbody = rideBody(R, sum, F.newId(), now); F.tsum = { ...sum, name: F.link.name };
+  const W = F.wkSum; if (W) wkClose(W); // 27.11.4: the workout's numbers stay for the summary (also once it is over: wkEnd)
+  F.wk = null; F.wkSum = null; F.wkDone = 0; const sum = rideSum(R); F.tbody = rideBody(R, sum, F.newId(), now); F.tsum = rideReport({ ...sum, name: F.link.name }, R, W);
   F.out.push({ k: 'saveAct', sum: { sp: 'trainer', ...sum } }, { k: 'trainer' }); tStop(F.link); F.tr = null; F.sel = 0; F.scr = SCR.TSUM; F.cues.push('done');
 }
-function tDiscard(F) { tStop(F.link); F.tr = null; F.wk = null; F.wkDone = 0; F.tConf = false; F.sel = 0; F.scr = SCR.HOME; }
+function tDiscard(F) { tStop(F.link); F.tr = null; F.wk = null; F.wkSum = null; F.wkDone = 0; F.tConf = false; F.sel = 0; F.scr = SCR.HOME; }
 /** the ride's seconds up to now (at most 5 at once, a longer gap is not made up) */
 function tSecs(F, now) {
   const R = F.tr; if (!R) return; if (now - R.ts > 5) R.ts = Math.floor(now) - 5;
-  while (R.ts + 1 <= now) { R.ts++; if (R.st === 'run') { const d = live(F.link, now); rideSec(R, d.pw, d.cad, F.hr); wkSec(F, now); } }
+  while (R.ts + 1 <= now) { R.ts++; if (R.st === 'run') { const d = live(F.link, now); rideSec(R, d.pw, d.cad, F.hr); if (F.wkSum) wkRec(F.wkSum, R.t, d.pw, F.hr, R.tgt); wkSec(F, now); } }
 }
 /** TSCAN: the list while searching (UP / DOWN, drag, START or a tap connects), else the state with START to ride */
 function onTScan(F, ev, now, arg) {
@@ -525,6 +531,15 @@ function onTRec(F, ev, now, arg) {
   else if (ev === 'back' || ev === 'menu') { F.tConf = false; F.sel = 0; F.scr = SCR.TEND; }
 }
 
+/** 27.11.4: the summary after a trainer ride (tsPages): UP / DOWN (swipe down / up) = the previous / next page, wrapping, a tap = the next
+ *  page; START, BACK (swipe right) or the last page's DONE (FlowDelegate / watchsim: 'done') = done, the start menu */
+function onTSum(F, ev) {
+  const n = tsPages(F).length;
+  if (ev === 'up' || ev === 'swipeDown') F.sel = (F.sel % n + n - 1) % n;
+  else if (ev === 'down' || ev === 'swipeUp' || ev === 'tap') F.sel = (F.sel % n + 1) % n;
+  else if (ev === 'start' || ev === 'back' || ev === 'done') { F.sel = 0; F.scr = SCR.HOME; }
+}
+
 /** every input: ev = up, down, upHold, downHold, start, startHold (START held: weight <-> reps), done (the set screen's DONE pill), back, menu,
  *  swipeUp, swipeDown, swipeLeft, swipeRight, scroll (a finger dragged over a list or the summary, arg = rows, + = on down the list), tap, item (arg = index),
  *  wheel (23.11.7: a finger dragged over the set screen's kg / reps or the trainer's target, arg = [column 0 kg / 1 reps, steps, + = finger up = more]),
@@ -557,13 +572,13 @@ export function handle(F, ev, now, arg) {
   const s = F.scr, list = [SCR.PICK, SCR.MENU, SCR.HOME, SCR.MORE, SCR.SMODE, SCR.RPICK, SCR.END, SCR.SAVEQ, SCR.TEND, SCR.TPICK].includes(s), paged = list || s === SCR.REC || s === SCR.PAUSE || s === SCR.SUM || s === SCR.TSCAN;
   if (s === SCR.THR) { onTHr(F, ev, now); return; }
   if (s === SCR.TREC) { onTRec(F, ev, now, arg); return; } // before the swipe mapping: swipe up / down pages there like UP / DOWN
+  if (s === SCR.TSUM) { onTSum(F, ev); return; }
   // 23.11.7: a swipe on a list (only when no drag events came: FlowDelegate / watchsim swallow the swipe that ends a drag) moves it
   // SWIPE_ROWS rows with the finger, no wrapping; the data pages and the summary a page; a number counts up
   if ((ev === 'swipeUp' || ev === 'swipeDown') && (list || s === SCR.TSCAN)) { ev = 'scroll'; arg = ev0 === 'swipeUp' ? SWIPE_ROWS : -SWIPE_ROWS; }
   if (ev === 'swipeUp') ev = paged ? 'down' : 'up';
   if (ev === 'swipeDown') ev = paged ? 'up' : 'down';
   if (s === SCR.TSCAN) { onTScan(F, ev, now, arg); return; }
-  if (s === SCR.TSUM) { if (ev === 'start' || ev === 'back' || ev === 'tap') { F.sel = 0; F.scr = SCR.HOME; } return; }
   if (ev === 'scroll') { // the finger dragged: the list follows it row by row (no wrapping)
     const d = Math.round(+arg || 0); if (list) F.sel = clamp(F.sel + d, 0, Math.max(0, listItems(F).length - 1)); else if (s === SCR.SUM && F.sum) F.sel = clamp(F.sel + d, 0, F.sum.ex.length);
     return;

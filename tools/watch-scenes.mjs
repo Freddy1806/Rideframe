@@ -1,8 +1,8 @@
 // 23.11.8: every screen and state of the watch app with worst-case content (kg 102.5 and BW, 100 reps, "Incline bench press", a long
 // workout name, heart rate 188, 1:23:45, 4-digit power, pace 12:34 ...), as js/watchflow.js states for js/watchscreens.js.
 // Used by tools/watch-layout.mjs (the layout check on all five watches) and tools/watch-sheets.cjs (the contact sheets).
-import { newFlow, handle, SCR, setRoutes, setRoute, startPlan, newRec, saveOffer, END_ROWS } from '../js/watchflow.js';
-import { newLink, newRide, newWk, wkAt, wkFallback } from '../js/watchtrainer.js';
+import { newFlow, handle, SCR, setRoutes, setRoute, startPlan, newRec, saveOffer, END_ROWS, tsPages as tsPagesOf } from '../js/watchflow.js';
+import { newLink, newRide, newWk, wkAt, wkFallback, rideSec, rideSum, wkRec, wkClose, wkTarget, rideReport, hrZones, REC_NONE } from '../js/watchtrainer.js';
 
 export const NOW = 1700000000;
 const LONG_W = 'Push day with a very long name';
@@ -61,6 +61,27 @@ function wkRide(o = {}) {
   const t = o.last ? W.tot - 300 : o.at ?? W.tot - 1200 + 1; wkAt(W, t); F.tr.t = t; F.tr.tgt = o.tgt || 1275; F.tr.pg = o.pg || 0;
   return F;
 }
+
+// 27.11.4: the summary after a trainer ride, from a ride really counted second by second (js/watchtrainer.js rideSec / wkRec, as the flow
+// does), worst case: 4-digit watts, heart rate up to 199, the 1:23:45 ride, a long workout name. def = the workout (null: a free ride),
+// t = seconds ridden, pw(t, tgt) / hr(t) the rider, zones = the profile's zones (null: none)
+const hrOf = () => { let h = 100; return (k, p) => { h += (92 + p * .09 - h) / 25; return h; }; }; // the heart follows the watts, 25 s behind
+const FREE_PW = k => k % 1200 < 600 ? 1250 : 350; // a free ride: 10 min hard, 10 min easy
+function tsRide({ def = null, t = 5025, pw = def ? (k, g) => g : FREE_PW, hr = hrOf(), zones = [100, 130, 150, 165, 180, 199], name = LONG_RIDE } = {}) {
+  const W = def ? newWk(def) : null, R = newRide(0, W ? wkTarget(W, 0) : 1000); R.zb = hrZones(zones);
+  for (let k = 1; k <= t; k++) {
+    const p = Math.max(0, Math.round(pw(k, R.tgt))), h = Math.round(hr(k, p)); rideSec(R, p, 120, h);
+    if (W) { wkRec(W, R.t, p, h, R.tgt); wkAt(W, R.t); if (W.i < W.dur.length) R.tgt = Math.max(30, Math.min(1000, wkTarget(W, R.t))); }
+  }
+  if (W) { W.n = name; wkClose(W); }
+  const F = mk({ last: 'trainer' }); F.scr = SCR.TSUM; F.sel = 0; F.tsum = rideReport({ ...rideSum(R), name: 'KICKR CORE 2 5A1F' }, R, W);
+  return F;
+}
+// the built-in 30 / 15 at 4-digit watts (the targets are clamped at 1000 W on a real trainer; here the scale of the sheets)
+const TS_DEF = { id: 'tsx', n: LONG_RIDE, s: [[300, 100, 250, 0, 'Warm-up'], [20, 1300, null, 1, 'Opener'], [100, 130, null, 0, 'Spin'],
+  [3, [[13, [[30, 1250, null, 1, '30/15'], [15, 125, null, 0, 'Float']], 1], [180, 130, null, 0, 'Rest']], 1], [600, 250, 100, 0, 'Cool-down']] };
+const TS_FADE = (k, g) => g >= 1000 ? g - Math.floor(k / 120) : g; // the hard ones fade a little set by set
+const tsPage = (F, id) => { F.sel = Math.max(0, tsPagesOf(F).indexOf(id)); return { F }; };
 
 /** [id, label, () => { F, now?, sum?, ui? }] */
 export const SCENES = [
@@ -162,7 +183,24 @@ export const SCENES = [
   ['trec-wk-stats', 'Workout: stats page (page 4 of 4)', () => ({ F: wkRide({ pg: 3 }) })],
   ['trec-fb-page', 'Built-in 30/15: workout page in the openers', () => { const F = ride(); const W = F.wk = newWk(wkFallback(250)); const t = 480 + 180 + 120 + 30 + 20; wkAt(W, t); F.tr.t = t; F.tr.tgt = 130; F.tr.pg = 1; return { F }; }],
   ['trec-fb-build', 'Built-in 30/15: the build ramp on the target page', () => { const F = ride(); const W = F.wk = newWk(wkFallback(250)); const t = 480 + 90; wkAt(W, t); F.tr.t = t; F.tr.tgt = 213; F.tr.step = 5; return { F }; }],
-  ['tsum', 'Trainer saved', () => { const F = mk(); F.scr = SCR.TSUM; F.tsum = { t: 5025, avgPw: 1250, maxPw: 1888, kj: 6281, cad: 120, hr: 188, maxHr: 199, name: 'KICKR' }; return { F }; }],
+  ['tsum', 'Trainer saved: free ride overview', () => tsPage(tsRide(), 'ov')],
+  ['tsum-wk', 'Trainer saved: a workout, all 39 intervals, 3/3 sets', () => tsPage(tsRide({ def: TS_DEF, t: 3000, pw: TS_FADE }), 'ov')],
+  ['tsum-wk-part', 'Trainer saved: a workout ended in set 2 (21/39)', () => tsPage(tsRide({ def: TS_DEF, t: 300 + 120 + 13 * 45 + 180 + 8 * 45 + 10, pw: TS_FADE }), 'ov')],
+  ['tsum-wk-noiv', 'Trainer saved: a workout without intervals (62 %)', () => tsPage(tsRide({ def: { id: 'e', n: 'Endurance', s: [[3600, 200, null, 0, 'Z2']] }, t: 2232 }), 'ov')],
+  ['tsum-iv', 'Summary intervals: 3 sets x 13, fading, 4-digit watts', () => tsPage(tsRide({ def: TS_DEF, t: 3000, pw: TS_FADE }), 'iv')],
+  ['tsum-iv-part', 'Summary intervals: ended inside set 2 (grey bar)', () => tsPage(tsRide({ def: TS_DEF, t: 300 + 120 + 13 * 45 + 180 + 8 * 45 + 10, pw: TS_FADE }), 'iv')],
+  ['tsum-iv-5', 'Summary intervals: 5 x 5 min, no sets (runs of intervals)', () => tsPage(tsRide({ def: { id: 'v', n: 'VO2max 5 x 5', s: [[600, 150, null, 0, 'Warm-up'], [5, [[300, 1250, null, 1, 'VO2'], [180, 150, null, 0, 'Easy']], 1]] }, t: 3000, pw: (k, g) => g > 1000 ? g - Math.floor(k / 100) : g }), 'iv')],
+  ['tsum-iv-1', 'Summary intervals: one 20 min interval', () => tsPage(tsRide({ def: { id: 'f', n: 'FTP 20', s: [[600, 150, null, 0, 'Warm-up'], [1200, 1250, null, 1, 'FTP'], [600, 150, null, 0, 'Cool-down']] }, t: 2400, pw: (k, g) => g - 40 }), 'iv')],
+  ['tsum-iv-many', 'Summary intervals: 2 x 100 bursts (bars averaged)', () => tsPage(tsRide({ def: { id: 'm', n: 'Micro bursts', s: [[2, [[100, [[10, 1250, null, 1, 'On'], [5, 125, null, 0, 'Off']], 1], [120, 125, null, 0, 'Rest']], 1]] }, t: 3300, pw: (k, g) => g - (k % 7) }), 'iv')],
+  ['tsum-hr', 'Summary heart rate: sets, peaks, recovery, zones', () => tsPage(tsRide({ def: TS_DEF, t: 3000, pw: TS_FADE }), 'hr')],
+  ['tsum-hr-curve', 'Summary heart rate: sets, no zones: the curve', () => tsPage(tsRide({ def: TS_DEF, t: 3000, pw: TS_FADE, zones: null }), 'hr')],
+  ['tsum-hr-5', 'Summary heart rate: 5 intervals in runs, zones', () => tsPage(tsRide({ def: { id: 'v', n: 'VO2max 5 x 5', s: [[600, 150, null, 0, 'Warm-up'], [5, [[300, 1250, null, 1, 'VO2'], [180, 150, null, 0, 'Easy']], 1]] }, t: 3000 }), 'hr')],
+  ['tsum-hr-free', 'Summary heart rate: free ride, zones', () => tsPage(tsRide(), 'hr')],
+  ['tsum-hr-free-curve', 'Summary heart rate: free ride, no zones: the curve', () => tsPage(tsRide({ zones: null }), 'hr')],
+  ['tsum-hr-none', 'Summary heart rate: none recorded', () => tsPage(tsRide({ hr: () => 0 }), 'hr')],
+  ['tsum-pw', 'Summary power (the last page, DONE)', () => tsPage(tsRide(), 'pw')],
+  ['tsum-pw-short', 'Summary power: a 45 s ride (30 s best only)', () => tsPage(tsRide({ t: 45 }), 'pw')],
+  ['tsum-pw-tiny', 'Summary power: a 20 s ride (no best, no NP)', () => tsPage(tsRide({ t: 20 }), 'pw')],
   ['pr-flash', 'New record flash', () => { const F = onSet('incline', { kg: 102.5, reps: 100 }); F.flash = { k: 'pr', until: NOW + 3, kg: 102.5, reps: 100, t: 'w' }; return { F }; }],
   ['lap-flash', 'Lap flash', () => { const F = rec('run'); F.flash = { k: 'lap', n: 188, t: 5025, d: 1000, until: NOW + 5 }; return { F }; }],
   ['glance', 'Glance', () => { const F = mk(); F.scr = SCR.GLANCE; return { F, sum: SUM }; }],

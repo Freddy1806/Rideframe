@@ -4,9 +4,9 @@
 // tools/watch-layout-test.mjs compares the numbers of both files function by function.
 import { G } from './watchdc.js';
 import { SCR, HOME, curEx, setNo, restLeft, clock, homeItems, homeTop, listItems, workouts, planItem, pickRows, doneOf, prefillOf, lastSet, lastTxt, recPages, routeInfo,
-  holdPart, pausedTime, stepOf, HOME_FIT, VERSION, loading, rides, hrOn, tPages } from './watchflow.js';
+  holdPart, pausedTime, stepOf, HOME_FIT, VERSION, loading, rides, hrOn, tPages, tsPages } from './watchflow.js';
 import { FIELDS, fieldText, labelOf } from './watchfields.js';
-import { shown, live as tLive, hasCad, nextTarget, wkLeft, wkTotLeft, wkShown, wkNextW, wkAdj, wkDur, wkRamp, wkPlat } from './watchtrainer.js';
+import { shown, live as tLive, hasCad, nextTarget, wkLeft, wkTotLeft, wkShown, wkNextW, wkAdj, wkDur, wkRamp, wkPlat, REC_NONE } from './watchtrainer.js';
 import { groupOf } from './sports.js';
 
 const VC = G.TEXT_JUSTIFY_CENTER | G.TEXT_JUSTIFY_VCENTER, VL = G.TEXT_JUSTIFY_LEFT | G.TEXT_JUSTIFY_VCENTER;
@@ -734,6 +734,7 @@ function cols(dc, S, P, v, l, yb, y0, bot, fonts, draw) {
   // the last resort (font size setting): one line per number, "1250 AVG W"
   let y = below(dc, yb, XT, y0), b = -1;
   for (let j = 0; j < 3; j++) {
+    if (v[j].length === 0 && l[j].length === 0) continue; // 27.11.4: an empty column (two numbers) is no line
     const wv = dc.getTextWidthInPixels(v[j], XT), sp = S * .025, wl = dc.getTextWidthInPixels(l[j], XT), bb = y + dn(dc, XT, 'G');
     if (bb > bot || wv + sp + wl > roomC(dc, c, y, XT, 'G', R0)) return -1;
     if (draw) { const x0 = c - (wv + sp + wl) / 2; txtL(dc, x0, y, XT, v[j], P.fg); txtL(dc, x0 + wv + sp, y, XT, l[j], P.lbl); }
@@ -1059,24 +1060,202 @@ function drawTEnd(dc, F, S, P) {
   const R = F.tr, run = R && R.st === 'run', a = R ? (run ? 'Riding ' : 'Paused ') + clock(R.t) : '';
   list(dc, F, S, P, listItems(F), F.tConf ? 'DISCARD RIDE?' : 'RIDE MENU', F.tConf ? 'DISCARD?' : 'MENU', true, null, null, R ? [[a + ', ' + R.tgt + ' W|' + a, run ? P.good : P.acc, false]] : []);
 }
+/* ---- 27.11.4: the summary after a trainer ride, one question per page (js/watchflow.js tsPages; F.sel = the page): what did I do (ov),
+ *      did I hit the targets, did I fade (iv: a workout), how hard was it for my body (hr), what were my numbers (pw, the last: DONE).
+ *      The page dots on the left as on the ride; UP / DOWN page, START / BACK done ---- */
 function drawTSum(dc, F, S, P) {
-  const s = F.tsum, c = S / 2, G = gap(S); if (!s) return;
+  const s = F.tsum; if (!s) return;
+  const pg = tsPages(F), n = pg.length, i = F.sel % n, id = pg[i], last = i === n - 1;
+  pageDots(dc, S, P, n, i);
+  if (id === 'iv') tsIv(dc, S, P, s, last); else if (id === 'hr') tsHr(dc, S, P, s, last); else if (id === 'pw') tsPw(dc, S, P, s, last); else tsOver(dc, S, P, s, last);
+}
+/** a page's title (XTINY, the accent) at the top; its ink bottom */
+function tsHead(dc, S, P, t) { const y = downTo(dc, XT, t.split('|')[0], S * .13 > up(dc, XT) + S * .09 ? S * .13 : up(dc, XT) + S * .09, R0); put(dc, S / 2, y, XT, t, S, P.acc, false, R0); return y + dn(dc, XT, 'G'); }
+/** the last page's DONE at the bottom (a tap on it: done); the ink top left above it */
+function tsDone(dc, S, P) { const y = S * .88; put(dc, S / 2, y, XT, 'DONE', S, P.lbl, false, R0); return y - up(dc, XT) - gap(S); }
+/** a difference as "+2", "-9", "0" */
+const sgnTxt = d => d > 0 ? '+' + d : String(d);
+/** the units ridden (sets, else intervals: uw > 0) */
+function tsUnits(s) { const r = [], uw = s.uw || []; for (let u = 0; u < uw.length; u++) if (uw[u] > 0) r.push(u); return r; }
+/** row j of k over the n units ridden U: its first and last index in U (k runs as even as whole units allow) */
+const tsFrom = (n, k, j) => T(j * n / k);
+/** the row's label: "SET 2", "SET 1-2", "#3", "1-13" */
+function tsLab(U, a, b, sets) { return (sets ? 'SET ' : (a === b ? '#' : '')) + (U[a] + 1) + (a === b ? '' : '-' + (U[b] + 1)); }
+/** 27.11.4: a small table in XTINY: a header row hh (or null, the label colour) and the rows [a (labels), b, d] (b in fg, d in cl[j]); the
+ *  columns as wide as their widest text, the numbers right-aligned, the table centred, the rows from top; the ink bottom, -1 where a row
+ *  does not fit above bot or inside the circle (at most 0.8 S wide: clear of the page dots) */
+function tsTab(dc, S, P, hh, a, b, d, cl, top, bot, draw) {
+  const G = gap(S), sp = S * .05, rh = inkH(dc, XT) + G, n = a.length + (hh ? 1 : 0), w = [0, 0, 0];
+  for (let k = 0; k < n; k++) {
+    const j = hh ? k - 1 : k, r = j < 0 ? hh : [a[j], b[j], d[j]];
+    for (let q = 0; q < 3; q++) { const x = dc.getTextWidthInPixels(r[q], XT); if (x > w[q]) w[q] = x; }
+  }
+  const tw = w[0] + w[1] + w[2] + 2 * sp, x0 = S / 2 - tw / 2, y0 = top + up(dc, XT);
+  for (let k = 0; k < n; k++) { const y = y0 + k * rh; if (y + dn(dc, XT, 'g') > bot || tw > roomC(dc, S / 2, y, XT, 'g', R0) || tw > S * .8) return -1; }
+  if (draw) {
+    for (let k = 0; k < n; k++) {
+      const j = hh ? k - 1 : k, r = j < 0 ? hh : [a[j], b[j], d[j]], y = y0 + k * rh, x1 = x0 + w[0] + sp + w[1], x2 = x0 + tw;
+      txtL(dc, x0, y, XT, r[0], P.lbl); txtL(dc, x1 - dc.getTextWidthInPixels(r[1], XT), y, XT, r[1], j < 0 ? P.lbl : P.fg);
+      txtL(dc, x2 - dc.getTextWidthInPixels(r[2], XT), y, XT, r[2], j < 0 ? P.lbl : cl[j]);
+    }
+  }
+  return y0 + (n - 1) * rh + dn(dc, XT, 'g');
+}
+/** the lowest top (not above lo) from which that table fits above bot and inside the circle (the round screen is narrow at the bottom:
+ *  it moves up a gap at a time), -1 when none */
+function tsFit(dc, S, P, hh, a, b, d, cl, lo, bot) {
+  const G = gap(S), n = a.length + (hh ? 1 : 0);
+  for (let tt = bot - n * (inkH(dc, XT) + G) + G; tt >= lo; tt -= G) if (tsTab(dc, S, P, hh, a, b, d, cl, tt, bot, false) >= 0) return tt;
+  return -1;
+}
+/** 1. what did I do: SAVED, the workout's name (or Free ride), the ride's time big, how much of the workout was done (all: green), average
+ *  power and kJ. Where it does not fit: the numbers' font shrinks, then the time's, then the name goes */
+function tsOver(dc, S, P, s, last) {
+  const c = S / 2, bot = last ? tsDone(dc, S, P) : S * .9, ct = clock(s.t), wk = s.wt > 0, nm = wk ? s.wn : 'Free ride';
   const sf = byInk(dc, [SM, XT], S * .1), sy = S * .15 > up(dc, sf) + S * .1 ? S * .15 : up(dc, sf) + S * .1; put(dc, c, sy, sf, 'SAVED', S, P.acc, false, R0);
-  const dy = S * .88, bt = dy - up(dc, XT) - G, v1 = [String(s.avgPw), String(s.maxPw), String(s.kj)], v2 = [orDash(s.cad), orDash(s.hr), orDash(s.maxHr)];
-  // the time, INDOOR RIDE, two rows of three, DONE: the numbers' font shrinks first, then the time, then INDOOR RIDE and DONE go, then
-  // the second row
-  const FS3 = [[ME, SM, XT], [SM, XT], [XT]], l1 = ['AVG W', 'MAX W', 'KJ'], l2 = ['RPM', 'AVG HR', 'MAX HR'];
-  for (let q = 0; q < 12; q++) {
-    const lvl = q < 9 ? T(q / 3) : 2, fs = FS3[q % 3], b0 = lvl < 2 ? bt : S * (.5 + R0), two = q < 9;
-    const tf = fontIn(dc, clock(s.t), [NME, NMI, ME, SM], T(S * .7), lvl === 0 ? S * .2 : S * .14), ty = below(dc, sy + dn(dc, sf, 'S'), tf, S * .3);
-    const ly = below(dc, ty + dn(dc, tf, '0'), XT, S * .395), yb = lvl < 1 ? ly + dn(dc, XT, 'D') : ty + dn(dc, tf, '0');
-    const b1 = cols(dc, S, P, v1, l1, yb, S * .52, b0, fs, false), b2 = b1 < 0 || !two ? -1 : cols(dc, S, P, v2, l2, b1, 0, b0, fs, false);
-    if ((two ? b2 : b1) < 0 && q < 11) continue;
-    txt(dc, c, ty, tf, clock(s.t), P.fg);
-    if (lvl < 1) put(dc, c, ly, XT, 'INDOOR RIDE', S, P.lbl, false, R0);
-    const c1 = cols(dc, S, P, v1, l1, yb, S * .52, b0, fs, true);
-    if (c1 > 0 && two) cols(dc, S, P, v2, l2, c1, 0, b0, fs, true);
-    if (lvl < 2) put(dc, c, dy, XT, 'DONE', S, P.lbl, false, R0);
+  let ln = '', lc = P.good;
+  if (wk && s.ivN > 0) { const a = s.ivD + '/' + s.ivN; ln = (s.uS ? a + ' INTERVALS, ' + s.uD + '/' + s.uN + ' SETS|' : '') + a + ' INTERVALS|' + a; lc = s.ivD >= s.ivN ? P.good : P.acc; }
+  else if (wk) { const p = Math.round(100 * s.wd / s.wt); ln = p + '% OF THE WORKOUT|' + p + '%'; lc = p >= 100 ? P.good : P.acc; }
+  const v = [String(s.avgPw), '', String(s.kj)], l = ['AVG W', '', 'KJ'], FS3 = [[NME, ME, SM, XT], [ME, SM, XT], [SM, XT]];
+  for (let q = 0; q < 9; q++) {
+    const lvl = T(q / 3), fs = FS3[q % 3], nmOn = lvl < 2, nf = byInk(dc, [SM, XT], S * .1), ny = below(dc, sy + dn(dc, sf, 'S'), nf, 0);
+    const nb = nmOn ? ny + dn(dc, nf, nm) : sy + dn(dc, sf, 'S'), tf = topFont(dc, ct, lvl < 1 ? [NME, NMI, ME] : [NMI, ME, SM], T(S * .8), lvl < 1 ? S * .2 : S * .13, nb, S * .4);
+    const ty = below(dc, nb, tf, S * .4); let yb = ty + dn(dc, tf, '0'), ly = 0;
+    if (ln.length > 0) { ly = below(dc, yb, XT, 0); yb = ly + dn(dc, XT, 'g'); }
+    if (cols(dc, S, P, v, l, yb, S * .66, bot, fs, false) < 0 && q < 8) continue;
+    if (nmOn) put(dc, c, ny, nf, nm, T(S * .8), P.fg, true, R0);
+    txt(dc, c, ty, tf, ct, P.fg);
+    if (ln.length > 0) put(dc, c, ly, XT, ln, T(S * .8), lc, false, R0);
+    cols(dc, S, P, v, l, yb, S * .66, bot, fs, true);
+    return;
+  }
+}
+/** 2. did I hit the targets, did I fade: one bar per interval (height = the watts ridden without the ramp seconds, the white line = the
+ *  target, a gap between sets, the last one grey when the ride ended inside it), under it per set (else per interval) the average watts
+ *  and the difference to the target (green: at most 5 W under). More than four: runs of them ("SET 1-2", "1-13"); where the rows do not
+ *  fit, fewer runs, then none */
+function tsIv(dc, S, P, s, last) {
+  const G = gap(S), top = tsHead(dc, S, P, 'INTERVALS') + 2 * G, bot = last ? tsDone(dc, S, P) : S * .9, U = tsUnits(s), nu = U.length, sets = s.uS === true;
+  for (let k = nu < 4 ? nu : 4; k >= 0; k--) {
+    const a = [], b = [], d = [], cl = [];
+    for (let j = 0; j < k; j++) {
+      const f = tsFrom(nu, k, j), t = tsFrom(nu, k, j + 1) - 1; let w = 0, g = 0;
+      for (let q = f; q <= t; q++) { w += s.uw[U[q]]; g += s.ut[U[q]]; }
+      w = Math.round(w / (t - f + 1)); g = Math.round(g / (t - f + 1));
+      a.push(tsLab(U, f, t, sets)); b.push(w + ' W'); d.push(sgnTxt(w - g)); cl.push(w - g >= -5 ? P.good : P.bad);
+    }
+    const rt = k > 0 ? tsFit(dc, S, P, null, a, b, d, cl, top + S * .14 + 2 * G, bot) : bot, cb = rt - 2 * G;
+    if (rt < 0) continue;
+    tsBars(dc, S, P, s, top, k > 0 ? cb : bot);
+    if (k > 0) tsTab(dc, S, P, null, a, b, d, cl, rt, bot, true);
+    return;
+  }
+}
+/** the intervals' bars between top and bot inside the circle (0.42 S): the scale from a little under the lowest watts / target to the
+ *  highest (a fade of a few percent shows); too many for 2 px each: neighbours averaged into one bar, no set gaps */
+function tsBars(dc, S, P, s, top, bot) {
+  const iw = s.iw, it = s.it, iu = s.iu, n = iw.length, c = S / 2; if (n === 0 || bot - top < 4) return;
+  const hw = half(S, top, bot, .42), W = 2 * hw, ug = pw(S * .02), part = n > s.ivD; let ng = 0;
+  if (s.uS === true) for (let k = 1; k < n; k++) if (iu[k] !== iu[k - 1]) ng++;
+  let m = 1, nb = n, slot = (W - ng * ug) / n;
+  if (slot < 2) { m = T(2 * n / W) + 1; nb = T((n + m - 1) / m); ng = 0; slot = W / nb; }
+  let mn = 99999, mx = 0;
+  for (let k = 0; k < n; k++) { const a = iw[k], b = it[k]; if (a < mn) mn = a; if (b < mn) mn = b; if (a > mx) mx = a; if (b > mx) mx = b; }
+  const lo0 = mn - (mx - mn) * .5 - mx * .05, lo = lo0 > 0 ? lo0 : 0, hi = mx + mx * .02 + 1, H = bot - top, bw = slot >= 3 ? slot - 1 : slot;
+  let x = c - hw;
+  for (let j = 0; j < nb; j++) {
+    const k0 = j * m, k1 = k0 + m < n ? k0 + m : n; let a = 0, b = 0;
+    for (let k = k0; k < k1; k++) { a += iw[k]; b += it[k]; }
+    a = a / (k1 - k0); b = b / (k1 - k0);
+    if (ng > 0 && k0 > 0 && iu[k0] !== iu[k0 - 1]) x += ug;
+    const ha0 = (a - lo) / (hi - lo) * H, ha = ha0 > 2 ? ha0 : 2, hb = (b - lo) / (hi - lo) * H;
+    dc.setColor(part && k1 === n ? P.dim : P.acc); dc.fillRectangle(x, bot - ha, bw, ha);
+    dc.setColor(P.fg); dc.fillRectangle(x, bot - hb - 1, slot, 2);
+    x += slot;
+  }
+}
+/** 3. how hard was it for my body: average and max heart rate; the time in the five zones (only with the profile's zones: grey, blue,
+ *  green, orange, red, the share under each) or else the heart rate over the ride; per set (else per interval) its peak and the recovery
+ *  (the drop in the 60 s after it). No heart rate: one line. Where it does not fit: fewer rows (at least two), then the zones / the curve
+ *  go, then the rows */
+function tsHr(dc, S, P, s, last) {
+  const c = S / 2, G = gap(S), top = tsHead(dc, S, P, 'HEART RATE|HR'), bot = last ? tsDone(dc, S, P) : S * .9;
+  if (!(s.hr > 0)) {
+    dc.setColor(P.faint); dc.fillCircle(c, S * .38, S * .09); heart(dc, c, S * .38, S * .1, P.dim);
+    const f = byInk(dc, [SM, XT], S * .1), y = below(dc, S * .47, f, S * .58); put(dc, c, y, f, 'No heart rate|No HR', S, P.fg, false, R0);
+    const y1 = below(dc, y + dn(dc, f, 'g'), XT, 0); if (y1 + dn(dc, XT, 'g') <= bot) put(dc, c, y1, XT, 'recorded', S, P.lbl, false, R0);
+    return;
+  }
+  const v = [String(s.hr), '', String(s.maxHr)], l = ['AVG', '', 'MAX'], U = tsUnits(s), nu = U.length, zs = s.zs, hs = s.hs || [];
+  const cb = cols(dc, S, P, v, l, top, S * .27, bot, [NMI, ME, SM, XT], false), mt = (cb < 0 ? top : cb) + 2 * G;
+  if (cb >= 0) cols(dc, S, P, v, l, top, S * .27, bot, [NMI, ME, SM, XT], true);
+  let zt = 0, hn = 0;
+  if (zs) for (let k = 0; k < 5; k++) zt += zs[k];
+  for (let k = 0; k < hs.length; k++) if (hs[k] > 0) hn++;
+  const ex = zt > 0 || hn >= 2, kx = nu < 3 ? nu : 3, km = nu < 2 ? nu : 2, xh = zt > 0 ? S * .07 + G + inkH(dc, XT) : S * .1;
+  // the tries in order: [rows, with the zones / curve]
+  const tries = [];
+  if (ex) for (let k = kx; k >= km && k > 0; k--) tries.push([k, 1]);
+  for (let k = kx; k >= km && k > 0; k--) tries.push([k, 0]);
+  if (ex) tries.push([0, 1]);
+  for (let k = km - 1; k > 0; k--) tries.push([k, 0]);
+  for (let q = 0; q < tries.length; q++) {
+    const k = tries[q][0], on = tries[q][1] === 1, a = [], b = [], d = [];
+    for (let j = 0; j < k; j++) {
+      const f = tsFrom(nu, k, j), t = tsFrom(nu, k, j + 1) - 1; let pk = 0, rs = 0, rn = 0;
+      for (let i = f; i <= t; i++) { const u = U[i]; if (s.uhp[u] > pk) pk = s.uhp[u]; if (s.urec[u] !== REC_NONE) { rs += s.urec[u]; rn++; } }
+      const r = rn > 0 ? Math.round(rs / rn) : 0;
+      a.push(tsLab(U, f, t, s.uS === true)); b.push(pk > 0 ? String(pk) : '--'); d.push(rn === 0 ? '--' : (r > 0 ? '-' + r : (r < 0 ? '+' + (-r) : '0')));
+    }
+    const hh = ['', 'PEAK', 'REC'], cl = [P.fg, P.fg, P.fg, P.fg];
+    let tt = k > 0 ? tsFit(dc, S, P, hh, a, b, d, cl, on ? mt + xh + 2 * G : mt, bot) : bot;
+    if (k > 0 && !on && tsTab(dc, S, P, hh, a, b, d, cl, mt, bot, false) >= 0) tt = mt; // alone: right under the numbers
+    const xb = k > 0 ? tt - 2 * G : (bot < S * .82 ? bot : S * .82); // alone: not down into the narrow bottom of the round screen
+    if (tt < 0 || (on && xb - mt < xh)) continue;
+    if (on) { if (zt > 0) tsZones(dc, S, P, zs, mt, xb); else tsCurve(dc, S, P, hs, mt, xb); }
+    if (k > 0) tsTab(dc, S, P, hh, a, b, d, cl, tt, bot, true);
+    return;
+  }
+}
+/** the five zones as bars between top and bot (the share under each, "%" where it fits), the zone colours */
+function tsZones(dc, S, P, zs, top, bot) {
+  const c = S / 2, G = gap(S), ly = bot - dn(dc, XT, '0'), bb = ly - up(dc, XT) - G, H = bb - top, cl = [P.dim, P.wCool, P.wRec, P.acc, P.bad];
+  let zt = 0, mx = 1;
+  for (let k = 0; k < 5; k++) { zt += zs[k]; if (zs[k] > mx) mx = zs[k]; }
+  const hw = half(S, top, bot, R0) - S * .04, sl = 2 * hw / 5, bw = sl * .6; let pc = 2; // the shares with "%", without, none (font size setting)
+  for (let k = 0; k < 5; k++) { const p = String(Math.round(100 * zs[k] / zt)); if (dc.getTextWidthInPixels(p + '%', XT) > sl - 2 && pc > 1) pc = 1; if (dc.getTextWidthInPixels(p, XT) > sl - 2) pc = 0; }
+  for (let k = 0; k < 5; k++) {
+    const x = c - hw + sl * k + sl / 2, h0 = H * zs[k] / mx, h = h0 > 2 ? h0 : 2, p = Math.round(100 * zs[k] / zt);
+    dc.setColor(cl[k]); dc.fillRectangle(x - bw / 2, bb - h, bw, h);
+    if (pc > 0) txt(dc, x, ly, XT, p + (pc > 1 ? '%' : ''), P.lbl);
+  }
+}
+/** the heart rate over the ride (the upload's series, one value per 10 s or more; 0 = none: a gap) between top and bot */
+function tsCurve(dc, S, P, hs, top, bot) {
+  const c = S / 2, n = hs.length, hw = half(S, top, bot, .42); let mn = 999, mx = 0;
+  for (let k = 0; k < n; k++) { const h = hs[k]; if (h > 0 && h < mn) mn = h; if (h > mx) mx = h; }
+  if (mx <= 0 || n < 2) return;
+  const lo = mn - 5, H = bot - top, sc = H / (mx + 5 - lo), dx = 2 * hw / (n - 1);
+  dc.setColor(P.hr); dc.setPenWidth(pw(S * .01));
+  for (let k = 1; k < n; k++) { const a = hs[k - 1], b = hs[k]; if (a > 0 && b > 0) dc.drawLine(c - hw + (k - 1) * dx, bot - (a - lo) * sc, c - hw + k * dx, bot - (b - lo) * sc); }
+  dc.setPenWidth(1);
+}
+/** 4. what were my numbers: NP, max power, average cadence; the best 30 s, 1 min, 5 min (those the ride was long enough for); DONE.
+ *  Where it does not fit: the numbers' font shrinks, then the best row goes */
+function tsPw(dc, S, P, s, last) {
+  const c = S / 2, G = gap(S), top = tsHead(dc, S, P, 'POWER'), bot = last ? tsDone(dc, S, P) : S * .9;
+  const v1 = [orDash(s.np), String(s.maxPw), orDash(s.cad)], l1 = ['NP', 'MAX W', 'RPM'], two = s.b30 > 0;
+  // the best row: three columns, two the outer ones, one the middle (a ride of 30 s .. 5 min)
+  const v2 = s.b300 > 0 ? [String(s.b30), String(s.b60), String(s.b300)] : (s.b60 > 0 ? [String(s.b30), '', String(s.b60)] : ['', String(s.b30), '']);
+  const l2 = s.b300 > 0 ? ['30 S', '1 MIN', '5 MIN'] : (s.b60 > 0 ? ['30 S', '', '1 MIN'] : ['', '30 S', '']);
+  const lo = bot - 2 * G; // the best row not right on DONE
+  const FS3 = [[ME, SM, XT], [SM, XT], [XT]];
+  for (let q = 0; q < 6; q++) {
+    const fs = FS3[q % 3], on = two && q < 3, b1 = cols(dc, S, P, v1, l1, top, S * .3, bot, fs, false), by = b1 < 0 ? 0 : below(dc, b1 + G, XT, S * .56);
+    const b2 = on && b1 >= 0 ? cols(dc, S, P, v2, l2, by + dn(dc, XT, 'B'), 0, lo, fs, false) : 0;
+    if ((b1 < 0 || b2 < 0) && q < 5) continue;
+    cols(dc, S, P, v1, l1, top, S * .3, bot, fs, true);
+    if (on) { put(dc, c, by, XT, 'BEST', S, P.acc, false, R0); cols(dc, S, P, v2, l2, by + dn(dc, XT, 'B'), 0, lo, fs, true); }
     return;
   }
 }

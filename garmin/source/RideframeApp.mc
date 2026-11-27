@@ -57,6 +57,7 @@ class RideframeApp extends Application.AppBase {
         flow = f; lastKey = f.last;
         var rd = Application.Storage.getValue("rides"); // 27.11.: the trainer's workouts (GET /api/watch/rides), kept for the next start
         if (rd instanceof Dictionary) { f.setRides((rd as Dictionary)["rides"], (rd as Dictionary)["ftp"]); }
+        f.setHrZones(bikeZones()); // 27.11.4: the trainer summary's heart rate zones (only the profile's)
         api = new Api();
         recorder = new Recorder(f);
         var aq = Application.Storage.getValue("aqueue");

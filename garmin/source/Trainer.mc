@@ -22,6 +22,13 @@ const T_CTL_S = 5;       // refused: ask for control again this often
 const T_DATA_S = 3;      // the trainer silent longer: 0 W, 0 rpm
 const T_SER_DT = 10;     // the upload's series: one value per 10 s, at most 240, then two become one
 const T_SER_MAX = 240;
+// 27.11.4 (js BEST_N, IV_SKIP, HRR_S, REC_NONE): the summary's numbers, kept second by second (a 4 h ride is 14400 seconds; nothing is scanned
+// at the end): the best 30 s / 1 min / 5 min from a ring of the last T_BEST_N seconds; an interval's first IV_SKIP s are not counted (the
+// trainer ramps the watts; intervals of at most 2 x IV_SKIP s count every second); the recovery is the heart rate's drop in HRR_S s
+const T_BEST_N = 300;
+const IV_SKIP = 5;
+const HRR_S = 60;
+const REC_NONE = -999;
 // link states (js: LST)
 const TL_OFF = 0;
 const TL_SCAN = 1;
@@ -284,10 +291,22 @@ class TRide {
     var aHr as Number = 0;
     var aTgt as Number = 0;
     var aN as Number = 0;
+    // 27.11.4: the best powers (a ring of T_BEST_N seconds, three running sums) and the seconds per heart rate zone (zb: the profile's zones)
+    var bw as Array<Number> = [] as Array<Number>;
+    var bwI as Number = 0;
+    var b30 as Number = 0;
+    var b60 as Number = 0;
+    var b300 as Number = 0;
+    var best30 as Number = 0;
+    var best60 as Number = 0;
+    var best300 as Number = 0;
+    var zb as Array<Number> or Null = null;
+    var zs as Array<Number> = [0, 0, 0, 0, 0] as Array<Number>;
 
     function initialize(now as Number, w as Number) {
         start = now; ts = now; tgt = w < TW_MIN ? TW_MIN : (w > TW_MAX ? TW_MAX : w);
         for (var i = 0; i < 30; i++) { p30.add(0); }
+        for (var i = 0; i < T_BEST_N; i++) { bw.add(0); }
     }
     // js: nextTarget(R, d, big): a step on, on the step grid, inside 30..1000 W
     function nextTarget(d as Number, big as Boolean) as Number {
@@ -306,6 +325,14 @@ class TRide {
         p30Sum = p30Sum + pw - p30[p30I]; p30[p30I] = pw; p30I = (p30I + 1) % 30;
         if (p30N < 30) { p30N++; }
         if (p30N == 30) { var m = p30Sum / 30.0; np4 += m * m * m * m; npN++; }
+        // 27.11.4: the best 30 s / 1 min / 5 min: the values 30, 60, 300 s ago leave the sums (the ring starts as zeros, so no count is needed)
+        var o30 = bw[(bwI + 270) % T_BEST_N], o60 = bw[(bwI + 240) % T_BEST_N], o300 = bw[bwI];
+        bw[bwI] = pw; bwI = (bwI + 1) % T_BEST_N; b30 += pw - o30; b60 += pw - o60; b300 += pw - o300;
+        if (t >= 30 && b30 > best30) { best30 = b30; }
+        if (t >= 60 && b60 > best60) { best60 = b60; }
+        if (t >= 300 && b300 > best300) { best300 = b300; }
+        var z = zb;
+        if (hr > 0 && z != null) { var q = hr > z[4] ? 4 : (hr > z[3] ? 3 : (hr > z[2] ? 2 : (hr > z[1] ? 1 : (hr >= z[0] ? 0 : -1)))); if (q >= 0) { zs[q] = zs[q] + 1; } }
         aPw += pw; aCad += cad; aHr += hr; aTgt += tgt; aN++;
         if (aN >= dt) {
             sPw.add(rnd(aPw.toFloat() / aN)); sCad.add(rnd(aCad.toFloat() / aN)); sHr.add(rnd(aHr.toFloat() / aN)); sTgt.add(rnd(aTgt.toFloat() / aN));
@@ -324,7 +351,8 @@ class TRide {
     // js: rideSum(R): { "t", "avgPw", "maxPw", "np", "cad", "hr", "maxHr", "kj", "start" }
     function sum() as Dictionary {
         return { "t" => t, "avgPw" => avgPw(), "maxPw" => pwMax, "np" => np(), "cad" => cadN > 0 ? rnd(cadSum.toFloat() / cadN) : 0,
-                 "hr" => hrN > 0 ? rnd(hrSum.toFloat() / hrN) : 0, "maxHr" => hrMax, "kj" => rnd(kj), "start" => start };
+                 "hr" => hrN > 0 ? rnd(hrSum.toFloat() / hrN) : 0, "maxHr" => hrMax, "kj" => rnd(kj), "start" => start,
+                 "b30" => t >= 30 ? rnd(best30 / 30.0) : 0, "b60" => t >= 60 ? rnd(best60 / 60.0) : 0, "b300" => t >= 300 ? rnd(best300 / 300.0) : 0 };
     }
     // js: rideBody(R, sum, id, now): POST /api/watch/activity, a VirtualRide with power, cadence and the series
     function body(s as Dictionary, id as String, now as Number) as Dictionary {
@@ -353,6 +381,37 @@ const WK_WARM = 2;
 const WK_COOL = 3;
 
 function wkNum(v) as Boolean { return v instanceof Number || v instanceof Float || v instanceof Double || v instanceof Long; }
+// js: hrZones(z) (27.11.4): the profile's heart rate zones (UserProfile.getHeartRateZones: min zone 1, max zone 1 ... max zone 5) when they
+// are 6 rising numbers 30..250, else null (then the summary shows no zones: nothing guessed)
+function hrZones(z) as Array<Number> or Null {
+    if (!(z instanceof Array)) { return null; }
+    var a = z as Array, r = [] as Array<Number>;
+    if (a.size() < 6) { return null; }
+    for (var i = 0; i < 6; i++) {
+        if (!wkNum(a[i])) { return null; }
+        var v = rnd(fltOf(a[i]));
+        if (v < 30 || v > 250 || (i > 0 && v <= r[i - 1])) { return null; }
+        r.add(v);
+    }
+    return r;
+}
+// js: rideReport(o, R, W) (27.11.4): the summary (Flow.tsum) = R.sum() + "name", with the workout W (null = a free ride): "wn", "wt" (s),
+// "wd" (s ridden of it), "ivN" / "ivD" (intervals in it / done), "uS" (sets), "uN" / "uD" (units / done), per interval "iw", "it", "iu", per
+// unit "uw", "ut" (average watts / target without the ramp seconds, 0 = not ridden), "uhp" (peak heart rate), "urec" (the drop, REC_NONE
+// none); "zs" (seconds per zone, only with zones), "hs" (the heart rate series of the upload)
+function tReport(o as Dictionary, R as TRide, W as TWork or Null) as Void {
+    if (R.zb != null) { o["zs"] = R.zs; }
+    o["hs"] = R.sHr;
+    if (W == null) { o["wn"] = ""; o["wt"] = 0; return; }
+    var nu = W.uCnt.size(), ud = 0, uw = [] as Array<Number>, ut = [] as Array<Number>;
+    for (var u = 0; u < nu; u++) {
+        if (W.uDn[u] >= W.uCnt[u]) { ud++; }
+        var n = W.uPn[u];
+        uw.add(n > 0 ? rnd(W.uPw[u].toFloat() / n) : 0); ut.add(n > 0 ? rnd(W.uTg[u].toFloat() / n) : 0);
+    }
+    o["wn"] = W.n; o["wt"] = W.tot; o["wd"] = R.t < W.tot ? R.t : W.tot; o["ivN"] = W.ivN; o["ivD"] = W.ivD; o["uS"] = W.uS; o["uN"] = nu; o["uD"] = ud;
+    o["iw"] = W.iw; o["it"] = W.it; o["iu"] = W.iu; o["uw"] = uw; o["ut"] = ut; o["uhp"] = W.uHp; o["urec"] = W.uRec;
+}
 // js: wkDur(l): the length of entries in seconds, without expanding them (the TPICK sub line)
 function wkDur(l) as Number {
     var t = 0;
@@ -407,6 +466,35 @@ class TWork {
     var ea as Number = 0;         // and on the others
     var ri as Number = WK_RI;
     var ro as Number = WK_RO;
+    // 27.11.4 (js wkUnits ... wkClose): the intervals for the summary. sk: the set of a step (the repeat round around its own repeat, -1
+    // none; rc numbers the rounds), un: its unit (-1: no interval), per unit (uS: sets, else one interval each) its last step, the easy
+    // seconds after it, its intervals, the sums without the ramp seconds, the peak heart rate, the recovery, the intervals done; per
+    // interval ridden its average watts / target / unit; c*: the interval under way; rec*: a recovery under way
+    var sk as Array<Number> = [] as Array<Number>;
+    var rc as Number = 0;
+    var un as Array<Number> = [] as Array<Number>;
+    var uS as Boolean = false;
+    var uEnd as Array<Number> = [] as Array<Number>;
+    var uGap as Array<Number> = [] as Array<Number>;
+    var uCnt as Array<Number> = [] as Array<Number>;
+    var uPw as Array<Number> = [] as Array<Number>;
+    var uPn as Array<Number> = [] as Array<Number>;
+    var uTg as Array<Number> = [] as Array<Number>;
+    var uHp as Array<Number> = [] as Array<Number>;
+    var uRec as Array<Number> = [] as Array<Number>;
+    var uDn as Array<Number> = [] as Array<Number>;
+    var ivN as Number = 0;
+    var ivD as Number = 0;
+    var iw as Array<Number> = [] as Array<Number>;
+    var it as Array<Number> = [] as Array<Number>;
+    var iu as Array<Number> = [] as Array<Number>;
+    var cPw as Number = 0;
+    var cPn as Number = 0;
+    var cTg as Number = 0;
+    var cK as Number = -1;
+    var recU as Number = -1;
+    var recT as Number = 0;
+    var recH as Number = 0;
 
     function initialize(def as Dictionary) {
         id = strOf(def["id"]); n = strOf(def["n"]);
@@ -414,6 +502,7 @@ class TWork {
         if (wkNum(def["ro"])) { ro = imax(0, numOf(def["ro"])); }
         add(arrOf(def["s"]));
         for (var k = 0; k < dur.size(); k++) { tot += dur[k]; }
+        units();
     }
     function cl(x as Number) as Number { return x < 0 ? 0 : (x > 2000 ? 2000 : x); }
     // js: wkCnt(ctx)
@@ -436,7 +525,7 @@ class TWork {
                 var nn = numOf(a[0]), sub = a[1] as Array, trim = a.size() > 2 && numOf(a[2]) == 1;
                 nn = nn < 0 ? 0 : (nn > 100 ? 100 : nn);
                 for (var r = 0; r < nn; r++) {
-                    ctx.add([r, nn] as Array<Number>);
+                    ctx.add([r, nn, rc] as Array<Number>); rc++;
                     if (trim && r == nn - 1) { if (sub.size() > 1) { add(sub.slice(0, sub.size() - 1)); } } else { add(sub); }
                     ctx = ctx.slice(0, ctx.size() - 1) as Array<Array<Number>>;
                 }
@@ -446,6 +535,7 @@ class TWork {
                 var x2 = a.size() > 2 && wkNum(a[2]) ? numOf(a[2]) : -1, h = a.size() > 3 ? a[3] : null;
                 dur.add(sec); w.add(cl(numOf(a[1]))); w2.add(x2 < 0 ? -1 : cl(x2));
                 hard.add(h instanceof Boolean ? h as Boolean : numOf(h) == 1); lab.add(a.size() > 4 ? strOf(a[4]) : ""); cnt.add(cntOf()); kd.add(kindOf(dur.size() - 1));
+                sk.add(ctx.size() >= 2 ? ctx[ctx.size() - 2][2] : -1); // 27.11.4: the set it belongs to
             }
         }
     }
@@ -506,4 +596,62 @@ class TWork {
     }
     // js: wkNextW(W): the next step's target with the offsets, -1 after the last
     function nextW() as Number { return i + 1 < dur.size() ? plat(i + 1, 0) : -1; }
+
+    // js: wkPrep(l) (27.11.4): a warm-up, opener or spin (js/ivhistory.js isPrep): a hard step, but no interval
+    function isPrep(k as Number) as Boolean {
+        var l = lab[k].toLower(), pf = ["warm", "opener", "spin"] as Array<String>;
+        for (var j = 0; j < pf.size(); j++) { var p = l.find(pf[j]); if (p != null && p == 0) { return true; } }
+        return false;
+    }
+    // js: wkUnits(W): the intervals (hard, at least 5 s, no preparation) and their units: sets where the intervals sit in two or more
+    // rounds of an outer repeat, else one interval each
+    function units() as Void {
+        var nn = dur.size(), keys = [] as Array<Number>;
+        for (var k = 0; k < nn; k++) {
+            var on = hard[k] && dur[k] >= 5 && !isPrep(k);
+            un.add(on ? 0 : -1);
+            if (on) { ivN++; if (sk[k] >= 0 && keys.indexOf(sk[k]) < 0) { keys.add(sk[k]); } }
+        }
+        uS = keys.size() >= 2;
+        var u = -1, last = -2;
+        for (var k = 0; k < nn; k++) {
+            if (un[k] < 0) { continue; }
+            var key = uS ? sk[k] : -1;
+            if (u < 0 || key < 0 || key != last) { u++; uEnd.add(0); uGap.add(0); uCnt.add(0); uPw.add(0); uPn.add(0); uTg.add(0); uHp.add(0); uRec.add(REC_NONE); uDn.add(0); }
+            last = key; un[k] = u; uEnd[u] = k; uCnt[u] = uCnt[u] + 1;
+        }
+        for (var q = 0; q <= u; q++) {
+            var g = 0, j = uEnd[q] + 1;
+            while (j < nn && !hard[j]) { g += dur[j]; j++; }
+            uGap[q] = j >= nn ? 99999 : g;
+        }
+    }
+    // js: wkRec(W, t, pw, hr, tg): one second of the ride (t = R.t after it was counted, before at() moves on: i is the step of this
+    // second), pw / hr ridden, tg the target
+    function rec(t as Number, pw as Number, hr as Number, tg as Number) as Void {
+        var u0 = recU;
+        if (u0 >= 0) {
+            if (hr > uHp[u0]) { uHp[u0] = hr; }
+            if (t >= recT) { uRec[u0] = hr > 0 && recH > 0 ? recH - hr : REC_NONE; recU = -1; }
+        }
+        var k = i;
+        if (k >= dur.size()) { return; }
+        var u = un[k];
+        if (u < 0) { return; }
+        var into = t - s0;
+        if (hr > uHp[u]) { uHp[u] = hr; }
+        if (dur[k] <= 2 * IV_SKIP || into > IV_SKIP) { cPw += pw; cPn++; cTg += tg; uPw[u] = uPw[u] + pw; uPn[u] = uPn[u] + 1; uTg[u] = uTg[u] + tg; }
+        cK = k;
+        if (into >= dur[k]) { // its last second
+            flush(); ivD++; uDn[u] = uDn[u] + 1;
+            if (k == uEnd[u] && uGap[u] >= HRR_S) { recU = u; recH = hr; recT = t + HRR_S; }
+        }
+    }
+    // js: wkFlush(W): the interval under way into the lists; nothing when no second counted
+    function flush() as Void {
+        if (cK >= 0 && cPn > 0) { iw.add(rnd(cPw.toFloat() / cPn)); it.add(rnd(cTg.toFloat() / cPn)); iu.add(un[cK]); }
+        cPw = 0; cPn = 0; cTg = 0; cK = -1;
+    }
+    // js: wkClose(W): the ride ends: an interval under way counts in part, a recovery not yet HRR_S s old is none
+    function close() as Void { flush(); recU = -1; }
 }

@@ -11,7 +11,7 @@
 // no strength ready screen: Strength on the start menu opens the choice / the exercise list at once.
 // 23.11.7: the wheel (a finger dragged over kg / reps / the trainer's target steps it, the neighbours show small above and below), lists
 // track the finger 1:1 (dragRow), a drag is never also a tap or a swipe; the six standard workouts (watchflow STD_W) instead of demo ones.
-import { newFlow, handle, SCR, tPage, curEx, setNo, restLeft, clock, sent, paired, setSetup, setConfig, setRoute, setRoutes, routeFace, routeInfo, recPages, homeItems, listItems, workouts, planItem, HOME, HOME_FIT, HOME_LAY, homeTop, holdPart, pausedTime, HOLD_S,
+import { newFlow, handle, SCR, tPage, tsPages, curEx, setNo, restLeft, clock, sent, paired, setSetup, setConfig, setRoute, setRoutes, routeFace, routeInfo, recPages, homeItems, listItems, workouts, planItem, HOME, HOME_FIT, HOME_LAY, homeTop, holdPart, pausedTime, HOLD_S,
   LIST_LAY, healthBody, DEMO_HEALTH, dragRow, pickRows, doneOf, prefillOf, lastSet, lastTxt, loading, VERSION, stepOf, WHEEL_STEP, WHEEL_SHOW, DRAG_MIN, setRides } from './watchflow.js';
 import { nextTarget } from './watchtrainer.js';
 import { compact, defaults, fieldText, labelOf, TOP } from './watchfields.js';
@@ -255,6 +255,7 @@ function tapAt(u, v, f) {
     if (v > L.t0 && v < L.t1) return ev('item', u < .31 ? 0 : u > .69 ? 1 : 2); // - / + (the whole side) and the target (step size)
     if (v > .78 && F.tr && F.tr.st !== 'run') return ev('start'); return; } // the resume pill
   if (s === SCR.THR || s === SCR.TSCAN && !tList()) return ev('tap');
+  if (s === SCR.TSUM) { const n = tsPages(F).length; return ev(F.sel % n === n - 1 && v > .78 ? 'done' : 'tap'); } // 27.11.4: the last page's DONE: done, else the next page
   if (s === SCR.PAUSE) { const P = F.pz || {}; // conf: the Discard pill = yes, elsewhere = no; else Discard row = ask, the top = resume
     if (P.conf) return ev(Math.abs(v - PAUSE_LAY.discard) < .06 ? 'start' : 'back');
     if (Math.abs(v - PAUSE_LAY.discard) < .055) return ev('item', 1); if (v < .62) return ev('item', 0); return; }

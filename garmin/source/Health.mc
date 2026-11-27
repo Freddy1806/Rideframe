@@ -36,6 +36,14 @@ function hNum(v, lo as Number, hi as Number, dec as Boolean) as Numeric or Null 
 }
 function hPut(d as Dictionary, k as String, v) as Void { if (v != null) { d[k] = v; } }
 
+// 27.11.4: the profile's cycling heart rate zones for the trainer summary (UserProfile.getHeartRateZones(HR_ZONE_SPORT_BIKING), 1.0.0:
+// min zone 1, max zone 1 ... max zone 5); Flow.setHrZones checks them (hrZones), null or anything else: no zones on the summary
+function bikeZones() {
+    try {
+        if ((Toybox has :UserProfile) && (UserProfile has :getHeartRateZones)) { return UserProfile.getHeartRateZones(UserProfile.HR_ZONE_SPORT_BIKING); }
+    } catch (e) { System.println("health: zones"); }
+    return null;
+}
 // the snapshot: a Dictionary with day and t and only the keys that have a value; null when there is none at all
 function healthSnapshot() as Dictionary or Null {
     var d = {} as Dictionary;

@@ -285,7 +285,7 @@ test('Monkey C: Trainer.mc TWork / Flow.mc have the JavaScript\'s constants, fun
     assert.deepEqual(mcS, js.s, `the 30 / 15 at FTP ${ftp}: Trainer.mc = js`);
   }
   assert.match(tmc, /"n" => "30\/15, 3 x 13", "ri" => 3, "ro" => 2/); assert.deepEqual([wkFallback(1).n, wkFallback(1).ri, wkFallback(1).ro], ['30/15, 3 x 13', 3, 2]);
-  assert.match(fmc, new RegExp(`RF_VERSION = "${VERSION.replace(/\./g, '\\.')}"`)); assert.equal(VERSION, '27.11.3');
+  assert.match(fmc, new RegExp(`RF_VERSION = "${VERSION.replace(/\./g, '\\.')}"`)); assert.equal(VERSION, '27.11.4');
 });
 
 test('27.11.2 the heart rate step: a live heart rate starts the ride after 2 s, none waits, START skips, BACK = the trainer; stale after 15 s', () => {
@@ -368,4 +368,97 @@ test('Monkey C mirrors: the pages, the buttons, the menu rows, the cadence merge
   for (const f of ['function hasCad(', 'cadAt', 'icAt', 'ccAt', 'function ramp(', 'function kindOf(', 'WK_WARM', '"cps"']) assert.ok(tmc.includes(f), 'Trainer.mc ' + f);
   for (const f of ['function trRing(', 'function trTarget(', 'function trWork(', 'function trBody(', 'function trBtn(', 'hasCad(', '"RIDE MENU"']) assert.ok(dmc.includes(f), 'Draw.mc ' + f);
   assert.ok(del.includes('keyAt'), 'FlowDelegate.mc: the menu behaviour is not taken while a key is held'); assert.ok(fld.includes('"tp" =>'), 'Fields.mc default tp'); assert.ok(ble.includes('"cps"'));
+});
+
+/* ---- 27.11.4: the trainer summary's pages (js/watchflow.js tsPages / onTSum) and its numbers, kept second by second
+ *      (js/watchtrainer.js rideSec best powers and zones, wkRec / wkClose, rideReport) ---- */
+import { tsPages, setHrZones } from '../js/watchflow.js';
+import { wkRec, wkClose, rideReport, hrZones, BEST_N, IV_SKIP, HRR_S, REC_NONE } from '../js/watchtrainer.js';
+/** the ride's seconds as tSecs runs them: rideSec, wkRec (before the workout moves on), wkAt; pwOf / hrOf (W, into) per second */
+function wkRun(W, R, n, pwOf, hrOf) {
+  for (let s = 0; s < n; s++) {
+    const into = R.t + 1 - W.s0, pw = W.i < W.dur.length ? pwOf(W, into) : 100, hr = hrOf(W, into);
+    rideSec(R, pw, 90, hr); wkRec(W, R.t, pw, hr, W.i < W.dur.length ? W.w[W.i] : 0); wkAt(W, R.t);
+  }
+}
+const SETS = { id: 's', n: 'Sets', s: [[60, 100, null, 0, 'Warm-up'], [10, 300, null, 1, 'Opener'], [3, 100, null, 1, 'Kick'], [60, 100, null, 0, 'Easy'],
+  [3, [[2, [[30, 400, null, 1, 'Int'], [15, 100, null, 0, 'Float']]], [90, 100, null, 0, 'Rest']]], [60, 100, null, 0, 'Cool-down']] };
+// the trainer ramps: the first 5 s of a hard step at 200 W; the heart 170 on the hard steps, 130 on the easy ones
+const rampPw = (W, into) => W.hard[W.i] && into <= IV_SKIP ? 200 : W.w[W.i];
+const hrHard = (W, into) => W.i < W.dur.length && W.hard[W.i] ? 170 : 130;
+
+test('27.11.4 the best 30 s / 1 min / 5 min from a ring of BEST_N seconds = the best windows over the whole ride; none when too short', () => {
+  const R = newRide(1000, 100), p = []; let x = 7;
+  for (let s = 0; s < 1500; s++) { x = (x * 1103515245 + 12345) % 2147483648; const w = s > 700 && s < 1000 ? 250 + x % 300 : 80 + x % 200; p.push(w); rideSec(R, w, 90, 0); }
+  const best = k => { let b = 0; for (let i = 0; i + k <= p.length; i++) { let a = 0; for (let j = i; j < i + k; j++) a += p[j]; if (a > b) b = a; } return Math.round(b / k); };
+  const s = rideSum(R); assert.deepEqual([s.b30, s.b60, s.b300], [best(30), best(60), best(300)]); assert.equal(BEST_N, 300);
+  const Q = newRide(1000, 100); for (let i = 0; i < 59; i++) rideSec(Q, 300, 90, 0);
+  assert.deepEqual([rideSum(Q).b30, rideSum(Q).b60, rideSum(Q).b300], [300, 0, 0], '59 s: only the 30 s');
+});
+
+test('27.11.4 heart rate zones: only the profile\'s 6 rising values 30..250; seconds per zone (zone 1 from its min, above zone 5\'s max still zone 5)', () => {
+  assert.deepEqual(hrZones([100, 120, 140, 155, 170, 190]), [100, 120, 140, 155, 170, 190]); assert.deepEqual(hrZones([99.6, 120, 140, 155, 170, 190, 7]), [100, 120, 140, 155, 170, 190]);
+  for (const z of [null, [], [100, 120, 140, 155, 170], [100, 120, 120, 155, 170, 190], [20, 120, 140, 155, 170, 190], [100, 120, 140, 155, 170, 260], [100, '120', 140, 155, 170, 190], 'x']) assert.equal(hrZones(z), null, JSON.stringify(z));
+  const R = newRide(1000, 100); R.zb = hrZones([100, 120, 140, 155, 170, 190]);
+  for (const h of [0, 99, 100, 120, 121, 140, 141, 155, 156, 170, 171, 200]) rideSec(R, 100, 90, h);
+  assert.deepEqual(R.zs, [2, 2, 2, 2, 2]); const o = rideReport({}, R, null); assert.deepEqual(o.zs, [2, 2, 2, 2, 2]); assert.equal(o.wn, ''); assert.equal(o.wt, 0);
+  assert.equal(rideReport({}, newRide(1000, 100), null).zs, undefined, 'no zones: none on the summary');
+  const F = fl(); setHrZones(F, [100, 120, 140, 155, 170, 190]); assert.deepEqual(F.hrZ, [100, 120, 140, 155, 170, 190]); setHrZones(F, null); assert.equal(F.hrZ, null);
+});
+
+test('27.11.4 a workout\'s intervals: sets of an outer repeat, warm-up / opener and steps under 5 s are none, the ramp seconds left out, peak, recovery', () => {
+  const W = newWk(SETS), R = newRide(1000, 100);
+  assert.equal(W.ivN, 6); assert.equal(W.uS, true); assert.deepEqual(W.uCnt, [2, 2, 2]);
+  wkRun(W, R, W.tot + 30, rampPw, hrHard); wkClose(W);
+  const o = rideReport({ ...rideSum(R), name: 'K' }, R, W);
+  assert.deepEqual([o.wn, o.wt, o.wd, o.ivN, o.ivD, o.uS, o.uN, o.uD], ['Sets', W.tot, W.tot, 6, 6, true, 3, 3]);
+  assert.deepEqual(o.iw, [400, 400, 400, 400, 400, 400], 'without the first 5 s at 200 W'); assert.deepEqual(o.it, [400, 400, 400, 400, 400, 400]); assert.deepEqual(o.iu, [0, 0, 1, 1, 2, 2]);
+  assert.deepEqual(o.uw, [400, 400, 400]); assert.deepEqual(o.ut, [400, 400, 400]); assert.deepEqual(o.uhp, [170, 170, 170]);
+  assert.deepEqual(o.urec, [40, 40, 40], 'the drop in the 60 s after each set (the last: the cool-down)'); assert.equal(o.hs.length, R.s.hr.length);
+  // one set at a time: no outer repeat (5 x 60 / 60) = each interval its own unit; a hard step right after: no recovery
+  const V = newWk({ id: 'v', n: 'V', s: [[5, [[60, 300, null, 1, 'VO2'], [60, 100, null, 0, 'Easy']]], [20, 300, null, 1, 'Sprint']] }), Q = newRide(1000, 100);
+  assert.equal(V.uS, false); assert.equal(V.ivN, 6); assert.deepEqual(V.uCnt, [1, 1, 1, 1, 1, 1]);
+  wkRun(V, Q, V.tot, rampPw, hrHard); wkClose(V); const p = rideReport({}, Q, V);
+  assert.deepEqual(p.urec, [40, 40, 40, 40, 40, REC_NONE], 'the 5th: 60 s easy before the sprint is enough, the 6th: the ride ends');
+  const X = newWk({ id: 'x', n: 'X', s: [[2, [[60, 300, null, 1, 'VO2'], [59, 100, null, 0, 'Easy']]]] }), Xr = newRide(1000, 100); wkRun(X, Xr, X.tot, rampPw, hrHard); wkClose(X);
+  assert.deepEqual(rideReport({}, Xr, X).urec, [REC_NONE, REC_NONE], 'a hard step within 60 s: no recovery'); assert.deepEqual(p.uw, [300, 300, 300, 300, 300, 300]);
+  // an interval of at most 2 x IV_SKIP s counts every second
+  const Z = newWk({ id: 'z', n: 'Z', s: [[10, 500, null, 1, 'Burst'], [30, 100, null, 0, 'Easy']] }), Y = newRide(1000, 100);
+  wkRun(Z, Y, Z.tot, rampPw, hrHard); wkClose(Z); assert.deepEqual(rideReport({}, Y, Z).iw, [350], '5 s at 200, 5 s at 500'); assert.equal(HRR_S, 60);
+});
+
+test('27.11.4 a workout ended early: the interval under way counts in part, a recovery not yet 60 s old is none, sets done', () => {
+  const W = newWk(SETS), R = newRide(1000, 100);
+  wkRun(W, R, 60 + 10 + 3 + 60 + (2 * 45 + 90) * 2 + 20, rampPw, hrHard); wkClose(W); // 20 s into the third set's first interval
+  const o = rideReport({}, R, W);
+  assert.deepEqual([o.ivD, o.uD, o.iw.length, o.iu], [4, 2, 5, [0, 0, 1, 1, 2]]); assert.deepEqual(o.uw, [400, 400, 400], 'the part: 15 s without the ramp');
+  assert.equal(o.wd, R.t); assert.ok(o.wd < o.wt);
+  const V = newWk(SETS), Q = newRide(1000, 100); wkRun(V, Q, 60 + 10 + 3 + 60 + 2 * 45 + 30, rampPw, hrHard); wkClose(V);
+  assert.deepEqual(rideReport({}, Q, V).urec, [REC_NONE, REC_NONE, REC_NONE], '30 s after the set: no recovery yet');
+});
+
+test('27.11.4 the summary\'s pages: overview, intervals (a workout with one ridden), heart rate, power; UP / DOWN / swipes wrap, a tap = next, START / BACK / DONE done', () => {
+  const [F, K] = ride(); secs(F, K, 90); ev(F, K, F.tr.ts, 'back'); ev(F, K, F.tr.ts, ['item', listItems(F).indexOf('Finish & save')]);
+  assert.equal(F.scr, SCR.TSUM); assert.deepEqual(tsPages(F), ['ov', 'hr', 'pw'], 'a free ride'); assert.equal(F.tsum.wn, ''); assert.equal(typeof F.tsum.b30, 'number'); assert.equal(F.tsum.b300, 0);
+  assert.ok(F.out.some(o => o.k === 'saveAct'), 'saved as before'); assert.equal(F.tbody.type, 'VirtualRide');
+  const pg = []; for (const e of ['down', 'down', 'down', 'up', 'swipeUp', 'swipeDown', 'swipeDown', 'tap']) { handle(F, e, F.tr ? 0 : 2000); pg.push(F.sel); }
+  assert.deepEqual(pg, [1, 2, 0, 2, 0, 2, 1, 2]); assert.equal(F.scr, SCR.TSUM, 'a tap on the last page is the next page (DONE: the delegate sends done)');
+  handle(F, 'done', 2000); assert.equal(F.scr, SCR.HOME); assert.equal(F.sel, 0);
+  for (const e of ['start', 'back', 'swipeRight']) { const [G, K2] = ride(); secs(G, K2, 20); ev(G, K2, G.tr.ts, 'back'); ev(G, K2, G.tr.ts, ['item', listItems(G).indexOf('Finish & save')]); handle(G, 'down', 2000); handle(G, e, 2000); assert.equal(G.scr, SCR.HOME, e); }
+  // the built-in 30 / 15: after its warm-up a few intervals, then Finish & save: the intervals page
+  const [H, K3] = wkRide(); secs(H, K3, 1300); ev(H, K3, H.tr.ts, 'back'); ev(H, K3, H.tr.ts, ['item', listItems(H).indexOf('Finish & save')]);
+  const s = H.tsum; assert.deepEqual(tsPages(H), ['ov', 'iv', 'hr', 'pw']); assert.equal(s.wn, '30/15, 3 x 13'); assert.equal(s.ivN, 39); assert.equal(s.uS, true); assert.equal(s.uN, 3);
+  assert.ok(s.ivD >= 2 && s.iw.length >= s.ivD && s.iw.length <= s.ivD + 1); assert.equal(H.wkSum, null); assert.equal(H.wk, null);
+});
+
+test('27.11.4 Monkey C: the summary\'s numbers, pages and buttons are in Trainer.mc / Flow.mc / Draw.mc / FlowDelegate.mc / Health.mc', () => {
+  const rd = f => readFileSync(new URL('../garmin/' + f, import.meta.url), 'utf8');
+  const tmc = rd('source/Trainer.mc'), fmc = rd('source/Flow.mc'), dmc = rd('source/Draw.mc'), del = rd('source/FlowDelegate.mc'), hl = rd('source/Health.mc'), app = rd('source/RideframeApp.mc'), sm = rd('tests/ZzSmokeTest.mc');
+  for (const [k, v] of [['T_BEST_N', BEST_N], ['IV_SKIP', IV_SKIP], ['HRR_S', HRR_S], ['REC_NONE', REC_NONE]]) assert.match(tmc, new RegExp(`const ${k} = ${v};`), k);
+  for (const f of ['hrZones', 'rideReport', 'wkPrep', 'wkUnits', 'wkRec', 'wkFlush', 'wkClose']) assert.match(tmc, new RegExp(`js: ${f}\\(`), `Trainer.mc ports ${f}`);
+  for (const f of ['function tsPages(', 'function setHrZones(', 'function onTSum(', 'tReport(su, R, W)', 'W.rec(R.t, p, hr, R.tgt)', 'R.zb = hrZ', 'if (s == S_TSUM) { onTSum(ev); return; }']) assert.ok(fmc.includes(f), 'Flow.mc ' + f);
+  for (const f of ['tsOver', 'tsIv', 'tsBars', 'tsHr', 'tsZones', 'tsCurve', 'tsPw', 'tsTab', 'tsFit']) assert.ok(dmc.includes(`function ${f}(`), 'Draw.mc ' + f);
+  assert.ok(del.includes('s == S_TSUM') && del.includes('v > 0.78 ? E_DONE : E_TAP'), 'FlowDelegate.mc: the last page\'s DONE');
+  assert.ok(hl.includes('UserProfile.getHeartRateZones(UserProfile.HR_ZONE_SPORT_BIKING)') && app.includes('f.setHrZones(bikeZones())'), 'the profile\'s zones');
+  assert.ok(sm.includes('smokeWalkSum') && sm.includes('E_DONE, un'), 'ZzSmokeTest walks the pages');
 });
