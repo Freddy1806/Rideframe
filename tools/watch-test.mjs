@@ -234,6 +234,30 @@ test('23.11. workout saved on the watch: into the account config (phone and watc
   for (let i = 0; i < 29; i++) assert.equal((await post({ id: 'f' + i, n: 'F' + i, it: [['pull', 1, 5, 0, 60]] })).status, 200);
   const full = await post({ id: 'f99', n: 'one too many', it: [['pull', 1, 5, 0, 60]] }); assert.equal(full.status, 400, 'full: refused for good (the watch drops it)'); assert.match(full.j.error, /30/);
 });
+test('27.11. GET /api/watch/rides: the trainer workouts in watts with the rider\'s FTP, own ones first, repeats folded, small; open / non-power ones left out', async () => {
+  assert.equal((await call('GET', '/api/watch/rides')).status, 401, 'only for a paired watch');
+  const T = await register('Interval Ida'), t = await pairWith(T, 'fenix 8');
+  const r0 = await call('GET', '/api/watch/rides', { bearer: t }); assert.equal(r0.status, 200); assert.equal(r0.j.ftp, 250, 'no FTP set: 250 W');
+  const WO = await import('../js/workouts.js'), WT = await import('../js/watchtrainer.js');
+  const c = r0.j.rides.find(w => w.id === 'c_30_15_3x13'); assert.ok(c, 'the owner\'s 30 / 15'); assert.equal(r0.j.rides[0].id, 'c_30_15_3x13', 'the coach workouts first');
+  assert.ok(!r0.j.rides.some(w => w.id === 'ftp20'), 'the 20-min test (a free block, no ERG) is left out');
+  const W = WT.newWk(c), wo = WO.WORKOUTS.find(w => w.id === 'c_30_15_3x13'); WO.setFtp(250);
+  assert.equal(W.tot, WO.workoutDuration(wo)); assert.deepEqual(W.dur, wo.steps.map(s => s.dur));
+  assert.deepEqual([...new Set(W.w.filter((x, i) => W.hard[i] && W.dur[i] === 30))], [wo.steps.find(s => s.dur === 30 && WO.isHard(s)).watts], 'the hard watts of js/workouts.js');
+  assert.equal(W.w[0], 100, '40 % of 250'); assert.ok(JSON.stringify(c).length < 400, `the 30 / 15: ${JSON.stringify(c).length} bytes`);
+  assert.ok(r0.size < 9500, `the whole answer: ${r0.size} bytes`); console.log(`  rides payload: ${r0.size} bytes, ${r0.j.rides.length} workouts, the 30 / 15 ${JSON.stringify(c).length} bytes`);
+  assert.ok(r0.j.rides.every(w => /^[\x20-\x7e]*$/.test(JSON.stringify(w))), 'ASCII only');
+  // FTP 300, a Training tab workout and two personal ones (one with a free, non-ERG block: left out)
+  assert.equal((await call('PUT', '/api/account/settings', { token: T, body: { settings: { ftp: 300, myWorkouts: [{ id: 'my_a', name: 'My 4 x 4', warm: false, cool: false, rows: [{ t: 'i', n: 4, onMin: 4, onPct: 110, offMin: 3, offPct: 50, label: 'Hard' }] }] }, at: Date.now() } })).status, 200);
+  const pw = (id, name, steps) => call('PUT', '/api/account/workouts/' + id, { token: T, body: { id, name, base: null, steps, updated: Date.now() } });
+  assert.equal((await pw('pw_ok01', 'Mine: tempo', [{ min: 10, pct: 60, pct2: 80, label: 'Up' }, { min: 20, pct: 85, label: 'Tempo' }])).status, 200);
+  assert.equal((await pw('pw_free1', 'Mine: free test', [{ min: 10, pct: 60, label: 'Up' }, { min: 20, pct: 100, label: 'Test', free: true }])).status, 200);
+  const r1 = (await call('GET', '/api/watch/rides', { bearer: t })).j; assert.equal(r1.ftp, 300);
+  assert.deepEqual(r1.rides.slice(0, 2).map(w => w.id), ['my_a', 'pw_ok01'], 'own ones first'); assert.ok(!r1.rides.some(w => w.id === 'pw_free1'), 'a free block: left out');
+  assert.deepEqual(r1.rides[0].s, [[4, [[240, 330, null, 1, 'Hard'], [180, 150, null, 0, 'Rest']], 1]], '4 x (4 min 330 W / 3 min 150 W), folded');
+  assert.deepEqual(r1.rides[1].s, [[600, 180, 240, 0, 'Up'], [1200, 255, null, 0, 'Tempo']], 'a ramp: watts to watts');
+  assert.equal(WT.newWk(r1.rides.find(w => w.id === 'c_30_15_3x13')).w[0], 120, '40 % of 300');
+});
 test('limits: codes per account, pair tries per address, wrong codes for everyone', async () => {
   const C = await register('Code Spammer');
   for (let i = 0; i < 10; i++) assert.equal((await call('POST', '/api/watch/code', { token: C })).status, 200);
@@ -246,4 +270,5 @@ test('limits: codes per account, pair tries per address, wrong codes for everyon
   const r = await call('POST', '/api/watch/pair', { body: { code: c.j.code } }); assert.equal(r.status, 429, 'after 60 wrong codes pairing pauses for everyone');
   const files = await readdir(DATA); assert.ok(files.includes('watches.json'));
 });
+
 
