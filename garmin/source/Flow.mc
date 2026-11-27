@@ -127,7 +127,7 @@ const WK_DONE_S = 30;                  // "Workout done" shows this long
 const TEND_BACK = "Back to ride";
 const TEND_RESUME = "Resume";
 // js/watchflow.js VERSION: the menu title shows it
-const RF_VERSION = "27.11.3";
+const RF_VERSION = "27.11.4";
 // pairing states / sum states
 const P_ENTER = 0;
 const P_SENDING = 1;
@@ -386,6 +386,8 @@ class Flow {
     var wk as TWork or Null = null;
     var tw as Number = -1;                                      // the choice on S_TPICK: -1 none, 0 free ride, k = rideList()[k - 1]
     var wkDone as Number = 0;
+    var wkSum as TWork or Null = null;                          // 27.11.4 (js F.wkSum): the workout's numbers for the summary (stays after wkEnd)
+    var hrZ as Array<Number> or Null = null;                    // 27.11.4 (js F.hrZ): the profile's cycling heart rate zones (hrZones), null none
     var hrAt as Number = 0;                                     // 27.11.2: the second the last heart rate came (hrOn)
     var thr as Number = 0;                                      // S_THR: the second from which a heart rate was there (0 none)
 
@@ -1140,10 +1142,10 @@ class Flow {
     // the ride starts: free ERG at the last target, or the workout chosen on S_TPICK at its first target
     function tBegin(now as Number) as Void {
         var k = tw, l = rideList(), W = k > 0 && k <= l.size() ? newWk(l[k - 1]) : null;
-        tw = -1; wk = W; wkDone = 0;
+        tw = -1; wk = W; wkSum = W; wkDone = 0;
         var w0 = tTgt;
         if (W != null) { w0 = clampW(W.target(0)); }
-        var R = new TRide(now, w0); tr = R; tsum = null; tbody = null; tConf = false;
+        var R = new TRide(now, w0); R.zb = hrZ; tr = R; tsum = null; tbody = null; tConf = false;
         link.setTarget(R.tgt, now); last = "trainer"; scr = S_TREC; cues.add(C_START);
     }
     // a new target: shown at once, sent when the line is free (latest wins); while paused it waits for the resume
@@ -1160,20 +1162,30 @@ class Flow {
         var R = tr;
         if (R == null) { return; }
         if (R.t == 0) { tDiscard(); return; }
-        wk = null; wkDone = 0;
+        var W = wkSum; // 27.11.4: the workout's numbers stay for the summary (also once it is over: wkEnd)
+        if (W != null) { W.close(); }
+        wk = null; wkSum = null; wkDone = 0;
         var su = R.sum();
         tbody = R.body(su, newId(now), now);
-        su["name"] = link.name; tsum = su;
+        su["name"] = link.name; tReport(su, R, W); tsum = su;
         out.add({ "k" => O_SAVEACT } as Dictionary); out.add({ "k" => O_TRAINER } as Dictionary);
         link.stop(); tr = null; sel = 0; scr = S_TSUM; cues.add(C_DONE);
     }
-    function tDiscard() as Void { link.stop(); tr = null; wk = null; wkDone = 0; tConf = false; sel = 0; scr = S_HOME; }
+    function tDiscard() as Void { link.stop(); tr = null; wk = null; wkSum = null; wkDone = 0; tConf = false; sel = 0; scr = S_HOME; }
     // the ride's seconds up to now (at most 5 at once, a longer gap is not made up)
     function tSecs(now as Number) as Void {
         var R = tr;
         if (R == null) { return; }
         if (now - R.ts > 5) { R.ts = now - 5; }
-        while (R.ts + 1 <= now) { R.ts++; if (R.st == RS_RUN) { R.sec(link.livePw(now), link.liveCad(now), hr); wkSec(now); } }
+        while (R.ts + 1 <= now) {
+            R.ts++;
+            if (R.st == RS_RUN) {
+                var p = link.livePw(now), W = wkSum;
+                R.sec(p, link.liveCad(now), hr);
+                if (W != null) { W.rec(R.t, p, hr, R.tgt); }
+                wkSec(now);
+            }
+        }
     }
     // S_TSCAN: the list while searching (UP / DOWN, drag, START or a tap connects), else the state with START to ride
     function onTScan(ev as Number, now as Number, arg) as Void {
@@ -1207,6 +1219,24 @@ class Flow {
             if (x instanceof String && all.indexOf(x) >= 0 && r.indexOf(x) < 0 && (!"wk".equals(x) || wk != null)) { r.add(x as String); }
         }
         return r;
+    }
+    // js: tsPages(F) (27.11.4): the summary's pages after a trainer ride (sel counts in them): "ov" what did I do, "iv" the intervals (a
+    // workout with one ridden), "hr" heart rate, "pw" power (the last: DONE)
+    function tsPages() as Array<String> {
+        var r = ["ov"] as Array<String>, s = tsum;
+        if (s != null && s["iw"] instanceof Array && (s["iw"] as Array).size() > 0) { r.add("iv"); }
+        r.add("hr"); r.add("pw");
+        return r;
+    }
+    // js: setHrZones(F, z) (27.11.4): the profile's cycling heart rate zones (Health.mc bikeZones), checked by hrZones
+    function setHrZones(z) as Void { hrZ = hrZones(z); }
+    // js: onTSum(F, ev) (27.11.4): UP / DOWN (swipe down / up) = the previous / next page, wrapping, a tap = the next page; START, BACK (swipe
+    // right) or the last page's DONE (FlowDelegate: E_DONE) = done, the start menu
+    function onTSum(ev as Number) as Void {
+        var n = tsPages().size();
+        if (ev == E_UP || ev == E_SWIPE_DOWN) { sel = (sel % n + n - 1) % n; }
+        else if (ev == E_DOWN || ev == E_SWIPE_UP || ev == E_TAP) { sel = (sel % n + 1) % n; }
+        else if (ev == E_START || ev == E_BACK || ev == E_DONE) { sel = 0; scr = S_HOME; }
     }
     // js: tPage(F): the page on screen (R.pg counts in tPages)
     function tPage() as String {
@@ -1277,13 +1307,13 @@ class Flow {
         var paged = isList || s == S_REC || s == S_PAUSE || s == S_SUM || s == S_TSCAN;
         if (s == S_THR) { onTHr(ev, now); return; }
         if (s == S_TREC) { onTRec(ev, now, arg); return; } // before the swipe mapping: swipe up / down pages there like UP / DOWN
+        if (s == S_TSUM) { onTSum(ev); return; }
         // 23.11.7: a swipe on a list (only when no drag events came: FlowDelegate swallows the swipe that ends a drag) moves it SWIPE_ROWS
         // rows with the finger, no wrapping; the data pages and the summary a page; a number counts up
         if ((ev == E_SWIPE_UP || ev == E_SWIPE_DOWN) && (isList || s == S_TSCAN)) { arg = ev == E_SWIPE_UP ? SWIPE_ROWS : -SWIPE_ROWS; ev = E_SCROLL; }
         if (ev == E_SWIPE_UP) { ev = paged ? E_DOWN : E_UP; }
         else if (ev == E_SWIPE_DOWN) { ev = paged ? E_UP : E_DOWN; }
         if (s == S_TSCAN) { onTScan(ev, now, arg); return; }
-        if (s == S_TSUM) { if (ev == E_START || ev == E_BACK || ev == E_TAP) { sel = 0; scr = S_HOME; } return; }
         if (ev == E_SCROLL) { // the finger dragged: the list follows it row by row (no wrapping)
             var d = numOf(arg), m = -1;
             if (isList) { m = listItems().size() - 1; }

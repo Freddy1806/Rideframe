@@ -38,6 +38,18 @@ module SmokeKit {
         seen[F.scr] = true;
         for (var i = 0; i < gRows.size(); i++) { var y = (gRows[i] as Array)[1] as Float; Test.assertMessage(y > 0.0 && y < 1.0, "row y " + y + " on screen " + F.scr); }
     }
+    // 27.11.4: the trainer summary's pages: DOWN through all of them (wrapping), swipe up / down, UP, a tap (the next page); it stays there
+    function smokeWalkSum(F as Flow, dc as Dc, P as Palette, seen as Dictionary, now as Number) as Void {
+        var n = F.tsPages().size();
+        for (var k = 0; k < n; k++) { SmokeKit.smokeEv(F, dc, P, seen, E_DOWN, now, null); }
+        Test.assertMessage(F.scr == S_TSUM && F.sel % n == 0, "DOWN wraps to the first page");
+        SmokeKit.smokeEv(F, dc, P, seen, E_SWIPE_UP, now, null);
+        SmokeKit.smokeEv(F, dc, P, seen, E_SWIPE_DOWN, now, null);
+        SmokeKit.smokeEv(F, dc, P, seen, E_UP, now, null);                     // wraps to the last page
+        Test.assertMessage(F.sel % n == n - 1, "UP wraps to the last page");
+        SmokeKit.smokeEv(F, dc, P, seen, E_TAP, now, null);
+        Test.assertMessage(F.scr == S_TSUM && F.sel % n == 0, "a tap: the next page");
+    }
     // the pretend FTMS trainer's answers until the link is ready (found, connected, every setup step done, control granted)
     function smokeTrainer(F as Flow, dc as Dc, P as Palette, seen as Dictionary, now as Number) as Void {
         var found = { "k" => "found", "list" => [{ "name" => "KICKR CORE 2 5A1F WITH A LONG NAME", "ftms" => true, "rssi" => -50 }, { "name" => "Assioma DUO", "cps" => true, "rssi" => -60 }] };
@@ -74,6 +86,7 @@ function smokeWalk(logger as Logger) as Boolean {
     }
     // 2. the indoor trainer: ride, the wheel on the target, every page (28.11.: DOWN pages, held UP = + one step), pause, its menu, Finish & save
     var T = new Flow(setup, true, [], null, null, null, null), tn = 1700000000;
+    T.setHrZones([100, 120, 140, 155, 170, 190]); // 27.11.4: the summary's zones (on the watch: the profile's, Health.mc bikeZones)
     SmokeKit.smokeEv(T, dc, P, seen, E_ITEM, tn, T.homeItems().indexOf("trainer"));
     SmokeKit.smokeTrainer(T, dc, P, seen, tn);
     // START until the ride runs: the choice (Free ride), the heart rate step skipped (27.11.2), the ride
@@ -94,7 +107,11 @@ function smokeWalk(logger as Logger) as Boolean {
     SmokeKit.smokeEv(T, dc, P, seen, E_BACK, tn, null);                         // its menu (the ride goes on)
     Test.assertMessage(T.listItems()[0].equals("Back to ride"), "TEND: Back to ride");
     SmokeKit.smokeEv(T, dc, P, seen, E_ITEM, tn, T.listItems().indexOf("Finish & save"));
+    // 27.11.4: the summary's pages (a free ride: overview, heart rate, power): DOWN, wrapping, swipes, UP, a tap; START done
+    Test.assertMessage(T.scr == S_TSUM && T.tsPages().size() == 3, "a free ride's summary: three pages");
+    SmokeKit.smokeWalkSum(T, dc, P, seen, tn);
     SmokeKit.smokeEv(T, dc, P, seen, E_START, tn, null);
+    Test.assertMessage(T.scr == S_HOME, "START on the summary: done");
     // 2b. 28.11.: the built-in 30 / 15: every page of a workout ride (target, workout, body, stats), the warm-up ramp and a step of the sets
     var U = new Flow(setup, true, [], null, null, null, null), un = 1700000000;
     SmokeKit.smokeEv(U, dc, P, seen, E_ITEM, un, U.homeItems().indexOf("trainer"));
@@ -108,10 +125,16 @@ function smokeWalk(logger as Logger) as Boolean {
         un++;
         SmokeKit.smokeEv(U, dc, P, seen, E_TICK, un, System.getTimer());
         if (i % 97 == 0) { SmokeKit.smokeEv(U, dc, P, seen, E_DOWN, un, null); }   // through the pages, wrapping
+        if (i % 50 == 0) { SmokeKit.smokeEv(U, dc, P, seen, E_HR, un, 120 + i % 60); }
     }
+    // 27.11.4: Finish & save (in the middle of the workout): the summary with the intervals page, every page, the last page's DONE
     SmokeKit.smokeEv(U, dc, P, seen, E_MENU, un, null);
-    SmokeKit.smokeEv(U, dc, P, seen, E_ITEM, un, U.listItems().indexOf("Discard"));
-    SmokeKit.smokeEv(U, dc, P, seen, E_ITEM, un, 1);
+    SmokeKit.smokeEv(U, dc, P, seen, E_ITEM, un, U.listItems().indexOf("Finish & save"));
+    Test.assertMessage(U.scr == S_TSUM && U.tsPages().size() == 4 && U.tsPages()[1].equals("iv"), "a workout's summary: four pages with the intervals");
+    SmokeKit.smokeWalkSum(U, dc, P, seen, un);
+    for (var k = 0; k < 4 && U.sel % 4 != 3; k++) { SmokeKit.smokeEv(U, dc, P, seen, E_DOWN, un, null); }
+    SmokeKit.smokeEv(U, dc, P, seen, E_DONE, un, null);
+    Test.assertMessage(U.scr == S_HOME, "the last page's DONE: done");
     // 3. a run: ready, recording, pause, BACK held 3 s: saved, the summary
     var R = new Flow(setup, true, [], null, null, null, null), rn = 1700000000;
     SmokeKit.smokeEv(R, dc, P, seen, E_ITEM, rn, R.homeItems().indexOf("run"));
