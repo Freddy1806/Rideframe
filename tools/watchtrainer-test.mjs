@@ -199,7 +199,7 @@ test('server form: every built-in workout of js/workouts.js comes out second by 
 });
 test('server form: repeats fold (the 30 / 15 in a few hundred bytes), labels lose their counters, ASCII only', () => {
   setFtp(250); const c = wkFromRide(WO, 250, isHard), j = JSON.stringify(c);
-  assert.ok(j.length < 400, `${j.length} bytes`); assert.equal(c.n, '30 / 15, 3 x 13'); assert.ok(/^[\x20-\x7e]*$/.test(j));
+  assert.ok(j.length < 480, `${j.length} bytes`); assert.equal(c.n, '30 / 15, 3 x 13'); assert.ok(/^[\x20-\x7e]*$/.test(j));
   const set = c.s.find(e => Array.isArray(e[1]) && e[0] === 3 && Array.isArray(e[1][0][1])); assert.ok(set, 'three sets of [13 x (30 / 15), rest]');
   assert.deepEqual(set[1][0][1][0].slice(0, 4), [30, WO.steps.find(s => s.dur === 30 && isHard(s)).watts, null, 1]); assert.equal(set[1][0][1][0][4], '30 / 15');
   assert.deepEqual(wkCompact([{ sec: 60, w: 100, hard: false, label: 'A' }, { sec: 60, w: 100, hard: false, label: 'A' }]), [[120, 100, null, 0, 'A']], 'the same step twice: one');

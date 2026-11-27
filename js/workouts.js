@@ -43,12 +43,16 @@ export const WORKOUTS = [
     steps: [...warmHard, ...reps(5, W(5, 110, 'VO2max'), W(4, 50, 'Rest')), ...cool] },
   { id: 'vo2_4x8', name: 'VO2max 4 × 8', what: '4 × 8 min at 105 % FTP, only 2 min easy. The most time near your maximum of all sessions here: pace the first one.',
     steps: [...warmHard, ...reps(4, W(8, 105, 'VO2max'), W(2, 50, 'Rest')), ...cool] },
-  { id: 'vo2_30_30', name: 'VO2max 30 / 30', what: '2 sets of 10 × 30 s at 125 % FTP with 30 s easy, 5 min between the sets. Lots of time at high oxygen uptake, easier on the head.',
-    steps: [...warmHard, ...[0, 1].flatMap(k => [...Array.from({ length: 10 }, (_, i) => [W(0.5, 125, `30 / 30 · set ${k + 1} · ${i + 1}/10`), ...(i < 9 ? [W(0.5, 50, 'Float')] : [])]).flat(), ...(k < 1 ? [W(5, 50, 'Rest')] : [])]), ...cool] },
+  // 27.11. coach review: 2 x 10 at 125 % were only 10 min of work with rests as long as the efforts, too little to reach a high oxygen
+  // uptake; 3 sets at 130 % with 4 min between give 15 min of work (the sets are 9.5 min each)
+  { id: 'vo2_30_30', name: 'VO2max 30 / 30', what: '3 sets of 10 × 30 s at 130 % FTP with 30 s easy, 4 min between the sets. Lots of time at high oxygen uptake, easier on the head.',
+    steps: [...warmHard, ...[0, 1, 2].flatMap(k => [...Array.from({ length: 10 }, (_, i) => [W(0.5, 130, `30 / 30 · set ${k + 1} · ${i + 1}/10`), ...(i < 9 ? [W(0.5, 50, 'Float')] : [])]).flat(), ...(k < 2 ? [W(4, 50, 'Rest')] : [])]), ...cool] },
   { id: 'pyramid', name: 'Pyramid', what: '1-2-3-4-3-2-1 min, rising from 105 to 120 % and back, rests as long as the effort before.',
     steps: [...warmHard, ...[[1, 120], [2, 115], [3, 110], [4, 105], [3, 110], [2, 115], [1, 120]].flatMap(([m, p], i, a) => [W(m, p, 'Pyramid'), ...(i < a.length - 1 ? [W(Math.max(1.5, m), 50, 'Rest')] : [])]), ...cool] },
-  { id: 'sprints', name: 'Sprints 8 × 30 s', what: '8 × 30 s all out (150 % in ERG), 4:30 easy so every sprint is a full one.',
-    steps: [...warmHard, ...reps(8, W(0.5, 150, 'Sprint'), W(4.5, 50, 'Rest')), ...cool] },
+  // 27.11. coach review: "all out" at a fixed 150 % was no sprint (30 s all out is about twice the FTP and more). Now 170 %, named for
+  // what it is: hard anaerobic efforts that stay repeatable in ERG; a real sprint needs the trainer free
+  { id: 'sprints', name: 'Anaerobic 8 × 30 s', what: '8 × 30 s at 170 % FTP, 4:30 easy so every effort is a full one. Builds the punch for attacks; not an all-out sprint, the trainer holds the watts.',
+    steps: [...warmHard, ...reps(8, W(0.5, 170, 'Hard 30 s'), W(4.5, 50, 'Rest')), ...cool] },
   { id: 'tempo2x15', name: 'Tempo 2 × 15', what: '2 × 15 min at 82 % FTP, 4 min easy between. Brisk but very doable, builds endurance.',
     steps: [...warm, ...reps(2, W(15, 82, 'Tempo'), W(4, 55, 'Rest')), ...cool] },
   { id: 'ss2x12', name: 'Sweet Spot short 2 × 12', what: '2 × 12 min at 90 % FTP. Little time, still a good FTP stimulus.',
@@ -65,8 +69,11 @@ export const WORKOUTS = [
   { id: 'ftp20', name: '20-min test (FTP)', what: 'Warm-up, 5 min opener, then 20 min as hard as you can hold evenly. No ERG, you set the pace. New FTP = 95 % of it.',
     steps: [R(10, 40, 75, 'Warm-up'), W(0.5, 110, 'Opener 1/3'), W(1, 50, 'Spin'), W(0.5, 110, 'Opener 2/3'), W(1, 50, 'Spin'), W(0.5, 110, 'Opener 3/3'), W(2.5, 50, 'Spin'), W(5, 105, 'Opener 5 min'), W(10, 50, 'Easy'), { ...W(20, 100, 'Test 20 min'), free: true }, R(10, 55, 35, 'Cool-down')] },
   { id: 'c_30_15_3x13', name: '30 / 15 · 3 × 13', coach: true, rampIn: 3, rampOut: 2,
-    what: '18 min warm-up with three short sprints, then 3 sets of 13 × 30 s at 370 W with 15 s easy at 125 W, 3 min easy between the sets, 10 min cool-down. The first reps feel too easy, from the middle of the set it gets hard. 370 W is the 360 W ridden on 20.11. plus 10 (owner 27.11.); take the watts down with − if the third set does not hold.',
-    steps: [R(10, 40, 72, 'Warm-up'), W(3, 72, 'Warm-up'), A(10, 420, 'Sprint 1/3'), A(50, 130, 'Spin'), A(10, 420, 'Sprint 2/3'), A(50, 130, 'Spin'), A(10, 420, 'Sprint 3/3'), A(170, 130, 'Spin'),
+    what: '19.5 min warm-up that builds up to the interval power in three openers, then 3 sets of 13 × 30 s at 370 W with 15 s easy at 125 W, 3 min easy between the sets, 10 min cool-down. The first reps feel too easy, from the middle of the set it gets hard. 370 W is the 360 W ridden on 20.11. plus 10 (owner 27.11.); take the watts down with − if the third set does not hold.',
+    // 27.11. coach review: the warm-up went to 72 % and then jumped to 370 W, and 10 s at 420 W in ERG are over before the trainer is
+    // there. Now: a ramp to 75 %, a build to 95 %, then three 20 s openers rising to the interval power (20 s, so the
+    // heart rate analysis still finds exactly the 39 reps of 30 s), 3 min easy
+    steps: [R(8, 40, 75, 'Warm-up'), R(3, 75, 95, 'Build'), A(120, 130, 'Spin'), A(20, 300, 'Opener 1/3'), A(70, 130, 'Spin'), A(20, 335, 'Opener 2/3'), A(70, 130, 'Spin'), A(20, 370, 'Opener 3/3'), A(190, 130, 'Spin'),
       ...set3015(1), A(180, 130, 'Rest'), ...set3015(2), A(180, 130, 'Rest'), ...set3015(3), R(10, 50, 35, 'Cool-down')] },
 ];
 
