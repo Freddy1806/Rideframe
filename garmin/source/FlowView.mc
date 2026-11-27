@@ -16,6 +16,8 @@ class FlowView extends WatchUi.View {
         flow = f; app = a; pal = new Palette();
     }
     function onUpdate(dc as Dc) as Void {
-        Draw.screen(dc, flow, pal, Time.now().value(), app.summary);
+        var t = Time.now().value();
+        app.drawnSec = t; // 27.11.6: RideframeApp.onTick redraws when the second changes
+        Draw.screen(dc, flow, pal, t, app.summary);
     }
 }

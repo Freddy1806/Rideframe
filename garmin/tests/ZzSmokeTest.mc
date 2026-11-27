@@ -65,7 +65,9 @@ module SmokeKit {
 function smokeWalk(logger as Logger) as Boolean {
     var dc = SmokeKit.smokeDc(), P = new Palette(), setup = SmokeKit.smokeSetup(), seen = {} as Dictionary, steps = 0;
     var evs = [E_UP, E_DOWN, E_START, E_START, E_START, E_BACK, E_TAP, E_ITEM, E_SCROLL, E_DONE, E_FOCUS, E_START_HOLD, E_TICK, E_HR, E_SWIPE_UP,
-        E_SWIPE_DOWN, E_SWIPE_LEFT, E_SWIPE_RIGHT, E_UP_HOLD, E_DOWN_HOLD, E_HOLD_START, E_HOLD_END, E_MENU, E_WHEEL, E_WHEEL] as Array<Number>;
+        E_SWIPE_DOWN, E_SWIPE_LEFT, E_SWIPE_RIGHT, E_UP_HOLD, E_DOWN_HOLD, E_HOLD_START, E_HOLD_END, E_MENU, E_WHEEL, E_WHEEL,
+        E_DRAG, E_DRAG, E_DRAG, E_DRAG_END, E_ANIM, E_ANIM, E_PRESS] as Array<Number>;
+    var wm = 0; // 27.11.6: the ms the drags, the lifts, the timer and the taps carry
     // 1. random walks (buttons, taps, swipes, drags over lists = E_SCROLL, the wheel over kg / reps / the target = E_WHEEL)
     for (var run = 0; run < 6; run++) {
         Math.srand(run * 7919 + 13);
@@ -78,6 +80,9 @@ function smokeWalk(logger as Logger) as Boolean {
             else if (ev == E_HR) { arg = 60 + Math.rand() % 140; }
             else if (ev == E_WHEEL) { arg = [Math.rand() % 2, (Math.rand() % 9) - 4]; gWheel = (arg as Array)[0] as Number; gWheelScr = F.scr; gWheelEnd = 0; }
             else if (ev == E_HOLD_START || ev == E_HOLD_END || ev == E_TICK) { arg = System.getTimer(); }
+            else if (ev == E_DRAG) { wm += 20 + Math.rand() % 80; arg = [((Math.rand() % 21) - 10) / 100.0, wm]; }
+            else if (ev == E_DRAG_END || ev == E_ANIM) { wm += 20 + Math.rand() % 80; arg = wm; }
+            else if (ev == E_PRESS) { wm += 20 + Math.rand() % 80; var pi = Math.rand() % 5; arg = [PK_ROW, pi, E_ITEM, pi, wm, Math.rand() % 2 == 0]; }
             now += 1 + Math.rand() % 20;
             SmokeKit.smokeEv(F, dc, P, seen, ev, now, arg);
             gWheel = -1;
@@ -122,8 +127,14 @@ function smokeWalk(logger as Logger) as Boolean {
     var U = new Flow(setup, true, [], null, null, null, null), un = 1700000000;
     SmokeKit.smokeEv(U, dc, P, seen, E_ITEM, un, U.homeItems().indexOf("trainer"));
     SmokeKit.smokeTrainer(U, dc, P, seen, un);
-    for (var k = 0; k < 4 && U.scr != S_TREC; k++) {
-        if (U.scr == S_TPICK && U.sel == 0) { SmokeKit.smokeEv(U, dc, P, seen, E_DOWN, un, null); } // the workout under Free ride
+    // 27.11.6: the chooser: Training (under Free ride), its only category (VO2max), the 30 / 15, then the heart rate step; BACK one step up
+    for (var k = 0; k < 8 && U.scr != S_TREC; k++) {
+        if (U.scr == S_TPICK && U.tlev == 0 && U.sel == 0) { SmokeKit.smokeEv(U, dc, P, seen, E_DOWN, un, null); }
+        if (U.scr == S_TPICK && U.tlev == 2 && k < 4) {
+            Test.assertMessage(U.tcat.equals("v") && U.listItems().size() == 1, "the built-in 30 / 15 under VO2max");
+            SmokeKit.smokeEv(U, dc, P, seen, E_BACK, un, null);
+            Test.assertMessage(U.scr == S_TPICK && U.tlev == 1 && U.sel == 0, "BACK: the categories, VO2max selected");
+        }
         SmokeKit.smokeEv(U, dc, P, seen, E_START, un, null);
     }
     Test.assertMessage(U.scr == S_TREC && U.tPages().size() == 4, "a workout ride with four pages");
@@ -143,6 +154,29 @@ function smokeWalk(logger as Logger) as Boolean {
     for (var k = 0; k < 4 && U.sel % 4 != 3; k++) { SmokeKit.smokeEv(U, dc, P, seen, E_DOWN, un, null); }
     SmokeKit.smokeEv(U, dc, P, seen, E_DONE, un, null);
     Test.assertMessage(U.scr == S_HOME, "the last page's DONE: done");
+    // 2c. 27.11.6: a finger drags the exercise list by its pixels and flicks it: it coasts, snaps onto a row; UP / DOWN step one row; a
+    //     tapped row flashes, then it is chosen
+    var L = new Flow(setup, true, [], null, null, null, null), ln = 1700000000, lm = 1000;
+    SmokeKit.smokeEv(L, dc, P, seen, E_ITEM, ln, L.homeItems().indexOf("kraft"));
+    SmokeKit.smokeEv(L, dc, P, seen, E_START, ln, null);                        // Free: the exercise list
+    Test.assertMessage(L.scr == S_PICK && L.pxList(), "the exercise list follows the finger");
+    SmokeKit.smokeEv(L, dc, P, seen, E_DRAG, ln, [0.08, lm]);
+    Test.assertMessage(L.sel == 0 && absF(L.listPos() - 0.4) < 0.001, "a drag of 0.08 S: 0.4 rows, drawn between two rows");
+    for (var i = 0; i < 4; i++) { lm += 60; SmokeKit.smokeEv(L, dc, P, seen, E_DRAG, ln, [0.06, lm]); }
+    var p0 = L.listPos();
+    SmokeKit.smokeEv(L, dc, P, seen, E_DRAG_END, ln, lm + 10);
+    Test.assertMessage(L.lmode == 2 && L.animating(), "a flick coasts");
+    for (var k = 0; k < 40 && L.animating(); k++) { lm += ANIM_MS; SmokeKit.smokeEv(L, dc, P, seen, E_ANIM, ln, lm); }
+    Test.assertMessage(!L.animating() && L.listPos() == L.sel.toFloat() && L.listPos() > p0, "it coasted on and snapped onto a row");
+    var s0 = L.sel, nl = L.listItems().size();
+    SmokeKit.smokeEv(L, dc, P, seen, E_DOWN, ln, null);
+    Test.assertMessage(L.sel == (s0 + 1) % nl, "DOWN: one row");
+    for (var k = 0; k < 10 && L.animating(); k++) { lm += ANIM_MS; SmokeKit.smokeEv(L, dc, P, seen, E_ANIM, ln, lm); }
+    Test.assertMessage(L.listPos() == L.sel.toFloat(), "the list slid there");
+    SmokeKit.smokeEv(L, dc, P, seen, E_PRESS, ln, [PK_ROW, L.sel, E_ITEM, L.sel, lm, true]);
+    Test.assertMessage(L.scr == S_PICK && L.prRow() == L.sel, "the tapped row flashes");
+    SmokeKit.smokeEv(L, dc, P, seen, E_ANIM, ln, lm + PRESS_MS);
+    Test.assertMessage(L.scr == S_SET, "then it is chosen");
     // 3. a run: ready, recording, pause, BACK held 3 s: saved, the summary
     var R = new Flow(setup, true, [], null, null, null, null), rn = 1700000000;
     SmokeKit.smokeEv(R, dc, P, seen, E_ITEM, rn, R.homeItems().indexOf("run"));

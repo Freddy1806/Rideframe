@@ -12,7 +12,8 @@
 // 23.11.7: the wheel (a finger dragged over kg / reps / the trainer's target steps it, the neighbours show small above and below), lists
 // track the finger 1:1 (dragRow), a drag is never also a tap or a swipe; the six standard workouts (watchflow STD_W) instead of demo ones.
 import { newFlow, handle, SCR, tPage, tsPages, curEx, setNo, restLeft, clock, sent, paired, setSetup, setConfig, setRoute, setRoutes, routeFace, routeInfo, recPages, homeItems, listItems, workouts, planItem, HOME, HOME_FIT, HOME_LAY, homeTop, holdPart, pausedTime, HOLD_S,
-  LIST_LAY, healthBody, DEMO_HEALTH, dragRow, pickRows, doneOf, prefillOf, lastSet, lastTxt, loading, VERSION, stepOf, WHEEL_STEP, WHEEL_SHOW, DRAG_MIN, setRides } from './watchflow.js';
+  LIST_LAY, healthBody, DEMO_HEALTH, dragRow, pickRows, doneOf, prefillOf, lastSet, lastTxt, loading, VERSION, stepOf, WHEEL_STEP, WHEEL_SHOW, DRAG_MIN, setRides,
+  pxList, animating, stepDue, prWait, needsFrame, ANIM_MS, PRESS_MS } from './watchflow.js';
 import { nextTarget } from './watchtrainer.js';
 import { compact, defaults, fieldText, labelOf, TOP } from './watchfields.js';
 import { shown, live as tLive } from './watchtrainer.js';
@@ -169,7 +170,12 @@ async function pairNow(code) {
 }
 const ev = (e, arg) => { if (e === 'ble' && F.link.st === 'off') return; // an answer that comes after the trainer was let go
  evIn(e, arg); };
-const evIn = (e, arg) => { const was = F.scr, rid = F.routeId; handle(F, e, now(), arg); if (was === SCR.RPICK && F.scr === SCR.READY && rid != null && F.routeId == null) demoNone = true; drain(); paint(); };
+const evIn = (e, arg) => { const was = F.scr, rid = F.routeId; handle(F, e, now(), arg); if (was === SCR.RPICK && F.scr === SCR.READY && rid != null && F.routeId == null) demoNone = true; drain(); paint(); animate(); };
+/* ---- 27.11.6 (RideframeApp.onTick / retime): every input redraws at once; the 200 ms tick redraws only when the second changed (the
+ *      clocks), the pause hold runs or the wheel's neighbours go; while a list moves or a tap flashes the timer runs every ANIM_MS ---- */
+const ms = () => Math.round(performance.now());
+let animT = 0, drawnSec = -1, drawnScr = '';
+function animate() { if (animT || !stepDue(F, ms())) return; animT = setTimeout(() => { animT = 0; if (stepDue(F, ms())) evIn('anim', ms()); }, ANIM_MS); }
 
 /* ---- drawing: js/watchscreens.js (garmin/source/Draw.mc line by line) on a js/watchdc.js Dc that measures like each watch ---- */
 const PAUSE_LAY = { discard: .68, pill: .82 }; // the pause screen's Discard row and touch pill (Draw.mc drawPause, the tap table)
@@ -218,11 +224,13 @@ function touch(cv, f) {
   // (one row per row distance as drawn); the movement is summed (the remainder kept), and the lift after it is no tap and no swipe
   cv.addEventListener('pointermove', e => { if (!p0 || pillHold || p0.mode === 'none') return; const r = cv.getBoundingClientRect(), k = f.S / r.width;
     if (!p0.mode) { const dx = Math.abs(e.clientX - p0.x) * k, dy = Math.abs(e.clientY - p0.y) * k; if (Math.max(dx, dy) < f.S * DRAG_MIN) return;
+      if (prWait(F)) ev('anim', ms() + PRESS_MS); // 27.11.6: a tapped row's action first (FlowDelegate.onDrag)
       const m = dy > dx ? dragMode((p0.x - r.left) / r.width, (p0.y - r.top) / r.height, f) : null; p0.mode = m ? m[0] : 'none'; if (!m) return; p0.col = m[1];
       if (p0.mode === 'wheel') { wheelUi = { c: p0.col, scr: F.scr, until: Infinity }; paint(); } }
+    if (p0.mode === 'list' && pxList(F)) { const d = (p0.y1 - e.clientY) * k / f.S; p0.y1 = e.clientY; p0.px = true; if (d) ev('drag', [d, ms()]); return; } // 27.11.6: the list follows the finger
     const wh = p0.mode === 'wheel', step = f.S * (wh ? WHEEL_STEP : dragRow(F.scr)), n = Math.trunc((p0.y1 - e.clientY) * k / step);
     if (n) { p0.y1 -= n * step / k; ev(wh ? 'wheel' : 'scroll', wh ? [p0.col, n] : n); } });
-  const lift = () => { if (p0 && p0.mode === 'wheel') { wheelUi.until = now() + WHEEL_SHOW; setTimeout(paint, WHEEL_SHOW * 1000 + 30); } };
+  const lift = () => { if (p0 && p0.mode === 'wheel') { wheelUi.until = now() + WHEEL_SHOW; setTimeout(paint, WHEEL_SHOW * 1000 + 30); } if (p0 && p0.px) ev('dragEnd', ms()); };
   cv.addEventListener('pointercancel', () => { if (pillHold) { pillHold = false; ev('holdEnd'); } lift(); p0 = null; });
   cv.addEventListener('pointerup', e => {
     if (pillHold) { pillHold = false; p0 = null; ev('holdEnd'); return; }
@@ -249,21 +257,21 @@ const rowAt = (rows, v) => { let b = null; for (const r of rows) if (Math.abs(r[
 function tapAt(u, v, f) {
   const s = F.scr, L = f.lay || LAY;
   if (F.flash) return ev('tap');
-  if (s === SCR.SET) { if (v > .72 && Math.abs(u - .5) < .24) return ev('done'); if (v > .36 && v < .72) return ev('focus', u < .51 ? 0 : 1); return; } // DONE logs; a value takes the focus
+  if (prWait(F)) return; // 27.11.6: a tapped row waits for its flash (the screen may change under the next tap)
+  const press = (k, i, e, a, later) => ev('press', [k, i, e, a, ms(), later]); // the row / button flashes PRESS_MS (FlowDelegate.press)
+  if (s === SCR.SET) { if (v > .72 && Math.abs(u - .5) < .24) return press('done', -1, 'done', null, true); if (v > .36 && v < .72) return ev('focus', u < .51 ? 0 : 1); return; } // DONE logs; a value takes the focus
   if (s === SCR.READY && F.sp !== 'other' && L.route > 0 && Math.abs(v - L.route) < .04) return ev('down'); // the route line
   if (s === SCR.TREC) { if (F.tr && tPage(F) !== 'target') return ev('tap'); // another page: back to the target page
-    if (v > L.t0 && v < L.t1) return ev('item', u < .31 ? 0 : u > .69 ? 1 : 2); // - / + (the whole side) and the target (step size)
-    if (v > .78 && F.tr && F.tr.st !== 'run') return ev('start'); return; } // the resume pill
+    if (v > L.t0 && v < L.t1) { const z = u < .31 ? 0 : u > .69 ? 1 : 2; return press(['minus', 'plus', 'tgt'][z], -1, 'item', z, false); } // - / + (the whole side) and the target (step size): at once, flashing
+    if (v > .78 && F.tr && F.tr.st !== 'run') return press('resume', -1, 'start', null, true); return; } // the resume pill
   if (s === SCR.THR || s === SCR.TSCAN && !tList()) return ev('tap');
   if (s === SCR.TSUM) { const n = tsPages(F).length; return ev(F.sel % n === n - 1 && v > .78 ? 'done' : 'tap'); } // 27.11.4: the last page's DONE: done, else the next page
   if (s === SCR.PAUSE) { const P = F.pz || {}; // conf: the Discard pill = yes, elsewhere = no; else Discard row = ask, the top = resume
     if (P.conf) return ev(Math.abs(v - PAUSE_LAY.discard) < .06 ? 'start' : 'back');
     if (Math.abs(v - PAUSE_LAY.discard) < .055) return ev('item', 1); if (v < .62) return ev('item', 0); return; }
   const menu = [SCR.MENU, SCR.END, SCR.SAVEQ, SCR.TEND].includes(s), pick = [SCR.PICK, SCR.MORE, SCR.SMODE, SCR.RPICK, SCR.TSCAN, SCR.TPICK].includes(s);
-  if (s === SCR.HOME) { const n = listItems(F).length, r = rowAt(L.rows, v), i = r ? homeTop(F.sel, n) + r[0] : -1; // the rows as drawn
-    if (i >= 0 && i < n) ev('item', i); return; }
-  if (menu || pick) { const r = rowAt(L.rows, v), n = listItems(F).length, i = r ? F.sel + r[0] : -1; // the title, the counter: no row
-    if (i >= 0 && i < n) ev('item', i); return; }
+  if (s === SCR.HOME || menu || pick) { const r = rowAt(L.rows, v), n = listItems(F).length, i = r ? F.sel + r[0] : -1; // the rows as drawn (the title, the counter: no row)
+    if (i >= 0 && i < n) press('row', i, 'item', i, true); return; }
   if (s === SCR.PAIR) { if (v > .4 && v < .6 && u > .13 && u < .87) return ev('focus', Math.min(5, Math.max(0, Math.floor((u - .146) / .118)))); return ev('tap'); }
   ev('tap');
 }
@@ -278,13 +286,15 @@ function keys() {
 
 /* ---- vibration shown on the page: the watch shakes, a ring pulses ---- */
 let buzzT = 0;
-function buzz(kind) { if (kind === 'tick') { const b = $('#wCue'); if (b) b.textContent = 'Vibration: tick (one wheel step, 20 ms)'; return; } // 23.11.7: too short to shake the preview
+function buzz(kind) { if (kind === 'tap') { const b = $('#wCue'); if (b) b.textContent = 'Vibration: tap (40 ms)'; return; } // 27.11.6: a tap taken
+  if (kind === 'tick') { const b = $('#wCue'); if (b) b.textContent = 'Vibration: tick (one wheel step, 20 ms)'; return; } // 23.11.7: too short to shake the preview
   for (const v of views) { v.fig.classList.remove('buzz', 'long'); void v.fig.offsetWidth; v.fig.classList.add('buzz'); if (kind === 'pr' || kind === 'rest') v.fig.classList.add('long'); }
   clearTimeout(buzzT); buzzT = setTimeout(() => views.forEach(v => v.fig.classList.remove('buzz', 'long')), 1200); const b = $('#wCue'); if (b) { b.textContent = { set: 'Vibration: short (set saved)', pr: 'Vibration: long double (record)', rest: 'Vibration: triple (rest over)', done: 'Vibration: long (finished)', error: 'Vibration: short double (no reps)',
   start: 'Vibration: short (timer started)', stop: 'Vibration: double (paused)', lap: 'Vibration: long (lap)', seg: 'Vibration: double (segment)' }[kind] || ''; } }
 
 /* ---- 64-colour MIP: every pixel snapped to the palette (channels 00 / 55 / AA / FF), no soft edges, no transparency ---- */
 function paint() {
+  drawnSec = Math.floor(now()); drawnScr = F.scr;
   for (const { f, g, dpr } of views) {
     const S = f.S, C = f.C; g.setTransform(dpr, 0, 0, dpr, 0, 0); g.fillStyle = C.bg; g.fillRect(0, 0, S, S);
     g.save(); g.beginPath(); g.arc(S / 2, S / 2, S / 2, 0, Math.PI * 2); g.clip();
@@ -324,7 +334,8 @@ function wirePanel() {
 }
 
 mount(); keys(); wirePanel(); boot();
-setInterval(() => { handle(F, 'tick', now()); drain(); paint(); }, 200);
+setInterval(() => { const sc = F.scr; handle(F, 'tick', now()); drain(); if (stepDue(F, ms())) animate();
+  if (Math.floor(now()) !== drawnSec || F.scr !== sc || F.scr !== drawnScr || needsFrame(F) || (wheelUi.until !== Infinity && wheelUi.until > now() - .3)) paint(); }, 200);
 setInterval(() => { const base = F.scr === SCR.REST ? 128 - Math.min(30, (now() - (F.restEnd - F.restLen)) * .5) : F.start ? 112 : 72; ev('hr', Math.round(base + Math.random() * 6)); }, 2000); // a simulated heart rate (Sensor on the watch)
 setInterval(() => { if (F.queue.length && near) push(); }, 30e3); // retry, like the watch does on its timer
 setInterval(() => { if (F.rec && F.rec.st === 'run') ev('sample', simSample(fast ? 10 : 1)); }, 1000);

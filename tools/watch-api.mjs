@@ -101,6 +101,7 @@ export async function setup(u) {
 /* ---- 27.11.: GET /api/watch/rides -> { ftp, rides }: the ride workouts for the watch's indoor trainer (garmin Flow.mc S_TPICK, js/watchtrainer.js newWk), a call of its own (the setup stays under 8 KB): the account's own ones
  *      (the Training tab's builder: settings.myWorkouts; the personal ones: workouts.json) whose steps all run on the clock with a power /
  *      FTP target, then the built-in ones (the coach's first), in watts with the rider's FTP, repeats folded ([n, [steps], trim]).
+ *      27.11.6: each with its category's letter "c" (js/workouts.js rideCat, the watch's chooser).
  *      Kept small for Connect IQ: at most RIDE_MAX workouts and RIDE_BYTES of JSON (the watch keeps them in Storage "rides"). ---- */
 export const RIDE_MAX = 24, RIDE_BYTES = 9000, RIDE_FTP = 250;
 export async function ridesFor(uid) { const S = await settingsOf(uid), ftp = +S.ftp > 0 ? Math.round(+S.ftp) : RIDE_FTP; return { ftp, rides: await rideWorkouts(uid, S, ftp) }; }
@@ -115,7 +116,7 @@ export async function rideWorkouts(uid, S, ftp) {
   const out = [], seen = new Set(); let bytes = 2;
   for (const w of [...own, ...builtIn]) {
     if (out.length >= RIDE_MAX || !w || seen.has(String(w.id))) continue;
-    const c = WT.wkFromRide(w, ftp, WO.isHard); if (!c) continue; // an open-ended step or a target that is not power: not for the watch
+    const c = WT.wkFromRide({ ...w, cat: WO.rideCat(w) }, ftp, WO.isHard); if (!c) continue; // an open-ended step or a target that is not power: not for the watch
     const n = JSON.stringify(c).length + 1; if (bytes + n > RIDE_BYTES) continue;
     seen.add(c.id); out.push(c); bytes += n;
   }

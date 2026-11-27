@@ -269,7 +269,7 @@ module Draw {
         else if (s == S_PICK) { drawPick(dc, F, S, P); }
         else if (s == S_SMODE) { drawSmode(dc, F, S, P); }
         else if (s == S_MORE) { drawMore(dc, F, S, P); }
-        else if (s == S_MENU) { list(dc, F, S, P, F.menu, "MENU v" + RF_VERSION, "v" + RF_VERSION, true, null, null, [[gTouch, P.lbl, true]]); }
+        else if (s == S_MENU) { list(dc, F, S, P, F.menu, "MENU v" + RF_VERSION, "v" + RF_VERSION, true, null, null, []); }
         else if (s == S_END) { drawEnd(dc, F, S, P, now); }
         else if (s == S_SAVEQ) { drawSaveq(dc, F, S, P); }
         else if (s == S_SET) { drawSet(dc, F, S, P, now); }
@@ -297,29 +297,28 @@ module Draw {
     }
     // the start menu's label: "Indoor trainer" is "Trainer" where it does not fit
     function homeLab(dc as Dc, F as Flow, k as String, f, w) as String { return k.equals("trainer") ? alt(dc, F.homeLabel(k), "Trainer", f, w) : F.homeLabel(k); }
-    // the start menu: the selected entry as the orange pill (MEDIUM, else the next font that fits the pill), the week points below;
-    // rows at HOME_Y0 + r * HOME_DY (gRows: the tap table in FlowDelegate.onTap)
+    // the start menu on the wheel (27.11.6, wheelRows): the row at the centre in the orange pill (MEDIUM, else the next font that fits it),
+    // the others smaller and dimmer towards the edge; the week points below; the rows as drawn go to gRows ([offset to the selection,
+    // y / S], FlowDelegate.onTap)
     function drawHome(dc as Dc, F as Flow, S as Number, P as Palette, sum) as Void {
-        var items = F.homeItems(), n = items.size(), c = S / 2, top = F.homeTop(n), G = gap(S), ph = S * 0.14, w = (S * 0.52).toNumber();
+        var items = F.homeItems(), n = items.size(), c = S / 2, G = gap(S), ph = S * 0.14, w = (S * 0.52).toNumber(), pos = F.listPos(), pr = F.prRow();
         logo(dc, S, S * 0.12, P.cKraft, P);
-        var yb = downTo(dc, XT, "RIDEFRAME", S * 0.12, R0) + dn(dc, XT, "R");
-        for (var r = 0; r < HOME_FIT; r++) {
-            var i = top + r;
-            if (i >= n) { break; }
-            var k = items[i] as String, y = S * (HOME_Y0 + r * HOME_DY);
-            if (i == F.sel) {
-                pill(dc, c, y, S * 0.74, ph, P.acc); icon(dc, k, S * 0.25, y, S * 0.085, P.ink);
-                var f = inPill(dc, "Ag", [ME, SM, XT], S, ph), lab = homeLab(dc, F, k, f, w);
-                putL(dc, S * 0.33, y, f, lab, w, P.ink, false, R0); yb = y + ph / 2.0;
-            } else {
-                icon(dc, k, S * 0.25, y, S * 0.075, P.acc);
-                var f = byInk(dc, [SM, XT], S * HOME_DY - 2 * G - S * 0.01), lab = homeLab(dc, F, k, f, w);
-                putL(dc, S * 0.33, y, f, lab, w, P.fg, false, R0); yb = y + dn(dc, f, lab);
-            }
-            $.gRows.add([r, y / S]);
+        var pts = false;
+        if (sum instanceof Dictionary) { pts = (sum as Dictionary)["pts"] != null; }
+        var tb = downTo(dc, XT, "RIDEFRAME", S * 0.12, R0) + dn(dc, XT, "R"), et = pts ? S * 0.86 - up(dc, SM) : S * (0.5 + R0);
+        var rows = wheelRows(S, pos, n, HOME_DY, 0.0);
+        for (var r = 0; r < rows.size(); r++) {
+            var row = rows[r] as Array, i = row[0] as Number, d = row[1] as Float, y = row[2] as Float;
+            var k = items[i] as String, b = wheelBand(d), on = b == 0;
+            var f = b > 1 ? XT : (b > 0 ? byInk(dc, [TI, XT], S * HOME_DY - 2 * G - S * 0.01) : inPill(dc, "Ag", [ME, SM, XT], S, ph)), lab = homeLab(dc, F, k, f, w);
+            if (y - up(dc, f) < tb + G || y + dn(dc, f, lab) > et) { continue; }
+            if (on) { pill(dc, c, y, S * 0.74, ph, pr == i ? P.fg : P.acc); } // the pill goes with the centre row
+            icon(dc, k, S * 0.25, y, S * (b > 1 ? 0.06 : (b > 0 ? 0.075 : 0.085)), on ? P.ink : (b > 1 ? P.far : P.acc));
+            putL(dc, S * 0.33, y, f, lab, w, on ? P.ink : (pr == i ? P.acc : (b > 1 ? P.far : (b > 0 ? P.dim : P.fg))), false, R0);
+            $.gRows.add([i - F.sel, y / S]);
         }
-        if (sum instanceof Dictionary) { if ((sum as Dictionary)["pts"] != null) { points(dc, S, P, sum as Dictionary, yb); } }
-        if (n > HOME_FIT) { scrollArc(dc, S, P, F.sel, n); }
+        if (pts) { points(dc, S, P, sum as Dictionary, 0); }
+        if (n > HOME_FIT) { scrollArc(dc, S, P, pos, n); }
         startHint(dc, S, P);
     }
     // "245 pts" and the change against last week below yb (SMALL, else XTINY; the change goes first when there is no room)
@@ -336,12 +335,12 @@ module Draw {
         }
     }
     // the scroll position on the left edge (150..210 degrees)
-    function scrollArc(dc as Dc, S as Number, P as Palette, sel as Number, n as Number) as Void {
+    function scrollArc(dc as Dc, S as Number, P as Palette, sel, n as Number) as Void {
         if (n < 2) { return; }
         var c = S / 2;
         dc.setPenWidth(pw(S * 0.012 + 1)); dc.setColor(P.faint, Graphics.COLOR_TRANSPARENT);
         dc.drawArc(c, c, c - S * 0.03, Graphics.ARC_COUNTER_CLOCKWISE, 150, 210);
-        var p = sel.toFloat() / (n - 1), a = 150 + (p * 51).toNumber();
+        var p = sel < 0 ? 0.0 : (sel > n - 1 ? 1.0 : sel.toFloat() / (n - 1)), a = 150 + (p * 51).toNumber();
         dc.setColor(P.acc, Graphics.COLOR_TRANSPARENT); dc.drawArc(c, c, c - S * 0.03, Graphics.ARC_COUNTER_CLOCKWISE, a, a + 9); dc.setPenWidth(1);
     }
     // setShort without spaces and units ("102.5x10", "+10x8", "12", "1:30")
@@ -449,57 +448,87 @@ module Draw {
         var ex = m.size() > 0 ? [] as Array : [["Choose sports in the app:|Choose in the app:|In the app:", P.fg, false], ["Settings > Watch > More|Watch > More|Watch", P.fg, false]] as Array;
         list(dc, F, S, P, F.listItems(), "MORE SPORTS", "MORE", false, sub, null, ex);
     }
-    // every list: the selected row big in the middle (a menu: in the pill), its sub line under it, the neighbours smaller (one more below);
-    // the rows are stacked from the fonts' real sizes around the selected one, the counter under the title and the far row only where
-    // there is room; title: a fixed one with its short form tshort, or a name (tshort null); count: the counter ("long|short", null: n/N);
-    // extra = lines under the rows ([text ("long|short"), colour, a name]). The rows drawn go to gRows (FlowDelegate.onTap).
+    // 27.11.6, the wheel (the owner: "a bit iPhone-like, 3D"; js/watchscreens.js wheelRows has the whole story): row i at d = i - pos
+    // rows from the centre sits at y = S (0.5 + 0.42 sin(a d)), a = asin(pitch / 0.42), so the next row is pitch away (the finger's row
+    // distance, Flow.dragRow) and the rows close up towards the round edge; rows below the centre leave gb more (the centre row's sub
+    // line). Returns [[i, d, y]] for |d| < 2.5
+    function wheelRows(S as Number, pos as Float, n as Number, pitch as Float, gb as Float) as Array {
+        var a = Math.asin(pitch / 0.42).toFloat(), out = [] as Array;
+        for (var i = 0; i < n; i++) {
+            var d = i.toFloat() - pos;
+            if (d <= -2.5 || d >= 2.5) { continue; }
+            var x = a * d > 1.5 ? 1.5 : (a * d < -1.5 ? -1.5 : a * d);
+            out.add([i, d, S * 0.5 + S * 0.42 * Math.sin(x).toFloat() + (d > 0 ? gb * (d < 1 ? d : 1.0) : 0.0)]);
+        }
+        return out;
+    }
+    // the wheel's bands by |d| (js wheelBand): 0 (< 0.5) the centre: MEDIUM (else SMALL; a menu: the pill's font), white, the marker or
+    // the pill; 1 (< 1.5) TINY (else XTINY), grey (dim); 2 (< 2.5) XTINY, dark grey (far). No font scaling on the watch: the size and the
+    // grey step change where a row crosses a band, its place moves smoothly
+    function wheelBand(d as Float) as Number { var m = d < 0 ? -d : d; return m < 0.5 ? 0 : (m < 1.5 ? 1 : 2); }
+    // the last (shortest) variant of "long|short"
+    function lastV(t as String) as String {
+        var i = t.find("|");
+        while (i != null) { t = t.substring(i + 1, t.length()) as String; i = t.find("|"); }
+        return t;
+    }
+    // the y of the line k of ne lines at the bottom of a list (the last at 0.845 S), lifted by lf, lh apart
+    function footY(S as Number, k as Number, ne as Number, lf as Float, lh as Float) as Float { return S * 0.845 - lf - (ne - 1 - k) * lh; }
+    // every list on the wheel (wheelRows, wheelBand): the centre row big and white in the pill (a menu) or beside the orange marker, its
+    // sub line under it while it is centred, the counter under the title where there is room; title: a fixed one with its short form
+    // tshort, or a name (tshort null); count: the counter ("long|short", null: n/N); extra = lines at the bottom ([text ("long|short"),
+    // colour, a name]), as many as fit from the first. The rows drawn go to gRows ([offset to the selection, y / S], FlowDelegate.onTap)
     function list(dc as Dc, F as Flow, S as Number, P as Palette, items as Array, title as String, tshort, isMenu as Boolean, sub, count, extra as Array) as Void {
-        var n = items.size(), c = S / 2, sel = F.sel, G = gap(S);
+        var n = items.size(), c = S / 2, sel = F.sel, G = gap(S), pos = F.listPos(), pr = F.prRow();
         // the title: a fixed one moves down until its short form fits the circle, a name is cut
         var fixed = tshort != null, tv = fixed ? title + "|" + tshort : title, ty = fixed ? downTo(dc, XT, tshort as String, S * 0.12, R0) : S * 0.12;
         var trm = roomC(dc, c, ty, XT, "A", R0), tt = pick(dc, tv, XT, trm < (S * 0.62).toNumber() ? trm : (S * 0.62).toNumber(), !fixed);
         put(dc, c, ty, XT, tt, (S * 0.62).toNumber(), P.dim, !fixed, R0);
-        var tb = ty + dn(dc, XT, tt), yb = 0.0;
-        if (n == 0) { var f0 = byInk(dc, [SM, XT], S * 0.12); put(dc, c, c, f0, "Nothing yet", (S * 0.74).toNumber(), P.dim, false, R0); yb = c + dn(dc, f0, "Nothing yet"); }
-        else {
-            // the selected row
-            var ys = S * 0.5, ph = S * 0.14, st = 0.0, sb = 0.0, ti = items[sel] as String;
-            if (isMenu) {
-                var fm = inPill(dc, "Ag", [ME, SM, XT], S, ph);
-                pill(dc, c, ys, S * 0.78, ph, P.acc); put(dc, c, ys, fm, ti, (S * 0.7).toNumber(), P.ink, true, R0); st = ys - ph / 2.0; sb = ys + ph / 2.0;
-            } else {
-                var fs = fontIn(dc, ti, [ME, SM], (S * 0.74).toNumber(), S * 0.15);
-                dc.setColor(P.acc, Graphics.COLOR_TRANSPARENT); dc.fillRectangle(S * 0.1, ys - S * 0.055, S * 0.012 + 1, S * 0.11);
-                put(dc, c, ys, fs, ti, (S * 0.74).toNumber(), P.fg, true, R0); st = ys - up(dc, fs); sb = ys + dn(dc, fs, ti);
+        var tb = ty + dn(dc, XT, tt);
+        // the lines at the bottom: the last one at 0.845 S, the others above it, lifted until their shortest variants fit the circle (the
+        // block stays below 0.6 S); one without room goes (from the last)
+        var ne = extra.size(), lf = 0.0, et = S * (0.5 + R0);
+        var lh = inkH(dc, XT) + G;
+        while (ne > 0) {
+            var ok = true;
+            for (var k = 0; k < ne && ok; k++) {
+                var m = roomC(dc, c, footY(S, k, ne, lf, lh), XT, "g", R0), e = extra[k] as Array;
+                if (m < S * 0.3 || (e[2] != true && dc.getTextWidthInPixels(lastV(e[0] as String), XT) > m)) { ok = false; }
             }
-            $.gRows.add([0, 0.5]); yb = sb;
-            if (!isMenu && sub instanceof String) { var su = sub as String, yu = below(dc, yb, XT, 0); put(dc, c, yu, XT, su, (S * 0.7).toNumber(), P.acc, false, R0); yb = yu + dn(dc, XT, su); }
-            var side = byInk(dc, [SM, XT], S * 0.11);
-            // the row above, with the counter between it and the title where there is room
-            if (sel > 0) {
-                var ta = items[sel - 1] as String, ya = above(dc, st, side, ta, S * (isMenu ? 0.33 : 0.3));
-                if (ya - up(dc, side) >= tb + G) { put(dc, c, ya, side, ta, (S * 0.74).toNumber(), P.dim, true, R0); $.gRows.add([-1, ya / S]); st = ya - up(dc, side); }
-            }
-            if (!isMenu) {
-                var ct = pick(dc, count != null ? count as String : (sel + 1).toString() + "/" + n.toString(), XT, (S * 0.62).toNumber(), false), yc = below(dc, tb, XT, S * 0.19);
-                if (yc + dn(dc, XT, ct) <= st - G) { put(dc, c, yc, XT, ct, (S * 0.62).toNumber(), P.dim, false, R0); }
-            }
-            // the rows below: the next one, then the far one (non-menu)
-            for (var o = 1; o <= (isMenu ? 1 : 2); o++) {
-                var i = sel + o;
-                if (i >= n) { break; }
-                var f = o > 1 ? XT : side, t = items[i] as String, y = below(dc, yb, f, S * (isMenu ? 0.67 : (o > 1 ? 0.845 : 0.72)));
-                if (y + dn(dc, f, t) > S * (0.5 + R0) || roomC(dc, c, y, f, t, R0) < S * 0.3) { break; }
-                put(dc, c, y, f, t, (S * (o > 1 ? 0.55 : 0.74)).toNumber(), o > 1 ? P.far : P.dim, true, R0); $.gRows.add([o, y / S]); yb = y + dn(dc, f, t);
-            }
+            if (ok) { break; }
+            if (footY(S, 0, ne, lf, lh) - up(dc, XT) - G >= S * 0.6) { lf += G; } else { ne--; lf = 0.0; }
         }
-        for (var k = 0; k < extra.size(); k++) {
-            var e = extra[k] as Array, ye = below(dc, yb, XT, 0), m = roomC(dc, c, ye, XT, "g", R0);
-            var te = pick(dc, e[0] as String, XT, m < (S * 0.7).toNumber() ? m : (S * 0.7).toNumber(), e[2] as Boolean);
-            if (ye + dn(dc, XT, te) > S * (0.5 + R0) || m < S * 0.3) { break; }
-            put(dc, c, ye, XT, te, (S * 0.7).toNumber(), e[1] as Number, e[2] as Boolean, R0); yb = ye + dn(dc, XT, te);
+        for (var k2 = 0; k2 < ne; k2++) {
+            var y2 = footY(S, k2, ne, lf, lh), m2 = roomC(dc, c, y2, XT, "g", R0), e2 = extra[k2] as Array;
+            put(dc, c, y2, XT, pick(dc, e2[0] as String, XT, m2 < (S * 0.7).toNumber() ? m2 : (S * 0.7).toNumber(), e2[2] as Boolean), (S * 0.7).toNumber(), e2[1] as Number, e2[2] as Boolean, R0);
+            if (k2 == 0) { et = y2 - up(dc, XT) - G; }
         }
-        if (n > 0) { scrollArc(dc, S, P, sel, n); }
+        if (n == 0) { var f0 = byInk(dc, [SM, XT], S * 0.12); put(dc, c, c, f0, "Nothing yet", (S * 0.74).toNumber(), P.dim, false, R0); startHint(dc, S, P); return; }
+        var ph = S * 0.14, side = byInk(dc, [TI, XT], S * 0.11), gb = !isMenu && sub instanceof String ? inkH(dc, XT) + G : 0.0;
+        var st = et, k0 = -1, ky = 0.0, kf = XT, nt = et;
+        var rows = wheelRows(S, pos, n, F.dragRow(), gb);
+        for (var r = 0; r < rows.size(); r++) {
+            var row = rows[r] as Array, i = row[0] as Number, d = row[1] as Float, y = row[2] as Float;
+            var b = wheelBand(d), t = items[i] as String, on = isMenu && b == 0;
+            var f = b > 1 ? XT : (b > 0 ? side : (isMenu ? inPill(dc, "Ag", [ME, SM, XT], S, ph) : fontIn(dc, t, [ME, SM], (S * 0.74).toNumber(), S * 0.15)));
+            if (y - up(dc, f) < tb + G || y + dn(dc, f, t) > et || (b > 0 && roomC(dc, c, y, f, t, R0) < S * 0.3)) { continue; }
+            if (on) { pill(dc, c, y, S * 0.78, ph, pr == i ? P.fg : P.acc); } // the pill (a menu) or the marker goes with the centre row
+            else if (b == 0) { dc.setColor(P.acc, Graphics.COLOR_TRANSPARENT); dc.fillRectangle(S * 0.1, y - S * 0.055, S * 0.012 + 1, S * 0.11); }
+            put(dc, c, y, f, t, (S * (b > 1 ? 0.55 : (on ? 0.7 : (b > 0 ? 0.66 : 0.74)))).toNumber(), on ? P.ink : (pr == i ? P.acc : (b > 1 ? P.far : (b > 0 ? P.dim : P.fg))), true, R0);
+            $.gRows.add([i - sel, y / S]);
+            if (on && y - ph / 2 < st) { st = y - ph / 2; } else if (y - up(dc, f) < st) { st = y - up(dc, f); }
+            if (b == 0) { k0 = i; ky = y; kf = f; } else if (k0 >= 0 && i == k0 + 1) { nt = y - up(dc, f); }
+        }
+        // the centre row's sub line (while it is the selection and centred)
+        if (gb > 0 && k0 == sel && absF(k0 - pos) < 0.3) {
+            var su = sub as String, yu = below(dc, ky + dn(dc, kf, items[k0] as String), XT, 0);
+            if (yu + dn(dc, XT, su) + G <= nt) { put(dc, c, yu, XT, su, (S * 0.7).toNumber(), P.acc, false, R0); }
+        }
+        if (!isMenu) {
+            var ct = pick(dc, count != null ? count as String : (sel + 1).toString() + "/" + n.toString(), XT, (S * 0.62).toNumber(), false), yc = below(dc, tb, XT, S * 0.19);
+            if (yc + dn(dc, XT, ct) <= st - G) { put(dc, c, yc, XT, ct, (S * 0.62).toNumber(), P.dim, false, R0); }
+        }
+        scrollArc(dc, S, P, pos, n);
         startHint(dc, S, P);
     }
     // the heart rate (and the session clock) on one line, centred at y; the clock goes where there is no room for both
@@ -546,7 +575,7 @@ module Draw {
         yb = sy + dn(dc, XT, no);
         // DONE at the bottom, the units (timed: hold / of 10:00) and the focus bar above it
         var py = S * 0.815, ph = S * 0.12, lab = timed && !(F.holdAt > 0) ? "GO" : "DONE", pf = inPill(dc, lab, [SM, XT], S * 0.36, ph);
-        pill(dc, c, py, S * 0.4, ph, P.acc); put(dc, c, py, pf, lab, (S * 0.36).toNumber(), P.ink, false, R0);
+        pill(dc, c, py, S * 0.4, ph, F.prOn(PK_DONE) ? P.fg : P.acc); put(dc, c, py, pf, lab, (S * 0.36).toNumber(), P.ink, false, R0);
         var uy = above(dc, py - ph / 2.0, XT, "reps", S * 0.665), bh = S * 0.016 + 1, by = uy - up(dc, XT) - G - bh;
         // the wheel (a finger on a number): the numbers make room for its neighbours above and below
         var wh = wheelOn(F, 0) || wheelOn(F, 1), nb = inkH(dc, XT) + G, nbot = py - ph / 2.0 - G - nb;
@@ -1111,11 +1140,11 @@ module Draw {
     }
     // 28.11.: a small - / + button (the owner: "too big, write the step inside"): a faint pill w x h with the step in it ("-5", "+25") in the
     // largest font that fits it; where none does (font size setting) the drawn sign (the fonts may have no minus sign, the hyphen they have)
-    function trBtn(dc as Dc, S as Number, P as Palette, x, y, t as String, plus as Boolean) as Void {
+    function trBtn(dc as Dc, S as Number, P as Palette, x, y, t as String, plus as Boolean, on as Boolean) as Void {
         var w = S * 0.16, h = S * 0.11, tp = "+" + (t.substring(1, t.length()) as String), f = inPill(dc, tp, [SM, XT], w - 6, h); // both buttons in the font the wider "+25" fits
-        pill(dc, x, y, w, h, P.faint);
-        if (dc.getTextWidthInPixels(tp, f) <= w - 6 && up(dc, f) <= h / 2 - 1 && dn(dc, f, tp) <= h / 2 - 1) { txt(dc, x, y, f, t, P.fg); return; }
-        var k = S * 0.025; dc.setColor(P.fg, Graphics.COLOR_TRANSPARENT); dc.setPenWidth(pw(S * 0.014)); dc.drawLine(x - k, y, x + k, y); if (plus) { dc.drawLine(x, y - k, x, y + k); } dc.setPenWidth(1);
+        pill(dc, x, y, w, h, on ? P.acc : P.faint); // 27.11.6: a tap flashes it orange
+        if (dc.getTextWidthInPixels(tp, f) <= w - 6 && up(dc, f) <= h / 2 - 1 && dn(dc, f, tp) <= h / 2 - 1) { txt(dc, x, y, f, t, on ? P.ink : P.fg); return; }
+        var k = S * 0.025; dc.setColor(on ? P.ink : P.fg, Graphics.COLOR_TRANSPARENT); dc.setPenWidth(pw(S * 0.014)); dc.drawLine(x - k, y, x + k, y); if (plus) { dc.drawLine(x, y - k, x, y + k); } dc.setPenWidth(1);
     }
     // the target page, the overview (the owner: "one sheet with everything"): the time left in the step (a free ride: the ride's time) with
     // the ring, the step's label (a ramp: "WARM-UP 100 TO 180 W"), the target big with small - / + buttons that carry the step, the offset
@@ -1136,7 +1165,7 @@ module Draw {
         if (!wh) { put(dc, c, ly, XT, warn.length() == 0 && W != null ? lp : alt(dc, first(lp), pick(dc, lp, XT, 0, false), XT, lm), S, wc, warn.length() == 0 && W != null, R0); }
         // the bottom: AVG / the resume pill (a workout: the time left, the next step above it), the three numbers with labels, the separator
         var by = S * 0.85, bt = 0.0;
-        if (paused) { var ph = S * 0.1; pill(dc, c, by, S * 0.44, ph, P.acc); put(dc, c, by, inPill(dc, "START", [XT], S * 0.4, ph), "START resume|Resume", S * 0.4, P.ink, false, R0); bt = by - ph / 2.0 - G; }
+        if (paused) { var ph = S * 0.1; pill(dc, c, by, S * 0.44, ph, F.prOn(PK_RESUME) ? P.fg : P.acc); put(dc, c, by, inPill(dc, "START", [XT], S * 0.4, ph), "START resume|Resume", S * 0.4, P.ink, false, R0); bt = by - ph / 2.0 - G; }
         else if (W != null) {
             var tl = clock(W.totLeft(R.t)), nw = W.nextW(), nx = "LAST STEP";
             if (nw >= 0) { var nd = clock(W.dur[W.i + 1]), ns = nw.toString() + " W"; nx = "NEXT " + ns + ", " + nd + "|" + ns + ", " + nd + "|" + ns; }
@@ -1174,9 +1203,9 @@ module Draw {
         var rp = W != null ? W.ramp() : null, ajt = (aj > 0 ? "+" : "-") + (aj > 0 ? aj : -aj).toString() + " W", ut = aj != 0 ? ajt : "";
         if (rp != null) { var ra = rp[0].toString() + " TO " + rp[1].toString() + " W"; ut = aj != 0 ? ra + ", " + ajt + "|" + ra : ra; }
         var room = sep - G - top - (wh || ut.length() == 0 ? 0 : inkH(dc, sf) + G), gf = numIn(dc, [t], [NTH, NHO, NME, NMI], [(S * 0.44).toNumber()], [c], top, top + room, R0), gy = numY(dc, gf, top, top + room);
-        txt(dc, c, gy, gf, t, paused ? P.dim : P.acc); $.gT0 = top / S; $.gT1 = sep / S;
+        txt(dc, c, gy, gf, t, F.prOn(PK_TGT) ? P.fg : (paused ? P.dim : P.acc)); $.gT0 = top / S; $.gT1 = sep / S;
         var xs = [0.16, 0.84] as Array<Float>;
-        for (var i = 0; i < 2; i++) { trBtn(dc, S, P, S * xs[i], gy, (i == 0 ? "-" : "+") + R.step.toString(), i == 1); }
+        for (var i = 0; i < 2; i++) { trBtn(dc, S, P, S * xs[i], gy, (i == 0 ? "-" : "+") + R.step.toString(), i == 1, F.prOn(i == 0 ? PK_MINUS : PK_PLUS)); }
         if (wh) {
             for (var dd = -1; dd <= 1; dd += 2) {
                 var w = W != null ? R.tgt + dd * R.step : R.nextTarget(dd, false);
@@ -1270,10 +1299,20 @@ module Draw {
         heart(dc, hx - dc.getTextWidthInPixels(h, hf) / 2.0 - G - hs * 0.7, hy, hs, F.hr > 0 ? P.hr : P.dim);
     }
     // 27.11.: the trainer's choice: a free ride (one target) or a workout (its length under it); while connecting it says so
+    // 27.11.6 (js drawTPick): the chooser's step: its title, the sub line (Training / a category: its workouts; a workout: its length)
     function drawTPick(dc as Dc, F as Flow, S as Number, P as Palette) as Void {
-        var l = F.rideList(), v = F.link.shown(), m = 0, sub = "One target, + / - change it|One target";
-        if (F.sel > 0 && F.sel <= l.size()) { m = (wkDur(l[F.sel - 1]["s"]) + 30) / 60; sub = m.toString() + " min"; }
-        list(dc, F, S, P, F.listItems(), "INDOOR TRAINER", "TRAINER", false, sub, null, v == TL_READY || v == TL_REFUSED ? [] : [["Still connecting|Connecting|Wait", P.lbl, false]]);
+        var l = F.rideList(), v = F.link.shown(), sub = "One target, + / - change it|One target" as String or Null, ti = "INDOOR TRAINER", ts = "TRAINER";
+        if (F.tlev == 0 && F.sel == 1) { sub = plural(l.size(), "workout", "workouts"); }
+        if (F.tlev == 1) {
+            ti = "TRAINING"; ts = ti; var cs = F.tCats(), c = F.sel < cs.size() ? cs[F.sel] : "", k = 0;
+            for (var i = 0; i < l.size(); i++) { if (F.catOf(l[i]).equals(c)) { k++; } }
+            sub = plural(k, "workout", "workouts");
+        }
+        if (F.tlev == 2) {
+            ti = F.catName(F.tcat).toUpper(); ts = ti; var r = F.tRows();
+            sub = F.sel < r.size() ? ((wkDur(l[r[F.sel]]["s"]) + 30) / 60).toString() + " min" : null;
+        }
+        list(dc, F, S, P, F.listItems(), ti, ts, false, sub, null, v == TL_READY || v == TL_REFUSED ? [] : [["Still connecting|Connecting|Wait", P.lbl, false]]);
     }
     function orDash(n as Number) as String { return n > 0 ? n.toString() : "--"; }
     // the ride's second page: this target's block (time, avg power), then the whole ride

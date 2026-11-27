@@ -79,19 +79,19 @@ let fails = 0; const ok = (c, m) => { console.log(`${c ? '✓' : '✗'} ${m}`); 
     // ---- session 2: touch only, phone away first (offline queue) ----
     await W.uncheck('#wNear');
     const cv = W.locator('[data-face="fr265"] canvas'), box = await cv.boundingBox(), at = (u, v) => ({ x: box.x + u * box.width, y: box.y + v * box.height });
-    const tap = async (u, v) => { await cv.tap({ position: { x: u * box.width, y: v * box.height } }); await W.waitForTimeout(80); };
+    const tap = async (u, v) => { await cv.tap({ position: { x: u * box.width, y: v * box.height } }); await W.waitForTimeout(260); }; // 27.11.6: a row's action runs after its flash (PRESS_MS)
     const swipe = async (dir) => { const [a, z] = { up: [[.5, .7], [.5, .3]], down: [[.5, .3], [.5, .7]], left: [[.75, .5], [.25, .5]] }[dir]; await cv.scrollIntoViewIfNeeded(); const b = await cv.boundingBox(), p0 = { x: b.x + a[0] * b.width, y: b.y + a[1] * b.height }, p1 = { x: b.x + z[0] * b.width, y: b.y + z[1] * b.height }; // three faces wrap: the page may have scrolled since the first measurement
       await W.mouse.move(p0.x, p0.y); await W.mouse.down(); await W.mouse.move(p1.x, p1.y, { steps: 6 }); await W.mouse.up(); await W.waitForTimeout(100); };
     const drag = async (v0, v1) => { await cv.scrollIntoViewIfNeeded(); const b = await cv.boundingBox(); await W.mouse.move(b.x + b.width / 2, b.y + v0 * b.height); await W.mouse.down();
-      await W.mouse.move(b.x + b.width / 2, b.y + v1 * b.height, { steps: 8 }); await W.mouse.up(); await W.waitForTimeout(100); };
-    await snap('home_all_rows'); await tap(.5, .27); s = await F(); ok(s.scr === 'smode', 'tap the top row: Strength, the strength list'); await tap(.5, .5); s = await F(); ok(s.scr === 'pick', 'tap Free: the exercise list'); await btn('back');
-    await btn('back'); await tap(.5, .735); s = await F(); ok(s.scr === 'tscan', 'start menu: the fourth row (Indoor trainer) is visible and tappable without scrolling'); await btn('back'); await W.waitForTimeout(300);
+      await W.mouse.move(b.x + b.width / 2, b.y + v1 * b.height, { steps: 8 }); await W.waitForTimeout(160); await W.mouse.up(); await W.waitForTimeout(400); }; // 27.11.6: the finger rests before it lifts (no coast), the list snaps
+    await snap('home_all_rows'); await tap(.5, .5); s = await F(); ok(s.scr === 'smode', 'tap the centre row: Strength, the strength list'); await tap(.5, .5); s = await F(); ok(s.scr === 'pick', 'tap Free: the exercise list'); await btn('back');
+    await btn('back'); await btn('down'); await btn('down'); await tap(.5, .655); s = await F(); ok(s.scr === 'tscan', '27.11.6: start menu on the wheel: the row under the centre (Indoor trainer) is tappable'); await btn('back'); await W.waitForTimeout(300);
     s = await F(); ok(s.scr === 'home', 'BACK on the trainer list: the start menu'); await drag(.8, .15); await snap('home_scrolled'); s = await F(); ok(s.sel === 4, '23.11.7: five entries: a drag of 4 row distances (0.155 each) scrolls 4 rows, to More');
-    await W.evaluate(() => { __watch.F.sel = 0; }); await tap(.5, .27); await tap(.5, .5); s = await F(); ok(s.scr === 'pick', 'tap: picker'); const sel0 = s.sel;
+    await W.evaluate(() => { __watch.F.sel = 0; }); await tap(.5, .5); await tap(.5, .5); s = await F(); ok(s.scr === 'pick', 'tap: picker'); const sel0 = s.sel;
     const nRows = await W.evaluate(async () => (await import('/js/watchflow.js')).pickRows(__watch.F).length);
-    await swipe('up'); s = await F(); ok(s.sel === Math.min(sel0 + 2, nRows - 1), `23.11.7: drag up 0.4 of the screen: the list follows the finger 1:1, 2 rows of 0.2 (${sel0} -> ${s.sel})`); await snap('pick_dragged');
-    await drag(.3, .7); await drag(.3, .7); s = await F(); ok(s.sel === 0, 'drag down: back to the top, clamped');
-    await drag(.55, .45); s = await F(); ok(s.sel === 0 && s.scr === 'pick', 'a drag shorter than a row: nothing moves, and its lift is no tap');
+    await swipe('up'); await W.waitForTimeout(900); s = await F(); ok(s.sel >= Math.min(sel0 + 2, nRows - 1), `27.11.6: a quick drag up 0.4 of the screen: 2 rows with the finger, then it coasts on (${sel0} -> ${s.sel})`); await snap('pick_dragged');
+    for (let i = 0; i < 4; i++) await drag(.3, .7); s = await F(); ok(s.sel === 0, 'drag down: back to the top, clamped');
+    await drag(.53, .47); s = await F(); ok(s.sel === 0 && s.scr === 'pick', 'a drag shorter than half a row: it snaps back, and its lift is no tap');
     await drag(.62, .4); s = await F(); ok(s.sel === 1, 'a drag of one row distance: one row'); await tap(.5, .3); s = await F(); ok(s.scr === 'set' && s.ex === 'bench', 'tap the row above: bench selected');
     await tap(.72, .5); s = await F(); ok(s.focus === 1, 'tap reps: focused'); await drag(.33, .08); s = await F(); ok(s.reps === 9, 'a swipe up above the numbers (no wheel there): reps + 1');
     const kg0 = s.kg; ok(kg0 === 82.5, 'prefill from the session just sent (82.5 kg)'); await tap(.3, .5); await swipe('down'); s = await F(); ok(s.focus === 0 && s.kg === kg0 - 2.5, 'tap kg, swipe down: -2.5 kg');
@@ -184,8 +184,8 @@ let fails = 0; const ok = (c, m) => { console.log(`${c ? '✓' : '✗'} ${m}`); 
     await dbtn('back'); d = await G(); ok(d.scr === 'smode', 'BACK in the list with nothing logged: back to Exercises / workouts');
     // 24.11.: last time in the list (all sets) and on the set screen, updated on the watch by the session just finished (no sync)
     await dbtn('start'); const toEx = id => D.evaluate(async id => { const m = await import('/js/watchflow.js'), F = __watch.F; const k = m.pickRows(F).findIndex(r => F.setup.ex[r[0]].id === id); F.sel = k; return k; }, id);
-    await toEx('bench'); await D.waitForTimeout(250); ok(/Bench press \| Last 80x6 \|/.test(await DT()), 'list: bench shows the guided session just finished (80×6), not the old 77.5');
-    await toEx('pull'); await D.waitForTimeout(250); ok(/Pull-ups \| Last 10, 9 reps/.test(await DT()), 'list: pull-ups, all of last time\'s sets ("Last 10, 9 reps")'); await dsnap('22_list_last_all');
+    await toEx('bench'); await D.waitForTimeout(250); ok(/Bench press \|.*\| Last 80x6/.test(await DT()), 'list: bench shows the guided session just finished (80×6), not the old 77.5');
+    await toEx('pull'); await D.waitForTimeout(250); ok(/Pull-ups \|.*\| Last 10, 9 reps/.test(await DT()), 'list: pull-ups, all of last time\'s sets ("Last 10, 9 reps")'); await dsnap('22_list_last_all');
     await D.evaluate(() => __watch.ev('item', __watch.F.sel)); await D.waitForTimeout(250); ok(/SET 1 \| BW \| 10 \|/.test(await DT()), 'bodyweight set 1: last time BW, 10'); await dsnap('23_bw_set1_last');
     for (let i = 0; i < 2; i++) { await D.evaluate(() => { __watch.ev('done'); __watch.F.flash = null; __watch.ev('start'); }); }
     await D.waitForTimeout(250); ok((await DM('setNo')) === 3 && /SET 3 \| BW \| 9 \|/.test(await DT()), 'set 3, last time had 2: its final set (BW, 9)'); await dsnap('24_beyond_last');

@@ -382,7 +382,7 @@ export function wkEasy(W) { const k = W.dur.length - 1, b = wkBase(W, k, W.dur[k
 export const WK_FB_ID = 'c_30_15_3x13', WK_FB_HARD = 370;
 export function wkFallback(ftp) {
   const f = ftp > 0 ? ftp : 250, p = x => Math.round(x * f / 100);
-  return { id: WK_FB_ID, n: '30/15, 3 x 13', ri: 3, ro: 2, s: [[480, p(40), p(75), 0, 'Warm-up'], [180, p(75), p(95), 0, 'Build'], [120, 130, null, 0, 'Spin'],
+  return { id: WK_FB_ID, n: '30/15, 3 x 13', c: 'v', ri: 3, ro: 2, s: [[480, p(40), p(75), 0, 'Warm-up'], [180, p(75), p(95), 0, 'Build'], [120, 130, null, 0, 'Spin'],
     [20, 300, null, 1, 'Opener'], [70, 130, null, 0, 'Spin'], [20, 335, null, 1, 'Opener'], [70, 130, null, 0, 'Spin'], [20, WK_FB_HARD, null, 1, 'Opener'], [190, 130, null, 0, 'Spin'],
     [3, [[13, [[30, WK_FB_HARD, null, 1, '30/15'], [15, 125, null, 0, 'Float']], 1], [180, 130, null, 0, 'Rest']], 1],
     [600, p(50), p(35), 0, 'Cool-down']] };
@@ -430,6 +430,7 @@ export function wkFromRide(w, ftp, isHard) {
   }
   const o = { id: String(w.id), n: wkTxt(w.name, 24) || 'Workout', s: wkCompact(steps) };
   if (typeof w.rampIn === 'number') o.ri = w.rampIn; if (typeof w.rampOut === 'number') o.ro = w.rampOut;
+  if (typeof w.cat === 'string' && w.cat) o.c = w.cat[0]; // 27.11.6: the category's letter (e t v a f, js/workouts.js rideCat), the chooser
   return o;
 }
 /** the length of a workout's entries in seconds, without expanding them (the TPICK sub line) */

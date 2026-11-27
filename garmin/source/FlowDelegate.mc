@@ -3,7 +3,9 @@
 //   UP, DOWN = scroll / change value (held: 10 kg or 5 reps, repeating)
 //   BACK = back (23.11.: on a set or the rest: the exercise list; on the list with sets: Keep / Finish / Discard)
 //   BACK held = menu        swipe left = menu, swipe right = back
-//   tap = the thing under the finger (a list row, a value, DONE (logs at once), a digit); a finger dragged over a list moves it row by row
+//   tap = the thing under the finger (a list row, a value, DONE (logs at once), a digit); 27.11.6: a finger dragged over a list moves it
+//   by its pixels (Flow E_DRAG), the lift lets it coast and snap onto a row (E_DRAG_END, the app's timer E_ANIM); a tapped row / button
+//   flashes PRESS_MS (E_PRESS), a row's action runs after the flash (taps in between are dropped: the screen may change)
 //   23.11.7: a finger dragged up / down over kg / reps (the trainer's target) turns it like a wheel, one step per WHEEL_STEP, up = more;
 //   a drag is never also a tap or a swipe
 //   recording: UP / DOWN = page, START = pause, BACK = lap (first it closes the segment popup); swipe up / down = page
@@ -18,18 +20,10 @@ import Toybox.System;
 import Toybox.Timer;
 import Toybox.WatchUi;
 
-// 23.11. diagnostics (Freddy: no touch arrives in the app on his fenix 8): the last touch event and how many came, shown under the menu
-var gTouch as String = "touch: none yet";
-var gTouchN as Number = 0;
-function touchNote(kind as String, xy) as Void {
-    gTouchN += 1;
-    var t = kind;
-    if (xy != null) { t = t + " " + xy[0].toString() + "," + xy[1].toString(); }
-    gTouch = "touch " + gTouchN.toString() + ": " + t;
-    WatchUi.requestUpdate();
-}
+// 27.11.6: the touch diagnostics line under the menu (23.11., gTouch / touchNote) is gone: it redrew on every touch event (touch-concept.md)
 // 23.11.7: the wheel on screen (Draw.wheelOn / wheelNb; js/watchsim.js wheelUi): the column turned (-1 none; the trainer's target 0),
 // on which screen, and when the finger lifted (System.getTimer(); 0 while it is down); the neighbours go WHEEL_SHOW_MS after the lift
+// (27.11.6: the app's timer redraws then, RideframeApp.onTick; no timer of its own)
 var gWheel as Number = -1;
 var gWheelScr as Number = -1;
 var gWheelEnd as Number = 0;
@@ -60,20 +54,21 @@ class FlowDelegate extends WatchUi.BehaviorDelegate {
     var dragX0 as Float = 0.0;
     var dragY0 as Float = 0.0;
     var dragY as Float = 0.0;
-    var dragMode as Number = 0;      // 0 not decided yet, 1 list, 2 wheel, 3 nothing (a swipe, horizontal, or a screen without either)
+    var dragMode as Number = 0;      // 0 not decided yet, 1 rows (the summary pages), 2 wheel, 3 nothing (a swipe, horizontal, or a screen without either), 4 a list by its pixels (27.11.6)
     var dragCol as Number = 0;
     var dragEnd as Number = 0;
-    var wheelTimer = null;
     var swipedIn as Boolean = false;
     var dragLast as Number = 0;      // the last drag event (a drag whose STOP never comes stops counting after 1.5 s)
     var backAt as Number = -100000;  // 23.11.8: when the last back went to the flow (the BACK key or onBack), and the last swipe right
     var swipeRAt as Number = -100000;
     var escAt as Number = -100000;   // the BACK key's last press / release (its onBack, if the system still sends one, is the same back)
     var keyAt as Number = -100000;   // 28.11.: the last release of a key this delegate handles (a menu behaviour that comes with it is the key's)
+    var scrS as Float = 260.0;       // 27.11.6: the screen size, once (touch-concept.md: no getDeviceSettings per drag event)
 
     function initialize(f as Flow, a) {
         BehaviorDelegate.initialize();
         flow = f; app = a;
+        scrS = System.getDeviceSettings().screenWidth.toFloat();
     }
 
     // ---- buttons: pressed / released, so a hold can be told from a press ----
@@ -115,7 +110,7 @@ class FlowDelegate extends WatchUi.BehaviorDelegate {
     // InputDelegate call (SDK BehaviorDelegate overview). A tap is the Select behaviour and swipes are next / previous page, so
     // returning true here ate every onTap / onSwipe. false lets them through; the keys are handled in onKeyPressed / onKeyReleased.
     // onBack stays true: false would let the system leave the app on BACK.
-    function onSelect() as Boolean { touchNote("select", null); return false; }
+    function onSelect() as Boolean { return false; }
     // the BACK behaviour: the key is handled in onKeyPressed / onKeyReleased (its onBack, if one still comes, is dropped); a back that
     // comes without the key (a device that sends a swipe right as BACK) is one back, unless its swipe already was
     function onBack() as Boolean {
@@ -141,8 +136,10 @@ class FlowDelegate extends WatchUi.BehaviorDelegate {
     // ---- touch ----
     function onSwipe(evt as WatchUi.SwipeEvent) as Boolean {
         var d = evt.getDirection();
-        touchNote("swipe " + d.toString(), null);
-        if (dragged()) { return true; }   // 23.11.7: the drag already moved the list / turned the wheel: no page change, no menu
+        if (dragged()) { // 23.11.7: the drag already moved the list / turned the wheel: no page change, no menu
+            if (dragMode == 4 && flow.lmode == 1) { dragOn = false; dragEnd = System.getTimer(); app.input(E_DRAG_END, dragEnd); } // its STOP did not come: the swipe ends it
+            return true;
+        }
         if (dragOn) { swipedIn = true; }  // a swipe before the drag was decided (a flick): the drag's end adds no rows to it
         if (d == WatchUi.SWIPE_UP) { app.input(E_SWIPE_UP, null); }
         else if (d == WatchUi.SWIPE_DOWN) { app.input(E_SWIPE_DOWN, null); }
@@ -161,7 +158,7 @@ class FlowDelegate extends WatchUi.BehaviorDelegate {
     // a drag that moved a list or turned a wheel is running or ended less than 500 ms ago: the swipe / tap the system sends after it is no input
     function dragged() as Boolean {
         var t = System.getTimer();
-        return (dragMode == 1 || dragMode == 2) && ((dragOn && t - dragLast < 1500) || t - dragEnd < 500);
+        return (dragMode == 1 || dragMode == 2 || dragMode == 4) && ((dragOn && t - dragLast < 1500) || t - dragEnd < 500);
     }
     // js/watchsim.js dragMode(u, v): what a vertical drag that starts at (u, v) does: 2 = the wheel over the set screen's numbers (timed: the
     // seconds; dragCol = the column) or the trainer's target, 1 = a list, 3 = nothing (the swipe that follows counts)
@@ -182,18 +179,24 @@ class FlowDelegate extends WatchUi.BehaviorDelegate {
     // VERIFY (Toybox.WatchUi.InputDelegate.onDrag / DragEvent, API 3.3.0): DRAG_TYPE_START / CONTINUE / STOP with screen pixel coordinates;
     // a swipe follows the drag (swallowed in onSwipe while dragged()); without any drag events the swipe moves a list SWIPE_ROWS rows.
     function onDrag(evt as WatchUi.DragEvent) as Boolean {
-        var xy = evt.getCoordinates(), t = evt.getType(), S = System.getDeviceSettings().screenHeight.toFloat();
-        var x = xy[0].toFloat(), y = xy[1].toFloat();
-        dragLast = System.getTimer();
+        var xy = evt.getCoordinates(), t = evt.getType(), S = scrS;
+        var x = xy[0].toFloat(), y = xy[1].toFloat(), ms = System.getTimer();
+        dragLast = ms;
         if (t == WatchUi.DRAG_TYPE_START || !dragOn) { dragOn = true; dragX0 = x; dragY0 = y; dragY = y; dragMode = 0; swipedIn = false; }
         if (dragMode == 0) {
             var dx = absF(x - dragX0), dy = absF(y - dragY0);
             if (dy >= S * DRAG_MIN && dy > dx) {
+                if (flow.prWait()) { app.input(E_ANIM, ms + PRESS_MS); } // 27.11.6: a tapped row's action first (its flash is cut short)
                 dragMode = dragModeAt(dragX0 / S, dragY0 / S);
+                if (dragMode == 1 && flow.pxList()) { dragMode = 4; }
                 if (dragMode == 2) { gWheel = dragCol; gWheelScr = flow.scr; gWheelEnd = 0; }
             } else if (dx >= S * DRAG_MIN && dx > dy) { dragMode = 3; }
         }
-        if (dragMode == 1 || dragMode == 2) {
+        if (dragMode == 4) { // 27.11.6: the list moves by the finger's pixels since the last event (the first one: since the touch)
+            var dd = (dragY - y) / S;
+            dragY = y;
+            if (dd != 0.0 && !swipedIn) { app.input(E_DRAG, [dd, ms]); }
+        } else if (dragMode == 1 || dragMode == 2) {
             var step = S * (dragMode == 2 ? WHEEL_STEP : flow.dragRow()), n = ((dragY - y) / step).toNumber();
             if (n != 0 && !swipedIn) {
                 dragY = dragY - n * step;
@@ -201,27 +204,21 @@ class FlowDelegate extends WatchUi.BehaviorDelegate {
             }
         }
         if (t == WatchUi.DRAG_TYPE_STOP) {
-            dragOn = false; dragEnd = System.getTimer();
-            if (dragMode == 2) { // the neighbours stay WHEEL_SHOW_MS, then one redraw takes them away
-                gWheelEnd = dragEnd;
-                if (wheelTimer == null) { wheelTimer = new Timer.Timer(); } else { wheelTimer.stop(); }
-                wheelTimer.start(method(:onWheelGone), WHEEL_SHOW_MS + 50, false);
-            }
+            dragOn = false; dragEnd = ms;
+            if (dragMode == 2) { gWheelEnd = dragEnd; WatchUi.requestUpdate(); } // the neighbours stay WHEEL_SHOW_MS (RideframeApp.onTick redraws then)
+            if (dragMode == 4) { app.input(E_DRAG_END, ms); }   // coast / snap (the app's timer runs at ANIM_MS)
         }
-        touchNote("drag " + (dragMode == 1 ? "list" : (dragMode == 2 ? "wheel" : "-")), xy); // the diagnostics line (menu): kind and where
-        return dragMode == 1 || dragMode == 2;
+        return dragMode == 1 || dragMode == 2 || dragMode == 4;
     }
-    function onWheelGone() as Void { WatchUi.requestUpdate(); }
     // the "Hold to finish" pill (js/watchsim.js touch: pointerdown / pointerup on the pill)
     // VERIFY (Toybox.WatchUi.InputDelegate onHold / onRelease, API 1.0 / 3.x): onHold comes after the system's hold delay (so the
     // 3 s run from there), onRelease when the finger lifts, and no onTap follows a hold; if one does, pillUp skips it
     function onPill(evt as WatchUi.ClickEvent) as Boolean {
-        var xy = evt.getCoordinates(), S = System.getDeviceSettings().screenWidth.toFloat();
+        var xy = evt.getCoordinates(), S = scrS;
         var u = xy[0] / S, v = xy[1] / S;
         return flow.scr == S_PAUSE && !flow.pzConf && hasTouch() && v > 0.75 && absF(u - 0.5) < 0.27;
     }
     function onHold(evt as WatchUi.ClickEvent) as Boolean {
-        touchNote("hold", evt.getCoordinates());
         if (!onPill(evt)) { return false; }
         pillHold = true; app.input(E_HOLD_START, System.getTimer());
         return true;
@@ -233,11 +230,11 @@ class FlowDelegate extends WatchUi.BehaviorDelegate {
     }
     // js/watchsim.js tapAt: the same table, in screen fractions
     function onTap(evt as WatchUi.ClickEvent) as Boolean {
-        touchNote("tap", evt.getCoordinates());
-        var xy = evt.getCoordinates(), S = System.getDeviceSettings().screenWidth.toFloat();
+        var xy = evt.getCoordinates(), S = scrS;
         var u = xy[0] / S, v = xy[1] / S, s = flow.scr;
         if (dragged()) { return true; } // the end of a drag is no tap
         if (flow.flash != null) { app.input(E_TAP, null); return true; }
+        if (flow.prWait()) { return true; } // 27.11.6: a tapped row waits for its flash (the screen may change under this tap)
         if (s == S_PAUSE) { // js PAUSE_LAY: confirm: the Discard pill = yes, elsewhere = no; else the Discard row = ask, the top = resume
             if (pillHold || System.getTimer() - pillUp < 400) { return true; }
             if (flow.pzConf) { app.input(absF(v - 0.68) < 0.06 ? E_START : E_BACK, null); }
@@ -246,7 +243,7 @@ class FlowDelegate extends WatchUi.BehaviorDelegate {
             return true;
         }
         if (s == S_SET) {
-            if (v > 0.72 && absF(u - 0.5) < 0.24) { app.input(E_DONE, null); } // DONE logs at once (START goes weight -> reps first)
+            if (v > 0.72 && absF(u - 0.5) < 0.24) { press(PK_DONE, -1, E_DONE, null, true); } // DONE logs at once (START goes weight -> reps first), after its flash
             else if (v > 0.36 && v < 0.72) { app.input(E_FOCUS, u < 0.51 ? 0 : 1); }
             return true;
         }
@@ -254,21 +251,16 @@ class FlowDelegate extends WatchUi.BehaviorDelegate {
         if (s == S_TREC) { // 23.11. (js TREC_LAY): another page: the target page; - / + (the outer thirds) and the target (step size); the resume pill
             var R = flow.tr;
             if (R != null && !flow.tPage().equals("target")) { app.input(E_TAP, null); }
-            else if (v > gT0 && v < gT1) { app.input(E_ITEM, u < 0.31 ? 0 : (u > 0.69 ? 1 : 2)); }
-            else if (v > 0.78 && R != null && R.st != RS_RUN) { app.input(E_START, null); }
+            else if (v > gT0 && v < gT1) { var z = u < 0.31 ? 0 : (u > 0.69 ? 1 : 2); press(z == 0 ? PK_MINUS : (z == 1 ? PK_PLUS : PK_TGT), -1, E_ITEM, z, false); } // at once, flashing
+            else if (v > 0.78 && R != null && R.st != RS_RUN) { press(PK_RESUME, -1, E_START, null, true); }
             return true;
         }
         if (s == S_THR || (s == S_TSCAN && !tList())) { app.input(E_TAP, null); return true; } // one trainer's state: like START
         if (s == S_TSUM) { var n = flow.tsPages().size(); app.input(flow.sel % n == n - 1 && v > 0.78 ? E_DONE : E_TAP, null); return true; } // 27.11.4: the last page's DONE: done, else the next page
         var menu = s == S_MENU || s == S_END || s == S_SAVEQ || s == S_TEND, pick = s == S_PICK || s == S_MORE || s == S_SMODE || s == S_RPICK || s == S_TSCAN || s == S_TPICK;
-        if (s == S_HOME) { // 23.11.8: the rows as Draw.drawHome drew them (gRows: [row, y / S])
-            var r = rowAt(v), hn = flow.listItems().size(), hi = r == null ? -1 : flow.homeTop(hn) + (r[0] as Number);
-            if (hi >= 0 && hi < hn) { app.input(E_ITEM, hi); }
-            return true;
-        }
-        if (menu || pick) { // 23.11.8: the rows as Draw.list drew them (gRows: [offset, y / S]); the title and the counter are no row
+        if (s == S_HOME || menu || pick) { // 23.11.8: the rows as Draw.list / drawHome drew them (gRows: [offset, y / S]); the title and the counter are no row
             var r = rowAt(v), n = flow.listItems().size(), idx = r == null ? -1 : flow.sel + (r[0] as Number);
-            if (idx >= 0 && idx < n) { app.input(E_ITEM, idx); }
+            if (idx >= 0 && idx < n) { press(PK_ROW, idx, E_ITEM, idx, true); } // 27.11.6: the row flashes, then it is chosen
             return true;
         }
         if (s == S_PAIR) {
@@ -280,5 +272,9 @@ class FlowDelegate extends WatchUi.BehaviorDelegate {
         }
         app.input(E_TAP, null); // REC: closes the segment popup; READY / START / REST / SUM / RSUM: like START
         return true;
+    }
+    // 27.11.6 (js watchsim tapAt press): a tapped row / button flashes PRESS_MS; later: its action after the flash, else at once
+    function press(k as Number, i as Number, ev as Number, arg, later as Boolean) as Void {
+        app.input(E_PRESS, [k, i, ev, arg, System.getTimer(), later]);
     }
 }

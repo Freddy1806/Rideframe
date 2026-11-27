@@ -55,7 +55,12 @@ function ride(o = {}) {
 const W = (c, scr) => ({ wheel: { c, scr, until: Infinity } });
 // 27.11.: a trainer workout with worst-case text: 13 x 3 hard 1250 W (4 digits), the 13th of set 3, +25 W, a long label, 1:23:45 left
 const LONG_RIDE = 'Threshold over-unders XL';
-const WKDEF = { id: 'wx', n: LONG_RIDE, s: [[3000, 100, 250, 0, 'Warm-up'], [3, [[13, [[600, 1250, null, 1, '30/15'], [600, 1125, null, 0, 'Recovery spin']], 1], [600, 130, null, 0, 'Rest']], 1], [600, 1250, 999, 0, 'Cool-down']] };
+const WKDEF0 = { id: 'wx', n: LONG_RIDE, s: [[3000, 100, 250, 0, 'Warm-up'], [3, [[13, [[600, 1250, null, 1, '30/15'], [600, 1125, null, 0, 'Recovery spin']], 1], [600, 130, null, 0, 'Rest']], 1], [600, 1250, 999, 0, 'Cool-down']] };
+const WKDEF = { ...WKDEF0, c: 'v' };
+/** 27.11.6: a ride list over the categories (the chooser scenes) */
+const RSET = [WKDEF, { id: 'w2', n: '30 / 15, 3 x 13', c: 'v', s: [[30, 370, null, 1, '30/15']] }, { id: 'z2', n: 'Endurance 60 min', c: 'e', s: [[3600, 160]] },
+  { id: 'ss', n: 'Sweet Spot 3 x 10', c: 't', s: [[3, [[600, 225, null, 1, 'SS'], [240, 120]], 1]] }, { id: 'sp', n: 'Anaerobic 8 x 30 s', c: 'a', s: [[8, [[30, 425, null, 1, 'Go'], [270, 110]], 1]] },
+  { id: 'rp', n: 'Ramp test (FTP)', c: 'f', s: [[1200, 100, 400, 1, 'Ramp']] }];
 function wkRide(o = {}) {
   const F = ride(o), W = F.wk = newWk(WKDEF); W.ha = o.ha ?? 25; W.ea = o.ea ?? 0;
   const t = o.last ? W.tot - 300 : o.at ?? W.tot - 1200 + 1; wkAt(W, t); F.tr.t = t; F.tr.tgt = o.tgt || 1275; F.tr.pg = o.pg || 0;
@@ -84,6 +89,11 @@ const TS_FADE = (k, g) => g >= 1000 ? g - Math.floor(k / 120) : g; // the hard o
 const tsPage = (F, id) => { F.sel = Math.max(0, tsPagesOf(F).indexOf(id)); return { F }; };
 
 /** [id, label, () => { F, now?, sum?, ui? }] */
+/** 27.11.6: the list of F mid-drag: drawn at listPos = sel + x (the selection follows the finger: the row nearest the centre) */
+function drag(F, x, o = {}) { const n = F.scr === SCR.HOME ? 5 : 99; F.lpos = F.sel + x; F.sel = Math.max(0, Math.min(n - 1, Math.round(F.lpos))); F.lmode = 1; F.lscr = F.scr; return { F, ...o }; }
+/** 27.11.6 DESIGN ONLY: a trainer chooser list on the wheel (items, selection, its sub line, mid-drag x, title) */
+function design(items, sel, sub, x = 0, title = 'INDOOR TRAINER') { const F = trainer('ready'); F.scr = SCR.TPICK; F.sel = sel; if (x) { F.lpos = sel + x; F.sel = Math.round(F.lpos); F.lmode = 1; F.lscr = F.scr; }
+  return { F, ui: { design: { items, title, tshort: title === 'INDOOR TRAINER' ? 'TRAINER' : title, sub } } }; }
 export const SCENES = [
   ['home', 'Start menu (Strength on top), week points', () => ({ F: mk(), sum: SUM })],
   ['home-sel2', 'Start menu, Indoor trainer selected', () => { const F = mk({ last: 'run' }); F.sel = 2; return { F, sum: { pts: 245, delta: 12 } }; }],
@@ -114,7 +124,7 @@ export const SCENES = [
   ['saveq', 'Save as workout?', () => { const F = mk(); F.scr = SCR.SAVEQ; F.sel = 0; F.saveq = { it: [['incline', 10, 100, 102.5, 120], ['pull', 3, 12, 0, 90]], n: 'Incline bench press + Pull-ups +12', w: { id: 'w1', n: LONG_W }, rows: ['Update ' + LONG_W, 'Save as new', 'No'] }; return { F }; }],
   ['end', 'END WORKOUT?', () => { const F = onSet('incline', { kg: 102.5, reps: 100, logged: 188 }); F.scr = SCR.END; F.sel = 1; return { F }; }],
   ['end-conf', 'DISCARD?', () => { const F = onSet('incline', { kg: 102.5, reps: 100, logged: 188 }); F.scr = SCR.END; F.endConf = true; F.sel = 1; return { F }; }],
-  ['menu', 'Menu with version and touch line', () => { const F = onSet('incline', { kg: 102.5, reps: 100, logged: 3, plan: true }); go(F, ['menu']); F.sel = 1; return { F, ui: { touch: 'touch 1234: drag wheel 259,259' } }; }],
+  ['menu', 'Menu with version', () => { const F = onSet('incline', { kg: 102.5, reps: 100, logged: 3, plan: true }); go(F, ['menu']); F.sel = 1; return { F }; }],
   ['pair', 'Pair, wrong code', () => { const F = mk({ paired: false }); F.pair = { d: [8, 8, 8, 8, 8, 8], i: 5, st: 'fail' }; return { F }; }],
   ['ready-search', 'Run ready, GPS search, long route', () => { const F = mk({ last: 'run' }); go(F, ['start']); setRoutes(F, ROUTES); F.routeId = 'r1'; setRoute(F, routeOf()); F.gps = 0; F.hr = 188; return { F }; }],
   ['ready-weak', 'Ride ready, GPS weak', () => { const F = mk({ last: 'ride' }); go(F, ['start']); setRoutes(F, ROUTES); F.gps = 1; return { F }; }],
@@ -162,8 +172,32 @@ export const SCENES = [
   ['thr', 'Trainer: heart rate found', () => { const F = trainer('ready'); F.scr = SCR.THR; return { F }; }],
   ['thr-none', 'Trainer: no heart rate yet', () => { const F = trainer('ready'); F.hr = 0; F.scr = SCR.THR; return { F }; }],
   ['trec-nohr', 'Trainer ride: lost, no heart rate', () => { const F = ride(); F.link.st = 'lost'; F.hr = 0; return { F }; }],
-  ['tpick', 'Trainer: Free ride or a workout (long name)', () => { const F = trainer('ready'); F.rides = [WKDEF, { id: 'w2', n: '30 / 15, 3 x 13', s: [[30, 370, null, 1, '30/15']] }]; F.scr = SCR.TPICK; F.sel = 1; return { F }; }],
+  ['tpick', 'Trainer chooser: Free ride / Training (7 workouts with the built-in 30 / 15)', () => { const F = trainer('ready'); F.rides = RSET; F.scr = SCR.TPICK; F.tlev = 0; F.sel = 1; return { F }; }],
+  ['tpick-cat', 'Trainer chooser: the categories', () => { const F = trainer('ready'); F.rides = RSET; F.scr = SCR.TPICK; F.tlev = 1; F.sel = 2; return { F }; }],
+  ['tpick-cat-drag', 'Trainer chooser: the categories mid-drag', () => { const F = trainer('ready'); F.rides = RSET; F.scr = SCR.TPICK; F.tlev = 1; F.sel = 2; return drag(F, .45); }],
+  ['tpick-wk', 'Trainer chooser: VO2max workouts (long name), the length', () => { const F = trainer('ready'); F.rides = RSET; F.scr = SCR.TPICK; F.tlev = 2; F.tcat = 'v'; F.sel = 0; return { F }; }],
+  ['tpick-wk-other', 'Trainer chooser: Other (no category), one workout', () => { const F = trainer('ready'); F.rides = [...RSET, { id: 'o1', n: 'Old cached ride', s: [[1200, 150]] }]; F.scr = SCR.TPICK; F.tlev = 2; F.tcat = 'o'; F.sel = 0; return { F }; }],
   ['tpick-free', 'Trainer: Free ride, still connecting', () => { const F = trainer('conn'); F.scr = SCR.TPICK; F.sel = 0; return { F }; }],
+  /* ---- 27.11.6: the wheel, mid-drag (the list between two rows: listPos, Flow.lpos) and one scroll step as a filmstrip ---- */
+  ['home-drag', 'Start menu mid-drag (half a row on)', () => drag(mk(), .45, { sum: SUM })],
+  ['home-drag-up', 'Start menu mid-drag (half a row back)', () => { const F = mk(); F.sel = 2; return drag(F, -.45, { sum: SUM }); }],
+  ['pick-drag', 'Exercise list mid-drag (half a row on)', () => { const F = go(mk(), ['start', 'start']); F.sel = 1; return drag(F, .45); }],
+  ['pick-drag-up', 'Exercise list mid-drag (half a row back)', () => { const F = onSet('incline', { kg: 102.5, reps: 100, logged: 3, plan: true }); F.scr = SCR.PICK; F.sel = 2; return drag(F, -.45); }],
+  ['pick-over', 'Exercise list pulled past the top', () => { const F = go(mk(), ['start', 'start']); F.sel = 0; return drag(F, -.3); }],
+  ['tend-drag', 'Ride menu mid-drag (half a row on)', () => { const F = ride(); F.scr = SCR.TEND; F.sel = 1; return drag(F, .45); }],
+  ['tend-drag-up', 'Ride menu mid-drag (half a row back)', () => { const F = ride({ paused: true }); F.scr = SCR.TEND; F.sel = 3; return drag(F, -.45); }],
+  ['menu-drag', 'Menu mid-drag', () => { const F = onSet('incline', { kg: 102.5, reps: 100, logged: 3, plan: true }); go(F, ['menu']); F.sel = 1; return drag(F, .3); }],
+  ['tpick-drag', 'Trainer workouts mid-drag', () => { const F = trainer('ready'); F.rides = RSET; F.scr = SCR.TPICK; F.tlev = 2; F.tcat = 'v'; F.sel = 1; return drag(F, -.45); }],
+  ...[0, .2, .4, .6, .8].map((x, k) => ['film-pick-' + (k + 1), 'Filmstrip ' + (k + 1) + '/5: exercise list, one row on (' + x + ')', () => { const F = go(mk(), ['start', 'start']); F.sel = 1; return drag(F, x); }]),
+  ...[0, .2, .4, .6, .8].map((x, k) => ['film-tend-' + (k + 1), 'Filmstrip ' + (k + 1) + '/5: ride menu, one row on (' + x + ')', () => { const F = ride(); F.scr = SCR.TEND; F.sel = 1; return drag(F, x); }]),
+  ...[0, .2, .4, .6, .8].map((x, k) => ['film-home-' + (k + 1), 'Filmstrip ' + (k + 1) + '/5: start menu, one row on (' + x + ')', () => drag(mk(), 1 + x, { sum: SUM })]),
+  /* ---- 27.11.6 DESIGN ONLY (no flow yet): the indoor trainer's chooser after the trainer and the heart rate are connected ---- */
+  ['design-tchoose', 'DESIGN: chooser Free ride / Training / Routes', () => design(['Free ride', 'Training', 'Routes'], 1, 'Workouts by type|By type')],
+  ['design-tchoose-drag', 'DESIGN: chooser mid-drag', () => design(['Free ride', 'Training', 'Routes'], 0, 'One target, + / - change it|One target', .45)],
+  ['design-tcat', 'DESIGN: Training categories', () => design(['Endurance', 'Threshold', 'VO2max', 'Anaerobic', 'FTP test'], 2, '4 workouts', 0, 'TRAINING')],
+  ['design-tcat-drag', 'DESIGN: Training categories mid-drag', () => design(['Endurance', 'Threshold', 'VO2max', 'Anaerobic', 'FTP test'], 2, '4 workouts', -.45, 'TRAINING')],
+  ['design-twk', 'DESIGN: a category\'s workouts (name + duration)', () => design(['VO2max 5 x 5', 'VO2max 30 / 15, 3 x 13', 'VO2max 4 x 4 min', 'Over-unders 3 x 9'], 1, '58 min, 5 x 5 min at 120 %|58 min', 0, 'VO2MAX')],
+  ['design-twk-drag', 'DESIGN: a category\'s workouts mid-drag', () => design(['VO2max 5 x 5', 'VO2max 30 / 15, 3 x 13', 'VO2max 4 x 4 min', 'Over-unders 3 x 9'], 1, '58 min|58 min', .45, 'VO2MAX')],
   ['tscan-chosen', 'Trainer: connected, a workout chosen', () => { const F = trainer('ready'); F.rides = [WKDEF]; F.tw = 1; return { F }; }],
   ['tscan-conn-chosen', 'Trainer: connecting, a workout chosen', () => { const F = trainer('conn'); F.rides = [WKDEF]; F.tw = 1; return { F }; }],
   ['trec-wk-hard', 'Workout: 13/13, SET 3, 1275 W, +25 W, next 1125 W', () => ({ F: wkRide() })],
