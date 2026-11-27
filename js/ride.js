@@ -10,7 +10,7 @@ import { bestClimb, distAtTime } from './climbghost.js';
 import { stravaButton } from './stravaup.js';
 import { padButtons, activePad } from './controller.js';
 import { pickInDir } from './padnav.js';
-import { pauseHTML, openDevices, openDisplay, openGroup, openEnd } from './ridemenus.js';
+import { pauseHTML, openDevices, openDisplay, openEnd, wireGroupRow } from './ridemenus.js';
 import { openSetup } from './ridesetup.js';
 import { click } from './zwiftclick.js';
 import { routeFns } from './tcx.js';
@@ -28,7 +28,6 @@ import { hrpForRide } from './hrpower.js';
 import { hardWindow, wizardGate, challengeGate, summonGap, wzOf, friendCalls, friendsLine } from './ivgate.js';
 import { planEagleAny, eagleGate, moveEagle, othersBusy } from './eaglegate.js';
 import { Music, Coach } from './music.js';
-import { MIC_SVG, SPK_SVG, voiceStatus } from './voice.js';
 import { hudPrefs, applyHud, hudControlsHTML, wireHudControls, HUD_ORDER, HUD_PRESETS } from './hudprefs.js';
 import { DRAFT_KEY, DRAFT_EVERY, draftOn, draftOf, restoreDraft } from './ridedraft.js';
 import { rememberedDevice } from './rejoin.js';
@@ -221,7 +220,7 @@ export class RideSession {
     this.music = new Music(this.group ? 'race' : this.workout ? 'workout' : 'world', st.musicVol ?? 0.45);
     this.coach = new Coach(st.coachVol ?? 0.9);
     this.el.querySelector('#hMusic')?.addEventListener('click', () => this._toggleMusic());
-    if (this.group) { this._wireVoice(); this._wireGroupChip(); }
+    if (this.group) this._wireGroupChip();
     this._initChallenges();
     this._initWizard();
     this._initEagle();
@@ -455,7 +454,7 @@ export class RideSession {
     requestAnimationFrame(this._tick);
   }
 
-  _pollPad() { // any Bluetooth gamepad (e.g. 8BitDo Micro on the bars) drives the whole ride; mapping in PAD_MAP (controller.js shows it)
+  _pollPad() { // any Bluetooth gamepad (e.g. 8BitDo Micro on the bars) drives the whole ride; mapping in PAD_RIDE (js/controller.js, shown in Settings → Controller)
     const pad = activePad(); if (!pad) return; // a real pad or the phone remote (js/remotepad.js)
     if (document.querySelector('.rideset')) { this.padPrev = padButtons(pad); return; } // the settings sheet over the ride: js/padnav.js drives it
     const b = padButtons(pad), was = this.padPrev || [];
@@ -1084,8 +1083,7 @@ export class RideSession {
     if (this.group) {
       this.group.update({ look, d: this.d, v: this.v, w: this.power, hr: this.hr, riding: !this.paused, done: this.finished, el: Math.round(this.elapsed) });
       const os = this.group.others();
-      const vc = this.group.voice?.on ? this.group.voice : null;
-      for (const r of os) list.push({ id: r.id, name: r.name, d: r.d, v: r.riding ? r.v : 0, look: r.look, speaking: !!vc?.isSpeaking(r.pid) });
+      for (const r of os) list.push({ id: r.id, name: r.name, d: r.d, v: r.riding ? r.v : 0, look: r.look });
       { let k = 0, who = null; // the slipstream (Freddy 12.11.: not glued, stronger or weaker): up to 30 % less drag 1-3 m behind, fading smoothly to 0 at 15 m.
         // It stays while you are alongside (until 1.5 m ahead), so with the same watts you roll past and then give HIM the slipstream (like a real paceline) instead of getting stuck at his wheel.
         for (const r of os) { const gap = r.d - this.d; if (!r.riding || r.done || gap < -1.5 || gap > 15) continue;
@@ -1104,37 +1102,13 @@ export class RideSession {
       const gl = this.q?.('#hGroup .glist');
       if (gl) gl.innerHTML = os.length ? os.sort((a, b) => b.d - a.d).slice(0, 5).map(r => {
         const gap = r.d - this.d, txt = r.done ? 'finished' : (gap >= 0 ? '+' : '−') + (Math.abs(gap) >= 1000 ? fmtKm(Math.abs(gap)) + ' km' : Math.round(Math.abs(gap)) + ' m');
-        return `<div class="grow ${gap >= 0 ? 'behind' : 'ahead'}${vc?.isSpeaking(r.pid) ? ' speaking' : ''}" data-rid="${esc(r.id)}" title="Click: jump to ${esc(r.name)} (does not count as distance)"><span>${vc?.isSpeaking(r.pid) ? `<i class="spk">${SPK_SVG}</i>` : ''}${esc(r.name)}</span><b class="num">${txt}</b><i class="num">${r.w} W · <span class="ghr">${r.hr > 0 ? r.hr : '–'}</span> bpm</i></div>`; // heart rate next to the watts, – without a strap
+        return `<div class="grow ${gap >= 0 ? 'behind' : 'ahead'}" data-rid="${esc(r.id)}" title="Click: jump to ${esc(r.name)} (does not count as distance)"><span>${esc(r.name)}</span><b class="num">${txt}</b><i class="num">${r.w} W · <span class="ghr">${r.hr > 0 ? r.hr : '–'}</span> bpm</i></div>`; // heart rate next to the watts, – without a strap
       }).join('') : '<div class="grow"><span>Nobody here yet</span></div>';
     }
     if (list.length || this._hadRiders) { this.player?.setRiders?.(list); this._hadRiders = list.length > 0; }
     this._mapRiders = list.filter(r => !r.self);
     // the Unreal view draws the same friends and ghost (lanes: same order as js/world/riders.js SLOTS (lane + row 2.5 m back), by first appearance)
     this._ueRiders = list.filter(r => !r.self).map(r => ({ id: r.id, name: r.name || '', d: Math.round(r.d * 10) / 10, v: Math.round((r.v || 0) * 10) / 10, ghost: !!r.ghost }));
-  }
-
-  /** voice chat chip: off -> click turns it on (the browser asks once for the mic); on -> click mutes
-   *  (open mic) or hold to talk (push-to-talk), same as key T. Off again: pause menu or group window. */
-  _wireVoice() {
-    const vb = this.q('#hVoice');
-    const v = () => (this.group.voice?.on ? this.group.voice : null);
-    /** voice on, then mute / unmute: the pause menu's Options (the chip left the top bar, owner 18.11.) */
-    this._voiceTap = async () => {
-      const x = v();
-      if (!x) { const n = await import('./share.js').then(m => m.voiceToggle(this.group)); if (n) this._flash(n.hasMic ? (n.ptt ? 'Voice chat on · hold T to talk' : 'Voice chat on · T = mute') : 'Voice chat on · listening only'); }
-      else if (!x.ptt && x.hasMic) { x.toggleMute(); this._flash(x.muted ? 'Mic muted' : 'Mic on'); }
-    };
-    if (!vb) return;
-    vb.addEventListener('click', this._voiceTap);
-    const hold = on => e => { const x = v(); if (x?.ptt) { e.preventDefault(); x.talk(on); } };
-    vb.addEventListener('pointerdown', hold(true)); for (const ev of ['pointerup', 'pointerleave', 'pointercancel']) vb.addEventListener(ev, hold(false));
-    this._voiceUI = () => {
-      const x = v();
-      vb.classList.toggle('on', !!x); vb.classList.toggle('muted', !!x && !x.live && !x.ptt); vb.classList.toggle('speaking', !!x?.speaking);
-      vb.querySelector('.label').textContent = !x ? 'Voice' : !x.hasMic ? 'Listening' : x.ptt ? (x.talking ? 'Talking' : 'Hold T') : x.muted ? 'Muted (T)' : 'Mic on';
-      vb.title = x ? voiceStatus(x) : 'Voice chat on: you hear each other';
-    };
-    window.addEventListener('rf-voicechange', this._voiceUI); this._voiceUI();
   }
 
   /** ghost challenge on the climbs: your own best effort on this climb rides with you (never in group rides or with a full-ride ghost) */
@@ -1249,8 +1223,9 @@ export class RideSession {
     f.textContent = text; f.classList.add('on'); clearTimeout(this._flashT); this._flashT = setTimeout(() => f.classList.remove('on'), ms);
   }
 
-  /** the pause menu (owner 27.11.: one clear list, each thing in ONE place, js/ridemenus.js): Resume · Workout & mode ·
-   *  Devices · Display & sound · Ride together · Settings · End ride. focusId: the entry to stand on (the one a sheet came from). */
+  /** the pause menu (owner 27.11.: one clear list, each thing in ONE place, js/ridemenus.js): Workout & mode · Devices ·
+   *  Display & sound · the Ride together row · Settings, End ride bottom left, Resume bottom right. focusId: the entry to
+   *  stand on (the one a sheet came from); the pad starts on Resume. */
   _pause(focusId = 'pResume') {
     if (this.finished) return;
     this.paused = true; this.player.pause(); this.music?.pause(); this._saveDraft();
@@ -1264,10 +1239,10 @@ export class RideSession {
     this.el.append(o);
     const sub = (id, fn) => o.querySelector('#' + id)?.addEventListener('click', () => { this._backs = [() => this._pause(id)]; fn(); });
     o.querySelector('#pResume').onclick = () => this._resume();
-    sub('pSetup', () => this._setup()); sub('pDev', () => this._devices()); sub('pOpts', () => this._options());
-    sub('pGroup', () => this._openGroup()); sub('pEnd', () => openEnd(this));
+    sub('pSetup', () => this._setup()); sub('pDev', () => this._devices()); sub('pOpts', () => this._options()); sub('pEnd', () => openEnd(this));
     o.querySelector('#pSet').onclick = () => this._settings();
-    this._repaint = () => this._pause(document.activeElement?.closest?.('.pmlist') ? document.activeElement.id : 'pResume');
+    wireGroupRow(this, o);
+    this._repaint = () => this._pause(document.activeElement?.closest?.('#pauseOverlay') ? document.activeElement.id || 'pResume' : 'pResume');
     const bs = [...o.querySelectorAll('.padmenu button')]; this._padFocus(Math.max(0, bs.findIndex(x => x.id === focusId)));
   }
   /** one level back (pad B, Esc, "‹ Back"): the sheet before, the pause list, or riding on */
@@ -1277,11 +1252,12 @@ export class RideSession {
   }
   /** Freddy 20.11.: everything the main menu can do also in the ride: the Settings page over the paused ride (without the
    *  device rows and the shifting switch, which have their own place here: Devices, Workout & mode) */
-  _settings() {
-    import('./app.js').then(m => m.openRideSettings(() => this._settingsBack())).catch(e => this._flash('Settings did not open: ' + (e?.message || e)));
+  _settings(tab, back) {
+    import('./app.js').then(m => m.openRideSettings(how => this._settingsBack(how, back), tab)).catch(e => this._flash('Settings did not open: ' + (e?.message || e)));
   }
-  /** back from the settings sheet: the ride takes what changed (camera, field of view, bars, display, trainer, pause menu) */
-  _settingsBack() {
+  /** back from the settings sheet: the ride takes what changed (camera, field of view, bars, display, trainer, pause menu);
+   *  how = 'ride' (its "Ride on ▸"): riding on at once; back: the sheet that opened Settings (Devices → Button layout) */
+  _settingsBack(how, back) {
     if (this._closed) return;
     const s = this.state.settings, P = this.player;
     P?.setFov?.(fovOf(s)); P?.setView?.(s.view3d || 0); P?.setCockpit?.(s.cockpit !== false);
@@ -1289,7 +1265,9 @@ export class RideSession {
     if (s.ftp && s.ftp !== this.ftp) { this.ftp = s.ftp; if (this.workout) { this._wT = 0; this._workout(0); } } // a new FTP: the workout's watts follow at once
     this._trainerUp();
     const pad = activePad(); this.padPrev = pad ? padButtons(pad) : null; // the B that closed the sheet must not also resume the ride
-    if (this.paused && !this.finished) this._pause('pSet');
+    if (!this.paused || this.finished) return;
+    if (how === 'ride') { this.q('#pauseOverlay')?.remove(); return this._resume(); }
+    if (back) back(); else this._pause('pSet');
   }
   /** a trainer connected in the ride (Devices, HUD): its physics, and ERG gets its target at once */
   _trainerUp() {
@@ -1328,9 +1306,13 @@ export class RideSession {
    *  ← ↑ step back, → ↓ step on, so every button stays reachable. The pause list reads as a list: ↓ / ↑ = next / previous */
   _padMove(dir) {
     const bs = [...(this.q('#pauseOverlay')?.querySelectorAll('.padmenu button') || [])]; if (!bs.length) return;
-    const rc = bs.map(b => { const r = b.getBoundingClientRect(); return { left: r.left, top: r.top, right: r.right, bottom: r.bottom }; });
+    // a button scrolled out of its sheet's body (hidden above it or under the foot) is no target for a direction: the steps in
+    // order reach it, and it scrolls into view then
+    const rc = bs.map(b => { const r = b.getBoundingClientRect(), sc = b.closest('.rs, .pmlist')?.getBoundingClientRect();
+      return { left: r.left, top: r.top, right: r.right, bottom: r.bottom, out: !!sc && (r.bottom <= sc.top + 4 || r.top >= sc.bottom - 4) }; });
     const i = this._padI || 0, list = !!this.q('#pauseOverlay .pmlist') && (dir === 'up' || dir === 'down');
-    const n = list ? -1 : pickInDir(rc[i], rc, dir);
+    const vis = rc.filter((r, k) => k === i || !r.out), k = list ? -1 : pickInDir(rc[i], vis, dir, 0); // ← → only within the row (a small (i) next to a label must not jump to the row above)
+    const n = k >= 0 ? rc.indexOf(vis[k]) : -1;
     this._padFocus(n >= 0 ? n : i + (dir === 'up' || dir === 'left' ? -1 : 1));
   }
   _padFocus(i) { // highlight one menu button for controller navigation
@@ -1346,10 +1328,8 @@ export class RideSession {
   }
   _resume() { if (this._atGoal) return this._again(); this.music?.resume(); this.paused = false; this._backs = []; this._menu = null; this._repaint = null; this.q('#pauseOverlay')?.remove(); this.last = performance.now(); }
 
-  /** Ride together (Freddy 15.11., owner 27.11.: one entry): this solo ride becomes a group ride, friends join with the code and
-   *  start next to you; with a group: the riders to jump to, voice chat, the code, invite (js/ridemenus.js) */
-  _openGroup() { if (this.finished || this._atGoal || this.autopilot) return; if (!this.paused) this._pause(); return openGroup(this); }
-  /** the solo ride becomes a group ride (hostFromRide), the ride itself goes on: from the pause menu and, without pausing,
+  /** the solo ride becomes a group ride (hostFromRide; Freddy 15.11.: friends join with the code and start next to you), the
+   *  ride itself goes on: from the pause menu's Ride together row and, without pausing,
    *  in the background when a friend taps Join in "Riding now" (js/live.js). Two requests at once open one group. */
   _hostGroup() {
     if (this.group?.open) return Promise.resolve(this.group);
@@ -1359,7 +1339,7 @@ export class RideSession {
       this.group = g; this.laps = Math.max(this.laps, this.lap); // from now on a group ride: everyone rides the same d (no more planned extra laps)
       const right = this.q('.hud-right'), gear = this.q('#hGearChip');
       if (right && !this.q('#hGroup')) { gear.insertAdjacentHTML('beforebegin', `<div class="chip glass groupchip" id="hGroup"><div class="label">Group <button class="gcode" id="hGCode" title="Code for friends: click to copy the invite link">${esc(g.code)}</button></div><div class="glist">waiting …</div></div>`);
-        this._wireVoice(); this._wireGroupChip(); }
+        this._wireGroupChip(); }
       this.presence?.beat(); // the code goes to "Riding now" right away
       return g;
     })().finally(() => { this._hosting = null; });
@@ -1387,7 +1367,7 @@ export class RideSession {
     return new Promise(done => {
       const c = document.createElement('div'); c.className = 'joinask glass'; c.id = 'hJoinAsk';
       c.innerHTML = `<div class="label">Riding now</div><div class="jqt"><b>${esc(name)}</b> wants to join you</div>
-        <div class="jqbtns"><button class="btn small" id="jqYes">Accept</button><button class="btn ghost small" id="jqNo">Not now</button></div><div class="jqpad">🎮 A accept · B not now</div>`;
+        <div class="jqbtns"><button class="btn small" id="jqYes">Accept</button><button class="btn ghost small" id="jqNo">Not now</button></div>`;
       this.el.append(c);
       const answer = ok => { if (!this._ask) return; this._ask = null; clearTimeout(t); c.classList.add('out'); setTimeout(() => c.remove(), 250); done(ok); };
       const t = setTimeout(() => answer(false), 40e3); // the friend gives up after 45 s anyway
@@ -1418,13 +1398,13 @@ export class RideSession {
     const sp = this.player?.events?.surprises; sp?._salvo?.(this.track.length + 40, 12);
     this.q('#pauseOverlay')?.remove();
     const o = document.createElement('div'); o.className = 'paused goalask'; o.id = 'pauseOverlay';
-    o.innerHTML = `<div class="box"><div class="label">${fmtKm(this._ridden())} km · ${fmtTime(this.elapsed)}${this.laps > 1 ? ` · ${this.lap} laps` : ''}</div><h2 class="display">Finished!</h2>
-      <div class="row-actions padmenu"><button class="btn" id="gOn">Keep riding · route from the start</button><button class="btn ghost" id="gEnd">Finish &amp; save</button></div>
-      <div class="hint pad-hint" style="margin-top:12px;opacity:.7">🎮 D-pad to choose · A ok</div></div>`;
+    // the same frame as every window of the ride: the title once, the primary action bottom right (B rides another lap)
+    o.innerHTML = `<div class="box rsbox rmsmall"><div class="padmenu rmhead"><h2 class="display">Finished!</h2><span class="rmstat">${fmtKm(this._ridden())} km · ${fmtTime(this.elapsed)}${this.laps > 1 ? ` · ${this.lap} laps` : ''}</span></div>
+      <div class="padmenu rmfoot"><div class="rmfl"><button type="button" class="btn ghost" id="gOn">Another lap</button></div><button type="button" class="btn" id="gEnd">Finish &amp; save</button></div></div>`;
     this.el.append(o);
     o.querySelector('#gOn').onclick = () => this._again();
     o.querySelector('#gEnd').onclick = () => { this._atGoal = false; this.q('#pauseOverlay')?.remove(); this.paused = false; this._finish(); };
-    this._padFocus(0);
+    this._padFocus(1);
   }
   _again() {
     this._atGoal = false; this.q('#pauseOverlay')?.remove(); this.laps = this.lap + 1;
@@ -1668,8 +1648,6 @@ export class RideSession {
   _close(saved) {
     this._dropDraft(); this._closed = true; this.pose?.stop(); this._clickOff?.(); this.presence?.stop(); this._ask?.answer(false);
     this.running = false; this.ue?.close(); this.state.trainer.setPower?.(null); this.music?.destroy();
-    if (this.group?.voice) { this.group.voice.stop(); this.group.voice = null; } // ride over: microphone off, indicator off
-    if (this._voiceUI) window.removeEventListener('rf-voicechange', this._voiceUI);
     document.removeEventListener('keydown', this._key); document.removeEventListener('rf-remote', this._remote);
     this.player.destroy?.();
     this.wake?.release?.();

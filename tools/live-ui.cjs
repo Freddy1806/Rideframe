@@ -28,7 +28,7 @@ const FAKE_PEER = `(() => {
       setTimeout(async () => { const r = await window.__peerOut({ t: 'open', id: this.id }); r === 'taken' ? this.emit('error', { type: 'unavailable-id' }) : this.emit('open', this.id); }, 20); }
     connect(to) { const cid = Math.random().toString(36).slice(2, 10), c = new Conn(this, cid, to); this.conns[cid] = c;
       window.__peerOut({ t: 'connect', from: this.id, to, cid }).then(r => { if (r !== 'ok') this.emit('error', { type: 'peer-unavailable' }); }); return c; }
-    reconnect() {} call() { throw new Error('no voice in the test'); }
+    reconnect() {} call() { throw new Error('no calls in the test'); }
     destroy() { Object.values(this.conns).forEach(c => c.close()); window.__peerOut({ t: 'gone', id: this.id }); } };
   window.__peerIn = m => { const p = peers.find(x => x.id === m.to); if (!p) return;
     if (m.t === 'conn') { const c = new Conn(p, m.cid, m.from); p.conns[m.cid] = c; c.open = true; p.emit('connection', c); }
@@ -182,7 +182,7 @@ async function peerOut({ page }, m) {
     await cardA2.locator('.lvjoin').click(); await LC.waitForSelector('#liveAsk');
     await RA.evaluate(() => window.__ride.presence.beat()); // the test does not wait for the 20 s beat this time
     await RA.waitForSelector('#hJoinAsk', { timeout: 15000 });
-    ok(/Anna wants to join you/.test(await RA.textContent('#hJoinAsk')) && /A accept · B not now/.test(await RA.textContent('#hJoinAsk')), 'A: "Anna wants to join you" with Accept / Not now (pad A / B)');
+    ok(/Anna wants to join you/.test(await RA.textContent('#hJoinAsk')) && await vis(RA, '#jqYes') && await vis(RA, '#jqNo') && !/A accept/.test(await RA.textContent('#hJoinAsk')), 'A: "Anna wants to join you" with Accept / Not now, no pad hint line (pad A / B still answer it)');
     await shot(RA, 'ride_accept_prompt_1280.png');
     await RA.click('#jqNo');
     await LC.waitForSelector('#laMsg', { timeout: 15000 });
@@ -201,16 +201,18 @@ async function peerOut({ page }, m) {
     await api('DELETE', '/api/live', C.token); await ctxC.close(); // Anna's laptop is closed, her phone stays open
     await RA.waitForFunction(() => !window.__ride.group.others().some(r => r.name === 'Anna'), null, { timeout: 30000 });
 
-    // ---- invite from the pause menu: Dora (library open) and Anna (phone) see "Max Rider invites you to ride" ----
+    // ---- the pause list: Ride together is one row with the group's code and "Copy invite link" (owner 27.11. evening: no
+    // invite list any more); an invite sent through the API still reaches Dora (library open) and Anna (phone) ----
     const ctxD = await ctxFor(D), LD = await open(ctxD, '/?desktop&noprofile&demo', 'D');
     await LD.waitForSelector('#live.on'); await RA.waitForTimeout(500);
-    await RA.click('#hPause'); await RA.click('#pGroup'); await RA.click('#pInvite'); await RA.waitForSelector('.invlist [data-fi]');
-    const invTxt = await RA.textContent('.invlist');
-    ok(await RA.locator('.invlist [data-fi]', { hasText: 'Dora' }).count() === 1 && await RA.locator('.invlist [data-fi]', { hasText: 'Freddy' }).count() === 0, 'pause menu: online friends to invite (not the ones already in the group): ' + invTxt.replace(/\s+/g, ' '));
-    await shot(RA, 'ride_invite_menu_1280.png');
-    for (const n of ['Dora', 'Anna']) { await RA.locator('.invlist [data-fi]', { hasText: n }).click(); await RA.waitForFunction(n => [...document.querySelectorAll('.invlist [data-fi]')].some(b => b.textContent.includes(n + ' invited')), n, { timeout: 10000 }); }
-    ok(true, 'Dora and Anna invited');
-    await RA.click('#oBack');
+    await RA.click('#hPause'); await RA.waitForSelector('#pGroupRow');
+    { const row = (await RA.textContent('#pGroupRow')).replace(/\s+/g, ' ').trim();
+      ok(row.includes(code) && /Copy invite link/.test(row) && !(await RA.locator('#pauseOverlay #pInvite, #pauseOverlay .invlist').count()), `pause: the Ride together row shows the code and Copy invite link, no invite list (${row})`); }
+    await shot(RA, 'ride_pause_group_1280.png');
+    await RA.click('#pResume');
+    const sent = await RA.evaluate(async () => { const live = await import('/js/live.js'), F = await live.friendsNow(), out = [];
+      for (const f of (F?.friends || []).filter(f => ['Dora', 'Anna'].some(n => f.name.includes(n)))) { await live.inviteFriend(f.key); out.push(f.name); } return out; });
+    ok(sent.length === 2, 'Dora and Anna invited through the API: ' + sent.join(', '));
     await LD.waitForSelector('.lvinvite', { timeout: 40000 });
     ok(/Max Rider invites you to ride/.test(await LD.textContent('.lvinvite')), 'Dora: "Max Rider invites you to ride · Join"');
     await LD.waitForTimeout(500); await shot(LD, 'library_invite_1280.png');

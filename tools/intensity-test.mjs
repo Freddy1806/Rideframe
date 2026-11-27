@@ -150,7 +150,7 @@ test('group wire: nothing about a workout, ERG target, offset, intensity or paus
   const g = Object.assign(Object.create(Group.prototype), { me: { id: 'me' }, riders: new Map(), host: false, lastD: new Map(), onChange() {} });
   g._recv({ t: 'state', r: { id: 'friend', name: 'F', d: 100, v: 8, w: 250, riding: true, erg: 400, target: 400, wAdj: 150, sAdj: 50, intensity: 150, workout: 'x', paused: true, setPower: 999, grade: 20 } }, {});
   const r = g.riders.get('friend');
-  assert.deepEqual(Object.keys(r).sort(), ['cr', 'd', 'done', 'hr', 'id', 'look', 'name', 'pid', 'riding', 'seen', 'sg', 'v', 'vo', 'w'].sort());
+  assert.deepEqual(Object.keys(r).sort(), ['cr', 'd', 'done', 'hr', 'id', 'look', 'name', 'riding', 'seen', 'sg', 'v', 'w'].sort());
   for (const t of ['erg', 'power', 'workout', 'pause', 'target', 'cmd']) { const before = JSON.stringify([...g.riders]); g._recv({ t, r: { id: 'friend' }, watts: 999 }, {}); assert.equal(JSON.stringify([...g.riders]), before, `message "${t}" is ignored`); }
   assert.equal(g._recv({ t: 'state', r: { id: 'me', d: 5 } }, {}), undefined); assert.equal(g.me.d, undefined, 'our own state is never set from the wire');
 });

@@ -16,7 +16,7 @@ import { dashboardHTML, wireDashboard } from './dashboard.js';
 import { gameVersion } from './uebridge.js';
 import { fovOf, FOV_MIN, FOV_MAX } from './fov.js';
 import { fmtTime, fmtKm, fmtNum, esc, bestAvg } from './util.js';
-import { openControllerTest } from './controller.js';
+import { openControllerTest, PAD_RIDE, PAD_MENU, KEYS_RIDE, KEYS_MENU } from './controller.js';
 import { initRemote, openRemote, miniRemote } from './remotepad.js';
 import { click } from './zwiftclick.js';
 import { stravaButton } from './stravaup.js';
@@ -604,29 +604,64 @@ function intervalPlan(t) {
 
 // ---------------- settings ----------------
 let setRoot = null; // the settings rendered somewhere else than the page: the in-ride settings sheet (openRideSettings)
-const trState = () => { const t = state.trainer; return t.connected ? `✓ ${esc(t.device?.name || 'Trainer')} connected${t.mode === 'pm' ? ' · power meter only' : ''}` : 'Not connected. Bluetooth (Chrome or Edge).'; };
+let setTab = 'general'; // General · Controller (owner 27.11. evening: the button layout in ONE place, its own tab, like in Minecraft)
+const trState = () => { const t = state.trainer; return t.connected ? `✓ ${esc(t.device?.name || 'Trainer')} connected${t.mode === 'pm' ? ' · power meter only' : ''}` : 'Not connected · Chrome or Edge'; };
 /** Freddy 20.11. ("alles, was ich im Hauptmenü machen kann, auch während ich spiele"): the whole Settings page as a sheet over
- *  the ride, the same panels and switches. onClose: the ride takes the changes (view, FOV, bars, display, trainer). */
-export function openRideSettings(onClose) {
+ *  the ride, the same panels and switches, in the frame of the ride's windows ("‹ Back" top left, the title once, "Ride on ▸"
+ *  bottom right). onClose(how): the ride takes the changes (view, FOV, bars, display, trainer); how = 'ride' rides on at once.
+ *  tab: 'ctrl' opens the Controller tab (Devices → Button layout). */
+export function openRideSettings(onClose, tab = 'general') {
   if (document.querySelector('.rideset')) return;
   if (state.view === 'settings') main.innerHTML = ''; // the ids must be unique: the page behind would answer first
+  setTab = tab;
   const m = document.createElement('div'); m.className = 'modal rideset';
-  m.innerHTML = `<div class="box rsetbox"><div class="rsethead"><div><div class="label">Pause · Settings</div><h2 class="display">Settings</h2></div><button class="btn" id="rsetBack" type="button">Back</button></div><div class="rsetbody view"></div></div>`;
+  m.innerHTML = `<div class="box rsetbox"><div class="rsethead"><button class="btn ghost rmback" id="rsetBack" type="button">‹ Back</button><h2 class="display">Settings</h2></div><div class="rsetbody view"></div>
+    <div class="rsetfoot"><button class="btn rsgo" id="rsetGo" type="button">Ride on ▸</button></div></div>`;
   document.body.append(m); setRoot = m.querySelector('.rsetbody'); settings();
-  const close = () => { setRoot = null; m.remove(); document.removeEventListener('keydown', esc_, true); if (state.view === 'settings') settings(); onClose?.(); };
+  const close = how => { setRoot = null; m.remove(); document.removeEventListener('keydown', esc_, true); if (state.view === 'settings') settings(); onClose?.(how); };
   const esc_ = e => { if (e.key === 'Escape' && !document.querySelector('.modal:not(.rideset)') && !(document.activeElement && /INPUT|SELECT|TEXTAREA/.test(document.activeElement.tagName))) { e.preventDefault(); e.stopImmediatePropagation(); close(); } };
   document.addEventListener('keydown', esc_, true);
-  m.querySelector('#rsetBack').onclick = close;
+  m.querySelector('#rsetBack').onclick = () => close();
+  m.querySelector('#rsetGo').onclick = () => close('ride');
   m.addEventListener('click', e => { if (e.target === m) close(); });
-  setTimeout(() => m.querySelector('#rsetBack')?.focus(), 30);
+  setTimeout(() => m.querySelector(tab === 'ctrl' ? '[data-stab="ctrl"]' : '#rsetGo')?.focus(), 30);
 }
+/** a sentence one may want but not always read, behind a small (i) (also the hover title). A span with role=button: inside a
+ *  <label class="field"> a real button would take the label's clicks away from its switch. */
+const plain = t => esc(String(t).replace(/<[^>]+>/g, ''));
+const inf = (id, text) => `<span role="button" tabindex="0" class="ibtn" aria-expanded="false" aria-controls="i_${id}" aria-label="More about this" title="${plain(text)}">i</span><div class="hint itext" id="i_${id}" hidden>${text}</div>`;
+function wireInf(root) {
+  if (root._inf) return; root._inf = true;
+  const flip = (e, b) => { e.preventDefault(); e.stopPropagation(); const on = b.getAttribute('aria-expanded') !== 'true', t = root.querySelector('#' + b.getAttribute('aria-controls'));
+    b.setAttribute('aria-expanded', String(on)); if (t) t.hidden = !on; };
+  root.addEventListener('click', e => { const b = e.target.closest?.('.ibtn'); if (b) flip(e, b); });
+  root.addEventListener('keydown', e => { const b = e.target.closest?.('.ibtn'); if (b && (e.key === 'Enter' || e.key === ' ')) flip(e, b); });
+}
+const keyTable = rows => `<table class="ctab">${rows.map(([k, v]) => `<tr><th scope="row">${esc(k)}</th><td>${esc(v)}</td></tr>`).join('')}</table>`;
+/** the Controller tab: the gamepad and the keyboard, in the ride and in the menus (js/controller.js), and the controller test */
+const controllerHTML = () => `<div class="settings ctrlset">
+      <div class="panel"><h3>Gamepad · riding</h3>${keyTable(PAD_RIDE)}</div>
+      <div class="panel"><h3>Gamepad · menus</h3>${keyTable(PAD_MENU)}
+        <div class="field"><div>Test controller<div class="hint">What each button sends · Swap A / B</div></div><button class="btn ghost small" id="ctBtn" type="button">Test</button></div></div>
+      <div class="panel"><h3>Keyboard · riding</h3>${keyTable(KEYS_RIDE)}</div>
+      <div class="panel"><h3>Keyboard · menus</h3>${keyTable(KEYS_MENU)}</div>
+    </div>`;
 /** connect the trainer from the ride's pause menu (same as the KICKR pill) */
 export { connectTrainer };
 function settings() {
   const s = state.settings, root = setRoot || main, inRide = !!setRoot; // in the ride (owner 27.11.): no device rows (Pause → Devices) and no shifting switch (Pause → Workout & mode)
+  const tabs = `<div class="settabs" role="tablist" aria-label="Settings">${[['general', 'General'], ['ctrl', 'Controller']].map(([k, n]) => `<button type="button" role="tab" class="settab${setTab === k ? ' on' : ''}" aria-selected="${setTab === k}" data-stab="${k}">${n}</button>`).join('')}</div>`;
+  const head = setRoot ? tabs : `<div class="view-head"><div><div class="label">Setup</div><h1 class="display" style="margin-top:14px">Settings</h1></div></div>${tabs}`;
+  wireInf(root);
+  const wireTabs = () => root.querySelectorAll('[data-stab]').forEach(b => b.onclick = () => { if (setTab === b.dataset.stab) return; setTab = b.dataset.stab; settings(); root.querySelector(`[data-stab="${setTab}"]`)?.focus(); });
+  if (setTab === 'ctrl') {
+    root.innerHTML = `<section class="view">${head}${controllerHTML()}</section>`;
+    wireTabs(); $('#ctBtn').onclick = openControllerTest;
+    return;
+  }
   root.innerHTML = `
   <section class="view">
-    ${setRoot ? '' : '<div class="view-head"><div><div class="label">Setup</div><h1 class="display" style="margin-top:14px">Settings</h1></div></div>'}
+    ${head}
     <div class="settings">
       ${setRoot ? `<div class="panel"><h3>Account &amp; more</h3>
         <div class="field"><div>Account<div class="hint">${account() ? 'Signed in as ' + esc(account().name) : 'Not signed in'}</div></div><button class="btn ghost small" id="rsAcc">${account() ? 'Account' : 'Sign in'}</button></div>
@@ -634,68 +669,62 @@ function settings() {
         <div class="field" id="rsWishRow" hidden><div>Wish list</div><button class="btn ghost small" id="rsWish">Wish list</button></div>
       </div>` : ''}
       <div class="panel"><h3>Rider</h3>
-        <label class="field"><div>Body weight<div class="hint">Important for realistic climbing speed.</div></div>${stepper('riderKg', s.riderKg, { step: 0.5, min: 30, max: 200, unit: 'kg' })}</label>
+        <label class="field"><div>Body weight</div>${stepper('riderKg', s.riderKg, { step: 0.5, min: 30, max: 200, unit: 'kg' })}</label>
         <label class="field"><div>Bike weight</div>${stepper('bikeKg', s.bikeKg, { step: 0.1, min: 4, max: 30, unit: 'kg' })}</label>
-        <label class="field"><div>FTP<div class="hint">Threshold power in watts. The interval target ranges come from it.</div></div>${stepper('ftp', s.ftp, { step: 5, min: 80, max: 600, unit: 'W', optional: true })}</label>
-        <label class="field"><div>Preferred cadence<div class="hint">The app tells you when to shift easier or harder.</div></div>${stepper('cadence', s.cadence, { step: 1, min: 50, max: 130, unit: 'rpm', optional: true })}</label>
+        <label class="field"><div>FTP</div>${stepper('ftp', s.ftp, { step: 5, min: 80, max: 600, unit: 'W', optional: true })}</label>
+        <label class="field"><div>Preferred cadence ${inf('cad', 'The app tells you when to shift easier or harder.')}</div>${stepper('cadence', s.cadence, { step: 1, min: 50, max: 130, unit: 'rpm', optional: true })}</label>
       </div>
       <div class="panel"><h3>${inRide ? 'Bike &amp; gears' : 'Shifting'}</h3>
         ${inRide ? '' : `<label class="field"><div>Mode<div class="hint" id="shiftHint">${shiftHint(s.shiftMode)}</div></div>
           ${seg('shiftMode', s.shiftMode, SHIFT_OPTS)}</label>`}
         <label class="field"><div>Chainrings</div><input type="text" id="chainrings" value="${esc(s.chainrings)}" style="width:110px"></label>
         <label class="field"><div>Cassette</div><select id="cassette" style="width:auto">${Object.keys(CASSETTES).map(k => `<option ${k === s.cassette ? 'selected' : ''}>${k}</option>`).join('')}</select></label>
-        <label class="field" id="realGearRow" ${s.shiftMode === 'virtual' ? '' : 'hidden'}><div>Gear on the bike (stays fixed)<div class="hint">Put the bike in this gear and shift only virtually: keys Q/E, gamepad LB/RB, later Di2 buttons.</div></div><input type="text" id="realGear" value="${esc(s.realGear)}" style="width:110px"></label>
-        <label class="field"><div>Wheel circumference<div class="hint">mm, 700×28c = 2136, 700×25c = 2105</div></div>${stepper('wheel', s.wheel, { step: 1, min: 1500, max: 2400, unit: 'mm' })}</label>
+        <label class="field" id="realGearRow" ${s.shiftMode === 'virtual' ? '' : 'hidden'}><div>Gear on the bike (stays fixed) ${inf('rg', 'Put the bike in this gear and shift only virtually.')}</div><input type="text" id="realGear" value="${esc(s.realGear)}" style="width:110px"></label>
+        <label class="field"><div>Wheel circumference<div class="hint">mm · 700×28c = 2136 · 700×25c = 2105</div></div>${stepper('wheel', s.wheel, { step: 1, min: 1500, max: 2400, unit: 'mm' })}</label>
         <div class="field"><div>Gears<div class="hint">${gearsFrom(s).map(g => g.f + '×' + g.r).join(' · ')}</div></div></div>
       </div>
       <div class="panel"><h3>Trainer</h3>
-        ${inRide ? '<div class="field"><div>Devices<div class="hint">Trainer, heart rate, controller and the phone remote are connected under Pause → Devices.</div></div></div>' : `<div class="field"><div>Smart trainer / power meter<div class="hint" id="trState">${trState()}</div></div><button class="btn ghost small" id="trBtn">${state.trainer.connected ? 'Disconnect' : 'Connect'}</button></div>`}
-        <label class="field"><div>Gradient realism <b id="diffV">${s.difficulty}%</b><div class="hint">100 % = real gradient. 50 % = climbs feel half as steep.</div></div><input type="range" id="difficulty" min="0" max="100" step="5" value="${s.difficulty}"></label>
-        <label class="field"><div>Descents <b id="downV">${s.downhill}%</b><div class="hint">How much the trainer eases off downhill.</div></div><input type="range" id="downhill" min="0" max="100" step="5" value="${s.downhill}"></label>
-        ${inRide ? '' : `        <div class="field"><div>Test controller<div class="hint">E.g. Di2 extra buttons (D-FLY), Zwift Click, gamepad. Shows what the buttons send. A gamepad also drives all menus: D-pad move · A select · B back · L / R tabs (keyboard: arrows, Enter, Escape).</div></div><button class="btn ghost small" id="ctBtn">Test</button></div>
-        <div class="field"><div>Phone remote<div class="hint">Your phone as a remote for this app: open remote.html on the phone and enter the code. Works like a gamepad, in the menus and in the ride (watts, pause, music, view).</div></div><button class="btn ghost small" id="rmBtn">Connect phone</button></div>
-        <div class="field"><div>Zwift Click<div class="hint">Its + / − buttons shift the virtual gears in the ride. Click v2: open it in the Zwift app once a day, or it drops after a minute.</div><div class="hint" id="zcState">${clickState()}</div></div><button class="btn ghost small" id="zcBtn">${click.device ? 'Disconnect' : 'Connect'}</button></div>
-        <div class="field"><div>Heart rate strap<div class="hint">Optional, via Bluetooth.</div></div><div style="display:flex;gap:8px"><button class="btn ghost small" id="hrAll" title="If the strap is missing in the normal search">All devices</button><button class="btn ghost small" id="hrBtn">${state.hr?.connected ? 'Connected' : 'Connect'}</button></div></div>`}
+        ${inRide ? '' : `<div class="field"><div>Smart trainer / power meter<div class="hint" id="trState">${trState()}</div></div><button class="btn ghost small" id="trBtn">${state.trainer.connected ? 'Disconnect' : 'Connect'}</button></div>`}
+        <label class="field"><div>Gradient realism <b id="diffV">${s.difficulty}%</b> ${inf('diff', '100 % = the real gradient, 50 % = climbs feel half as steep.')}</div><input type="range" id="difficulty" min="0" max="100" step="5" value="${s.difficulty}"></label>
+        <label class="field"><div>Descents <b id="downV">${s.downhill}%</b> ${inf('down', 'How much the trainer eases off downhill.')}</div><input type="range" id="downhill" min="0" max="100" step="5" value="${s.downhill}"></label>
+        ${inRide ? '' : `<div class="field"><div>Phone remote ${inf('rm', 'Your phone as a gamepad, in the menus and in the ride: open remote.html on the phone and enter the code.')}</div><button class="btn ghost small" id="rmBtn">Connect phone</button></div>
+        <div class="field"><div>Zwift Click ${inf('zc', 'Its + / − shift the virtual gears. Click v2: open it in the Zwift app once a day, or it drops after a minute.')}<div class="hint" id="zcState">${clickState()}</div></div><button class="btn ghost small" id="zcBtn">${click.device ? 'Disconnect' : 'Connect'}</button></div>
+        <div class="field"><div>Heart rate strap</div><div style="display:flex;gap:8px"><button class="btn ghost small" id="hrAll" title="If the strap is missing in the normal search">All devices</button><button class="btn ghost small" id="hrBtn">${state.hr?.connected ? 'Connected' : 'Connect'}</button></div></div>`}
       </div>
       <div class="panel" id="stravaPanel" hidden><h3>Strava</h3>
         <div class="field"><div>Strava account<div class="hint" id="stvHint">…</div></div><button class="btn ghost small" id="stvConn">Connect</button></div>
-        <label class="field"><div>Upload every ride automatically<div class="hint">Right after you finish and save a ride. The same switch as in the phone app on this device.</div></div><input type="checkbox" class="toggle" id="stvAuto" ${s.autoStrava ? 'checked' : ''}></label>
-        <div class="field"><div>Bring my Strava activities into RIDEFRAME<div class="hint" id="stvImpHint">Runs, outdoor rides and everything else you record elsewhere. They show up under Activities in the phone app.</div></div><div style="display:flex;gap:8px"><a class="btn ghost small" href="aktivitaeten.html" style="text-decoration:none">Activities</a><button class="btn ghost small" id="stvImp">Import now</button></div></div>
-        <label class="field"><div>Import new activities automatically<div class="hint">When RIDEFRAME opens and every 15 minutes on the server while you are signed in, also when no RIDEFRAME page is open. The same switch as in the phone app.</div></div><input type="checkbox" class="toggle" id="stvImpAuto" ${s.stravaImport !== false ? 'checked' : ''}></label>
+        <label class="field"><div>Upload every ride automatically</div><input type="checkbox" class="toggle" id="stvAuto" ${s.autoStrava ? 'checked' : ''}></label>
+        <div class="field"><div>Bring my Strava activities into RIDEFRAME<div class="hint" id="stvImpHint">They show up under Activities in the phone app.</div></div><div style="display:flex;gap:8px"><a class="btn ghost small" href="aktivitaeten.html" style="text-decoration:none">Activities</a><button class="btn ghost small" id="stvImp">Import now</button></div></div>
+        <label class="field"><div>Import new activities automatically ${inf('stvi', 'Also on the server every 15 minutes while you are signed in. The same switch as in the phone app.')}</div><input type="checkbox" class="toggle" id="stvImpAuto" ${s.stravaImport !== false ? 'checked' : ''}></label>
       </div>
       <div class="panel"><h3>Video &amp; data</h3>
         <label class="field"><div>Mute video sound</div><input type="checkbox" class="toggle" id="muteVideo" ${s.muteVideo ? 'checked' : ''}></label>
-        <label class="field"><div>Improve elevation data<div class="hint">On import, take elevation from a terrain model (Open-Meteo). GoPro altitude is inaccurate.</div></div><input type="checkbox" class="toggle" id="improveEle" ${s.improveEle ? 'checked' : ''}></label>
+        <label class="field"><div>Improve elevation data ${inf('ele', 'On import, the elevation comes from a terrain model (Open-Meteo): GoPro altitude is inaccurate.')}</div><input type="checkbox" class="toggle" id="improveEle" ${s.improveEle ? 'checked' : ''}></label>
         <div class="field"><div>Storage<div class="hint" id="usage">…</div></div></div>
       </div>
       <div class="panel"><h3>Your own music</h3>
-        <div class="field"><div>Music folder on this computer<div class="hint" id="ownMusicV">Your own songs instead of the game music. Subfolders decide when they play (folder names stay German): welt (world), regen (rain), intervall, training, flug (flight), hoelle (hell), fest (festival), hochzeit (wedding), kirchenfest (church fair), beerdigung (funeral). The songs stay on your computer.</div></div><div style="display:flex;gap:8px"><button class="btn ghost small" id="ownMusicBtn">Choose folder</button><button class="btn ghost small" id="ownMusicOff" hidden>Remove</button></div></div>
-      </div>
-      <div class="panel"><h3>Voice chat when riding together</h3>
-        <label class="field"><div>Push-to-Talk<div class="hint">Off = open mic, key T mutes. On = you are only heard while you hold T (or the “Mic” button).</div></div><input type="checkbox" class="toggle" id="voicePtt" ${s.voicePtt ? 'checked' : ''}></label>
-        <label class="field"><div>Volume of the others <b id="voiceVolV">${s.voiceVol ?? 100}%</b><div class="hint">How loud you hear your friends. The music gets quieter while someone speaks.</div></div><input type="range" id="voiceVol" min="0" max="100" step="5" value="${s.voiceVol ?? 100}"></label>
+        <div class="field"><div>Music folder on this computer ${inf('om', 'Your own songs instead of the game music; they stay on your computer. Subfolders decide when they play: welt (world), regen (rain), intervall, training, flug (flight), hoelle (hell), fest (festival), hochzeit (wedding), kirchenfest (church fair), beerdigung (funeral).')}<div class="hint" id="ownMusicV">Not set</div></div><div style="display:flex;gap:8px"><button class="btn ghost small" id="ownMusicBtn">Choose folder</button><button class="btn ghost small" id="ownMusicOff" hidden>Remove</button></div></div>
       </div>
       <div class="panel" id="livePanel"><h3>Friends &amp; riding now</h3>
-        <label class="field"><div>Show me as online<div class="hint">Friends with an account on this RIDEFRAME see a green dot while RIDEFRAME is open here, and in “Riding now” your route and kilometre while you ride (never your watts). Off = you always look offline, without “last seen”.</div></div><input type="checkbox" class="toggle" id="liveShow" ${s.liveShow !== false ? 'checked' : ''}></label>
-        <label class="field"><div>Friends can join me without asking<div class="hint">Their Join opens a group in your ride by itself and they start right next to you. Off = a short question in the ride first (Accept / Not now, controller A / B).</div></div><input type="checkbox" class="toggle" id="liveAuto" ${s.liveAuto !== false ? 'checked' : ''}></label>
+        <label class="field"><div>Show me as online ${inf('lvs', 'Friends see a green dot, and while you ride your route and kilometre under “Riding now” (never your watts). Off = always offline.')}</div><input type="checkbox" class="toggle" id="liveShow" ${s.liveShow !== false ? 'checked' : ''}></label>
+        <label class="field"><div>Friends can join me without asking ${inf('lva', 'Their Join opens a group in your ride and they start right next to you. Off = you are asked first.')}</div><input type="checkbox" class="toggle" id="liveAuto" ${s.liveAuto !== false ? 'checked' : ''}></label>
         ${account() ? '' : '<div class="hint" style="padding-top:10px">Needs an account: sign in at the top right.</div>'}
       </div>
       <div class="panel"><h3>Your rider</h3>
-        <div class="field"><div>Look<div class="hint">Type, height, build, face, hair, outfits (including 80s and really funny ones) and shoes. Your friends see it when riding together, you see it in the chase camera (key V).</div></div><button class="btn ghost small" id="lookBtn">Design rider</button></div>
+        <div class="field"><div>Look</div><button class="btn ghost small" id="lookBtn">Design rider</button></div>
       </div>
       <div class="panel"><h3>Display while riding</h3>
-        <div class="hint" style="margin-bottom:6px">Pick a preset or choose what you see yourself. While riding: key I switches the preset, the “Display” button opens this choice.</div>
         <div id="hudBox">${hudControlsHTML(hudPrefs(s))}</div>
       </div>
       <div class="panel"><h3>3D world view</h3>
-        <label class="field"><div>Field of view <b id="fovV">${fovOf(s)}°</b><div class="hint">Like in Minecraft: right is wider, left is closer. Normal 80°, 95–130° = very wide. While riding: keys [ and ] or the “View” button.</div></div><input type="range" id="fov" min="${FOV_MIN}" max="${FOV_MAX}" step="1" value="${fovOf(s)}"></label>
-        <label class="field"><div>Ride in Unreal (beta)<div class="hint">The ride keeps running here (trainer, group, workout); the picture shows the Unreal app with the nicer graphics. Once it is connected, the browser stops drawing its own 3D world.</div></div><input type="checkbox" class="toggle" id="ueBridge" ${s.ueBridge ? 'checked' : ''}></label>
-        <label class="field"><div>Weather in Unreal<div class="hint">Auto = the weather changes with the section of the route. Otherwise it stays the same for the whole ride.</div></div>${seg('ueWeather', s.ueWeather || 'auto', UE_WEATHER_OPTS)}</label>
-        <label class="field"><div>Keep the group together<div class="hint">In a group ride, whoever falls behind gets an invisible tailwind so you do not lose each other. Off = everyone rides on their own power only.</div></div><input type="checkbox" class="toggle" id="together" ${s.together !== false ? 'checked' : ''}></label>
-        <label class="field"><div>Position via camera<div class="hint" id="poseV">The camera in front of the bike detects whether you ride upright, in an aero position or out of the saddle: aero saves drag, standing costs a little. The image stays on your computer. Calibrate once for the best detection.</div></div><div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap"><button class="btn ghost small" id="poseUp" type="button">Calibrate upright</button><button class="btn ghost small" id="poseAero" type="button">Calibrate aero</button><input type="checkbox" class="toggle" id="poseCam" ${s.poseCam ? 'checked' : ''}></div></label>
-        <label class="field"><div>Eagle of Destiny<div class="hint">Once per interval workout an eagle lands beside you in a hard interval and has a few rude words for you (one swear word). Off = no eagle.</div></div><input type="checkbox" class="toggle" id="eagle" ${s.eagle !== false ? 'checked' : ''}></label>
-        <label class="field"><div>Handlebars in view<div class="hint">Drop bars with hoods and forearms in the rider view. Off = clear view only. While riding: key H or the “Bars” button.</div></div><input type="checkbox" class="toggle" id="cockpit" ${s.cockpit !== false ? 'checked' : ''}></label>
-        <label class="field"><div>Camera<div class="hint">Switch while riding with key V or the camera button.</div></div>${seg('view3d', String(s.view3d || 0), VIEW_OPTS)}</label>
+        <label class="field"><div>Field of view <b id="fovV">${fovOf(s)}°</b></div><input type="range" id="fov" min="${FOV_MIN}" max="${FOV_MAX}" step="1" value="${fovOf(s)}"></label>
+        <label class="field"><div>Ride in Unreal (beta) ${inf('ue', 'The ride keeps running here (trainer, group, workout); the picture comes from the Unreal app, and the browser stops drawing its own 3D world.')}</div><input type="checkbox" class="toggle" id="ueBridge" ${s.ueBridge ? 'checked' : ''}></label>
+        <label class="field"><div>Weather in Unreal ${inf('uew', 'Auto = the weather changes with the section of the route.')}</div>${seg('ueWeather', s.ueWeather || 'auto', UE_WEATHER_OPTS)}</label>
+        <label class="field"><div>Keep the group together ${inf('tog', 'In a group ride, whoever falls behind gets an invisible tailwind. Off = everyone on their own power only.')}</div><input type="checkbox" class="toggle" id="together" ${s.together !== false ? 'checked' : ''}></label>
+        <label class="field"><div>Position via camera ${inf('pose', 'The camera in front of the bike sees whether you ride upright, aero or out of the saddle: aero saves drag, standing costs a little. The image stays on your computer. Calibrate once.')}<div class="hint" id="poseV"></div></div><div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap"><button class="btn ghost small" id="poseUp" type="button">Calibrate upright</button><button class="btn ghost small" id="poseAero" type="button">Calibrate aero</button><input type="checkbox" class="toggle" id="poseCam" ${s.poseCam ? 'checked' : ''}></div></label>
+        <label class="field"><div>Eagle of Destiny ${inf('eag', 'Once per interval workout an eagle lands beside you in a hard interval with a few rude words (one swear word).')}</div><input type="checkbox" class="toggle" id="eagle" ${s.eagle !== false ? 'checked' : ''}></label>
+        <label class="field"><div>Handlebars in view</div><input type="checkbox" class="toggle" id="cockpit" ${s.cockpit !== false ? 'checked' : ''}></label>
+        <label class="field"><div>Camera</div>${seg('view3d', String(s.view3d || 0), VIEW_OPTS)}</label>
       </div>
       <div class="panel"><h3>Design</h3>
         <div class="field"><div>Accent colour</div><div class="swatches">${Object.entries(ACCENTS).map(([k, c]) => `<button class="swatch ${s.accent === k ? 'on' : ''}" data-acc="${k}" style="background:${c}"></button>`).join('')}</div></div>
@@ -707,10 +736,11 @@ function settings() {
         <div class="field"><div>3D graphics<div class="hint">three.js (MIT). Ground textures Poly Haven (CC0). Figures and buildings partly Quaternius (CC0), partly own Blender and AI models.</div></div></div>
       </div>
       <div class="panel"><h3>Version</h3>
-        <div class="field"><div>RIDEFRAME <span class="num" id="gameVer">…</span><div class="hint">The browser and the Unreal view always have the same number. If they do not match, Unreal tells you.</div></div></div>
+        <div class="field"><div>RIDEFRAME <span class="num" id="gameVer">…</span> ${inf('ver', 'The browser and the Unreal view always have the same number. If they do not match, Unreal tells you.')}</div></div>
       </div>
     </div>
   </section>`;
+  wireTabs();
   gameVersion().then(v => { const e = $('#gameVer'); if (e) e.textContent = v; });
   const num = (id, key) => $('#' + id).addEventListener('change', e => { s[key] = +e.target.value; saveSettings(); });
   const stp = (id, key, fb) => wireStepper(root, id, v => { s[key] = v; saveSettings(); }, fb);
@@ -769,8 +799,6 @@ function settings() {
   txt('chainrings'); txt('realGear');
   $('#difficulty').oninput = e => { s.difficulty = +e.target.value; $('#diffV').textContent = s.difficulty + '%'; saveSettings(); };
   $('#downhill').oninput = e => { s.downhill = +e.target.value; $('#downV').textContent = s.downhill + '%'; saveSettings(); };
-  $('#voicePtt').onchange = e => { s.voicePtt = e.target.checked; saveSettings(); import('./share.js').then(m => m.currentGroup()?.voice?.setPtt(s.voicePtt)); };
-  $('#voiceVol').oninput = e => { s.voiceVol = +e.target.value; $('#voiceVolV').textContent = s.voiceVol + '%'; saveSettings(); import('./share.js').then(m => m.currentGroup()?.voice?.setVolume(s.voiceVol / 100)); };
   $('#muteVideo').onchange = e => { s.muteVideo = e.target.checked; saveSettings(); };
   $('#improveEle').onchange = e => { s.improveEle = e.target.checked; saveSettings(); };
   root.querySelectorAll('.swatch').forEach(b => b.onclick = () => { s.accent = b.dataset.acc; applyAccent(); saveSettings(); settings(); });
@@ -782,7 +810,6 @@ function settings() {
   if (!inRide) {
     $('#trBtn').onclick = async () => { await connectTrainer(); if (document.querySelector('#trBtn')) settings(); };
     $('#hrBtn').onclick = () => connectHR(false); $('#hrAll').onclick = () => connectHR(true);
-    $('#ctBtn').onclick = openControllerTest;
     $('#rmBtn').onclick = openRemote;
     $('#zcBtn').onclick = connectClick;
   }

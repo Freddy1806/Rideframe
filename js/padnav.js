@@ -79,8 +79,10 @@ function stepNum(el, d) {
   if (String(v) === el.value) return;
   el.value = String(v); el.dispatchEvent(new Event('input', { bubbles: true })); el.dispatchEvent(new Event('change', { bubbles: true }));
 }
-const HINT = 'D-pad move · A select · B back', HINT_NUM = '↑ → more · ↓ ← less · L / R one step · A or B done';
-function hintFor() { const h = document.getElementById('pnHint'); if (h) h.textContent = editing && NUMBER(cur) ? HINT_NUM : HINT; }
+// the button layout lives in Settings → Controller (owner 27.11. evening: no pad hint in every window); the one hint left is
+// for the moment a value is being changed, the only state that is not visible on the screen
+const HINT_NUM = '↑ → more · ↓ ← less · L / R one step · A or B done', HINT_LIST = '↑ ↓ change · A or B done';
+function hintFor() { const h = document.getElementById('pnHint'); if (!h) return; h.textContent = editing ? (NUMBER(cur) ? HINT_NUM : HINT_LIST) : ''; document.documentElement.classList.toggle('pn-editing', !!editing); }
 
 let cur = null, editing = false, active = false, viaPad = false;
 const memory = new WeakMap(); // overlay (or document) -> the element focused there last, so closing a window returns to it
@@ -146,7 +148,7 @@ function ensure() {
   if (!el) { const m = memory.get(root); if (m && m.isConnected && visible(m)) el = m; }
   if (!el) el = first(root);
   const keepEdit = editing && el && curSig && sig(el) === editSig;
-  setCur(el, { scroll: false }); editing = keepEdit; el?.classList.toggle('pn-edit', editing);
+  setCur(el, { scroll: false }); editing = keepEdit; el?.classList.toggle('pn-edit', editing); hintFor();
   return el;
 }
 function activate(on, pad) {
@@ -183,7 +185,7 @@ function select(wasActive = active) {
   if (el.tagName === 'INPUT' && el.type === 'range') return; // ← → change it
   el.click();
 }
-const CLOSE_RX = /^\s*(cancel|close|back|later|not now|no|✕|×|‹|←.*)\s*$/i, DONE_RX = /^\s*(done|ok|got it)\s*$/i;
+const CLOSE_RX = /^\s*(cancel|close|‹?\s*back|later|not now|no|✕|×|‹|←.*)\s*$/i, DONE_RX = /^\s*(done|ok|got it)\s*$/i;
 function back() {
   const el = cur && cur.isConnected ? cur : null;
   if (el && editing) { editing = false; el.classList.remove('pn-edit'); hintFor(); return true; }
@@ -253,9 +255,9 @@ function init() {
     html:not(.pn-active) .pn-focus:focus { outline: none; }
     #pnHint { position: fixed; left: 50%; bottom: 10px; transform: translateX(-50%); z-index: 2000; pointer-events: none; font: 600 12px/1 var(--wide, system-ui); letter-spacing: .04em;
       color: rgba(244,244,239,.72); background: rgba(11,11,11,.72); border: 1px solid rgba(244,244,239,.14); padding: 7px 12px; border-radius: 99px; white-space: nowrap; display: none; }
-    html.pn-pad:not(.pn-ride) #pnHint { display: block; }`;
+    html.pn-pad.pn-editing:not(.pn-ride) #pnHint { display: block; }`;
   document.head.append(st);
-  const hint = document.createElement('div'); hint.id = 'pnHint'; hint.setAttribute('aria-hidden', 'true'); hint.textContent = HINT; document.body.append(hint);
+  const hint = document.createElement('div'); hint.id = 'pnHint'; hint.setAttribute('aria-hidden', 'true'); document.body.append(hint);
   let mx = null, my = null;
   addEventListener('mousemove', e => { if (mx != null && (Math.abs(e.clientX - mx) > 2 || Math.abs(e.clientY - my) > 2)) activate(false, false); mx = e.clientX; my = e.clientY; }, { passive: true });
   addEventListener('mousedown', () => activate(false, false), true);

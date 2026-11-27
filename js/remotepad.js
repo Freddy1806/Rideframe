@@ -118,7 +118,7 @@ function snapshot() {
   if (ride.querySelector('#hWork')) Object.assign(s, { wo: true, step: txt(ride, '#hWStep'), of: txt(ride, '#hWOf', 30), tgt: txt(ride, '#hWT', 6), left: txt(ride, '#hWLeft', 8), adj: txt(ride, '#hWAdjV', 8), next: txt(ride, '#hWNextN', 30) });
   if (po) {
     const bs = [...po.querySelectorAll('.padmenu button')];
-    s.title = txt(po, 'h2', 20); s.menu = bs.slice(0, 16).map(b => (b.querySelector('b')?.textContent || b.textContent).trim().replace(/\s+/g, ' ').slice(0, 34)); s.sel = Math.max(0, bs.findIndex(b => /solid/.test(b.style.outline || '')));
+    s.title = txt(po, 'h2', 20); s.menu = bs.slice(0, 16).map(b => ((b.closest('.pmrow') ? 'Ride together · ' : '') + (b.querySelector('b')?.textContent || b.textContent)).trim().replace(/\s+/g, ' ').replace(/^‹\s*|\s*[▸›]$/g, '').slice(0, 34)); s.sel = Math.max(0, bs.findIndex(b => /solid/.test(b.style.outline || '')));
   }
   return s;
 }
@@ -164,15 +164,14 @@ export async function openRemote() {
   const m = document.createElement('div'); m.className = 'modal'; m.id = 'rmBox';
   const signed = !!account();
   m.innerHTML = `<div class="box" style="width:min(780px,94vw)">
-    <div class="label">Phone remote</div><h2 class="display" style="margin-top:10px">Your phone<br>as remote</h2>
+    <div class="mhead"><button type="button" class="btn ghost rmback" id="rmClose">‹ Back</button><h2 class="display">Phone remote</h2></div>
     <div class="rm-grid"><div class="rm-qr" id="rmQr">…</div>
       <div><div class="label">Code</div><div class="rm-code" id="rmCode">··· ···</div>
         <p>On your phone open <span class="rm-url">${phoneUrl().replace(/^https?:\/\//, '')}</span> and enter the code, or scan the QR code with the camera.</p>
         ${signed ? `<p class="hint" style="margin-top:8px">Signed in as ${account().name.replace(/[<>&]/g, '')} on your phone too? Open the page and tap “${labelOf().replace(/[<>&]/g, '')}”, no code needed.</p>` : ''}
         <div class="rm-state" id="rmState"><i></i><span>Waiting for your phone…</span></div></div></div>
-    <p class="hint">The phone works like a gamepad: D-pad, A select, B back, L / R tabs. In a ride: target watts, pause, music, view and display.</p>
-    ${signed ? `<label class="field" style="margin-top:6px"><div>Findable from my phone<div class="hint">While you are signed in, your phone lists this computer without a code.</div></div><input type="checkbox" class="toggle" id="rmAuto" ${appState?.settings?.remoteAuto !== false ? 'checked' : ''}></label>` : ''}
-    <div class="actions"><button class="btn ghost small" id="rmNew">New code</button><button class="btn ghost small" id="rmOff">Disconnect phones</button><button class="btn small" id="rmClose">Close</button></div></div>`;
+    ${signed ? `<label class="field" style="margin-top:6px"><div>Findable from my phone without a code</div><input type="checkbox" class="toggle" id="rmAuto" ${appState?.settings?.remoteAuto !== false ? 'checked' : ''}></label>` : ''}
+    <div class="mfoot"><div class="mfl"><button class="btn ghost small" id="rmNew">New code</button><button class="btn ghost small" id="rmOff">Disconnect phones</button></div></div></div>`;
   document.body.append(m);
   const close = () => { wantOpen = false; clearInterval(t); m.remove(); };
   m.addEventListener('click', e => { if (e.target === m) close(); });

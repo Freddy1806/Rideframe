@@ -132,7 +132,7 @@ const median = a => { const s = [...a].sort((x, y) => x - y); return s[Math.floo
     const pm = await P.evaluate(() => ({ items: [...document.querySelectorAll('.rmi')].map(b => b.textContent), resume: !document.querySelector('#rResume').hidden, nav: !document.querySelector('#rNav').hidden }));
     ok(pm.items.includes('Resume') && pm.items.includes('Devices') && pm.resume && pm.nav, `phone paused: the pause menu (${pm.items.join(' · ')}), D-pad and Resume`, JSON.stringify(pm));
     await pshot('phone_paused_390');
-    await press('.rd.down'); await press('.rd.down'); ok(await D.evaluate(() => window.__ride._padI) === 2, 'phone D-pad ↓ ↓ in the pause menu: Devices highlighted');
+    await press('.rd.down'); await press('.rd.down'); ok(await D.evaluate(() => document.activeElement?.id) === 'pDev', 'phone D-pad ↓ ↓ in the pause menu (from Resume at the bottom): Devices highlighted');
     await press('.rbtn.a'); await D.waitForTimeout(250);
     ok(await D.locator('#pauseOverlay #dvTrC').count() === 1, 'phone A: Devices open');
     const remoteOpt = await D.textContent('#oRemote').catch(() => ''); ok(/Phone remote · connected/.test(remoteOpt), `pause → Devices: "${remoteOpt}"`);

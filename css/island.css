@@ -99,8 +99,12 @@
 
 /* the whole Settings page over the paused ride (js/app.js openRideSettings; Freddy 20.11.: everything from the main menu also while riding) */
 .modal.rideset { z-index: 60; place-items: start center; overflow-y: auto; padding: 24px 16px; cursor: auto; }
-.modal.rideset .box.rsetbox { width: min(1180px, 100%); max-height: none; overflow: visible; background: rgba(12, 12, 12, .97); border-radius: 10px; padding: 0 24px 28px; }
-.modal.rideset .rsethead { position: sticky; top: -24px; z-index: 2; display: flex; justify-content: space-between; align-items: center; gap: 16px; padding: 22px 0 16px; margin-bottom: 8px; background: rgba(12, 12, 12, .97); border-bottom: 1px solid #262626; }
-.modal.rideset .rsethead h2 { font-size: clamp(30px, 4vw, 52px); margin: 4px 0 0; }
+.modal.rideset .box.rsetbox { width: min(1180px, 100%); max-height: none; overflow: visible; background: rgba(12, 12, 12, .97); border-radius: 10px; padding: 0 24px; }
+.modal.rideset .rsethead { position: sticky; top: -24px; z-index: 2; display: flex; align-items: center; gap: 16px; padding: 22px 0 14px; background: rgba(12, 12, 12, .97); }
+.modal.rideset .rsethead .rmback { flex: none; height: 44px; padding: 0 16px; font-size: 13px; }
+.modal.rideset .rsethead h2 { font-size: clamp(30px, 4vw, 52px); margin: 0; line-height: 1; }
+.modal.rideset .rsetfoot { position: sticky; bottom: -24px; z-index: 2; display: flex; justify-content: flex-end; padding: 14px 0 20px; margin-top: 16px; background: rgba(12, 12, 12, .97); border-top: 1px solid #262626; }
+.modal.rideset .rsetfoot .btn { height: 48px; }
 .modal.rideset .rsetbody.view { padding: 8px 0 0; margin: 0; max-width: none; min-height: 0; }
-@media (max-width: 760px) { .modal.rideset .box.rsetbox { padding: 0 14px 20px; } .modal.rideset .rsethead { padding-top: 14px; } }
+.modal.rideset .rsetbody > section.view { padding: 0 0 8px; max-width: none; }
+@media (max-width: 760px) { .modal.rideset .box.rsetbox { padding: 0 14px; } .modal.rideset .rsethead { padding-top: 14px; } }

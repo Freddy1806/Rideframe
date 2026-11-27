@@ -45,8 +45,7 @@ export class Group {
       const fail = e => { const m = this._msg(e); this.onError?.(m); reject(new Error(m)); };
       this.peer = this.host ? new Peer(PREFIX + this.code, { debug: 0 }) : new Peer({ debug: 0 });
       this.peer.on('error', e => { if (!this.open) fail(e); else this.onError?.(this._msg(e)); });
-      this.peer.on('open', id => {
-        this.me.pid = id; // peer id: the voice chat calls riders directly with it (see voice.js)
+      this.peer.on('open', () => {
         if (this.host) {
           this.open = true; this.peer.on('connection', c => this._wire(c)); this._relayT = setInterval(() => this._relayAll(), 1000); resolve(this);
         } else {
@@ -109,7 +108,7 @@ export class Group {
   _clean(r) { // never trust what comes over the wire
     if (!r || typeof r.id !== 'string') return null;
     const n = v => (Number.isFinite(+v) ? +v : 0);
-    return { id: r.id.slice(0, 16), name: String(r.name || 'Rider').slice(0, 20), d: n(r.d), v: n(r.v), w: Math.round(n(r.w)), hr: Math.round(n(r.hr)), riding: !!r.riding, done: !!r.done, pid: typeof r.pid === 'string' ? r.pid.slice(0, 64) : '', vo: !!r.vo, sg: Array.isArray(r.sg) ? r.sg.slice(-6).filter(x => Array.isArray(x) && typeof x[0] === 'string').map(x => [x[0].slice(0, 40), n(x[1])]) : [], cr: Array.isArray(r.cr) ? r.cr.slice(-4).filter(x => Array.isArray(x) && typeof x[0] === 'string').map(x => [x[0].slice(0, 30), x[1] ? 1 : 0, Math.round(n(x[2]))]) : [], look: r.look && typeof r.look === 'object' ? cleanLook(r.look) : null, ...(cleanWz(r.wz) ? { wz: cleanWz(r.wz) } : {}) }; // wz: the wizard (ivgate.js), only when one is on; an older peer drops it
+    return { id: r.id.slice(0, 16), name: String(r.name || 'Rider').slice(0, 20), d: n(r.d), v: n(r.v), w: Math.round(n(r.w)), hr: Math.round(n(r.hr)), riding: !!r.riding, done: !!r.done, sg: Array.isArray(r.sg) ? r.sg.slice(-6).filter(x => Array.isArray(x) && typeof x[0] === 'string').map(x => [x[0].slice(0, 40), n(x[1])]) : [], cr: Array.isArray(r.cr) ? r.cr.slice(-4).filter(x => Array.isArray(x) && typeof x[0] === 'string').map(x => [x[0].slice(0, 30), x[1] ? 1 : 0, Math.round(n(x[2]))]) : [], look: r.look && typeof r.look === 'object' ? cleanLook(r.look) : null, ...(cleanWz(r.wz) ? { wz: cleanWz(r.wz) } : {}) }; // wz: the wizard (ivgate.js), only when one is on; an older peer drops it
   }
 
   _relayAll() {
@@ -125,8 +124,6 @@ export class Group {
   /** new look from the editor: everyone sees it right away */
   setLook(look) { this.me.look = cleanLook(look); this._sent = 0; this.update({}); this.onChange?.(this); }
 
-  /** voice chat on/off: everyone learns it with the next state, so the others can call (voice.js) */
-  setVoice(on) { this.me.vo = !!on; this._sent = 0; this.update({}); }
 
   /** host: choose the route everybody rides */
   setRoute(routeId) { this.routeId = routeId; if (this.host) for (const c of this.conns) if (c.open) c.send({ t: 'route', routeId }); this.onChange?.(this); }
@@ -152,5 +149,5 @@ export class Group {
 
   get link() { return `${location.origin}${location.pathname}?join=${this.code}`; }
 
-  close() { this._closed = true; this.voice?.stop(); this.voice = null; clearInterval(this._relayT); try { for (const c of this.conns) c.close(); this.peer?.destroy(); } catch {} this.open = false; }
+  close() { this._closed = true; clearInterval(this._relayT); try { for (const c of this.conns) c.close(); this.peer?.destroy(); } catch {} this.open = false; }
 }
