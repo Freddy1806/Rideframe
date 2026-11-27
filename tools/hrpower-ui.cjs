@@ -43,7 +43,7 @@ const shot = async (loc, name) => { if (SHOTS) await loc.screenshot({ path: path
         const ss = 52 + k * pw[Math.max(0, pw.length - 7)] + 0.004 * t; h += (ss - h) / (ss > h ? 22 : 32);
         s.push([t, t * 9, w, 32, 90, strap ? Math.round(h) : 0]); }
       r.samples = s; r.lastSample = t; r.elapsed = t; r.powerHist = s.map(x => x[2]); }, [k, strap]);
-    const save = async () => { await p.keyboard.press('Space'); await p.waitForSelector('#pSave'); await p.click('#pSave'); await p.waitForSelector('.finish', { timeout: 10000 }); await p.waitForTimeout(1200); };
+    const save = async () => { await p.keyboard.press('Space'); await p.waitForSelector('#pEnd'); await p.click('#pEnd'); await p.click('#pSave'); await p.waitForSelector('.finish', { timeout: 10000 }); await p.waitForTimeout(1200); };
     const last = () => p.evaluate(async () => { const { db } = await import('/js/db.js'); return (await db.all('rides')).sort((a, b) => b.date - a.date)[0]; });
 
     // ---- ride 1: 30 / 15 with a strap ----

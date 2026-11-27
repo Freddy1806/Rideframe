@@ -3,7 +3,7 @@
 // Usage: node --test tools/ridesetup-test.mjs   (no browser)
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { MODES, modeOf, shiftOf, sourceOf, modeChange, workoutChoices, setMode, setShift, setWorkout, setSource, SOURCE_NOTE } from '../js/ridesetup.js';
+import { MODES, modeOf, shiftOf, sourceOf, modeChange, workoutChoices, setMode, setShift, setWorkout, setSource, SOURCE_NOTE, devLine, lapChoices } from '../js/ridesetup.js';
 import { Trainer } from '../js/trainer.js';
 import { WORKOUTS, PERSONAL, workoutById } from '../js/workouts.js';
 
@@ -91,4 +91,12 @@ test('Trainer in power meter only mode writes nothing to the trainer; switching 
   assert.equal(t.erg, null); assert.equal(t.cp, null);
   t.device = { gatt: { connected: true, disconnect() {} } }; t.cp = { writeValue: b => { writes.push([...b]); return Promise.resolve(); } }; const n = writes.length;
   t.setPower(250); t.setGrade(5, true); await t.queue; assert.equal(t.erg, null); assert.equal(writes.length, n, 'no ERG, no grade');
+});
+
+test('the devices line (pause menu hint, Workout & mode) and the laps still possible', () => {
+  assert.equal(devLine({}, null), 'trainer not connected · heart rate not connected');
+  assert.equal(devLine({ connected: true, device: { name: 'KICKR' } }, { connected: true, device: { name: 'HRM-Pro' } }), 'KICKR ✓ · HRM-Pro ✓');
+  assert.equal(devLine({ rejoining: true, pmOnly: true }, {}, true), 'Power meter: reconnecting … · Heart rate: not connected');
+  assert.equal(devLine({ connected: true, device: {} }, {}, true), 'Trainer: Trainer ✓ · Heart rate: not connected');
+  assert.deepEqual(lapChoices(1), [1, 2, 3, 4, 5, 10]); assert.deepEqual(lapChoices(3), [3, 4, 5, 10]);
 });

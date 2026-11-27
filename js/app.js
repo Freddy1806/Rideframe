@@ -623,7 +623,7 @@ export function openRideSettings(onClose) {
 /** connect the trainer from the ride's pause menu (same as the KICKR pill) */
 export { connectTrainer };
 function settings() {
-  const s = state.settings, root = setRoot || main;
+  const s = state.settings, root = setRoot || main, inRide = !!setRoot; // in the ride (owner 27.11.): no device rows (Pause → Devices) and no shifting switch (Pause → Workout & mode)
   root.innerHTML = `
   <section class="view">
     ${setRoot ? '' : '<div class="view-head"><div><div class="label">Setup</div><h1 class="display" style="margin-top:14px">Settings</h1></div></div>'}
@@ -639,9 +639,9 @@ function settings() {
         <label class="field"><div>FTP<div class="hint">Threshold power in watts. The interval target ranges come from it.</div></div>${stepper('ftp', s.ftp, { step: 5, min: 80, max: 600, unit: 'W', optional: true })}</label>
         <label class="field"><div>Preferred cadence<div class="hint">The app tells you when to shift easier or harder.</div></div>${stepper('cadence', s.cadence, { step: 1, min: 50, max: 130, unit: 'rpm', optional: true })}</label>
       </div>
-      <div class="panel"><h3>Shifting</h3>
-        <label class="field"><div>Mode<div class="hint" id="shiftHint">${shiftHint(s.shiftMode)}</div></div>
-          ${seg('shiftMode', s.shiftMode, SHIFT_OPTS)}</label>
+      <div class="panel"><h3>${inRide ? 'Bike &amp; gears' : 'Shifting'}</h3>
+        ${inRide ? '' : `<label class="field"><div>Mode<div class="hint" id="shiftHint">${shiftHint(s.shiftMode)}</div></div>
+          ${seg('shiftMode', s.shiftMode, SHIFT_OPTS)}</label>`}
         <label class="field"><div>Chainrings</div><input type="text" id="chainrings" value="${esc(s.chainrings)}" style="width:110px"></label>
         <label class="field"><div>Cassette</div><select id="cassette" style="width:auto">${Object.keys(CASSETTES).map(k => `<option ${k === s.cassette ? 'selected' : ''}>${k}</option>`).join('')}</select></label>
         <label class="field" id="realGearRow" ${s.shiftMode === 'virtual' ? '' : 'hidden'}><div>Gear on the bike (stays fixed)<div class="hint">Put the bike in this gear and shift only virtually: keys Q/E, gamepad LB/RB, later Di2 buttons.</div></div><input type="text" id="realGear" value="${esc(s.realGear)}" style="width:110px"></label>
@@ -649,13 +649,13 @@ function settings() {
         <div class="field"><div>Gears<div class="hint">${gearsFrom(s).map(g => g.f + '×' + g.r).join(' · ')}</div></div></div>
       </div>
       <div class="panel"><h3>Trainer</h3>
-        <div class="field"><div>Smart trainer / power meter<div class="hint" id="trState">${trState()}</div></div><button class="btn ghost small" id="trBtn">${state.trainer.connected ? 'Disconnect' : 'Connect'}</button></div>
+        ${inRide ? '<div class="field"><div>Devices<div class="hint">Trainer, heart rate, controller and the phone remote are connected under Pause → Devices.</div></div></div>' : `<div class="field"><div>Smart trainer / power meter<div class="hint" id="trState">${trState()}</div></div><button class="btn ghost small" id="trBtn">${state.trainer.connected ? 'Disconnect' : 'Connect'}</button></div>`}
         <label class="field"><div>Gradient realism <b id="diffV">${s.difficulty}%</b><div class="hint">100 % = real gradient. 50 % = climbs feel half as steep.</div></div><input type="range" id="difficulty" min="0" max="100" step="5" value="${s.difficulty}"></label>
         <label class="field"><div>Descents <b id="downV">${s.downhill}%</b><div class="hint">How much the trainer eases off downhill.</div></div><input type="range" id="downhill" min="0" max="100" step="5" value="${s.downhill}"></label>
-        <div class="field"><div>Test controller<div class="hint">E.g. Di2 extra buttons (D-FLY), Zwift Click, gamepad. Shows what the buttons send. A gamepad also drives all menus: D-pad move · A select · B back · L / R tabs (keyboard: arrows, Enter, Escape).</div></div><button class="btn ghost small" id="ctBtn">Test</button></div>
+        ${inRide ? '' : `        <div class="field"><div>Test controller<div class="hint">E.g. Di2 extra buttons (D-FLY), Zwift Click, gamepad. Shows what the buttons send. A gamepad also drives all menus: D-pad move · A select · B back · L / R tabs (keyboard: arrows, Enter, Escape).</div></div><button class="btn ghost small" id="ctBtn">Test</button></div>
         <div class="field"><div>Phone remote<div class="hint">Your phone as a remote for this app: open remote.html on the phone and enter the code. Works like a gamepad, in the menus and in the ride (watts, pause, music, view).</div></div><button class="btn ghost small" id="rmBtn">Connect phone</button></div>
         <div class="field"><div>Zwift Click<div class="hint">Its + / − buttons shift the virtual gears in the ride. Click v2: open it in the Zwift app once a day, or it drops after a minute.</div><div class="hint" id="zcState">${clickState()}</div></div><button class="btn ghost small" id="zcBtn">${click.device ? 'Disconnect' : 'Connect'}</button></div>
-        <div class="field"><div>Heart rate strap<div class="hint">Optional, via Bluetooth.</div></div><div style="display:flex;gap:8px"><button class="btn ghost small" id="hrAll" title="If the strap is missing in the normal search">All devices</button><button class="btn ghost small" id="hrBtn">${state.hr?.connected ? 'Connected' : 'Connect'}</button></div></div>
+        <div class="field"><div>Heart rate strap<div class="hint">Optional, via Bluetooth.</div></div><div style="display:flex;gap:8px"><button class="btn ghost small" id="hrAll" title="If the strap is missing in the normal search">All devices</button><button class="btn ghost small" id="hrBtn">${state.hr?.connected ? 'Connected' : 'Connect'}</button></div></div>`}
       </div>
       <div class="panel" id="stravaPanel" hidden><h3>Strava</h3>
         <div class="field"><div>Strava account<div class="hint" id="stvHint">…</div></div><button class="btn ghost small" id="stvConn">Connect</button></div>
@@ -760,7 +760,7 @@ function settings() {
   $('#fov').oninput = e => { s.fov = +e.target.value; s.lensMm = 0; $('#fovV').textContent = s.fov + '°'; saveSettings(); };
   wireSeg(root, 'ueWeather', v => { s.ueWeather = v; saveSettings(); });
   wireSeg(root, 'view3d', v => { s.view3d = +v; saveSettings(); });
-  wireSeg(root, 'shiftMode', v => { s.shiftMode = v; saveSettings(); settings(); });
+  if (!inRide) wireSeg(root, 'shiftMode', v => { s.shiftMode = v; saveSettings(); settings(); });
   $('#cassette').onchange = e => { s.cassette = e.target.value; saveSettings(); settings(); };
   const valid = { chainrings: v => parseRings(v), realGear: v => { const m = String(v).match(/^\s*(\d+)\s*[x×/\- ]\s*(\d+)\s*$/); return !!m && +m[1] >= 20 && +m[1] <= 60 && +m[2] >= 9 && +m[2] <= 40; } };
   const txt = (id) => $('#' + id).addEventListener('change', e => {
@@ -779,11 +779,13 @@ function settings() {
     $('#rsShop').onclick = () => import('./shop-ui.js').then(x => x.shopModal({}));
     accountsAvailable().then(ok => { const r = $('#rsWishRow'); if (!ok || !r) return; r.hidden = false; $('#rsWish').onclick = () => import('./wishes.js').then(x => x.wishModal(state, accountChanged)); });
   }
-  $('#trBtn').onclick = async () => { await connectTrainer(); if (document.querySelector('#trBtn')) settings(); };
-  $('#hrBtn').onclick = () => connectHR(false); $('#hrAll').onclick = () => connectHR(true);
-  $('#ctBtn').onclick = openControllerTest;
-  $('#rmBtn').onclick = openRemote;
-  $('#zcBtn').onclick = connectClick;
+  if (!inRide) {
+    $('#trBtn').onclick = async () => { await connectTrainer(); if (document.querySelector('#trBtn')) settings(); };
+    $('#hrBtn').onclick = () => connectHR(false); $('#hrAll').onclick = () => connectHR(true);
+    $('#ctBtn').onclick = openControllerTest;
+    $('#rmBtn').onclick = openRemote;
+    $('#zcBtn').onclick = connectClick;
+  }
   db.usage().then(u => { if (u) $('#usage').textContent = `${fmtNum(u.usage / 1e9, 1)} GB used of ${fmtNum(u.quota / 1e9, 0)} GB available`; });
 }
 

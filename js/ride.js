@@ -10,7 +10,8 @@ import { bestClimb, distAtTime } from './climbghost.js';
 import { stravaButton } from './stravaup.js';
 import { padButtons, activePad } from './controller.js';
 import { pickInDir } from './padnav.js';
-import { remoteLabel, remoteCode } from './remotepad.js';
+import { pauseHTML, openDevices, openDisplay, openGroup, openEnd } from './ridemenus.js';
+import { openSetup } from './ridesetup.js';
 import { click } from './zwiftclick.js';
 import { routeFns } from './tcx.js';
 import { gearsFrom, gearName, parseGear, estimateGear, virtualGrade } from './gears.js';
@@ -94,6 +95,9 @@ export function simulateRide(track, power, settings) {
   return { samples, duration: t };
 }
 
+/** js/app.js (loaded long before a ride starts): kept at hand for the device buttons, see _connTrainer */
+let appMod = null; const loadApp = () => import('./app.js').then(m => (appMod = m));
+if (typeof window !== 'undefined') setTimeout(() => loadApp().catch(() => {}), 0);
 const WB_VIEWS = ['big', 'compact', 'focus'], WB_NAMES = { big: 'big', compact: 'compact', focus: 'focus' };
 /** the live numbers in the interval window (owner 20.11.: "the same numbers as in normal riding, plus the time and the target
  *  watts"): [key, label, unit, the normal HUD element it mirrors (null: avg power, kept by _updateHUD), the Display item (js/hudprefs.js)
@@ -231,7 +235,7 @@ export class RideSession {
     if (!this.autopilot && !this._resumed) await this._countdown();
     this.last = performance.now();
     requestAnimationFrame(this._tick);
-    if (this._resumed && !this._closed) { this._pause(); this._flash('Ride restored · connect your trainer, then Resume', 5000); } // paused: the rider reconnects first
+    if (this._resumed && !this._closed) { this._pause(); this._flash('Ride restored · connect your trainer under Devices, then Resume', 6000); } // paused: the rider reconnects first
   }
   /** checkpoints of the running ride (js/ridedraft.js): every 10 s of riding, on pause, when the tab hides or the page goes.
    *  A reload, a crash or a closed tab loses at most those seconds; app.js offers to continue. */
@@ -463,7 +467,7 @@ export class RideSession {
     if (this.paused && !this.finished) { // menu navigation like on a console (finished from the pause menu: paused stays true, the end screen is not a menu here)
       for (const [i, dir] of [[12, 'up'], [13, 'down'], [14, 'left'], [15, 'right']]) if (hit(i)) this._padMove(dir);
       if (hit(0)) this.q('#pauseOverlay')?.querySelectorAll('.padmenu button')[this._padI || 0]?.click();
-      if (hit(1)) this.q('#oBack, #invBack') ? this.q('#oBack, #invBack').click() : this._resume();
+      if (hit(1)) this._atGoal ? this._resume() : this._menuBack(); // B: one level back (a sheet → the pause list → riding)
       return;
     }
     if (this.finished) return;
@@ -1175,7 +1179,7 @@ export class RideSession {
     else if (e.key === 'q' || e.key === ',' || e.key === '-' || e.key === 'PageDown') { e.preventDefault?.(); this.shift(-1); } /* PageUp/PageDown: Bluetooth presenters and many media remotes */
     else if (e.key === 'e' || e.key === '.' || e.key === '+' || e.key === 'PageUp') { e.preventDefault?.(); this.shift(1); }
     else if (e.key === ' ') { e.preventDefault(); this.paused ? this._resume() : this._pause(); }
-    else if (e.key === 'Escape') { if (!this.paused && !this.finished) this._pause(); }
+    else if (e.key === 'Escape') { if (this.finished || this._atGoal) return; if (!this.paused) this._pause(); else this._menuBack(); } // Esc: pause menu, in it one level back
     else if (e.key === 'f') document.documentElement.requestFullscreen?.();
     else if (e.key === 'v' || e.key === 'c') this._cycleView();
     else if (e.key === '[' || e.key === ']') this._lens(e.key === ']' ? 1 : -1);
@@ -1245,36 +1249,34 @@ export class RideSession {
     f.textContent = text; f.classList.add('on'); clearTimeout(this._flashT); this._flashT = setTimeout(() => f.classList.remove('on'), ms);
   }
 
-  _pause() {
+  /** the pause menu (owner 27.11.: one clear list, each thing in ONE place, js/ridemenus.js): Resume · Workout & mode ·
+   *  Devices · Display & sound · Ride together · Settings · End ride. focusId: the entry to stand on (the one a sheet came from). */
+  _pause(focusId = 'pResume') {
     if (this.finished) return;
     this.paused = true; this.player.pause(); this.music?.pause(); this._saveDraft();
-    this.q('#pauseOverlay')?.remove();
+    this.q('#pauseOverlay')?.remove(); this._backs = []; this._menu = 'pause';
     const o = document.createElement('div'); o.className = 'paused'; o.id = 'pauseOverlay';
-    // owner 27.11.: a click beside the window closes it (pause menu, options, workout & mode: all live in this overlay) and rides on;
+    // owner 27.11.: a click beside the window closes it (the pause menu and every sheet live in this overlay) and rides on;
     // only when the press also began on the dark area, so a drag out of the window closes nothing
     o.addEventListener('pointerdown', e => { this._bdDown = e.target === o; });
-    o.addEventListener('click', e => { if (e.target === o && this._bdDown && this.paused && !this.finished) this._resume(); this._bdDown = false; });
-    o.innerHTML = `<div class="box"><div class="label">${fmtKm(this.lapOff + this.d)} km · ${fmtTime(this.elapsed)}</div><h2 class="display">Pause</h2>
-      <div class="row-actions padmenu"><button class="btn" id="pResume">Resume</button><button class="btn ghost" id="pOpts">Options</button><button class="btn ghost" id="pSetup">Workout &amp; mode</button><button class="btn ghost" id="pSet">Settings</button>${this.state.trainer.connected ? '' : `${this.state.trainer.device ? '<button class="btn ghost" id="pRejoin">Reconnect trainer</button>' : ''}<button class="btn ghost" id="pConn">${this.state.trainer.device ? 'Choose trainer …' : 'Connect trainer'}</button>`}${this.state.hr?.connected ? '' : '<button class="btn ghost" id="pHr">Connect heart rate</button>'}<button class="btn ghost" id="pSave">Finish &amp; save</button><button class="btn ghost" id="pDiscard">Discard</button>${this.group?.voice?.on ? '<button class="btn ghost" id="pVoice">Voice chat off</button>' : ''}${this.group ? this.group.others().filter(r => r.riding || r.d > 0).slice(0, 4).map((r, i) => `<button class="btn ghost" data-jump="${i}">⇢ Jump to ${esc(r.name)}</button>`).join('') : this.autopilot ? '' : '<button class="btn ghost" id="pGroup">Open group</button>'}${this.presence?.on ? '<button class="btn ghost" id="pInvite">Invite friends</button>' : ''}</div>
-      <div class="hint pad-hint" style="margin-top:12px;opacity:.7">🎮 D-pad to choose · A ok · B back</div></div>`;
+    o.addEventListener('click', e => { if (e.target === o && this._bdDown && this.paused && !this.finished && !this._atGoal) this._resume(); this._bdDown = false; });
+    o.innerHTML = `<div class="box rsbox pmbox">${pauseHTML(this)}</div>`;
     this.el.append(o);
+    const sub = (id, fn) => o.querySelector('#' + id)?.addEventListener('click', () => { this._backs = [() => this._pause(id)]; fn(); });
     o.querySelector('#pResume').onclick = () => this._resume();
-    o.querySelector('#pOpts').onclick = () => this._options();
-    o.querySelector('#pSetup').onclick = () => this._setup();
+    sub('pSetup', () => this._setup()); sub('pDev', () => this._devices()); sub('pOpts', () => this._options());
+    sub('pGroup', () => this._openGroup()); sub('pEnd', () => openEnd(this));
     o.querySelector('#pSet').onclick = () => this._settings();
-    o.querySelector('#pConn')?.addEventListener('click', () => this._connTrainer());
-    o.querySelector('#pRejoin')?.addEventListener('click', () => this._reconnect('tr'));
-    o.querySelector('#pHr')?.addEventListener('click', () => this._connHr());
-    o.querySelector('#pSave').onclick = () => this._end(true);
-    o.querySelector('#pDiscard').onclick = () => this._end(false);
-    o.querySelector('#pVoice')?.addEventListener('click', e => { this.group.voice?.stop(); this.group.voice = null; e.target.remove(); this._flash('Voice chat off'); });
-    const os = this.group ? this.group.others().filter(r => r.riding || r.d > 0).slice(0, 4) : [];
-    o.querySelectorAll('[data-jump]').forEach(b => b.onclick = () => { const r = os[+b.dataset.jump]; if (r) { this._resume(); this._jump(r); } });
-    o.querySelector('#pGroup')?.addEventListener('click', () => this._openGroup());
-    o.querySelector('#pInvite')?.addEventListener('click', () => this._inviteMenu());
-    this._padFocus(0);
+    this._repaint = () => this._pause(document.activeElement?.closest?.('.pmlist') ? document.activeElement.id : 'pResume');
+    const bs = [...o.querySelectorAll('.padmenu button')]; this._padFocus(Math.max(0, bs.findIndex(x => x.id === focusId)));
   }
-  /** Freddy 20.11.: everything the main menu can do also in the ride: the whole Settings page over the paused ride */
+  /** one level back (pad B, Esc, "‹ Back"): the sheet before, the pause list, or riding on */
+  _menuBack() {
+    if (this.finished || this._atGoal) return;
+    const f = this._backs?.pop(); if (f && this.q('#pauseOverlay')) f(); else this._resume();
+  }
+  /** Freddy 20.11.: everything the main menu can do also in the ride: the Settings page over the paused ride (without the
+   *  device rows and the shifting switch, which have their own place here: Devices, Workout & mode) */
   _settings() {
     import('./app.js').then(m => m.openRideSettings(() => this._settingsBack())).catch(e => this._flash('Settings did not open: ' + (e?.message || e)));
   }
@@ -1287,67 +1289,47 @@ export class RideSession {
     if (s.ftp && s.ftp !== this.ftp) { this.ftp = s.ftp; if (this.workout) { this._wT = 0; this._workout(0); } } // a new FTP: the workout's watts follow at once
     this._trainerUp();
     const pad = activePad(); this.padPrev = pad ? padButtons(pad) : null; // the B that closed the sheet must not also resume the ride
-    if (this.paused && !this.finished) this._pause();
+    if (this.paused && !this.finished) this._pause('pSet');
   }
-  /** a trainer connected in the ride (pause menu, settings, workout & mode): its physics, and ERG gets its target at once */
+  /** a trainer connected in the ride (Devices, HUD): its physics, and ERG gets its target at once */
   _trainerUp() {
     const t = this.state.trainer; if (!t.connected) return;
     t.setSim?.({ riderKg: this.state.settings.riderKg, bikeKg: this.state.settings.bikeKg, crr: 0.004, cw: 0.51 })?.catch?.(() => {});
     if (this.workout && this.erg) this._workout(0); else if (this.berg) t.setPower?.(this._bergTarget());
   }
-  async _connTrainer() {
-    const b = this.q('#pConn'); if (b) { b.disabled = true; b.textContent = 'Connecting …'; }
-    try { const m = await import('./app.js'); await m.connectTrainer(); } catch (e) { this._flash('Connection failed: ' + (e?.message || e), 4000); }
+  /** the trainer's device list (Devices, the HUD's Connect / Reconnect): the chooser opens inside the tap */
+  async _connTrainer(btn) {
+    if (btn) { btn.disabled = true; btn.textContent = 'Connecting …'; }
+    // the app module at hand (no await before the chooser: it opens inside the tap, before a reconnect loop woken in the same
+    // tap can win); a trainer that came back meanwhile is never offered "Disconnect?" by a Connect tap
+    try { const m = appMod || await loadApp(); if (!this.state.trainer.connected) await m.connectTrainer(); } catch (e) { this._flash('Connection failed: ' + (e?.message || e), 4000); }
     if (this.state.trainer.connected) { this._trainerUp(); this._flash('✓ ' + (this.state.trainer.device?.name || 'Trainer') + ' connected'); }
     else if (this.state.trainer.device) this.state.trainer.rejoinNow?.()?.catch?.(() => {}); // list closed: the quiet loop goes on
-    if (this.paused && !this.finished) this._pause();
+    if (this.paused && !this.finished) this._repaint?.();
   }
-  /** a heart rate strap from the pause menu (after a reload the browser may need the chooser once more) */
-  async _connHr() {
-    const b = this.q('#pHr'); if (b) { b.disabled = true; b.textContent = 'Connecting …'; }
-    try { const m = await import('./app.js'); await m.connectHR(false); } catch (e) { this._flash('Connection failed: ' + (e?.message || e), 4000); }
+  /** a heart rate strap (Devices, the HUD; after a reload the browser may need the chooser once more); all: every device */
+  async _connHr(btn, all = false) {
+    if (btn) { btn.disabled = true; btn.textContent = 'Connecting …'; }
+    try { const m = appMod || await loadApp(); if (!this.state.hr?.connected) await m.connectHR(all); } catch (e) { this._flash('Connection failed: ' + (e?.message || e), 4000); }
     if (this.state.hr?.connected) this._flash('✓ Heart rate connected'); else if (this.state.hr?.device) this.state.hr.rejoinNow?.()?.catch?.(() => {}); // list closed: the quiet loop goes on
-    if (this.paused && !this.finished) this._pause();
+    if (this.paused && !this.finished) this._repaint?.();
   }
-  /** laps also in the ride (like on the route page): 1 → 2 → 3 → 4 → 5 → 10 → 1, never below the lap you are on */
-  _cycleLaps() {
-    const L = [1, 2, 3, 4, 5, 10], ok = L.filter(n => n >= this.lap), i = ok.indexOf(this.laps);
-    this.laps = ok[(i + 1) % ok.length] ?? ok[0]; this.state.settings.laps = this.laps; import('./app.js').then(m => m.saveSettings());
+  /** laps also in the ride (like on the route page, Workout & mode): never below the lap you are on */
+  _setLaps(n) {
+    this.laps = Math.max(n, this.lap); this.state.settings.laps = this.laps; import('./app.js').then(m => m.saveSettings());
     const q = this.q('#hDistSub'); if (q) q.textContent = this._distSub();
     this._flash(this.laps === 1 ? 'One lap' : `${this.laps} laps · ${fmtKm(this.track.length * this.laps)} km`);
   }
-  /** in-ride options (game-style, all reachable with the controller): each button shows its current state and toggles it */
-  _options() {
-    const o = this.q('#pauseOverlay'); if (!o) return;
-    const s = this.state.settings, mode = this.berg ? 'ERG' : this.auto ? 'auto' : this.virtual ? 'virtual' : 'on the bike';
-    const items = [
-      ['oShift', `Shifting: ${mode}`, () => this.toggleShift()],
-      ['oView', `View: ${['Rider view', 'Chase', 'Look back'][s.view3d || 0]}`, () => this._cycleView()],
-      ['oHud', 'Switch display', () => this._cycleHud()],
-      ...(this.workout ? [['oWView', `Interval display: ${WB_NAMES[this._wbView()]}`, () => this._cycleWbView()]] : []),
-      ['oBar', `Bars: ${s.cockpit === false ? 'off' : 'on'}`, () => this._toggleBar()],
-      ...(!this.group && !this.ow && !this.autopilot ? [['oLaps', `Laps: ${this.laps}${this.laps > 1 ? ` (now lap ${this.lap})` : ''}`, () => this._cycleLaps()]] : []),
-      ['oMusic', `Music: ${this.music?.on ? 'on' : 'off'}`, () => this._toggleMusic()],
-      ['oEagle', `Eagle of Destiny: ${s.eagle === false ? 'off' : 'on'}`, () => this._toggleEagle()],
-      ...(this.group && this._voiceTap ? [['oVoice', `Voice chat: ${!this.group.voice?.on ? 'off' : this.group.voice.muted ? 'muted' : 'on'}`, () => this._voiceTap()]] : []),
-      ['oNext', 'Next song', () => this.music?.skip()],
-      ['oWide', 'Wider view', () => this._lens(-1)], ['oNarrow', 'Narrower view', () => this._lens(1)],
-      ['oRemote', remoteLabel(), () => remoteCode()], // phone remote: the code to enter on the phone (js/remotepad.js)
-      ...(this.workout && !this.wDone && this.wNow?.step && !this.wNow.step.free ? [['oAdjUp', `Target +5 W (${this.wNow.hard ? 'intervals' : 'easy parts'} now ${fmtAdj(this.wNow.hard ? this.wAdj : this.wAdjE)})`, () => this._wTune(5)], ['oAdjDn', 'Target −5 W', () => this._wTune(-5)]] : []),
-    ];
-    o.querySelector('.box').innerHTML = `<div class="label">Pause</div><h2 class="display">Options</h2>
-      <div class="row-actions padmenu" style="flex-wrap:wrap">${items.map(([id, t]) => `<button class="btn ghost" id="${id}">${t}</button>`).join('')}<button class="btn" id="oBack">Back</button></div>
-      <div class="hint pad-hint" style="margin-top:12px;opacity:.7">🎮 D-pad to choose · A change · B back${this.workout && !this.wDone ? '<br>While riding the workout: 🎮 L / R or D-pad up / down: target ±5 W · L2 / R2: ±1 W · keys W / S ±5 W (Shift 1 W), arrows ±1 W with a trainer · − / + on the bar<br>Hard intervals and easy parts keep their own offset' : ''}</div>`;
-    items.forEach(([id, , fn], i) => o.querySelector('#' + id).onclick = () => { fn(); setTimeout(() => { this._options(); this._padFocus(i); }, 60); });
-    o.querySelector('#oBack').onclick = () => this._pause();
-    this._padFocus(0);
-  }
+  /** Devices: trainer / power meter, heart rate, controller, phone remote (js/ridemenus.js) */
+  _devices() { if (this.finished || this._atGoal) return; if (!this.paused) this._pause(); openDevices(this); }
+  /** Display & sound: camera, field of view, display, interval display, bars, music, the eagle (js/ridemenus.js) */
+  _options() { if (this.finished || this._atGoal) return; if (!this.paused) this._pause(); openDisplay(this); }
   /** D-pad in the pause menus goes where it points (the finder of the app menus, js/padnav.js); nothing in that direction:
-   *  ← ↑ step back, → ↓ step on, so every button stays reachable in a single row or column */
+   *  ← ↑ step back, → ↓ step on, so every button stays reachable. The pause list reads as a list: ↓ / ↑ = next / previous */
   _padMove(dir) {
     const bs = [...(this.q('#pauseOverlay')?.querySelectorAll('.padmenu button') || [])]; if (!bs.length) return;
     const rc = bs.map(b => { const r = b.getBoundingClientRect(); return { left: r.left, top: r.top, right: r.right, bottom: r.bottom }; });
-    const i = this._padI || 0, list = !this.q('#pauseOverlay .rsbox') && (dir === 'up' || dir === 'down'); // pause menu and Options read as a list: ↓ / ↑ = next / previous (the row wraps since Settings / Connect trainer); the ride setup is a grid
+    const i = this._padI || 0, list = !!this.q('#pauseOverlay .pmlist') && (dir === 'up' || dir === 'down');
     const n = list ? -1 : pickInDir(rc[i], rc, dir);
     this._padFocus(n >= 0 ? n : i + (dir === 'up' || dir === 'left' ? -1 : 1));
   }
@@ -1355,27 +1337,18 @@ export class RideSession {
     const bs = [...(this.q('#pauseOverlay')?.querySelectorAll('.padmenu button') || [])]; if (!bs.length) return;
     this._padI = (i + bs.length) % bs.length;
     bs.forEach((b, k) => { b.style.outline = k === this._padI ? '3px solid var(--accent, #ff5a1f)' : ''; b.style.outlineOffset = '3px'; });
-    bs[this._padI].focus?.({ preventScroll: true }); bs[this._padI].scrollIntoView?.({ block: 'nearest' }); // long menus (ride setup) scroll along
+    bs[this._padI].focus?.({ preventScroll: true }); bs[this._padI].scrollIntoView?.({ block: 'nearest' }); // long sheets scroll along
   }
-  /** workout, mode (ERG / gradient / just ride) and shifting, chosen in the ride: js/ridesetup.js, in the pause overlay */
+  /** Workout & mode: workout, ERG / gradient, shifting, target, laps, power source (js/ridesetup.js), in the pause overlay */
   _setup() {
     if (this.finished || this._atGoal) return; if (!this.paused) this._pause();
-    import('./ridesetup.js').then(m => { if (this.paused && !this.finished) m.openSetup(this); }).catch(e => this._flash('Setup failed: ' + (e.message || e)));
+    openSetup(this);
   }
-  _resume() { if (this._atGoal) return this._again(); this.music?.resume(); this.paused = false; this.q('#pauseOverlay')?.remove(); this.last = performance.now(); }
+  _resume() { if (this._atGoal) return this._again(); this.music?.resume(); this.paused = false; this._backs = []; this._menu = null; this._repaint = null; this.q('#pauseOverlay')?.remove(); this.last = performance.now(); }
 
-  /** pause menu "Gruppe öffnen" (Freddy 15.11.): this solo ride becomes a group ride, friends join with the code and start next to you */
-  async _openGroup() {
-    const box = this.q('#pauseOverlay .box'); if (box) box.innerHTML = '<div class="label">Group</div><h2 class="display">Opening …</h2>';
-    let g; try { g = await this._hostGroup(); }
-    catch (e) { this._flash('Group failed: ' + (e.message || e)); return this._pause(); }
-    if (box) { box.innerHTML = `<div class="label">Group open</div><h2 class="display" style="letter-spacing:.12em">${esc(g.code)}</h2>
-      <p style="margin:6px 0 14px;opacity:.85">Friends tap “Ride together” in RIDEFRAME and enter the code, or open the link. They start right next to you.</p>
-      <div class="row-actions padmenu"><button class="btn" id="pgOn">Ride on</button><button class="btn ghost" id="pgLink">Copy link</button></div>`;
-      box.querySelector('#pgOn').onclick = () => this._resume();
-      box.querySelector('#pgLink').onclick = e => navigator.clipboard?.writeText(g.link).then(() => { e.target.textContent = 'Link copied ✓'; }, () => { e.target.textContent = g.link; });
-      this._padFocus(0); }
-  }
+  /** Ride together (Freddy 15.11., owner 27.11.: one entry): this solo ride becomes a group ride, friends join with the code and
+   *  start next to you; with a group: the riders to jump to, voice chat, the code, invite (js/ridemenus.js) */
+  _openGroup() { if (this.finished || this._atGoal || this.autopilot) return; if (!this.paused) this._pause(); return openGroup(this); }
   /** the solo ride becomes a group ride (hostFromRide), the ride itself goes on: from the pause menu and, without pausing,
    *  in the background when a friend taps Join in "Riding now" (js/live.js). Two requests at once open one group. */
   _hostGroup() {
@@ -1421,27 +1394,6 @@ export class RideSession {
       this._ask = { answer };
       c.querySelector('#jqYes').onclick = () => answer(true); c.querySelector('#jqNo').onclick = () => answer(false);
     });
-  }
-  /** pause menu "Invite friends" (owner 17.11. (2)): the friends online right now (green dot), one button each (pad: D-pad + A);
-   *  the group opens by itself if this is still a solo ride, the friend sees "Max invites you to ride · Join" */
-  async _inviteMenu() {
-    const box = this.q('#pauseOverlay .box'); if (!box) return;
-    box.innerHTML = '<div class="label">Invite friends</div><h2 class="display">Online now</h2><p class="dim">Loading …</p>';
-    const live = await import('./live.js'), F = await live.friendsNow(); if (!box.isConnected) return;
-    const inGroup = new Set((this.group?.others() || []).map(r => r.name)), fs = (F?.friends || []).filter(f => f.state !== 'offline' && !inGroup.has(f.name));
-    box.innerHTML = `<div class="label">Invite friends</div><h2 class="display">Online now</h2>
-      ${fs.length ? '<p style="margin:6px 0 4px;opacity:.85">They see your invite on their library or phone and start right next to you.</p>' : '<p style="margin:6px 0 4px;opacity:.85">Nobody else is online right now. Friends with a green dot show up here.</p>'}
-      <div class="row-actions padmenu invlist">${fs.map((f, i) => `<button class="btn ghost" data-fi="${i}"><i class="frdot ${f.state}"></i>Invite ${esc(f.name)}${f.state === 'riding' ? ' · riding' : ''}</button>`).join('')}<button class="btn" id="invBack">Back</button></div>
-      <div class="hint pad-hint" style="margin-top:12px;opacity:.7">🎮 D-pad to choose · A invite · B back</div>`;
-    box.querySelector('#invBack').onclick = () => this._pause();
-    box.querySelectorAll('[data-fi]').forEach(b => b.onclick = async () => {
-      const f = fs[+b.dataset.fi]; if (!f || b.disabled) return; b.disabled = true; b.textContent = `Inviting ${f.name} …`;
-      try { await this._hostGroup(); await this.presence?.beat();
-        try { await live.inviteFriend(f.key); } catch (e) { if (e.status !== 409) throw e; await new Promise(r => setTimeout(r, 700)); await this.presence?.beat(); await live.inviteFriend(f.key); }
-        b.textContent = `${f.name} invited ✓`; }
-      catch (e) { b.disabled = false; b.textContent = `Invite ${f.name} · ${e.message || 'failed'}`; }
-    });
-    this._padFocus(0);
   }
   /** the group chip: the code copies the link, a click on a rider jumps to him */
   _wireGroupChip() {

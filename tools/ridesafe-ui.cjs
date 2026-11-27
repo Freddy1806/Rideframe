@@ -101,7 +101,7 @@ const FAKE = ({ fails, watts }) => {
     ok(after.route === 'demo' && Math.abs(after.d - b2.d) < 0.01 && Math.abs(after.elapsed - b2.elapsed) < 0.01 && after.samples === b2.samples, `same route, km ${(after.ridden / 1000).toFixed(2)}, time ${Math.round(after.elapsed)} s, ${after.samples} samples (before ${b2.samples})`, JSON.stringify([b2, after]));
     ok(after.w === 'c_30_15_3x13' && after.wi === b2.wi && after.step === b2.step && Math.abs(after.wclock - b2.wclock) < 0.01 && after.erg, `the workout goes on at "${after.step}" (step ${after.wi}), not from the start`);
     ok(after.paused && await p.locator('#pauseOverlay #pResume').count() === 1, 'restored paused: the rider connects first');
-    ok(await p.locator('#pauseOverlay #pConn').count() === 1, 'the pause menu offers Connect trainer (the chooser needs a tap after a reload)');
+    ok(/trainer not connected/.test(await p.textContent('#pauseOverlay #pDev')) && /Devices/.test(await p.textContent('#hFlash')), 'the pause menu shows the trainer is not connected and the flash points to Devices (the chooser needs a tap after a reload)');
     ok(/km/.test(await p.textContent('#pauseOverlay .label')) && (await p.textContent('#hWStep')) === b2.step, 'the pause card and the workout bar show where it stopped');
     if (SHOTS) await p.screenshot({ path: `${SHOTS}/ridesafe_after_continue.jpg`, type: 'jpeg', quality: 80 });
     // the trainer back without a chooser (what Chrome's getDevices gives), then ride on
@@ -138,7 +138,7 @@ const FAKE = ({ fails, watts }) => {
     // ---- 4. offline: the ride goes on and is stored locally; the account gets it when the line is back ----
     await ctx.setOffline(true); const o0 = await ride(); await p.waitForTimeout(3000);
     { const r = await ride(); ok(r.elapsed > o0.elapsed + 2 && r.samples > o0.samples && !r.paused, `offline: the ride goes on (${Math.round(r.elapsed - o0.elapsed)} s, +${r.samples - o0.samples} samples)`); }
-    await p.keyboard.press(' '); await p.waitForSelector('#pSave'); await p.click('#pSave'); await p.waitForSelector('.finish', { timeout: 15000 }); await p.waitForTimeout(800);
+    await p.keyboard.press(' '); await p.waitForSelector('#pEnd'); await p.click('#pEnd'); await p.click('#pSave'); await p.waitForSelector('.finish', { timeout: 15000 }); await p.waitForTimeout(800);
     const fin = (await rides()).filter(r => r.id !== id1), all = fin[0]?.samples || [];
     ok(fin.length === 1, `finishing offline stores ONE ride locally (${fin.length}, besides the one saved as it was)`);
     ok(all.length > b2.samples && all.some(s => s[0] <= b2.last && s[0] >= b2.first) && all.some(s => s[0] > b2.last + 2) && all[0][0] === before.first, `its samples run from before the reload (t ${all[0]?.[0]} … ${b2.last}) to after it (… ${all.at(-1)?.[0]})`);

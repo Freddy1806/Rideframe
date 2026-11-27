@@ -130,13 +130,16 @@ const BTN = { A: 0, B: 1, L: 4, R: 5, START: 9, up: 12, down: 13, left: 14, righ
     await press('START'); await p.waitForTimeout(200); ok(await p.locator('#pauseOverlay #pResume').isVisible(), 'Start opens the ride\'s pause menu (unchanged)');
     await press('down'); const out = await p.evaluate(() => [...document.querySelectorAll('#pauseOverlay .padmenu button')].map(x => x.style.outline));
     ok(out.some((o, i) => i > 0 && /3px/.test(o)) && !/3px/.test(out[0] || ''), 'D-pad ↓ in the pause menu moves the ride\'s own highlight');
-    await padTo('#pOpts'); // the menu wraps into rows since Settings / Connect trainer
+    ok(await p.evaluate(() => document.activeElement?.id) === 'pSetup', 'the pause list: ↓ from Resume is “Workout & mode”');
+    await padTo('#pOpts');
     ok(!(await p.locator('.ride .pn-focus').count()), 'no padnav focus inside the ride');
     await shot('07_ride_pause_menu');
-    await press('A'); await p.waitForTimeout(150); ok(await p.locator('#oBack').isVisible(), 'A opens Options (ride mapping)');
-    await press('B'); await p.waitForTimeout(150); ok(await p.locator('#pResume').isVisible(), 'B goes back to the pause menu (ride mapping)');
-    await padTo('#pSet'); await press('A'); await p.waitForSelector('.rideset #trBtn', { timeout: 15000 }).catch(() => {});
-    ok(await p.locator('.rideset #trBtn').isVisible(), 'pause menu → Settings: the whole settings page over the ride, with Connect trainer');
+    await press('A'); await p.waitForTimeout(150); ok(await p.locator('#oEagle').isVisible(), 'A opens Display & sound (ride mapping)');
+    await press('B'); await p.waitForTimeout(150); ok(await p.locator('#pResume').isVisible() && await p.evaluate(() => document.activeElement?.id) === 'pOpts', 'B goes back to the pause menu, on the entry it came from (ride mapping)');
+    await padTo('#pDev'); await press('A'); await p.waitForTimeout(150); ok(await p.locator('#dvTr').isVisible(), 'A on Devices: the Devices sheet');
+    await press('B'); await p.waitForTimeout(150);
+    await padTo('#pSet'); await press('A'); await p.waitForSelector('.rideset #chainrings', { timeout: 15000 }).catch(() => {});
+    ok(await p.locator('.rideset #chainrings').isVisible() && !(await p.locator('.rideset #trBtn').count()), 'pause menu → Settings: the settings page over the ride, without the device rows (those live in Devices)');
     await press('down'); await press('down'); await p.waitForTimeout(150);
     ok(await p.locator('.rideset .pn-focus').count() === 1, 'the pad drives the settings sheet like the main menu');
     await shot('07b_ride_settings');
@@ -144,8 +147,10 @@ const BTN = { A: 0, B: 1, L: 4, R: 5, START: 9, up: 12, down: 13, left: 14, righ
     ok(!(await p.locator('.rideset').count()) && await p.locator('#pResume').isVisible(), 'B closes the settings, back in the pause menu');
     await press('B'); await p.waitForTimeout(150); ok(!(await p.locator('#pauseOverlay').count()), 'B resumes the ride (ride mapping)');
     await press('START'); await p.waitForTimeout(200);
-    await padTo('#pDiscard');
-    await press('A'); await p.waitForTimeout(600);
+    await padTo('#pEnd'); await press('A'); await p.waitForTimeout(150);
+    await padTo('#pDiscard'); await press('A'); await p.waitForTimeout(150);
+    ok(await p.locator('#pDiscardYes').isVisible() && await p.locator('.ride').count() === 1, 'End ride → Discard asks first');
+    await padTo('#pDiscardYes'); await press('A'); await p.waitForTimeout(600);
     ok(!(await p.locator('.ride').count()) && await p.locator('#main #rideBtn').count() === 1, 'Discard by pad: back on the route page');
     await press('down'); const back = await cur(); ok(!!back && !back.ride, `after the ride the pad drives the menus again (${back?.text})`);
 

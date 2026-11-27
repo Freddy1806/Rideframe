@@ -130,12 +130,12 @@ const median = a => { const s = [...a].sort((x, y) => x - y); return s[Math.floo
     ok(await D.evaluate(() => window.__ride.paused && !!document.querySelector('#pauseOverlay')), 'phone Pause: the desktop pauses');
     await P.waitForFunction(() => document.querySelector('#rm')?.dataset.scr === 'paused', null, { timeout: 4000 }).catch(() => {});
     const pm = await P.evaluate(() => ({ items: [...document.querySelectorAll('.rmi')].map(b => b.textContent), resume: !document.querySelector('#rResume').hidden, nav: !document.querySelector('#rNav').hidden }));
-    ok(pm.items.includes('Resume') && pm.items.includes('Options') && pm.resume && pm.nav, `phone paused: the pause menu (${pm.items.join(' · ')}), D-pad and Resume`, JSON.stringify(pm));
+    ok(pm.items.includes('Resume') && pm.items.includes('Devices') && pm.resume && pm.nav, `phone paused: the pause menu (${pm.items.join(' · ')}), D-pad and Resume`, JSON.stringify(pm));
     await pshot('phone_paused_390');
-    await press('.rd.down'); ok(await D.evaluate(() => window.__ride._padI) === 1, 'phone D-pad ↓ in the pause menu: Options highlighted');
+    await press('.rd.down'); await press('.rd.down'); ok(await D.evaluate(() => window.__ride._padI) === 2, 'phone D-pad ↓ ↓ in the pause menu: Devices highlighted');
     await press('.rbtn.a'); await D.waitForTimeout(250);
-    ok(await D.locator('#pauseOverlay #oBack').count() === 1, 'phone A: Options open');
-    const remoteOpt = await D.textContent('#oRemote').catch(() => ''); ok(/Phone remote: connected/.test(remoteOpt), `pause Options: "${remoteOpt}"`);
+    ok(await D.locator('#pauseOverlay #dvTrC').count() === 1, 'phone A: Devices open');
+    const remoteOpt = await D.textContent('#oRemote').catch(() => ''); ok(/Phone remote · connected/.test(remoteOpt), `pause → Devices: "${remoteOpt}"`);
     await press('.rbtn.b'); await D.waitForTimeout(250); ok(await D.locator('#pauseOverlay #pResume').count() === 1, 'phone B: back to the pause menu');
     await P.waitForFunction(() => document.querySelectorAll('.rmi').length > 2 && [...document.querySelectorAll('.rmi')].some(b => b.textContent === 'Resume'), null, { timeout: 3000 }).catch(() => {});
     await P.click('#rResume'); await D.waitForTimeout(300);

@@ -204,13 +204,13 @@ async function peerOut({ page }, m) {
     // ---- invite from the pause menu: Dora (library open) and Anna (phone) see "Max Rider invites you to ride" ----
     const ctxD = await ctxFor(D), LD = await open(ctxD, '/?desktop&noprofile&demo', 'D');
     await LD.waitForSelector('#live.on'); await RA.waitForTimeout(500);
-    await RA.click('#hPause'); await RA.click('#pInvite'); await RA.waitForSelector('.invlist [data-fi]');
+    await RA.click('#hPause'); await RA.click('#pGroup'); await RA.click('#pInvite'); await RA.waitForSelector('.invlist [data-fi]');
     const invTxt = await RA.textContent('.invlist');
     ok(await RA.locator('.invlist [data-fi]', { hasText: 'Dora' }).count() === 1 && await RA.locator('.invlist [data-fi]', { hasText: 'Freddy' }).count() === 0, 'pause menu: online friends to invite (not the ones already in the group): ' + invTxt.replace(/\s+/g, ' '));
     await shot(RA, 'ride_invite_menu_1280.png');
     for (const n of ['Dora', 'Anna']) { await RA.locator('.invlist [data-fi]', { hasText: n }).click(); await RA.waitForFunction(n => [...document.querySelectorAll('.invlist [data-fi]')].some(b => b.textContent.includes(n + ' invited')), n, { timeout: 10000 }); }
     ok(true, 'Dora and Anna invited');
-    await RA.click('#invBack'); await RA.click('#pResume');
+    await RA.click('#oBack');
     await LD.waitForSelector('.lvinvite', { timeout: 40000 });
     ok(/Max Rider invites you to ride/.test(await LD.textContent('.lvinvite')), 'Dora: "Max Rider invites you to ride · Join"');
     await LD.waitForTimeout(500); await shot(LD, 'library_invite_1280.png');
@@ -241,11 +241,11 @@ async function peerOut({ page }, m) {
 
     // ---- leaving the ride ends the entry at once (B leaves A's group ride); desktop settings ----
     const before = (await api('GET', '/api/live', C.token)).riders.some(r => r.name === 'Freddy');
-    await LB.click('#hPause'); await LB.click('#pDiscard'); await LB.waitForSelector('#hPause', { state: 'detached' });
+    await LB.click('#hPause'); await LB.click('#pEnd'); await LB.click('#pDiscard'); await LB.click('#pDiscardYes'); await LB.waitForSelector('#hPause', { state: 'detached' });
     await LC2.waitForTimeout(500); const after = (await api('GET', '/api/live', C.token)).riders.some(r => r.name === 'Freddy');
     ok(before && !after, `Freddy leaves the ride: off the list at once (DELETE) (${before} -> ${after})`);
     await ctxC2.close();
-    await RA.click('#hPause'); await RA.click('#pDiscard'); await RA.waitForSelector('#hPause', { state: 'detached' }); await RA.waitForTimeout(1200);
+    await RA.click('#hPause'); await RA.click('#pEnd'); await RA.click('#pDiscard'); await RA.click('#pDiscardYes'); await RA.waitForSelector('#hPause', { state: 'detached' }); await RA.waitForTimeout(1200);
     ok(beatsA.length === nA, 'A: no heartbeat while hidden and after the ride');
     await RA.click('.tab[data-view="settings"]'); await RA.waitForSelector('#livePanel');
     ok(await RA.isChecked('#liveShow') && await RA.isChecked('#liveAuto'), 'desktop settings: "Show me when I ride" and "Friends can join me without asking"');

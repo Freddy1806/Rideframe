@@ -42,7 +42,7 @@ function shell() {
       <button class="btn rgo" id="rGo" type="submit">Connect</button>
       <p class="rerr" id="rErr" role="alert"></p>
     </form>
-    <p class="rhow">On the computer: <b>Settings → Trainer → Phone remote</b> shows the code and a QR code. In a ride: pause → Options → Phone remote.</p>
+    <p class="rhow">On the computer: <b>Settings → Trainer → Phone remote</b> shows the code and a QR code. In a ride: Pause → Devices shows it.</p>
   </section>
   <section class="rpad" id="rPad" hidden>
     <div class="rstat glass" id="rStat">
