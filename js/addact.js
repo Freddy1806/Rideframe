@@ -11,7 +11,7 @@ const p2 = n => String(n).padStart(2, '0');
 const localDT = t => { const d = new Date(t); return `${d.getFullYear()}-${p2(d.getMonth() + 1)}-${p2(d.getDate())}T${p2(d.getHours())}:${p2(d.getMinutes())}`; };
 
 /** opens the sheet; edit = an existing manual entry; onSaved(rec, text) after saving */
-export function addSheet({ edit = null, onSaved = () => {}, acts = [] } = {}) {
+export function addSheet({ edit = null, onSaved = () => {}, acts = [], file: pickFile = false } = {}) {
   const e = edit || {}, s = document.createElement('div'); s.className = 'psheet'; document.body.append(s);
   let file = null; // what the chosen file gave: { name, samples, … }
   const dur = e.duration || 3600, start = e.start || (e.date ? e.date - (e.elapsed || e.duration || 0) * 1000 : Date.now() - 3600e3);
@@ -36,6 +36,7 @@ export function addSheet({ edit = null, onSaved = () => {}, acts = [] } = {}) {
   $('#aSport', s).onchange = ev => { $('#aName', s).placeholder = labelOf(ev.target.value); };
   const fb = $('#aFile', s), fi = $('#aFileIn', s);
   if (fb) fb.onclick = () => fi.click();
+  if (pickFile && fi) fi.click(); // "Import file" (the Activities "+" menu, Settings): straight to the file picker, still inside the tap
   if (fi) fi.onchange = async () => {
     const f = fi.files?.[0]; if (!f) return; err('');
     try {

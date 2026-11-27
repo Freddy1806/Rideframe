@@ -80,7 +80,7 @@ export function wireRoutePick(root, { route, state, saveSettings, rerender, rout
       state.settings.laps = n; if (ls) ls.value = String(n); await saveSettings(); await show(); (ls || $('#workSel', root))?.focus(); }; // focus on the laps, so the pad stays on the page
     info.querySelectorAll('[data-route]').forEach(b => b.onclick = () => openRoute(b.dataset.route));
   };
-  const mine = $('#wMine', root); if (mine) mine.onclick = () => { location.href = 'profil.html#myworkouts'; };
+  const mine = $('#wMine', root); if (mine) mine.onclick = () => { location.href = 'workouts.html#ride'; }; // 27.11.: My workouts live on the Workouts page
   sel.addEventListener('change', show); $('#lapSel', root)?.addEventListener('change', () => setTimeout(show)); show(); // after app.js stored the laps
   btn.onclick = async () => {
     const cur = workoutById(sel.value), own = cur?.personal ? personalById(cur.id) : null;

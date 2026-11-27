@@ -1167,3 +1167,13 @@ img.face.big{width:96px;height:96px}
 /* ERG target not taken by the trainer (js/ride.js _updateHUD) */
 #hGearL.warn { color: #ff5a4d; font-weight: 700; }
 .wadj[hidden] { display: none !important; }
+
+/* 27.11. (owner, iPhone: "RIDEFRAME sits under the blurred top edge"): ONE top spacing for every phone page: the safe area plus
+   15 px, so the wordmark and the header buttons sit clear of the status bar. (html body #id beats each page's own padding shorthand.) */
+:root { --top-gap: calc(env(safe-area-inset-top) + 15px); }
+html body :is(#handy, #workouts, #training, #profil, #feed, #stat, #body) { padding-top: var(--top-gap); }
+@media (max-width: 700px) and (orientation: portrait) { html body :is(#pure, #out, #kraft, .kgp) { padding-top: var(--top-gap); } }
+/* the header buttons of the phone pages: 44 px tap targets */
+body.handy .ptop { min-height: 52px; height: auto; }
+body.handy .ptop .pgear, body.handy .ptop .hbtn { width: 44px; height: 44px; flex: none; }
+body.handy .ptop .ppill { height: 44px; }

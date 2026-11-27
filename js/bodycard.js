@@ -59,3 +59,35 @@ export async function mountWeightCard(el) {
   try { const j = await loadBody(Date.now() - 90 * 864e5); renderWeightCard(el, j); syncWeight(j.list, j.prefs); } catch { el.innerHTML = ''; }
 }
 export const SCALE = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="4"/><path d="M8.5 9.5a5 5 0 0 1 7 0M12 9.5l1.2-1.6"/></svg>';
+
+/** 27.11. (owner: the weight card big, about the height of Fitness and Strength together): the newest weight, its change over 7 and
+ *  30 days, 90 days of trend (the smoothed line and the weigh-ins as dots) and body fat / muscle underneath when there are any.
+ *  Drawn to the card's real width, so the dots stay round and the text text-sized. A tap opens the Body page. */
+export function renderWeightBig(el, data, { href = 'body.html', now = Date.now() } = {}) {
+  if (!el) return; if (!data) { el.innerHTML = ''; return; }
+  const list = data.list || [], ask = (data.prompts || []).length;
+  const badge = ask ? `<span class="bcask">${ask} weigh-in${ask > 1 ? 's' : ''} to confirm</span>` : '';
+  if (!list.length) { el.innerHTML = `<a class="bcard bempty" href="${href}"><span class="bcico" aria-hidden="true">${SCALE}</span><div><b>Weight</b><small>Add a weigh-in or connect your scale</small>${badge}</div><i>›</i></a>`; return; }
+  const last = list.reduce((a, m) => !a || m.t > a.t ? m : a, null), c = changes(list);
+  const chg = (d, l) => { const w = changeWords(d), flat = d != null && Math.abs(d) < 0.15;
+    return `<span class="wgc ${d == null ? '' : w.cls}"><b>${d == null ? '–' : flat ? '±0' : `${w.arrow ? `<em aria-hidden="true">${w.arrow}</em>` : ''}${Math.abs(d).toFixed(1)}`}<small>${d == null || flat ? '' : ' kg'}</small></b><small>${l}</small></span>`; };
+  const lastOf = k => [...list].reverse().find(m => m[k] != null);
+  const fat = lastOf('fatPct'), est = !fat && compOf(last, data.prefs), mus = lastOf('musclePct');
+  const subs = [fat ? ['Body fat', `${fat.fatPct.toFixed(1)} %`] : est ? ['Body fat', `${est.fatPct.toFixed(1)} % <small>est.</small>`] : null, mus ? ['Muscle', `${mus.musclePct.toFixed(1)} %`] : null].filter(Boolean);
+  el.innerHTML = `<a class="bcard wgbig" href="${href}" aria-label="Weight ${fmtKg(last.kg)} kg, ${esc(when(last.t))}. 7 days: ${esc(changeWords(c.d7).text)}. 30 days: ${esc(changeWords(c.d30).text)}.">
+    <div class="wgh"><span class="cdt"><span class="bcico" aria-hidden="true">${SCALE}</span><span>Weight</span></span><small>${esc(when(last.t))}</small><i class="cdgo" aria-hidden="true">›</i></div>
+    <div class="wgtop"><b class="wgnum">${fmtKg(last.kg)}<small> kg</small></b><div class="wgcs">${chg(c.d7, '7 days')}${chg(c.d30, '30 days')}</div></div>${badge}
+    <div class="wgchart"></div>
+    ${subs.length ? `<div class="wgsub">${subs.map(([l, v]) => `<span><small>${l}</small><b>${v}</b></span>`).join('')}</div>` : ''}</a>`;
+  const box = el.querySelector('.wgchart'), W = Math.max(240, Math.round(box.clientWidth || el.clientWidth - 28 || 320)), H = 112, from = now - 90 * 864e5;
+  const tr = trend(list).filter(p => p.t >= from), pts = list.filter(m => m.t >= from);
+  if (tr.length < 2 && pts.length < 2) return;
+  const vals = [...tr.map(p => p.trend), ...pts.map(m => m.kg)], lo = Math.min(...vals) - .3, hi = Math.max(...vals) + .3, R = 34;
+  const x = t => 3 + (t - from) / (now - from) * (W - R - 6), y = v => 6 + (hi - v) / (hi - lo) * (H - 22);
+  const line = tr.map((p, i) => `${i ? 'L' : 'M'}${x(p.t).toFixed(1)},${y(p.trend).toFixed(1)}`).join('');
+  const mo = t => new Date(t).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' });
+  box.innerHTML = `<svg class="wgsvg" width="${W}" height="${H}" viewBox="0 0 ${W} ${H}" aria-hidden="true">
+    ${[hi - .3, lo + .3].map(v => `<line class="wgl" x1="0" x2="${W - R}" y1="${y(v).toFixed(1)}" y2="${y(v).toFixed(1)}"/><text x="${W}" y="${(y(v) + 4).toFixed(1)}" text-anchor="end">${v.toFixed(1)}</text>`).join('')}
+    ${pts.map(m => `<circle cx="${x(m.t).toFixed(1)}" cy="${y(m.kg).toFixed(1)}" r="1.7"/>`).join('')}<path d="${line}"/>
+    <text x="0" y="${H - 2}">${mo(from)}</text><text x="${W - R}" y="${H - 2}" text-anchor="end">today</text></svg>`;
+}

@@ -17,3 +17,15 @@
 .ftot { display: flex; flex-direction: column; } .ftrow { display: flex; gap: 12px; align-items: center; padding: 10px 2px; border-bottom: 1px solid var(--line); color: inherit; text-decoration: none; --c: var(--mc); }
 :root[data-theme="light"] .ftrow { --c: var(--mcl); } .ftrow div { min-width: 0; } .ftrow b { display: block; font-size: 15px; } .ftrow small { font-size: 12px; color: var(--muted); }
 #profil .psheetin .prow { grid-template-columns: minmax(0, 1fr) 110px 28px; }
+/* 27.11.: the clean profile: four key numbers, the FTP estimate in one line, short rows that open the rest */
+#profil { gap: 14px; }
+.fkeys { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 6px; }
+.fkey { display: flex; flex-direction: column; align-items: center; gap: 1px; padding: 10px 4px; border-radius: 14px; background: var(--ink-2); border: 1px solid var(--line); min-width: 0; text-align: center; }
+.fkey b { font-size: 21px; font-weight: 900; font-stretch: 106%; font-variant-numeric: tabular-nums; white-space: nowrap; line-height: 1.1; } .fkey b small { font-size: 11px; color: var(--muted); font-weight: 800; }
+.fkey span { font-size: 11px; font-weight: 800; letter-spacing: .06em; text-transform: uppercase; color: var(--muted); } .fkey em { font-style: normal; font-size: 11px; font-weight: 700; color: var(--accent); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 100%; }
+.fsug { margin: 0; } .fsug > span { display: flex; flex-direction: column; gap: 2px; } .fsug small { font-size: 12px; color: var(--muted); font-weight: 600; } .fsug .btn { height: 40px; flex: none; }
+.flinks { display: flex; flex-direction: column; border-radius: 16px; background: var(--ink-2); border: 1px solid var(--line); overflow: hidden; }
+.frow2 { width: 100%; min-height: 60px; padding: 10px 14px; border: 0; border-bottom: 1px solid var(--line); background: none; text-align: left; font: inherit; color: inherit; --c: var(--accent); }
+.flinks > :last-child { border-bottom: 0; } .frow2:active { background: var(--ink-3); }
+#fRecSheet .fest, #fTotSheet .fest { margin-top: 4px; } #fRecSheet .hall, #fTotSheet .hall { padding: 12px 0; }
+@media (max-width: 360px) { .fkey b { font-size: 18px; } }

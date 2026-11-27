@@ -12,7 +12,7 @@ import { loadActs, detail } from './feed.js';
 import { nav } from './nav.js';
 
 const el = document.getElementById('handy'), $ = (s, r = document) => r.querySelector(s);
-let myW = [], S = {}, acc = null, rides = [], kraft = [], installEvt = null, D = null;
+let WK = null, runs = [], S = {}, acc = null, rides = [], kraft = [], installEvt = null, D = null;
 // 23.11. (owner: "I don't know why it is not in"): with a paired watch, the watch setup is on the start page too. The last answer is kept
 // on this phone, so the card is there at once on the next start; the account's watch list (js/watchpair.js) checks it after each render.
 const WKEY = 'rf-watch-paired';
@@ -24,8 +24,9 @@ async function load() {
   applyTheme(S, null);
   D = await loadActs(); rides = D.acts.filter(a => !a.kraft); kraft = D.acts.filter(a => a.kraft); // one loader for all sports (feed.js)
   try { acc = (await import('./account.js')).account(); } catch {}
-  try { const W = await import('./workouts.js'); W.setMyWorkouts(S.myWorkouts); await (await import('./myworkouts-store.js')).loadPersonal(); // your own workouts on the start page (owner 19.11.: "easy und leicht finden")
-    myW = W.allWorkouts().filter(w => w.mine || w.personal).map(w => ({ id: w.id, name: w.name, min: Math.round(W.workoutDuration(w) / 60) })); } catch { myW = []; }
+  try { const W = await import('./workouts.js'); W.setMyWorkouts(S.myWorkouts); await (await import('./myworkouts-store.js')).loadPersonal(); WK = W; } catch { WK = null; } // the shape of a planned workout (27.11.: Today's training)
+  if (!load.coach) { load.coach = import('./coachworkouts.js').then(m => m.loadCoach({ timeout: 2500 })).catch(() => {}); }
+  try { const R = await import('./runworkouts.js'); runs = (await R.loadRuns()).map(w => ({ id: w.id, min: R.runMinutes(w), svg: R.runSVG(w, 40) })); } catch { runs = []; }
   if (acc && !load.prefs) { load.prefs = true; import('./live.js').then(l => l.getPrefs()).then(p => { S.liveShow = p.show; S.liveAuto = p.auto; }).catch(() => {}); } // the account's switches, so a later save keeps them
 }
 
@@ -33,26 +34,36 @@ function render() {
   const mcs = m => S.oneColor !== true ? `--mc:${MODES[m].color};--mcl:${MODES[m].light}` : '--mc:var(--accent);--mcl:var(--accent)';
   const card = m => `<a class="hmode" href="${MODES[m].href}" style="${mcs(m)}" aria-label="${MODES[m].name}">${icon(m, 'hico')}<b>${MODES[m].short}</b></a>`;
   el.innerHTML = `<header class="ptop"><div class="pbrand" style="font-size:22px">RIDE<span>FRAME</span></div>
-      <button class="ppill ${acc ? 'on' : ''}" id="hAcc"><i></i><span class="pname">${acc ? esc(acc.name) : 'Sign in'}</span></button>
+      <button class="ppill ${acc ? 'on' : ''}" id="hAcc"><i></i><span class="pname">${acc ? esc(String(acc.name).trim().split(/[\s._@-]+/)[0] || acc.name) : 'Sign in'}</span></button>
+      <button class="pgear hbtn hbell" id="hBell" title="Updates" aria-label="Updates">${BELL}<i class="hdot" id="hDot" hidden></i></button>
       <button class="pgear" id="hSet" title="Settings" aria-label="Settings">${icon('gear', 'gico')}</button></header>
     ${stv?.configured && (stv.connected ? !stv.canImport : !stvHide()) ? `<button class="hstrava" id="hStrava">${stv.connected ? '' : '<i id="hStravaX" role="button" aria-label="Hide">✕</i>'}<b>${stv.connected ? 'Strava import is off' : 'Strava is not connected'}</b><small>${stv.connected ? 'Tap to reconnect and allow reading your activities, then everything you upload to Strava shows up here.' : 'Tap to connect, then everything you upload to Strava shows up here.'}</small></button>` : stvMsg ? `<p class="hint" role="status">${esc(stvMsg)}</p>` : ''}
     ${installEvt && !window.__rfNative ? `<button class="btn ghost" id="hInstall">Install as app</button>` : ''}
     <div class="tdhello" id="hHello"></div><div id="hHero"></div><div id="hPlan"></div>
     <nav class="hmodes hstart" aria-labelledby="hRecH"><h2 class="label" id="hRecH">Record</h2><div>${['ride', 'run', 'trainer', 'world', 'kraft'].map(card).join('')}</div></nav>
-    <div id="hWhat"></div><div id="hOv"></div>
-    <section class="hmyw"><h3 class="ksec">My workouts</h3>${myW.slice(0, 4).map(w => `<a class="hrow hlink" href="pure.html?workout=${encodeURIComponent(w.id)}" style="${mcs('trainer')}"><div><b>${esc(w.name)}</b><small>${w.min} min · indoor trainer</small></div><i>›</i></a>`).join('')}
-      <a class="hall" href="pure.html?workout=">${myW.length > 4 ? `All ${myW.length} and the standard workouts ›` : myW.length ? 'All workouts · build a new one ›' : 'Build your own workout or pick a standard one ›'}</a></section>
-    <a class="hrow hlink hremote" href="remote.html?auto" id="hRemote"><div><b>Remote</b><small>Control RIDEFRAME on your laptop with this phone</small></div><i>›</i></a>`;
+    <div id="hOv"></div>`;
   const again = async () => { await load(); render(); };
   const ctx = { acts: D.acts, P: D.P, S, acc, openAct: a => detail(a, D.P, again), signIn: () => $('#hAcc').click(),
     hosts: { friends: box => { box.innerHTML = '<div id="hLive" class="live"></div>'; liveStrip(box.firstElementChild); }, watch: box => { box.innerHTML = `<div id="hWatch">${watchCard()}</div>`; wireWatch(box); } } }; // the cards (not in the page yet, so the boxes are handed over): js/cards.js "Friends" and "Watch" are these two
-  import('./today.js').then(m => m.mountToday({ hello: $('#hHello'), hero: $('#hHero'), plan: $('#hPlan'), what: $('#hWhat') }, ctx)).catch(e => console.warn('Today:', e));
+  ctx.shape = e => { if (e.kind === 'ride' && e.ref && WK) { const w = WK.workoutById(e.ref); return w ? { svg: WK.workoutSVG(w, null, 40), min: Math.round(WK.workoutDuration(w) / 60) } : null; }
+    if (e.kind === 'run' && e.ref) return runs.find(r => r.id === e.ref) || null; return null; };
+  ctx.onInsights = lines => updatesIn(lines);
+  todayP = import('./today.js').then(m => m.mountToday({ hello: $('#hHello'), hero: $('#hHero'), plan: $('#hPlan') }, ctx)).catch(e => console.warn('Today:', e));
+  $('#hBell').onclick = async () => { const U = await import('./updates.js'); U.openUpdates(upd, () => dot()); };
+  dot();
   import('./cards.js').then(m => m.mountOverview($('#hOv'), ctx)).catch(e => console.warn('Cards:', e));
   $('#hAcc').onclick = async () => { const a = await import('./account.js'); await a.accountModal({ settings: S }, async () => { await load(); render(); }); };
   $('#hSet').onclick = settings;
   checkWatch();
   const ib = $('#hInstall'); if (ib) ib.onclick = async () => { installEvt.prompt(); await installEvt.userChoice.catch(() => {}); installEvt = null; render(); };
 }
+/* "Updates" (27.11.): the insight lines as a history behind the bell, a dot while something is new (js/updates.js) */
+const BELL = '<svg class="gico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"/><path d="M10.3 21a1.94 1.94 0 0 0 3.4 0"/></svg>';
+let upd = null, todayP = null;
+async function updatesIn(lines) {
+  const U = await import('./updates.js'); upd = U.merge(upd || await U.loadStore(), lines, acc?.name || ''); await U.saveStore(upd); dot();
+}
+function dot() { const d = $('#hDot'); if (!d) return; import('./updates.js').then(U => { const n = U.unseen(upd); d.hidden = !n; $('#hBell')?.setAttribute('aria-label', n ? `Updates, ${n} new` : 'Updates'); }); }
 /* the watch card on the start page: only signed in with a paired watch; opens the same editor as Settings → Watch */
 function watchCard() {
   const l = acc && watches?.u === acc.name ? watches.l : []; if (!l.length) return '';
@@ -117,7 +128,10 @@ function settings() {
       <h3 class="ksec">Colours</h3>
       <label class="prow">Own colour per mode<input id="tMc" type="checkbox" class="toggle" ${S.oneColor !== true ? 'checked' : ''}></label>
       <div class="hsw" ${S.oneColor !== true ? 'hidden' : ''}>${Object.entries(ACCENTS).map(([k, c]) => `<button data-ac="${k}" class="${(S.accent || 'orange') === k ? 'on' : ''}" style="background:${c[0]}" aria-label="${k}"></button>`).join('')}</div>
-      <h3 class="ksec">Strava</h3>
+      <h3 class="ksec" id="tActs">Activities &amp; Strava</h3>
+      <div class="tacts"><button type="button" class="hrow hlink" id="tAdd">${icon('plus', 'rico')}<div><b>Add activity</b><small>Any sport, entered by hand</small></div><i>›</i></button>
+      <button type="button" class="hrow hlink" id="tImpS">${icon('list', 'rico')}<div><b>Import from Strava</b><small id="tImpMsg">Your rides, runs and workouts from Strava</small></div><i>›</i></button>
+      <button type="button" class="hrow hlink" id="tFile">${icon('other', 'rico')}<div><b>Import file</b><small>.gpx, .tcx or .fit from any watch</small></div><i>›</i></button></div>
       <label class="prow">Upload automatically after saving<input id="tSt" type="checkbox" class="toggle" ${S.autoStrava ? 'checked' : ''}></label>
       <div class="prow" id="tStrava"><span>Strava account</span><button class="btn ghost ksmall" id="tConn">Connect</button></div>
       <label class="prow" id="tImpRow" hidden>Import my Strava activities automatically<input id="tImp" type="checkbox" class="toggle" ${S.stravaImport !== false ? 'checked' : ''}></label>
@@ -132,6 +146,7 @@ function settings() {
       <p class="phint">For indoor rides, the smart trainer, heart rate strap and Zwift Click connect on the Indoor page (Indoor trainer → Sensors). Bluetooth does not carry over from page to page, so connect them there.</p>
       <a class="hrow hlink" href="pure.html#sensors" id="tDev"><div><b>Indoor trainer: Sensors</b><small>Trainer, heart rate, Zwift Click</small></div><i>›</i></a>
       <p class="phint">Click v2: open it in the Zwift app once a day, or it drops after a minute.</p>
+      <a class="hrow hlink" href="remote.html?auto" id="tRemote"><div><b>Remote</b><small>Control RIDEFRAME on your laptop with this phone</small></div><i>›</i></a>
       <h3 class="ksec" id="tWatchSec">Watch</h3>
       <div id="tWatch"></div><div id="tWcfg"></div><div id="tMcp"></div>
       <h3 class="ksec">Bathroom scale</h3><div id="tScale"></div>
@@ -141,6 +156,15 @@ function settings() {
       <a class="hrow hlink" href="datenschutz.html"><div><b>Privacy</b></div><i>›</i></a>
       <div class="pfoot"><button class="btn" id="tOk">Done</button></div></div>`;
     $('#tSt', s).onchange = e => { S.autoStrava = e.target.checked; save(); };
+    // 27.11.: adding and importing activities lives here (and behind the "+" of the Activities page), not on top of the feed
+    let AA = null; import('./addact.js').then(m => { AA = m; }).catch(() => {}); // loaded up front: "Import file" opens the file picker inside the tap
+    const added = async (rec, t) => { stvMsg = t; await load(); render(); };
+    $('#tAdd', s).onclick = () => { if (!AA) return; s.remove(); AA.addSheet({ acts: D.acts, onSaved: added }); };
+    $('#tFile', s).onclick = () => { if (!AA) return; s.remove(); AA.addSheet({ acts: D.acts, onSaved: added, file: true }); };
+    $('#tImpS', s).onclick = async () => { const msg = $('#tImpMsg', s), su = await import('./stravaup.js'), x = await su.stravaStatus();
+      if (!x.configured) { msg.textContent = 'Strava is not set up on this server.'; return; }
+      if (!x.connected || !x.canImport) { msg.textContent = 'Waiting for Strava …'; if (!(await su.stravaConnect(!!x.connected))) { msg.textContent = 'Not connected to Strava.'; return; } }
+      msg.textContent = 'Reading Strava …'; const r = await (await import('./actimport.js')).importStrava({ onState: t => { msg.textContent = t; } }); msg.textContent = r.text; if (r.added || r.linked) { await load(); render(); } };
     // the tap opens Strava's login directly (no await before it, otherwise the iPhone blocks the window)
     $('#tImp', s).onchange = e => { S.stravaImport = e.target.checked; save(); };
     // connected before 17.11. = no permission to read activities: "Reconnect" asks Strava again
@@ -173,6 +197,8 @@ await load(); render(); nav('home');
 const hashOpen = () => { const m = /^#settings(?:-(watch|coach))?$/.exec(location.hash); if (!m) return; history.replaceState(null, '', location.pathname + location.search); settings();
   const t = m[1] === 'watch' ? '#tWatchSec' : m[1] === 'coach' ? '#tMcp' : null; if (t) setTimeout(() => document.querySelector(t)?.scrollIntoView({ block: 'start' }), 300); };
 addEventListener('hashchange', hashOpen); hashOpen();
+{ const q = new URLSearchParams(location.search), d = q.get('plan'); // handy.html?plan=YYYY-MM-DD (old Training links): that day's planner
+  if (d && /^\d{4}-\d{2}-\d{2}$/.test(d)) { history.replaceState(null, '', location.pathname); todayP?.then(t => t?.plan(q.get('add') ? 'day' : 'week', q.get('add') ? { day: d } : d)); } }
 const pull = () => acc && import('./account.js').then(async a => { const n = kraft.length, m = await a.pullRides().catch(() => 0); await a.syncKraft(); await load(); if (m || kraft.length !== n) render(); }).catch(() => {}); // strength from the watch or another device, activities the host imported from Strava (tools/strava-auto.mjs)
 pull();
 const stravaIn = async force => { const m = await import('./actimport.js'), r = force ? await m.importStrava() : await m.autoImport(S); if (r?.added) { stvMsg = r.text.replace('.', ' from Strava.'); await load(); render(); } else if (force && r?.text) { stvMsg = r.text; render(); } };

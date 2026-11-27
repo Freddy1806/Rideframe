@@ -112,3 +112,56 @@ a.tdmiss b, button.tdmiss b { color: var(--accent); }
 .trf input, .trf select, .trf textarea { min-height: 46px; border-radius: 8px; background: var(--ink-3); border: 1px solid var(--line-2); padding: 8px 12px; font-size: 16px; font-weight: 700; color: var(--paper); width: 100%; min-width: 0; font-family: inherit; }
 .trkinds { grid-template-columns: repeat(5, minmax(0, 1fr)); } .trkinds button { padding: 0 2px; font-size: 12.5px; }
 #trSheet .pfoot { flex-wrap: wrap; } #trSheet .pfoot .btn { flex: 1 1 auto; }
+
+/* 27.11. Today's training, led by the plan */
+button.tdlink { background: none; border: 0; min-height: 44px; font-family: inherit; }
+.tdh { align-items: center; }
+.tdbig { grid-template-columns: minmax(0, 1fr); gap: 12px; padding: 16px; }
+.tdbt { display: flex; align-items: center; gap: 12px; min-width: 0; } .tdbig .tdpt b { font-size: 21px; font-stretch: 106%; }
+.tdshape { height: 46px; padding: 4px 0 0; border-bottom: 1px solid var(--line); } .tdshape .wsvg { display: block; width: 100%; height: 40px; }
+.tdnote { margin: 0; font-size: 13px; line-height: 1.4; color: var(--muted); }
+.tdbig .tdstart { width: 100%; height: 50px; font-size: 16px; display: flex; align-items: center; justify-content: center; }
+.tdplan:not(.tdbig) .tdstart { height: 44px; padding: 0 18px; display: inline-flex; align-items: center; }
+.tdbig .tdok { justify-self: start; min-height: 44px; }
+.tdnone { display: flex; flex-direction: column; gap: 10px; padding: 14px; border-radius: 16px; background: var(--ink-2); border: 1px solid var(--line); }
+.tdnone > b { font-size: 17px; font-weight: 900; }
+.tdnb { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; } .tdnb .btn { height: 44px; display: flex; align-items: center; justify-content: center; text-decoration: none; white-space: nowrap; padding: 0 8px; }
+.tdsugl { margin: 0; font-size: 12.5px; color: var(--muted); font-weight: 600; line-height: 1.35; } .tdsugl b { color: var(--paper); font-weight: 800; }
+button.tdday { width: 100%; background: none; border: 0; font-family: inherit; color: inherit; cursor: pointer; min-height: 56px; }
+button.tdday:active { background: var(--ink-2); }
+.tdday.now { background: var(--ink-2); }
+/* the bell in the header (js/updates.js) */
+.hbell { position: relative; } .hdot { position: absolute; top: 8px; right: 9px; width: 9px; height: 9px; border-radius: 50%; background: var(--accent); box-shadow: 0 0 0 2px var(--ink); } .hdot[hidden] { display: none; }
+#handy .ptop { gap: 8px; } #handy .ptop .ppill { margin-left: auto; }
+.up .uph { margin: 6px 0 0; } .upl { list-style: none; margin: 0; padding: 0; border-radius: 14px; background: var(--ink-3); overflow: hidden; } .upl li + li { border-top: 1px solid var(--line); }
+.upl .tdins { min-height: 48px; } .upl .tdins.new span { font-weight: 800; }
+/* the week planner (js/weekplan.js) */
+.wphead { display: grid; grid-template-columns: 44px 1fr 44px; align-items: center; gap: 6px; text-align: center; } .wphead h2 { margin: 2px 0 0; font-size: 19px; font-weight: 900; }
+.wpnav { height: 44px; border-radius: 12px; border: 1px solid var(--line-2); font-size: 22px; color: var(--paper); }
+.wpdays { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
+.wpday { display: grid; grid-template-columns: 44px minmax(0, 1fr) 44px; align-items: center; gap: 8px; padding: 6px 6px 6px 8px; border-radius: 14px; background: var(--ink-3); min-height: 56px; }
+.wpday.now { box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--accent) 55%, transparent); } .wpday.past { opacity: .8; }
+.wpdn { display: flex; flex-direction: column; align-items: center; line-height: 1.1; } .wpdn b { font-size: 12px; font-weight: 800; color: var(--muted); text-transform: uppercase; letter-spacing: .04em; } .wpdn small { font-size: 18px; font-weight: 900; }
+.wpday.now .wpdn b { color: var(--accent); }
+.wpents { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+.wpent { display: flex; align-items: center; gap: 8px; min-height: 44px; padding: 4px 8px; border-radius: 10px; text-align: left; color: inherit; font: inherit; background: color-mix(in srgb, var(--mc) 10%, transparent); min-width: 0; }
+:root[data-theme="light"] .wpent { background: color-mix(in srgb, var(--mcl) 10%, transparent); }
+.wpico { width: 20px; height: 20px; flex: none; color: var(--mc); } .wpent > span { min-width: 0; display: flex; flex-direction: column; }
+.wpent b { font-size: 14px; font-weight: 800; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; } .wpent small { font-size: 11.5px; color: var(--muted); font-weight: 700; }
+.wpent.done b { text-decoration: line-through; text-decoration-color: var(--muted); }
+.wpfree { font-size: 13px; color: var(--muted); font-weight: 700; padding-left: 4px; }
+.wpadd { width: 44px; height: 44px; border-radius: 12px; border: 1px solid var(--line-2); color: var(--accent); display: grid; place-items: center; } .wpplus { width: 20px; height: 20px; }
+.wpclaude { align-self: center; font-size: 13px; font-weight: 800; color: var(--muted); text-decoration: none; padding: 10px 6px; }
+.wdsports { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 6px; }
+.wdsp { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 4px; min-height: 64px; padding: 6px 2px; border-radius: 12px; border: 1px solid var(--line-2); color: var(--paper); font: inherit; --c: var(--mc); }
+:root[data-theme="light"] .wdsp { --c: var(--mcl); }
+.wdsp span { font-size: 11.5px; font-weight: 800; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 100%; } .wdico { width: 24px; height: 24px; color: var(--c); }
+.wdsp.on { border-color: var(--c); background: color-mix(in srgb, var(--c) 16%, transparent); }
+.wdg { margin: 6px 0 0; } .wdlist { display: flex; flex-direction: column; gap: 6px; }
+.wdw { display: grid; grid-template-columns: minmax(0, 1fr) 96px; align-items: center; gap: 10px; min-height: 52px; padding: 6px 10px; border-radius: 12px; background: var(--ink-3); border: 1px solid transparent; text-align: left; color: inherit; font: inherit; }
+.wdw.on { border-color: var(--mc); } .wdwt { min-width: 0; display: flex; flex-direction: column; } .wdwt b { font-size: 14.5px; font-weight: 800; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; } .wdwt small { font-size: 12px; color: var(--muted); font-weight: 700; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.wdshape .wsvg { display: block; width: 96px; height: 30px; }
+.wdfree { display: grid; grid-template-columns: minmax(0, 1fr) 96px; gap: 8px; }
+.wdday { max-width: 220px; }
+#wdSheet .pfoot, #wpSheet .pfoot { flex-wrap: wrap; } #wdSheet .pfoot .btn { flex: 1 1 auto; }
+@media (max-width: 420px) { #handy .pbrand { font-size: 19px !important; } #handy .ptop .ppill { padding: 0 10px; gap: 6px; } }

@@ -175,7 +175,8 @@ async function page(root) {
   applyTheme(D.S, null); nav('feed');
   const reload = async () => { D = await loadActs(); draw(); };
   // Strava import + adding by hand (17.11.); su = stravaup.js, loaded up front so a tap can open Strava's login without waiting
-  let su = null, st = null, msg = '', busy = false;
+  let su = null, st = null, msg = '', busy = false, fOpen = false, mOpen = false;
+  document.addEventListener('click', e => { if (mOpen && !e.target.closest?.('#fMenu, #fPlus')) { mOpen = false; const m = $('#fMenu', root); if (m) m.hidden = true; $('#fPlus', root)?.setAttribute('aria-expanded', 'false'); } });
   const paintMsg = () => { const m = $('#fMsg', root); if (m) { m.textContent = msg; m.hidden = !msg; } };
   const doImport = async () => {
     busy = true; msg = 'Reading Strava …'; draw();
@@ -192,7 +193,7 @@ async function page(root) {
     }
     doImport();
   };
-  const addTap = async () => (await import('./addact.js')).addSheet({ acts: D.acts, onSaved: async (rec, t) => {
+  let AA = null; const addTap = async (file = false) => (AA ||= await import('./addact.js')).addSheet({ acts: D.acts, file, onSaved: async (rec, t) => {
     flash(t); await reload();
     if (D.S.autoStrava && rec.source === 'manual') (await import('./addact.js')).manualToStrava(rec, flash, true).then(u => u && reload()); // like every save: upload on its own when switched on
   } });
@@ -200,16 +201,27 @@ async function page(root) {
     const have = ORDER.filter(m => D.acts.some(a => sportOf(a) === m)); if (f !== 'all' && !have.includes(f)) f = 'all';
     const groups = new Map(); for (const a of D.acts) if (f === 'all' || sportOf(a) === f) { const w = weekStart(a.date); (groups.get(w) || groups.set(w, []).get(w)).push(a); }
     const reco = st?.connected && !st.canImport;
-    root.innerHTML = `<header class="ptop"><div class="pbrand"><b>RIDEFRAME </b><span>Activities</span></div><a class="btn ghost ksmall fstats" href="statistik.html" id="fStats">${icon('chart', 'fsico')}Stats</a></header>
-      <div class="fact"><button class="btn ghost ksmall" id="fImp" ${st?.configured ? '' : 'hidden'} ${busy ? 'disabled' : ''}>${reco ? 'Reconnect Strava' : 'Import from Strava'}</button><button class="btn ksmall" id="fAdd">+ Add activity</button></div>
+    // 27.11. (owner): the filter chips behind a "Filter" button that names the active filter; adding and importing behind one small "+"
+    // (Add activity · Import from Strava · Import file) and in Settings → Activities & Strava, no big buttons on top of the feed
+    const fl = f === 'all' ? 'Filter' : `Filter · ${MODES[f]?.short || f}`;
+    root.innerHTML = `<header class="ptop"><div class="pbrand"><b>RIDEFRAME </b><span>Activities</span></div>
+        ${D.acts.length ? `<button type="button" class="fhbtn${f !== 'all' ? ' on' : ''}" id="fFilter" aria-expanded="${fOpen}" aria-controls="fChips">${icon('list', 'fsico')}<span>${esc(fl)}</span></button>` : ''}
+        <button type="button" class="pgear hbtn fplus" id="fPlus" aria-label="Add or import activities" aria-expanded="${mOpen}" aria-controls="fMenu">${icon('plus', 'gico')}</button>
+        <a class="btn ghost ksmall fstats" href="statistik.html" id="fStats">${icon('chart', 'fsico')}Stats</a>
+        <div class="fmenu" id="fMenu" role="menu" ${mOpen ? '' : 'hidden'}><button type="button" role="menuitem" id="fAdd">${icon('plus', 'fsico')}Add activity</button>
+          <button type="button" role="menuitem" id="fImp" ${st?.configured ? '' : 'hidden'} ${busy ? 'disabled' : ''}>${icon('list', 'fsico')}${reco ? 'Reconnect Strava' : 'Import from Strava'}</button>
+          <button type="button" role="menuitem" id="fFile">${icon('other', 'fsico')}Import file</button></div></header>
       <p class="fmsg" id="fMsg" role="status" ${msg || reco ? '' : 'hidden'}>${esc(msg || (reco ? 'Reconnect Strava to import your activities.' : ''))}</p>
-      ${!D.acts.length ? `<div class="fempty"><p class="hint">No activities yet. Start a ride, a run or a workout on Home, add one here or import them from Strava, and it shows up here.</p><a class="btn" href="handy.html">Go to Home</a></div>`
-      : `<div class="fchips" role="tablist">${[['all', 'All'], ...have.map(m => [m, MODES[m].short])].map(([k, l]) => `<button role="tab" data-f="${k}" class="fchip ${f === k ? 'on' : ''}" aria-selected="${f === k}" ${k !== 'all' ? `style="${mc(k)}"` : ''}>${l}</button>`).join('')}</div>
+      ${!D.acts.length ? `<div class="fempty"><p class="hint">No activities yet. Record one on Today, or add or import them with the + above.</p><a class="btn" href="handy.html">Go to Today</a></div>`
+      : `<div class="fchips" id="fChips" role="tablist" ${fOpen ? '' : 'hidden'}>${[['all', 'All'], ...have.map(m => [m, MODES[m].short])].map(([k, l]) => `<button role="tab" data-f="${k}" class="fchip ${f === k ? 'on' : ''}" aria-selected="${f === k}" ${k !== 'all' ? `style="${mc(k)}"` : ''}>${l}</button>`).join('')}</div>
         ${[...groups].map(([w, l]) => `<section class="fweek"><div class="fwh"><span class="label">${weekLabel(w)}</span><span class="fwt">${l.length} · ${hm(l.reduce((x, a) => x + durOf(a), 0))} · ${fmtNum(l.reduce((x, a) => x + loadOf(a, D.P).pts, 0))} pts</span></div>
           ${l.map(a => rowHtml(a, D.P)).join('')}</section>`).join('')}`}`;
-    root.querySelectorAll('[data-f]').forEach(b => b.onclick = () => { f = b.dataset.f; const u = new URL(location.href); if (f === 'all') u.searchParams.delete('f'); else u.searchParams.set('f', f); history.replaceState(null, '', u); draw(); });
+    root.querySelectorAll('[data-f]').forEach(b => b.onclick = () => { f = b.dataset.f; fOpen = false; const u = new URL(location.href); if (f === 'all') u.searchParams.delete('f'); else u.searchParams.set('f', f); history.replaceState(null, '', u); draw(); });
     wireRows(root, D, reload);
-    $('#fImp', root).onclick = impTap; $('#fAdd', root).onclick = addTap;
+    $('#fFilter', root)?.addEventListener('click', () => { fOpen = !fOpen; mOpen = false; draw(); });
+    $('#fPlus', root).onclick = e => { e.stopPropagation(); mOpen = !mOpen; if (mOpen) import('./addact.js').then(m => { AA = m; }).catch(() => {}); draw(); };
+    const pick = fn => () => { mOpen = false; $('#fMenu', root).hidden = true; $('#fPlus', root).setAttribute('aria-expanded', 'false'); fn(); };
+    $('#fImp', root).onclick = pick(impTap); $('#fAdd', root).onclick = pick(() => addTap()); $('#fFile', root).onclick = pick(() => addTap(true));
   };
   draw();
   { const o = new URLSearchParams(location.search).get('open'), a = o && D.acts.find(x => keyOf(x) === o); if (a) detail(a, D.P, reload); } // ?open=r:<id> | k:<id>: the overview's "Last activity" card (js/cards.js)

@@ -469,4 +469,6 @@ await load();
 render();
 if (W) flash('Your open workout is still running.');
 else if (gDraft) openPlayer(gDraft, true, gctx); // a guided workout was running: back to it, paused, with Resume
+else { const q = new URLSearchParams(location.search).get('tpl'), t = q && tpls.find(x => x.name === q); // kraft.html?tpl=<name>: Start on the Workouts page (27.11.)
+  if (q) history.replaceState(null, '', location.pathname); if (t) begin({ name: t.name, ex: t.ex.map(x => ({ k: x.k, n: exOf(x.k).n, t: exOf(x.k).t, sets: fromPrev(x.k, x.n || 3) })) }); }
 if ('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js').catch(() => {});

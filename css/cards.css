@@ -114,3 +114,28 @@ a.cd:focus-visible, .cd a:focus-visible, .cd button:focus-visible { outline: 2px
   .ovgrid { grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 14px; } .cd.cd-full { grid-column: span 2; }
   .ovediting .ovlist, .ovediting .ovadd, .ovediting .ovhelp, .ovediting .ovfoot, .ovediting .ovaddh { max-width: 640px; }
 }
+
+/* 27.11. the weight card big (js/bodycard.js renderWeightBig): number, 7 / 30 day change, 90 days of trend, fat and muscle */
+.bcard.wgbig { position: relative; display: flex; flex-direction: column; align-items: stretch; gap: 8px; padding: 12px 14px 14px; border-radius: 16px; }
+.wgh { display: flex; align-items: center; gap: 8px; padding-right: 16px; } .wgh .cdt { color: var(--bc); } .wgh small { font-size: 12px; font-weight: 700; color: var(--muted); white-space: nowrap; }
+.wgh .bcico { width: 22px; height: 22px; padding: 0; background: none; } .wgh .cdgo { top: 12px; }
+.wgtop { display: flex; align-items: flex-end; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+.wgnum { font-size: 44px; line-height: 1; font-weight: 900; font-stretch: 110%; font-variant-numeric: tabular-nums; white-space: nowrap; } .wgnum small { font-size: 16px; color: var(--muted); font-weight: 800; }
+.wgcs { display: flex; gap: 16px; } .wgc { display: flex; flex-direction: column; align-items: flex-end; }
+.wgc b { font-size: 18px; font-weight: 900; font-variant-numeric: tabular-nums; white-space: nowrap; } .wgc b small { font-size: 12px; color: var(--muted); } .wgc b em { font-style: normal; font-size: 13px; margin-right: 2px; }
+.wgc > small { font-size: 11.5px; font-weight: 700; color: var(--muted); }
+.wgc.down b, .wgc.up b { color: var(--bc); }
+.wgchart { min-height: 112px; } .wgsvg { display: block; width: 100%; height: auto; }
+.wgsvg path { fill: none; stroke: var(--bc); stroke-width: 2.4; stroke-linejoin: round; stroke-linecap: round; } .wgsvg circle { fill: color-mix(in srgb, var(--bc) 38%, transparent); }
+.wgsvg .wgl { stroke: var(--line); stroke-dasharray: 2 4; } .wgsvg text { font-size: 10.5px; font-weight: 700; fill: var(--muted); font-family: inherit; }
+.wgsub { display: flex; gap: 10px; } .wgsub span { flex: 1; display: flex; align-items: baseline; justify-content: space-between; gap: 6px; padding: 8px 10px; border-radius: 10px; background: color-mix(in srgb, var(--bc) 8%, transparent); }
+.wgsub small { font-size: 12px; font-weight: 700; color: var(--muted); } .wgsub b { font-size: 16px; font-weight: 900; font-variant-numeric: tabular-nums; } .wgsub b small { font-size: 11px; }
+/* the VO2max rings (js/vo2lvl.js) */
+.vrings { display: flex; justify-content: space-around; align-items: center; gap: 4px; min-width: 0; } .vrings.one { justify-content: center; }
+.vring { display: block; flex: none; max-width: 100%; height: auto; } .vrnum { font-size: 27px; font-weight: 900; font-stretch: 108%; fill: var(--paper); font-family: inherit; }
+.vrlab { font-size: 11px; font-weight: 800; fill: var(--muted); letter-spacing: .06em; text-transform: uppercase; font-family: inherit; } .vrlv { font-size: 11px; font-weight: 800; font-family: inherit; }
+.vrings.one .vrnum { font-size: 30px; }
+.vsrc { font-size: 11.5px; text-align: center; }
+/* "This week": always last, under the overview */
+.ovend { display: flex; flex-direction: column; gap: 10px; margin-top: 6px; } .ovend:empty { display: none; }
+.ovediting .ovend { display: none; }

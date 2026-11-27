@@ -1,5 +1,5 @@
 // The training plan (25.11., owner: "was heute für ein Training ansteht"): one entry per planned session or rest day, kept per account
-// in users/<id>/plan.json (tools/plan-api.mjs) and planned in the app (js/trainplan.js, the Today page js/today.js) or by the coach
+// in users/<id>/plan.json (tools/plan-api.mjs) and planned in the app (the week planner js/weekplan.js on the Today page, js/today.js) or by the coach
 // through the Claude connector (tools/mcp-api.mjs list_plan, plan_session, update_plan, delete_plan). Pure, shared by both sides.
 //   entry = { id, day: 'YYYY-MM-DD' (local), kind: ride | run | strength | rest | other, title, ref?, minutes?, note?, done?: activity id, at, by? }
 // ref: what Start launches: a ride workout id (the builder's personal workouts or a built-in one, pure.html?workout=), a watch

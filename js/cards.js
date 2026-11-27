@@ -69,7 +69,7 @@ const go = '<i class="cdgo" aria-hidden="true">›</i>';
 const stat2 = (v, u, l) => `<div class="cdbig"><b>${v}${u ? `<small> ${u}</small>` : ''}</b>${l ? `<span>${l}</span>` : ''}</div>`;
 
 export const CARDS = [
-  { id: 'today', title: 'This week', area: 'main', sizes: ['full', 'half'], size: 'full', href: 'statistik.html', desc: 'Sessions, time, distance and load against last week',
+  { id: 'today', title: 'This week', area: 'main', sizes: ['full', 'half'], size: 'full', href: 'statistik.html', fixed: true, // 27.11.: always last on the page, under the overview desc: 'Sessions, time, distance and load against last week',
     load: ctx => C.weekSummary(ctx.acts, ctx.ld), quickEmpty: ctx => !ctx.acts.length,
     empty: () => 'Your week shows up here after your first session.',
     render(el, W, ctx, size) {
@@ -87,14 +87,6 @@ export const CARDS = [
       el.innerHTML = head(this, esc(dayTxt(a.date))) + `<div class="cdact" style="${sc(m)}">${icon(m, 'cdsi')}<div><b>${esc(nameOf(a))}</b><small>${lineOf(a)}</small></div>
         ${size === 'full' ? `<span class="cdpts"><b>${fmtNum(d.pts)}</b><small>pts</small></span>` : ''}</div>${go}`;
     } },
-  { id: 'recovery', title: 'Recovery', area: 'rec', sizes: ['full'], size: 'full', account: true, bare: true, elId: 'hHealth', desc: 'Sleep score, body battery, resting heart rate, recovery time from your watch',
-    load: async ctx => { const h = await health(ctx); return h?.days?.length ? h : { empty: true }; },
-    empty: () => 'Open the RIDEFRAME app on your Garmin watch once a day: it sends sleep score, body battery, resting heart rate and recovery time.',
-    async render(el, h) { (await import('./healthcard.js')).renderHealthCard(el, h); } },
-  { id: 'weight', title: 'Weight', area: 'body', sizes: ['full'], size: 'full', account: true, bare: true, elId: 'hBody', href: 'body.html', desc: 'Your newest weigh-in, the trend and the 7-day change',
-    load: async ctx => { const j = await body(ctx); if (!j) return { empty: true }; import('./bodycard.js').then(m => m.syncWeight(j.list, j.prefs)).catch(() => {}); return j.list?.length || j.prompts?.length ? j : { ...j, empty: true }; },
-    empty: () => 'No weigh-ins yet. Add one on the Body page or connect your bathroom scale.', emptyLink: 'body.html',
-    async render(el, j) { (await import('./bodycard.js')).renderWeightCard(el, j); } },
   { id: 'fitness', title: 'Fitness & form', short: 'Fitness', area: 'main', sizes: ['half', 'full'], size: 'half', href: 'profil.html', desc: 'Fitness, fatigue and form over all sports, 6 weeks',
     load: ctx => C.fitnessSummary(ctx.acts, ctx.ld), quickEmpty: ctx => !ctx.acts.length,
     empty: () => 'Fitness builds from every session you record: rides, runs and strength.',
@@ -114,14 +106,20 @@ export const CARDS = [
         + `<p class="cdf">Last: <b>${esc(K.last.name)}</b>${size === 'full' ? ` · ${plural(K.last.sets, 'set')} · ${hmS(K.last.sec)} h` : ` · ${esc(dayTxt(K.last.t))}`}</p>`
         + (rec.length ? `<ul class="cdrec">${rec.map(r => `<li><i aria-hidden="true">🏆</i><span>${esc(r.name)}</span><b>${r.type === 'time' ? `${r.s} s` : r.type === 'bw' ? `${r.r} reps` : `${fmtNum(r.kg, r.kg % 1 ? 1 : 0)} kg × ${r.r}`}</b></li>`).join('')}</ul>` : '') + go;
     } },
-  { id: 'vo2', title: 'VO2max', area: 'main', sizes: ['half', 'full'], size: 'half', href: 'profil.html', desc: 'Bike and run: the app\'s estimate and your watch\'s value',
-    load: async ctx => C.vo2Summary(ctx.acts, ctx.P, await health(ctx).catch(() => null)),
+  { id: 'weight', title: 'Weight', area: 'body', sizes: ['full'], size: 'full', account: true, bare: true, elId: 'hBody', href: 'body.html', desc: 'Your weight with its 7 and 30 day change, 90 days of trend, body fat and muscle',
+    load: async ctx => { const j = await body(ctx); if (!j) return { empty: true }; import('./bodycard.js').then(m => m.syncWeight(j.list, j.prefs)).catch(() => {}); return j.list?.length || j.prompts?.length ? j : { ...j, empty: true }; },
+    empty: () => 'No weigh-ins yet. Add one on the Body page or connect your bathroom scale.', emptyLink: 'body.html',
+    async render(el, j) { (await import('./bodycard.js')).renderWeightBig(el, j); } },
+  { id: 'vo2', title: 'VO2max', area: 'main', sizes: ['half', 'full'], size: 'half', href: 'profil.html', desc: 'Bike and run as rings coloured by level, from your watch or the app\'s estimate',
+    load: async ctx => { const [h, b] = await Promise.all([health(ctx).catch(() => null), body(ctx).catch(() => null)]); return { ...C.vo2Summary(ctx.acts, ctx.P, h), prefs: b?.prefs || null }; },
     empty: ctx => `Needs 5 minutes with power on the bike or a run of 6 minutes or more${ctx.acc ? ', or the value from your watch' : ''}.`,
-    render(el, V, ctx, size) {
-      const rows = []; for (const [k, l] of [['bike', 'Bike'], ['run', 'Run']]) {
-        if (V[k].watch) rows.push(`<div class="cdl"><span>${l}</span><b>${V[k].watch.v}</b><small>watch</small></div>`);
-        if (V[k].app) rows.push(`<div class="cdl"><span>${V[k].watch ? '' : l}</span><b>≈ ${V[k].app.v}</b><small>${size === 'full' ? `estimate · from ${esc(V[k].app.from)}` : '<abbr title="estimate">est.</abbr>'}</small></div>`); }
-      el.innerHTML = head(this, size === 'full' ? 'ml/kg/min' : '') + `<div class="cdls">${rows.join('')}</div>` + go;
+    async render(el, V, ctx, size) { // 27.11.: a ring per sport like the watch's, coloured by the level for age and sex (js/vo2lvl.js), the source in one tiny line
+      const L = await import('./vo2lvl.js'), who = { age: L.ageOf(V.prefs?.birthYear), sex: V.prefs?.sex };
+      const one = k => V[k].watch ? { v: V[k].watch.v, src: 'watch' } : V[k].app ? { v: V[k].app.v, src: 'est.' } : null, R = [['bike', 'Bike'], ['run', 'Run']].map(([k, l]) => [l, one(k)]).filter(x => x[1]);
+      const big = R.length === 1, sz = big ? (size === 'full' ? 120 : 108) : size === 'full' ? 112 : 76;
+      const src = [...new Set(R.map(([, x]) => x.src))].join(' & ');
+      el.innerHTML = head(this, size === 'full' ? 'ml/kg/min' : '', size) + `<div class="vrings${big ? ' one' : ''}">${R.map(([l, x]) => L.ringSVG(x.v, who, { size: sz, label: l })).join('')}</div>`
+        + `<p class="cdf vsrc">${esc(src === 'watch' ? 'From your watch' : src === 'est.' ? 'Estimated from your sessions' : 'Watch & estimate')}${size === 'full' ? ` · levels ${L.bounds(who).by === 'age' ? 'for your age and sex' : 'for adults (add sex and birth year on Body)'}` : ''}</p>` + go;
     } },
   { id: 'ftp', title: 'FTP & W/kg', short: 'FTP', area: 'main', sizes: ['half', 'full'], size: 'half', href: 'profil.html', desc: 'Your FTP, the estimate from your rides and watts per kilo',
     load: async ctx => C.ftpSummary(ctx.S, ctx.P, await body(ctx).catch(() => null)),
@@ -131,6 +129,10 @@ export const CARDS = [
       el.innerHTML = head(this, '', size) + (F.ftp ? stat2(fmtNum(F.ftp), 'W', '') : stat2('≈ ' + fmtNum(F.est.w), 'W', 'estimate'))
         + `<p class="cds">${F.wkg ? `<b>${fmtNum(F.wkg, 2)}</b> W/kg` : 'Add your weight for W/kg'}${F.kg && size === 'full' ? ` · ${fmtNum(F.kg, 1)} kg (${F.kgFrom})` : ''}</p>` + est + go;
     } },
+  { id: 'recovery', title: 'Recovery', area: 'rec', sizes: ['full'], size: 'full', account: true, bare: true, elId: 'hHealth', desc: 'Sleep score, body battery, resting heart rate, recovery time from your watch',
+    load: async ctx => { const h = await health(ctx); return h?.days?.length ? h : { empty: true }; },
+    empty: () => 'Open the RIDEFRAME app on your Garmin watch once a day: it sends sleep score, body battery, resting heart rate and recovery time.',
+    async render(el, h) { (await import('./healthcard.js')).renderHealthCard(el, h); } },
   { id: 'load', title: 'Training load', area: 'main', sizes: ['full', 'half'], size: 'full', href: 'statistik.html', desc: 'The last 7 days, a bar per day in the colour of each sport',
     load: ctx => C.loadDays(ctx.acts, ctx.ld), quickEmpty: ctx => !ctx.acts.length,
     empty: () => 'Every session adds load points: 100 = one hour at your threshold.',
@@ -172,7 +174,7 @@ export const CARDS = [
     async render(el, d) { const W = (await import('./healthcard.js')).WORDS; el.innerHTML = head(this, esc(healthDay(d.day))) + stat2(d.v, '', 'sleep score · ' + word(d.v, W.ss)); } },
 ];
 const BY = new Map(CARDS.map(c => [c.id, c]));
-export const CATALOG = CARDS.map(({ id, sizes, size, on }) => ({ id, sizes, size, on: on !== false }));
+export const CATALOG = CARDS.filter(c => !c.fixed).map(({ id, sizes, size, on }) => ({ id, sizes, size, on: on !== false }));
 
 /* ---------- which cards were empty for this account last time (the default puts them lower) ---------- */
 const EKEY = 'rf-home-empty';
@@ -210,6 +212,7 @@ export function mountOverview(root, ctx) {
     const grid = $('#ovGrid', root);
     for (const x of shown()) grid.append(cardEl(BY.get(x.id), x.size));
     root.dataset.shown = String(grid.children.length);
+    if (!fresh()) { const end = document.createElement('div'); end.className = 'ovend'; end.id = 'ovEnd'; for (const c of CARDS.filter(c => c.fixed)) end.append(cardEl(c, c.size)); root.append(end); } // "This week", always at the end
   }
 
   function cardEl(c, size) {
