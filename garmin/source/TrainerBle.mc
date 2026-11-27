@@ -145,7 +145,8 @@ class TrainerBle extends BluetoothLowEnergy.BleDelegate {
         if (state == BluetoothLowEnergy.CONNECTION_STATE_CONNECTED) {
             var w = false, s = device.getService(uCps);
             if (s != null) { w = s.getCharacteristic(uWcp) != null; }
-            app.bleEv({ "k" => "conn", "ftms" => device.getService(uFtms) != null, "wahoo" => w });
+            // 28.11.: "cps": the trainer has Cycling Power too (an FTMS trainer's cadence may come only as crank revolutions there)
+            app.bleEv({ "k" => "conn", "ftms" => device.getService(uFtms) != null, "wahoo" => w, "cps" => s != null });
         } else {
             app.bleEv({ "k" => "drop" });
         }

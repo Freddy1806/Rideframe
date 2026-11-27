@@ -4,9 +4,9 @@
 // tools/watch-layout-test.mjs compares the numbers of both files function by function.
 import { G } from './watchdc.js';
 import { SCR, HOME, curEx, setNo, restLeft, clock, homeItems, homeTop, listItems, workouts, planItem, pickRows, doneOf, prefillOf, lastSet, lastTxt, recPages, routeInfo,
-  holdPart, pausedTime, stepOf, HOME_FIT, VERSION, loading, rides, hrOn } from './watchflow.js';
+  holdPart, pausedTime, stepOf, HOME_FIT, VERSION, loading, rides, hrOn, tPages } from './watchflow.js';
 import { FIELDS, fieldText, labelOf } from './watchfields.js';
-import { shown, live as tLive, nextTarget, wkLeft, wkTotLeft, wkShown, wkNextW, wkAdj, wkDur } from './watchtrainer.js';
+import { shown, live as tLive, hasCad, nextTarget, wkLeft, wkTotLeft, wkShown, wkNextW, wkAdj, wkDur, wkRamp, wkPlat } from './watchtrainer.js';
 import { groupOf } from './sports.js';
 
 const VC = G.TEXT_JUSTIFY_CENTER | G.TEXT_JUSTIFY_VCENTER, VL = G.TEXT_JUSTIFY_LEFT | G.TEXT_JUSTIFY_VCENTER;
@@ -23,6 +23,9 @@ export function palette(amoled) {
   const P = amoled ? { fg: 0xF4F4EF, dim: 0x8B8B85, faint: 0x2C2C2A, ink: 0x0B0B0B, hr: 0xFF5A5A, lbl: 0xA3A39C, line: 0x3A3A37, good: 0x3DDC84, bad: 0xFF5A5A, path: 0x6A6A66, o: 0xFF5A1F }
     : { fg: 0xFFFFFF, dim: 0xAAAAAA, faint: 0x555555, ink: 0x000000, hr: 0xFF5555, lbl: 0xFFFFFF, line: 0x555555, good: 0x55FF55, bad: 0xFF5555, path: 0xAAAAAA, o: 0xFF5500 };
   P.far = amoled ? P.faint : P.dim; P.cRun = P.cRide = P.cKraft = P.cOther = P.o; P.acc = P.o; P.mip = !amoled;
+  // 28.11.: the workout builder's step colours (js/myworkouts.js STEP_TYPES: warm-up #f2b630, recover #2fb36b, cool-down #2f8fe0; work = the
+  // accent); MIP: the nearest of the 64 colours (channels 00 / 55 / AA / FF)
+  P.wWarm = amoled ? 0xF2B630 : 0xFFAA00; P.wRec = amoled ? 0x2FB36B : 0x00AA55; P.wCool = amoled ? 0x2F8FE0 : 0x00AAFF;
   return P;
 }
 
@@ -830,12 +833,67 @@ function linkMarks(dc, F, S, P, now) {
   heart(dc, S / 2 + S * .04, y, S * .036, hrOn(F, now) ? P.hr : P.dim);
 }
 const avgPw = R => R.t ? Math.round(R.pwSum / R.t) : 0;
-// the ERG ride: the time, the target big with - / + beside it, the trainer's power, cadence, heart rate below; a stats page
+// 28.11. (27.11.3): the ride's pages (tPages: the target page first, then the phone's choice of workout, body, stats), the edge ring, the dots
+// and the trainer / heart marks on every page
 function drawTRec(dc, F, S, P, now, ui) {
   const R = F.tr; if (!R) return;
-  const L = F.link, v = shown(L), paused = R.st !== 'run', c = S / 2, G = gap(S), W = F.wk;
-  recRing(dc, S, P, !paused); pageDots(dc, S, P, 2, R.pg); linkMarks(dc, F, S, P, now);
-  if (R.pg !== 0) { trStats(dc, S, P, R); return; }
+  const pg = tPages(F), n = pg.length, id = pg[R.pg % n];
+  trRing(dc, F, S, P, n, id === 'wk'); pageDots(dc, S, P, n, R.pg % n); linkMarks(dc, F, S, P, now);
+  if (id === 'wk' && F.wk) trWork(dc, F, S, P, now);
+  else if (id === 'body') trBody(dc, F, S, P, now);
+  else if (id === 'stats') trStats(dc, S, P, R);
+  else trTarget(dc, F, S, P, now, ui);
+}
+// 28.11.: the step kinds' colours, the workout builder's (js/myworkouts.js STEP_TYPES): work = the accent (orange), warm-up yellow,
+// cool-down blue, recovery / rest green (MIP: the 64-colour palette's nearest)
+function kindCol(P, k) { return k === 1 ? P.acc : (k === 2 ? P.wWarm : (k === 3 ? P.wCool : P.wRec)); }
+// a band on the bezel from p0 to p1 degrees clockwise from 12 o'clock, in pieces of at most 180 degrees (none under 1: an arc from a
+// degree to itself would be a whole circle), the page dots' gap (ga degrees each side of 9 o'clock) left out
+function arcP(dc, S, col, p0, p1, ga) {
+  const c = S / 2, r = S / 2 - T(S * .01);
+  dc.setColor(col); dc.setPenWidth(pw(S * .02));
+  const cuts = ga > 0 ? [[p0, p1 < 270 - ga ? p1 : 270 - ga], [p0 > 270 + ga ? p0 : 270 + ga, p1]] : [[p0, p1]];
+  for (let j = 0; j < cuts.length; j++) {
+    let a = cuts[j][0]; const b = cuts[j][1];
+    while (b - a >= 1) {
+      const e = b - a > 180 ? a + 180 : b, d0 = T(90 - a + 720) % 360, d1 = T(90 - e + 720) % 360;
+      if (d0 !== d1) dc.drawArc(c, c, r, ARC_CW, d0, d1);
+      a = e;
+    }
+  }
+  dc.setPenWidth(1);
+}
+// 28.11. (the owner: "a progress bar along the edge that runs down like a timer"): in a workout the time left as a band that ends at 12
+// o'clock and shrinks from its front, in the step kinds' colours (grey while paused) over a faint track: whole = the whole workout (its
+// steps still to come), else the step now. A free ride has nothing to count down: the short recording arc at the top, as on a run.
+function trRing(dc, F, S, P, n, whole) {
+  const R = F.tr, W = F.wk;
+  if (!W || W.i >= W.dur.length) { recRing(dc, S, P, R.st === 'run'); return; }
+  const ga = n > 1 ? (n - 1) * 5 + 6 : 0, run = R.st === 'run';
+  arcP(dc, S, P.faint, 0, 360, ga);
+  if (!whole) { const d = W.dur[W.i], lf = wkLeft(W, R.t); arcP(dc, S, run ? kindCol(P, W.kd[W.i]) : P.dim, 360 - 360.0 * lf / d, 360, ga); return; }
+  const k0 = 360.0 / W.tot; let s = W.s0, from = R.t * k0, col = -1;
+  for (let k = W.i; k < W.dur.length; k++) {
+    const ck = run ? kindCol(P, W.kd[k]) : P.dim;
+    if (ck !== col) { if (col >= 0) arcP(dc, S, col, from, s * k0, ga); col = ck; from = s * k0 > from ? s * k0 : from; }
+    s += W.dur[k];
+  }
+  if (col >= 0) arcP(dc, S, col, from, 360, ga);
+}
+// 28.11.: a small - / + button (the owner: "too big, write the step inside"): a faint pill w x h with the step in it ("-5", "+25") in the
+// largest font that fits it; where none does (font size setting) the drawn sign (the fonts may have no minus sign, the hyphen they have)
+function trBtn(dc, S, P, x, y, t, plus) {
+  const w = S * .16, h = S * .11, tp = '+' + t.substring(1), f = inPill(dc, tp, [SM, XT], w - 6, h); // both buttons in the font the wider "+25" fits
+  pill(dc, x, y, w, h, P.faint);
+  if (dc.getTextWidthInPixels(tp, f) <= w - 6 && up(dc, f) <= h / 2 - 1 && dn(dc, f, tp) <= h / 2 - 1) { txt(dc, x, y, f, t, P.fg); return; }
+  const k = S * .025; dc.setColor(P.fg); dc.setPenWidth(pw(S * .014)); dc.drawLine(x - k, y, x + k, y); if (plus) dc.drawLine(x, y - k, x, y + k); dc.setPenWidth(1);
+}
+// the target page, the overview (the owner: "one sheet with everything"): the time left in the step (a free ride: the ride's time) with the
+// ring, the step's label (a ramp: "WARM-UP 100 TO 180 W"), the target big with small - / + buttons that carry the step, the offset under it
+// (only when there is one), the trainer's power, cadence and heart rate, the next step (a free ride: the average). gT0 .. gT1: the target's
+// zone (the taps on - / + / the target, the wheel)
+function trTarget(dc, F, S, P, now, ui) {
+  const R = F.tr, L = F.link, v = shown(L), paused = R.st !== 'run', c = S / 2, G = gap(S), W = F.wk;
   // 27.11.: in a workout the time left in the step (orange in a hard one), its label / counter, the offset, the next step and the time left
   const ct = clock(W ? wkLeft(W, R.t) : R.t), tf = fontIn(dc, ct, [NMI, ME, SM, XT], T(S * .5), S * .1), ty = S * .13 > up(dc, tf) + S * .075 ? S * .13 : up(dc, tf) + S * .075;
   put(dc, c, ty, tf, ct, S, W && W.hard[W.i] ? P.acc : P.fg, false, R0);
@@ -854,8 +912,9 @@ function drawTRec(dc, F, S, P, now, ui) {
     else { put(dc, c, by, XT, nx, S, P.fg, false, R0); bt = by - up(dc, XT) - G; }
   }
   else { const t = 'AVG ' + avgPw(R) + ' W, ' + Math.round(R.kj) + ' kJ'; put(dc, c, by, XT, t + '|AVG ' + avgPw(R) + ' W|AVG ' + avgPw(R), S, P.lbl, false, R0); bt = by - up(dc, XT) - G; }
-  // the three numbers: the largest font whose row and labels fit 0.2 S and the circle (WATTS is W where it does not)
-  const d = tLive(L, now), vals = [String(d.pw), String(d.cad), F.hr > 0 ? String(F.hr) : '--'], vfs = [NMI, ME, SM, XT], vl = above(dc, bt, XT, 'G', S * .735);
+  // the three numbers: the largest font whose row and labels fit 0.2 S and the circle (WATTS is W where it does not); 28.11.: no cadence
+  // from the trainer = "--" (a 0 would say "not pedalling")
+  const d = tLive(L, now), vals = [String(d.pw), hasCad(L, now) ? String(d.cad) : '--', F.hr > 0 ? String(F.hr) : '--'], vfs = [NMI, ME, SM, XT], vl = above(dc, bt, XT, 'G', S * .735);
   let labs = ['WATTS', 'RPM', 'BPM'], vf = XT, vy = 0, dx = -1, hOn = true;
   for (let pass = 0; pass < 3 && dx < 0; pass++) {
     if (pass === 1) labs = ['W', 'RPM', 'BPM'];
@@ -874,19 +933,94 @@ function drawTRec(dc, F, S, P, now, ui) {
     txt(dc, x + (i === 2 && hOn ? S * .015 : 0), vl, XT, labs[i], P.lbl);
   }
   dc.setColor(P.line); dc.setPenWidth(pw(S * .006 > 2 ? S * .006 : 2)); dc.drawLine(S * .12, sep, S * .88, sep); dc.setPenWidth(1);
-  // the target between the label and the separator, - / + beside it, the step under it (the wheel: the neighbours instead)
-  const t = String(R.tgt), top = (wh ? ty + dn(dc, tf, '0') : ly + dn(dc, XT, 'W')) + G, sf = XT;
-  const room = sep - G - top - (wh ? 0 : inkH(dc, sf) + G), gf = numIn(dc, [t], [NTH, NHO, NME, NMI], [T(S * .46)], [c], top, top + room, R0), gy = numY(dc, gf, top, top + room);
+  // the target between the label and the separator, the small - / + beside it, the offset under it when there is one (the wheel: the
+  // neighbours instead)
+  // 28.11.: a ramp says so under the target, plain: "WARM-UP" above it, "100 TO 180 W" (with the offset in it) under it, the offset after it
+  const aj = W ? wkAdj(W) : 0, t = String(R.tgt), top = (wh ? ty + dn(dc, tf, '0') : ly + dn(dc, XT, 'W')) + G, sf = XT, rp = W ? wkRamp(W) : null;
+  const ajt = (aj > 0 ? '+' : '-') + Math.abs(aj) + ' W', ut = rp ? rp[0] + ' TO ' + rp[1] + ' W' + (aj !== 0 ? ', ' + ajt + '|' + rp[0] + ' TO ' + rp[1] + ' W' : '') : (aj !== 0 ? ajt : '');
+  const room = sep - G - top - (wh || ut.length === 0 ? 0 : inkH(dc, sf) + G), gf = numIn(dc, [t], [NTH, NHO, NME, NMI], [T(S * .44)], [c], top, top + room, R0), gy = numY(dc, gf, top, top + room);
   txt(dc, c, gy, gf, t, paused ? P.dim : P.acc); LAY.t0 = top / S; LAY.t1 = sep / S;
-  const xs = [.15, .85];
-  for (let i = 0; i < 2; i++) {
-    const x = S * xs[i], h = S * .035;
-    dc.setColor(P.faint); dc.fillCircle(x, gy, S * .085);
-    dc.setColor(P.fg); dc.setPenWidth(pw(S * .018)); dc.drawLine(x - h, gy, x + h, gy); if (i === 1) dc.drawLine(x, gy - h, x, gy + h); dc.setPenWidth(1);
-  }
+  const xs = [.16, .84];
+  for (let i = 0; i < 2; i++) trBtn(dc, S, P, S * xs[i], gy, (i === 0 ? '-' : '+') + R.step, i === 1);
   if (wh) { for (let dd = -1; dd <= 1; dd += 2) { const w = W ? R.tgt + dd * R.step : nextTarget(R, dd, false); if (w === R.tgt) continue; const yy = dd < 0 ? above(dc, gy - up(dc, gf), XT, '0', S) : below(dc, gy + dn(dc, gf, '0'), XT, 0);
     if (yy - up(dc, XT) >= ty + dn(dc, tf, '0') + G && yy + dn(dc, XT, '0') <= sep - G) txt(dc, c, yy, XT, String(w), P.dim); } }
-  else { const a = W ? wkAdj(W) : 0; put(dc, c, below(dc, gy + dn(dc, gf, '0'), sf, 0), sf, a !== 0 ? (a > 0 ? '+' : '-') + Math.abs(a) + ' W' : '+/- ' + R.step + ' W', S, a !== 0 ? P.fg : P.lbl, false, R0); }
+  else if (ut.length > 0) put(dc, c, below(dc, gy + dn(dc, gf, '0'), sf, 0), sf, ut, T(S * .8), P.fg, false, R0); // clear of the page dots
+}
+// 28.11.: the workout page (where am I, what comes next, how long is left): the repeat's counter (else the step's label), the target and
+// the time left in the step, the workout as blocks under a magnifying glass (the step now wide in the middle with its progress and a
+// marker, four steps each side narrower towards the edges; height = target watts, ramps as slopes, the step kinds' colours, done ones
+// grey), NEXT with its watts and length, the time left of the whole workout (the ring: the whole workout)
+function trWork(dc, F, S, P, now) {
+  const R = F.tr, W = F.wk, c = S / 2, G = gap(S), i = W.i, n = W.dur.length, run = R.st === 'run';
+  if (i >= n) return;
+  const ly = S * .15 > up(dc, XT) + S * .1 ? S * .15 : up(dc, XT) + S * .1, cn = W.cnt[i], k = cn.indexOf(','), lm = roomC(dc, c, ly, XT, cn, R0);
+  // the counter "5/13, SET 2/3", where it does not fit "5/13"; outside repeats the step's label
+  const lab = cn.length === 0 ? wkShown(W) : (k > 0 && dc.getTextWidthInPixels(cn, XT) > (lm < T(S * .62) ? lm : T(S * .62)) ? cn.substring(0, k) : cn);
+  put(dc, c, ly, XT, lab, T(S * .62), W.hard[i] ? P.acc : P.lbl, true, R0);
+  // the target and the time left in the step: one line, one font
+  const tw = R.tgt + ' W', tl = clock(wkLeft(W, R.t)), sp = S * .06, fs = [ME, SM, XT];
+  let f2 = XT, y2 = 0;
+  for (let j = 0; j < fs.length; j++) {
+    f2 = fs[j]; y2 = below(dc, ly + dn(dc, XT, lab), f2, 0);
+    if (dc.getTextWidthInPixels(tw, f2) + sp + dc.getTextWidthInPixels(tl, f2) <= roomC(dc, c, y2, f2, tw + tl, R0) && inkH(dc, f2) <= S * .12) break;
+  }
+  const w1 = dc.getTextWidthInPixels(tw, f2), x0 = c - (w1 + sp + dc.getTextWidthInPixels(tl, f2)) / 2;
+  txtL(dc, x0, y2, f2, tw, run ? P.acc : P.dim); txtL(dc, x0 + w1 + sp, y2, f2, tl, P.fg);
+  // the bottom: the time left of the workout (where two lines fit), NEXT above it
+  const by = S * .84, nw = wkNextW(W), nx = nw < 0 ? 'LAST STEP' : 'NEXT ' + nw + ' W, ' + clock(W.dur[i + 1]) + '|' + nw + ' W, ' + clock(W.dur[i + 1]) + '|' + nw + ' W';
+  const tot = clock(wkTotLeft(W, R.t));
+  let ny = by;
+  if (inkH(dc, XT) <= S * .08) { put(dc, c, by, XT, tot + ' LEFT|' + tot, S, P.lbl, false, R0); ny = above(dc, by - up(dc, XT), XT, 'g', S); }
+  put(dc, c, ny, XT, nx, S, P.fg, false, R0);
+  // the magnifying glass between them
+  const top = y2 + dn(dc, f2, '0') + 3 * G, bot = ny - up(dc, XT) - 2 * G;
+  if (bot - top < S * .06) return;
+  const hw = half(S, top, bot, .44), mw = 2 * hw * .32, sw = (2 * hw - mw) / 2, g = pw(S * .008), fr = [.36, .27, .21, .16];
+  let mx = 1;
+  for (let k = i - 4; k <= i + 4; k++) { if (k < 0 || k >= n) continue; const a = wkPlat(W, k, 0), b = wkPlat(W, k, W.dur[k]); if (a > mx) mx = a; if (b > mx) mx = b; }
+  for (let d = -4; d <= 4; d++) {
+    const k = i + d, ad = d < 0 ? -d : d; if (k < 0 || k >= n) continue;
+    let xa = c - mw / 2, xb = c + mw / 2;
+    if (d !== 0) { let o = mw / 2; for (let j = 1; j < ad; j++) o += sw * fr[j - 1]; const wd = sw * fr[ad - 1]; xa = d < 0 ? c - o - wd : c + o; xb = xa + wd; }
+    xa += g / 2; xb -= g / 2;
+    const ha = trH(top, bot, wkPlat(W, k, 0), mx), hb = trH(top, bot, wkPlat(W, k, W.dur[k]), mx), col = kindCol(P, W.kd[k]);
+    if (d !== 0) { dc.setColor(d < 0 ? P.faint : col); dc.fillPolygon([[xa, bot], [xa, bot - ha], [xb, bot - hb], [xb, bot]]); continue; }
+    const into = R.t - W.s0, f = into <= 0 ? 0.0 : (into >= W.dur[k] ? 1.0 : into * 1.0 / W.dur[k]), xs = xa + (xb - xa) * f, hs = trH(top, bot, wkPlat(W, k, into), mx);
+    if (xs - xa >= 1) { dc.setColor(P.faint); dc.fillPolygon([[xa, bot], [xa, bot - ha], [xs, bot - hs], [xs, bot]]); }
+    if (xb - xs >= 1) { dc.setColor(run ? col : P.dim); dc.fillPolygon([[xs, bot], [xs, bot - hs], [xb, bot - hb], [xb, bot]]); }
+    dc.setColor(P.fg); dc.setPenWidth(pw(S * .008)); dc.drawLine(xs, top, xs, bot); dc.setPenWidth(1);
+    tri(dc, xs, top, S * .018, false, P.fg);
+  }
+}
+// a block's height for w watts (the highest shown = the whole height top .. bot), at least 2 px
+function trH(top, bot, w, mx) { const h = (bot - top) * w / mx; return h > 2 ? h : 2; }
+// 28.11.: the body page (how is my body doing): the ride's time, the heart rate big with the heart, its average and max, then cadence,
+// average power and kJ in a row
+function trBody(dc, F, S, P, now) {
+  const R = F.tr, L = F.link, c = S / 2, G = gap(S);
+  const ct = clock(R.t), tf = fontIn(dc, ct, [NMI, ME, SM, XT], T(S * .44), S * .1), ty = S * .15 > up(dc, tf) + S * .085 ? S * .15 : up(dc, tf) + S * .085;
+  put(dc, c, ty, tf, ct, S, P.fg, false, R0);
+  const ly = below(dc, ty + dn(dc, tf, '0'), XT, 0); put(dc, c, ly, XT, 'RIDE TIME|TIME', S, P.lbl, false, R0);
+  // the row at the bottom: the largest font whose numbers and labels fit the circle
+  const v = [hasCad(L, now) ? String(tLive(L, now).cad) : '--', String(avgPw(R)), String(Math.round(R.kj))], fs = [ME, SM, XT];
+  let l = ['RPM', 'AVG W', 'KJ'], vf = XT, vy = 0, vl = 0, dx = -1;
+  for (let pass = 0; pass < 2 && dx < 0; pass++) {
+    if (pass === 1) l = ['RPM', 'W', 'KJ'];
+    for (let i = 0; i < fs.length && dx < 0; i++) {
+      vf = fs[i]; vy = S * .68; vl = below(dc, vy + dn(dc, vf, '0'), XT, 0);
+      if (vl + dn(dc, XT, 'G') > S * .9) { vy = vy - (vl + dn(dc, XT, 'G') - S * .9); vl = below(dc, vy + dn(dc, vf, '0'), XT, 0); }
+      dx = colDx(dc, S, v, l, vf, vy, vl, S * .03);
+    }
+  }
+  if (dx < 0) dx = S * .2;
+  for (let j = 0; j < 3; j++) { txt(dc, c + (j - 1) * dx, vy, vf, v[j], P.fg); txt(dc, c + (j - 1) * dx, vl, XT, l[j], P.lbl); }
+  // the average and max heart rate above the row, the heart rate big between
+  const am = R.hrN ? Math.round(R.hrSum / R.hrN) : 0, at = 'AVG ' + orDash(am) + ', MAX ' + orDash(R.hrMax) + '|' + orDash(am) + ' / ' + orDash(R.hrMax);
+  const ay = above(dc, vy - up(dc, vf) - G, XT, 'g', S); put(dc, c, ay, XT, at, S, P.lbl, false, R0);
+  const top = ly + dn(dc, XT, 'T') + G, bt = ay - up(dc, XT) - G, h = F.hr > 0 ? String(F.hr) : '--', hx = c + S * .04;
+  const hf = numIn(dc, [h], [NTH, NHO, NME, NMI], [T(S * .5)], [hx], top, bt, R0), hy = numY(dc, hf, top, bt), hs = S * .06;
+  txt(dc, hx, hy, hf, h, P.fg);
+  heart(dc, hx - dc.getTextWidthInPixels(h, hf) / 2 - G - hs * .7, hy, hs, F.hr > 0 ? P.hr : P.dim);
 }
 // 27.11.: the trainer's choice: a free ride (one target) or a workout (its length under it); while connecting it says so
 function drawTPick(dc, F, S, P) {
@@ -919,9 +1053,11 @@ function trStats(dc, S, P, R) {
     return;
   }
 }
+// BACK on the ride (28.11.: "it must be obvious this is a menu and not a pause"): RIDE MENU, the line under the rows says the ride goes on
+// ("Riding 12:34, 180 W", green; "Paused 12:34", orange); Back to ride (Resume when paused), Finish & save, Discard (with a confirm step)
 function drawTEnd(dc, F, S, P) {
-  const R = F.tr;
-  list(dc, F, S, P, listItems(F), F.tConf ? 'DISCARD RIDE?' : 'INDOOR TRAINER', F.tConf ? 'DISCARD?' : 'TRAINER', true, null, null, R ? [[clock(R.t) + ', ' + R.tgt + ' W' + (R.st !== 'run' ? ', paused' : '') + '|' + clock(R.t) + ', ' + R.tgt + ' W', P.lbl, false]] : []);
+  const R = F.tr, run = R && R.st === 'run', a = R ? (run ? 'Riding ' : 'Paused ') + clock(R.t) : '';
+  list(dc, F, S, P, listItems(F), F.tConf ? 'DISCARD RIDE?' : 'RIDE MENU', F.tConf ? 'DISCARD?' : 'MENU', true, null, null, R ? [[a + ', ' + R.tgt + ' W|' + a, run ? P.good : P.acc, false]] : []);
 }
 function drawTSum(dc, F, S, P) {
   const s = F.tsum, c = S / 2, G = gap(S); if (!s) return;

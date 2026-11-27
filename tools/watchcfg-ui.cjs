@@ -54,6 +54,13 @@ let fails = 0; const ok = (c, m) => { console.log(`${c ? '✓' : '✗'} ${m}`); 
     await P.click('[data-tab="ride"]'); ok(await prev() === 'power3s,speed,hr,time', 'ride page 1: power 3s, speed, heart rate, time'); await P.click('[data-face="1"]'); await P.waitForTimeout(100);
     ok(await P.getAttribute('#wcCv', 'class') === 'mip', 'fenix preview: 280 px MIP'); await shot('ride'); await P.click('[data-face="0"]');
     for (const w of [320, 390]) ok(!(await sideways(w)), `ride editor: no sideways scroll at ${w} px`);
+    // 28.11.: the indoor trainer's pages: Target fixed first, Stats switched off, Body moved above Workout
+    await P.click('[data-tab="trainer"]'); ok(await P.$$eval('[data-tp]', l => l.map(e => e.dataset.tp).join()) === 'wk,body,stats', 'trainer: workout, body, stats after the fixed target page');
+    ok(/Always on/.test(await P.textContent('.wcfix')), 'trainer: the target page cannot be switched off');
+    await P.uncheck('[data-tpon="stats"]'); await P.click('[data-tpup="body"]'); ok(await P.$$eval('[data-tp]', l => l.map(e => e.dataset.tp).join()) === 'body,wk,stats', 'trainer: body moved up, stats off at the end');
+    ok(/3 of 4/.test(await P.textContent('.wccount')), 'trainer: the count follows'); await saved();
+    ok(JSON.stringify((await api('GET', '/api/watch/config', null, token)).config.trainer) === '{"pages":["body","wk"]}', 'trainer: the server has the pages in order');
+    for (const w of [320, 390]) ok(!(await sideways(w)), `trainer: no sideways scroll at ${w} px`); await shot('trainer');
     // strength: a workout with a custom exercise
     await P.click('[data-tab="kraft"]'); await P.click('#wcNewW'); await P.waitForSelector('#wcWork'); await P.fill('#wcWName', 'Push day heavy');
     await P.click('#wcAddEx'); await P.waitForSelector('#wcEx'); await P.fill('#wcQ', 'bench'); ok(await P.locator('#wcEx [data-ex]:visible').count() >= 2, 'search the exercises');

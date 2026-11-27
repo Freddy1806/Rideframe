@@ -10,8 +10,9 @@
 //   ready (run / ride): UP / DOWN or a tap on the route line = the Route choice (RPICK)
 //   pause screen (every mode): START = resume, BACK held 3 s = save (a short BACK only shows the hint), DOWN / tap = Discard (confirm);
 //   on the AMOLED touch face a finger resting on the "Hold to finish" pill = BACK held
-//   indoor trainer (23.11.): UP / DOWN = +/- the step (held: 25 W), a tap on the left / right half = - / +, on the target = the step 5 / 10 / 25,
-//   START = pause / resume, BACK = its menu, swipe up / down = the stats page
+//   indoor trainer ride (28.11., 27.11.3): UP / DOWN = the previous / next page (wrapping, like Garmin's activity pages), UP / DOWN held =
+//   + / - one step (repeating every 350 ms), on the target page a tap on the left / right third = - / +, on the target = the step 5 / 10 / 25,
+//   a tap on another page = the target page, START = pause / resume, BACK = the ride menu (the ride goes on), swipe up / down = page
 import Toybox.Lang;
 import Toybox.System;
 import Toybox.Timer;
@@ -68,6 +69,7 @@ class FlowDelegate extends WatchUi.BehaviorDelegate {
     var backAt as Number = -100000;  // 23.11.8: when the last back went to the flow (the BACK key or onBack), and the last swipe right
     var swipeRAt as Number = -100000;
     var escAt as Number = -100000;   // the BACK key's last press / release (its onBack, if the system still sends one, is the same back)
+    var keyAt as Number = -100000;   // 28.11.: the last release of a key this delegate handles (a menu behaviour that comes with it is the key's)
 
     function initialize(f as Flow, a) {
         BehaviorDelegate.initialize();
@@ -99,8 +101,8 @@ class FlowDelegate extends WatchUi.BehaviorDelegate {
         var k = evt.getKey();
         if (k != downKey) { return false; }
         if (holdTimer != null) { holdTimer.stop(); }
-        downKey = null;
-        if (k == WatchUi.KEY_ESC) { escAt = System.getTimer(); app.input(E_HOLD_END, escAt); }
+        downKey = null; keyAt = System.getTimer();
+        if (k == WatchUi.KEY_ESC) { escAt = keyAt; app.input(E_HOLD_END, escAt); }
         if (held) { return true; }
         if (k == WatchUi.KEY_ENTER) { app.input(E_START, null); }
         else if (k == WatchUi.KEY_ESC) { back(); }
@@ -128,7 +130,13 @@ class FlowDelegate extends WatchUi.BehaviorDelegate {
     }
     function onNextPage() as Boolean { return false; }
     function onPreviousPage() as Boolean { return false; }
-    function onMenu() as Boolean { app.input(E_MENU, null); return true; }
+    // 28.11.: on the fenix 8 the menu behaviour is UP held (VERIFY: whether it still comes when onKeyPressed took KEY_UP). UP held is + one
+    // step on the ride, so a menu behaviour while one of our keys is down (or just released) belongs to that key and is dropped; a real
+    // MENU key (other watches: not handled in onKeyPressed) still opens the menu
+    function onMenu() as Boolean {
+        if (downKey != null || System.getTimer() - keyAt < 600) { return true; }
+        app.input(E_MENU, null); return true;
+    }
 
     // ---- touch ----
     function onSwipe(evt as WatchUi.SwipeEvent) as Boolean {
@@ -163,7 +171,7 @@ class FlowDelegate extends WatchUi.BehaviorDelegate {
         if (s == S_SET && v > 0.36 && v < 0.72) { dragCol = flow.isTime(flow.curEx()) || u >= 0.51 ? 1 : 0; return 2; }
         if (s == S_TREC) {
             var R = flow.tr;
-            if (R != null) { if (R.pg == 0 && v > gT0 && v < gT1) { dragCol = 0; return 2; } } // the target's zone as drawn (Draw gT0 / gT1)
+            if (R != null) { if (flow.tPage().equals("target") && v > gT0 && v < gT1) { dragCol = 0; return 2; } } // the target's zone as drawn (Draw gT0 / gT1)
         }
         return scrollable() ? 1 : 3;
     }
@@ -243,9 +251,9 @@ class FlowDelegate extends WatchUi.BehaviorDelegate {
             return true;
         }
         if (s == S_READY && !flow.sp.equals("other") && gRouteY > 0 && absF(v - gRouteY) < 0.04) { app.input(E_DOWN, null); return true; } // the route line as drawn
-        if (s == S_TREC) { // 23.11. (js TREC_LAY): the stats page: back; - / + (the whole side) and the target (step size); the resume pill
+        if (s == S_TREC) { // 23.11. (js TREC_LAY): another page: the target page; - / + (the outer thirds) and the target (step size); the resume pill
             var R = flow.tr;
-            if (R != null && R.pg != 0) { app.input(E_TAP, null); }
+            if (R != null && !flow.tPage().equals("target")) { app.input(E_TAP, null); }
             else if (v > gT0 && v < gT1) { app.input(E_ITEM, u < 0.31 ? 0 : (u > 0.69 ? 1 : 2)); }
             else if (v > 0.78 && R != null && R.st != RS_RUN) { app.input(E_START, null); }
             return true;
