@@ -25,7 +25,8 @@ export function weekSummary(acts, ld, now = Date.now()) {
 export function fitnessSummary(acts, ld, { days = 42, now = Date.now() } = {}) {
   if (!acts.length) return { empty: true };
   const pm = pmcLoads(acts.map(a => [a.date, ld(a)]), Math.max(days, 29)), t = pm[pm.length - 1], ago = pm[Math.max(0, pm.length - 29)];
-  return { empty: !pm.some(p => p.load > 0), ctl: t.ctl, atl: t.atl, tsb: t.tsb, words: formWords(t.tsb), d28: t.ctl - ago.ctl,
+  const first = Math.min(...acts.filter(a => a.date <= now && ld(a) > 0).map(a => a.date)); // hist: days of history behind ctl / form (readiness.js formTrust)
+  return { empty: !pm.some(p => p.load > 0), ctl: t.ctl, atl: t.atl, tsb: t.tsb, words: formWords(t.tsb), d28: t.ctl - ago.ctl, hist: Number.isFinite(first) ? Math.round((dayStart(now) - dayStart(first)) / DAY) : 0,
     series: pm.slice(-days).map(p => ({ t: p.t, ctl: p.ctl, atl: p.atl })), now };
 }
 
@@ -81,8 +82,10 @@ export function vo2Summary(acts, P, health) {
 /** FTP: the set value, the estimate from the rides, and W/kg from the newest weigh-in (else the profile weight) */
 export function ftpSummary(S, P, body) {
   const list = body?.list || [], last = list.reduce((a, m) => !a || m.t > a.t ? m : a, null), kg = last ? last.kg : S?.riderKg || null;
-  const ftp = +S?.ftp || 0, est = P?.ftpEst || null;
-  return { empty: !ftp && !est, ftp: ftp || null, est, kg, kgFrom: last ? 'weigh-in' : S?.riderKg ? 'profile' : null, wkg: ftp && kg ? Math.round(ftp / kg * 100) / 100 : est && kg ? Math.round(est.w / kg * 100) / 100 : null, wkgOf: ftp ? 'ftp' : est ? 'estimate' : null };
+  const ftp = +S?.ftp || 0, est = P?.ftpEst || null, ev = P?.ftpEv || null;
+  // 27.11.: + the evidence behind the estimate: range, confidence, "Based on …" and the floor ("at least … W") when there is no estimate
+  return { empty: !ftp && !est, ftp: ftp || null, est, kg, lo: est?.lo ?? null, hi: est?.hi ?? null, conf: est?.confidence || null, basedOn: est?.from || '',
+    floor: ev?.floor || null, floorFrom: !est && ev?.floor ? ev.from : '', sources: (ev?.sources || []).filter(x => x.used), kgFrom: last ? 'weigh-in' : S?.riderKg ? 'profile' : null, wkg: ftp && kg ? Math.round(ftp / kg * 100) / 100 : est && kg ? Math.round(est.w / kg * 100) / 100 : null, wkgOf: ftp ? 'ftp' : est ? 'estimate' : null };
 }
 
 /** one value of the watch's recovery data (GET /api/account/health) with the days it was there: { v, day, series: [{ day, v }] oldest first } */
