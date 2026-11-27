@@ -95,6 +95,9 @@ export function simulateRide(track, power, settings) {
   return { samples, duration: t };
 }
 
+/** js/app.js (loaded long before a ride starts): kept at hand for the device buttons, see _connTrainer */
+let appMod = null; const loadApp = () => import('./app.js').then(m => (appMod = m));
+if (typeof window !== 'undefined') setTimeout(() => loadApp().catch(() => {}), 0);
 const WB_VIEWS = ['big', 'compact', 'focus'], WB_NAMES = { big: 'big', compact: 'compact', focus: 'focus' };
 /** the live numbers in the interval window (owner 20.11.: "the same numbers as in normal riding, plus the time and the target
  *  watts"): [key, label, unit, the normal HUD element it mirrors (null: avg power, kept by _updateHUD), the Display item (js/hudprefs.js)
@@ -1297,7 +1300,9 @@ export class RideSession {
   /** the trainer's device list (Devices, the HUD's Connect / Reconnect): the chooser opens inside the tap */
   async _connTrainer(btn) {
     if (btn) { btn.disabled = true; btn.textContent = 'Connecting …'; }
-    try { const m = await import('./app.js'); await m.connectTrainer(); } catch (e) { this._flash('Connection failed: ' + (e?.message || e), 4000); }
+    // the app module at hand (no await before the chooser: it opens inside the tap, before a reconnect loop woken in the same
+    // tap can win); a trainer that came back meanwhile is never offered "Disconnect?" by a Connect tap
+    try { const m = appMod || await loadApp(); if (!this.state.trainer.connected) await m.connectTrainer(); } catch (e) { this._flash('Connection failed: ' + (e?.message || e), 4000); }
     if (this.state.trainer.connected) { this._trainerUp(); this._flash('✓ ' + (this.state.trainer.device?.name || 'Trainer') + ' connected'); }
     else if (this.state.trainer.device) this.state.trainer.rejoinNow?.()?.catch?.(() => {}); // list closed: the quiet loop goes on
     if (this.paused && !this.finished) this._repaint?.();
@@ -1305,7 +1310,7 @@ export class RideSession {
   /** a heart rate strap (Devices, the HUD; after a reload the browser may need the chooser once more); all: every device */
   async _connHr(btn, all = false) {
     if (btn) { btn.disabled = true; btn.textContent = 'Connecting …'; }
-    try { const m = await import('./app.js'); await m.connectHR(all); } catch (e) { this._flash('Connection failed: ' + (e?.message || e), 4000); }
+    try { const m = appMod || await loadApp(); if (!this.state.hr?.connected) await m.connectHR(all); } catch (e) { this._flash('Connection failed: ' + (e?.message || e), 4000); }
     if (this.state.hr?.connected) this._flash('✓ Heart rate connected'); else if (this.state.hr?.device) this.state.hr.rejoinNow?.()?.catch?.(() => {}); // list closed: the quiet loop goes on
     if (this.paused && !this.finished) this._repaint?.();
   }
