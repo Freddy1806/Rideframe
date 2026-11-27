@@ -16,3 +16,4 @@ http:/
 
 # coach workouts: host-local data the assistant edits on the server (coach/README.md); rollouts must never overwrite it
 coach/workouts.json
+__pycache__/
