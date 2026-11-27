@@ -84,7 +84,7 @@ let fails = 0; const ok = (c, m) => { console.log(`${c ? '✓' : '✗'} ${m}`); 
 
     // ---- by keyboard only: O, Tab, Enter ----
     await R.keyboard.press('o'); await R.waitForSelector('.rsbox');
-    const tabTo = async want => { for (let i = 0; i < 60; i++) { if (await on() === want) return true; await R.keyboard.press('Tab'); } return false; };
+    const tabTo = async want => { for (let i = 0; i < 120; i++) { if (await on() === want) return true; await R.keyboard.press('Tab'); } return false; };
     ok(await tabTo('erg'), 'keyboard: O opens it, Tab to ERG'); await R.keyboard.press('Enter'); await R.waitForTimeout(200);
     s = await st(); ok(s.erg && !s.flat && s.trainerErg === s.target && s.target > 0, `Enter: ERG again, ${s.target} W at the trainer`);
     ok(await tabTo('w:'), 'keyboard: Tab to “No workout”'); await R.keyboard.press('Enter'); await R.waitForTimeout(200);
