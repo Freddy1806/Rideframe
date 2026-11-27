@@ -25,7 +25,7 @@ let FTP_NOW = 250;
 export const setFtp = f => { if (+f > 0) FTP_NOW = +f; };
 const pctOf = w => Math.round(w / FTP_NOW * 1000) / 10;
 export const A = (sec, watts, label = '') => ({ dur: Math.round(sec), watts, label, get pct() { return pctOf(this.watts); } });
-const set3015 = k => Array.from({ length: 13 }, (_, i) => [A(30, 340, `30 / 15 · set ${k} · ${i + 1}/13`), ...(i < 12 ? [A(15, 125, 'Float')] : [])]).flat();
+const set3015 = k => Array.from({ length: 13 }, (_, i) => [A(30, 370, `30 / 15 · set ${k} · ${i + 1}/13`), ...(i < 12 ? [A(15, 125, 'Float')] : [])]).flat();
 
 export const WORKOUTS = [
   { id: 'ss3x10', name: 'Sweet Spot 3 × 10', what: '3 × 10 min at 90 % FTP, 4 min easy between. The classic for more endurance power.',
@@ -65,7 +65,7 @@ export const WORKOUTS = [
   { id: 'ftp20', name: '20-min test (FTP)', what: 'Warm-up, 5 min opener, then 20 min as hard as you can hold evenly. No ERG, you set the pace. New FTP = 95 % of it.',
     steps: [R(10, 40, 75, 'Warm-up'), W(0.5, 110, 'Opener 1/3'), W(1, 50, 'Spin'), W(0.5, 110, 'Opener 2/3'), W(1, 50, 'Spin'), W(0.5, 110, 'Opener 3/3'), W(2.5, 50, 'Spin'), W(5, 105, 'Opener 5 min'), W(10, 50, 'Easy'), { ...W(20, 100, 'Test 20 min'), free: true }, R(10, 55, 35, 'Cool-down')] },
   { id: 'c_30_15_3x13', name: '30 / 15 · 3 × 13', coach: true, rampIn: 3, rampOut: 2,
-    what: '18 min warm-up with three short sprints, then 3 sets of 13 × 30 s at 340 W with 15 s easy at 125 W, 3 min easy between the sets, 10 min cool-down. The first reps feel too easy, from the middle of the set it gets hard. Start at 340 W; turn the watts up towards 360 W only if it goes well.',
+    what: '18 min warm-up with three short sprints, then 3 sets of 13 × 30 s at 370 W with 15 s easy at 125 W, 3 min easy between the sets, 10 min cool-down. The first reps feel too easy, from the middle of the set it gets hard. 370 W is the 360 W ridden on 20.11. plus 10 (owner 27.11.); take the watts down with − if the third set does not hold.',
     steps: [R(10, 40, 72, 'Warm-up'), W(3, 72, 'Warm-up'), A(10, 420, 'Sprint 1/3'), A(50, 130, 'Spin'), A(10, 420, 'Sprint 2/3'), A(50, 130, 'Spin'), A(10, 420, 'Sprint 3/3'), A(170, 130, 'Spin'),
       ...set3015(1), A(180, 130, 'Rest'), ...set3015(2), A(180, 130, 'Rest'), ...set3015(3), R(10, 50, 35, 'Cool-down')] },
 ];

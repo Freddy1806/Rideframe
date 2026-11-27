@@ -95,7 +95,7 @@ const layoutOf = (page, root) => page.evaluate(root => {
     await D.fill('#mwName', 'My 30 15'); await D.click('#mwSave'); await D.waitForSelector('.mwbox', { state: 'detached' }); await D.waitForTimeout(300);
     const long = (await listOf(token)).find(w => w.name === 'My 30 15'), lf = long ? MW.toRide(long).steps : [];
     ok(lf.length === cw.length - 2, `server: “My 30 15” has ${cw.length - 2} steps with the repeats written out (${lf.length})`);
-    ok(lf.filter(s => s.dur === 30 && s.watts === 340).length === 39 && /Cool/i.test(lf.at(-1)?.label || ''), 'server: all 3 × 13 efforts of 30 s at 340 W and the cool-down are there');
+    ok(lf.filter(s => s.dur === 30 && s.watts === 370).length === 39 && /Cool/i.test(lf.at(-1)?.label || ''), 'server: all 3 × 13 efforts of 30 s at 370 W and the cool-down are there');
     ok(lf.every((s, i) => s.dur === cw[i + 2].dur), 'server: every step keeps its length (10 s sprints stay 10 s)');
 
     // ---- does the workout fit the route? (js/routefit.js) too short: more laps or a longer route; fits; much longer ----

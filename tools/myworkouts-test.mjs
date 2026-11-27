@@ -308,7 +308,7 @@ test('v2: a built-in becomes steps with its interval sets as repeat blocks, the 
   assert.equal(rep.repeat, 5); assert.equal(rep.skipLast, true); assert.deepEqual(rep.steps.map(s => [s.type, s.label, s.dur.sec, s.target.pct]), [['work', 'VO2max', 180, 120], ['recover', 'Rest', 180, 50]]);
   assert.deepEqual(MW.toRide(v).steps.filter(s => /^VO2max/.test(s.label)).map(s => s.label), ['VO2max 1/5', 'VO2max 2/5', 'VO2max 3/5', 'VO2max 4/5', 'VO2max 5/5'], 'the sets are numbered like before');
   const c = MW.fromBuiltin2(workoutById('c_30_15_3x13')); assert.equal(c.steps.filter(x => x.repeat === 13 && x.skipLast).length, 3, 'three sets of 13 (30 s on, 15 s off, no float after the 13th)'); assert.equal(MW.countSteps(c.steps), workoutById('c_30_15_3x13').steps.length);
-  assert.deepEqual(c.steps.find(x => x.repeat === 13).steps[0].target, { kind: 'power', lo: 340, hi: 340 }, 'steps in watts stay watts');
+  assert.deepEqual(c.steps.find(x => x.repeat === 13).steps[0].target, { kind: 'power', lo: 370, hi: 370 }, 'steps in watts stay watts');
 });
 test('v2: expansion, estimates and the summary', () => {
   const st = [S2('warmup', { kind: 'lap' }), { repeat: 3, steps: [S2('work', T(300), { kind: 'ftp', pct: 110 }), S2('recover', T(120), { kind: 'ftp', pct: 50 })], skipLast: true }, S2('cooldown', T(300), { kind: 'ftp', pct: 50 })];

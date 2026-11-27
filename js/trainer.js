@@ -10,6 +10,8 @@ const CPS = U(0x1818), CPM = U(0x2a63), BAT = U(0x180f), BATL = U(0x2a19);
 const WAHOO_CP = 'a026e005-0a7d-4ab3-97fa-f1500f9feb8b';
 const HRS = U(0x180d), HRM = U(0x2a37);
 import { Rejoin, rememberDevice, forgetDevice } from './rejoin.js';
+const WRITE_MS = 4000; // a control point write gets this long for its answer
+const OFF_W = 30, OFF_K = 0.2, OFF_AFTER = 15000, OFF_RETRY = 10000, OFF_TAU = 20000; // ERG not followed: the 20-s averages more than 30 W and 20 % apart for 15 s
 
 /** what to tell people where the browser has no Bluetooth (every iPhone browser except Bluefy; Firefox) */
 export const BT_HELP = /iPhone|iPad|iPod/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1)
@@ -155,11 +157,34 @@ export class Trainer extends EventTarget {
     this.emit('status', 'disconnected');
   }
 
+  /** one write to the control point, never open-ended (Freddy 21.11.: a whole 30 / 15 at 164 W while the plan said 340 W: the
+   *  trainer got no new target after the warm-up). A Bluetooth write whose answer never comes used to block every later write
+   *  for the rest of the ride; now it is given WRITE_MS, counted as a stall, and the line moves on. */
   _write(bytes) {
-    this.queue = this.queue.then(() => this.cp?.writeValueWithResponse
-      ? this.cp.writeValueWithResponse(new Uint8Array(bytes))
-      : this.cp?.writeValue(new Uint8Array(bytes))).catch(err => console.warn('trainer write', err));
+    this.queue = this.queue.then(() => { const cp = this.cp; if (!cp) return;
+      const w = cp.writeValueWithResponse ? cp.writeValueWithResponse(new Uint8Array(bytes)) : cp.writeValue(new Uint8Array(bytes));
+      let tm; const late = new Promise(ok => { tm = setTimeout(() => { this.stalls = (this.stalls || 0) + 1; console.warn('trainer write: no answer in', WRITE_MS, 'ms'); ok(); }, WRITE_MS); });
+      return Promise.race([Promise.resolve(w).finally(() => clearTimeout(tm)), late]);
+    }).catch(err => console.warn('trainer write', err));
     return this.queue;
+  }
+  /** ERG and the trainer does not follow: averaged over about 20 s the measured power stays far from the target although the
+   *  rider pedals (averages, so a 30 / 15 with its jumps is judged like a steady block). Then take control again and send the
+   *  target once more (every OFF_RETRY ms while it lasts) and tell the ride ('control' event). Called with every power value. */
+  _ergCheck() {
+    const now = performance.now(), t = this.erg, p = this.data.power;
+    if (this.pmOnly || t == null || !this.cp || !this.connected) { this._av = null; this._offAt = 0; return; }
+    const a = this._av ||= { t, p, at: now, since: now }, k = 1 - Math.exp(-Math.min(5000, now - a.at) / OFF_TAU); a.at = now;
+    if (!(this.data.cadence >= 40)) { a.since = now; a.t = t; a.p = t; this._offAt = 0; return; } // not pedalling: nothing to judge, start over
+    a.t += (t - a.t) * k; a.p += (p - a.p) * k;
+    if (now - a.since < OFF_AFTER) return;
+    if (Math.abs(a.p - a.t) <= Math.max(OFF_W, a.t * OFF_K)) { if (this._offTold) { this._offTold = false; this.emit('control', { ok: true }); } this._offAt = 0; return; }
+    if (!this._offAt) { this._offAt = now; return; }
+    if (now - this._offAt < OFF_AFTER || now - (this._offRetry || -1e9) < OFF_RETRY) return;
+    this._offRetry = now; this.offRetries = (this.offRetries || 0) + 1;
+    if (!this._offTold) { this._offTold = true; this.emit('control', { ok: false, off: true, target: Math.round(a.t), power: Math.round(a.p) }); }
+    if (this.mode === 'ftms') { this._write([0x00]); this._write([0x07]); }
+    this._pwBusy = false; this._pwNext = false; this.ergSent = null; this._sendPower();
   }
   /** the trainer's answer to a control point command. A refused ERG target (0x05) or a refused "request control" (0x00) used
    *  to be a console line only, so the app showed 340 W while the trainer stayed where it was (Freddy 20.11.). Now: ask for
@@ -189,7 +214,7 @@ export class Trainer extends EventTarget {
     if (flags & 0x0080) o += 2;
     if (flags & 0x0100) o += 5;
     if (flags & 0x0200) { const hr = dv.getUint8(o); if (hr) d.hr = hr; o += 1; }
-    this.lastData = performance.now();
+    this.lastData = performance.now(); this._ergCheck();
     this.emit('data', d);
   }
 
@@ -207,7 +232,7 @@ export class Trainer extends EventTarget {
       }
       if (!this._crank || revs !== this._crank.revs) this._crank = { revs, time, at: performance.now() };
     }
-    this.lastData = performance.now();
+    this.lastData = performance.now(); this._ergCheck();
     this.emit('data', this.data);
   }
 
@@ -229,6 +254,7 @@ export class Trainer extends EventTarget {
     const now = performance.now();
     if (watts === this.erg && now - this.lastSend < 5000) return;
     this.erg = watts;
+    if (this._pwBusy && now - this.lastSend > WRITE_MS + 1000) this._pwBusy = false; // the write under way never came back: do not wait for it
     // Only the newest target counts (Freddy 20.11.: "420 W, and the trainer needs 30 s"): a ramp asks for a new wattage every
     // frame, each write waits for the trainer's answer, so the old queue ran many seconds behind. Now at most one write is
     // under way and one waits; when the one under way is answered, the newest wattage goes out (never an older one).

@@ -172,7 +172,7 @@ test('a saved ride: the coach workout from its samples and saved intervals, also
   const live = hrpForRide(rec, w, { t0, ftp: FTP }), later = hrpForRide(rec, w);
   assert.deepEqual(later, live, 't0 found again from the saved intervals');
   assert.equal(live.ok, true); assert.equal(live.sets.length, 3); assert.equal(live.reps.length, 39, 'the 10 s warm-up sprints are no reps');
-  assert.equal(live.main.tg, 340); assert.deepEqual(live.sets.map(s => s.l), ['30 / 15 · set 1', '30 / 15 · set 2', '30 / 15 · set 3']);
+  assert.equal(live.main.tg, 370); assert.deepEqual(live.sets.map(s => s.l), ['30 / 15 · set 1', '30 / 15 · set 2', '30 / 15 · set 3']);
   const st = stepsOf(w, { t0, ftp: FTP }); assert.equal(st[0].start, t0); assert.equal(st.filter(s => s.hard && s.end - s.start === 30).length, 39);
   assert.deepEqual(hrpOf(rec, id => id === w.id ? w : null), live, 'hrpOf computes it for an old ride');
   assert.equal(hrpOf({ ...rec, hrp: { v: 1, ok: false, reason: 'stored' } }, () => w).reason, 'stored', 'a stored analysis wins');

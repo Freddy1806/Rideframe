@@ -5,7 +5,7 @@
       "name": "30 / 15 · 3 × 13",
       "rampIn": 3,
       "rampOut": 2,
-      "what": "18 min warm-up with three short sprints, then 3 sets of 13 × 30 s at 340 W with 15 s easy at 125 W, 3 min easy between the sets, 10 min cool-down. The first reps feel too easy, from the middle of the set it gets hard. Start at 340 W; turn the watts up towards 360 W only if it goes well.",
+      "what": "18 min warm-up with three short sprints, then 3 sets of 13 × 30 s at 370 W with 15 s easy at 125 W, 3 min easy between the sets, 10 min cool-down. The first reps feel too easy, from the middle of the set it gets hard. 370 W is the 360 W ridden on 20.11. plus 10 (owner 27.11.); take the watts down with − if the third set does not hold.",
       "steps": [
         {
           "min": 10,
@@ -55,7 +55,7 @@
           "steps": [
             {
               "sec": 30,
-              "watts": 340,
+              "watts": 370,
               "label": "On"
             },
             {
@@ -77,7 +77,7 @@
           "steps": [
             {
               "sec": 30,
-              "watts": 340,
+              "watts": 370,
               "label": "On"
             },
             {
@@ -99,7 +99,7 @@
           "steps": [
             {
               "sec": 30,
-              "watts": 340,
+              "watts": 370,
               "label": "On"
             },
             {

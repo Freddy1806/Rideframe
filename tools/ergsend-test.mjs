@@ -25,7 +25,7 @@ test('null ends ERG: a waiting target is not sent afterwards', async () => {
 test('30 / 15 and sprints: no ramp, the target jumps at the second the effort starts and ends', () => {
   const w = workoutById('c_30_15_3x13'), at = t => workoutState(w, t, 280, { ramp: true }).target;
   assert.equal(at(779.9), at(770)); assert.equal(at(780), 420); assert.equal(at(789.9), 420); assert.equal(at(790), 130);
-  assert.equal(at(1079.9), 130); assert.equal(at(1080), 340); assert.equal(at(1109.9), 340); assert.equal(at(1110), 125); assert.equal(at(1124.9), 125); assert.equal(at(1125), 340);
+  assert.equal(at(1079.9), 130); assert.equal(at(1080), 370); assert.equal(at(1109.9), 370); assert.equal(at(1110), 125); assert.equal(at(1124.9), 125); assert.equal(at(1125), 370);
 });
 test('long intervals keep their ramp in', () => { const w = workoutById('vo2_5x3'); let s = 0, i = w.steps.findIndex(x => /VO2max 1\//.test(x.label)); for (let k = 0; k < i; k++) s += w.steps[k].dur;
   const a = workoutState(w, s - 5, 280, { ramp: true }), b = workoutState(w, s - 20, 280, { ramp: true }); assert.equal(a.ramp, 'in'); assert.ok(a.target > b.target); });
