@@ -244,7 +244,7 @@ test('27.11. GET /api/watch/rides: the trainer workouts in watts with the rider\
   const W = WT.newWk(c), wo = WO.WORKOUTS.find(w => w.id === 'c_30_15_3x13'); WO.setFtp(250);
   assert.equal(W.tot, WO.workoutDuration(wo)); assert.deepEqual(W.dur, wo.steps.map(s => s.dur));
   assert.deepEqual([...new Set(W.w.filter((x, i) => W.hard[i] && W.dur[i] === 30))], [wo.steps.find(s => s.dur === 30 && WO.isHard(s)).watts], 'the hard watts of js/workouts.js');
-  assert.equal(W.w[0], 100, '40 % of 250'); assert.ok(JSON.stringify(c).length < 400, `the 30 / 15: ${JSON.stringify(c).length} bytes`);
+  assert.equal(W.w[0], 100, '40 % of 250'); assert.ok(JSON.stringify(c).length < 480, `the 30 / 15: ${JSON.stringify(c).length} bytes`);
   assert.ok(r0.size < 9500, `the whole answer: ${r0.size} bytes`); console.log(`  rides payload: ${r0.size} bytes, ${r0.j.rides.length} workouts, the 30 / 15 ${JSON.stringify(c).length} bytes`);
   assert.ok(r0.j.rides.every(w => /^[\x20-\x7e]*$/.test(JSON.stringify(w))), 'ASCII only');
   // FTP 300, a Training tab workout and two personal ones (one with a free, non-ERG block: left out)

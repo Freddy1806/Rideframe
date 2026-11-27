@@ -5,46 +5,52 @@
       "name": "30 / 15 · 3 × 13",
       "rampIn": 3,
       "rampOut": 2,
-      "what": "18 min warm-up with three short sprints, then 3 sets of 13 × 30 s at 370 W with 15 s easy at 125 W, 3 min easy between the sets, 10 min cool-down. The first reps feel too easy, from the middle of the set it gets hard. 370 W is the 360 W ridden on 20.11. plus 10 (owner 27.11.); take the watts down with − if the third set does not hold.",
+      "what": "19.5 min warm-up that builds up to the interval power in three openers, then 3 sets of 13 × 30 s at 370 W with 15 s easy at 125 W, 3 min easy between the sets, 10 min cool-down. The first reps feel too easy, from the middle of the set it gets hard. 370 W is the 360 W ridden on 20.11. plus 10 (owner 27.11.); take the watts down with − if the third set does not hold.",
       "steps": [
         {
-          "min": 10,
+          "min": 8,
           "pct": 40,
-          "pct2": 72,
+          "pct2": 75,
           "label": "Warm-up"
         },
         {
           "min": 3,
-          "pct": 72,
-          "label": "Warm-up"
+          "pct": 75,
+          "pct2": 95,
+          "label": "Build"
         },
         {
-          "sec": 10,
-          "watts": 420,
-          "label": "Sprint 1/3"
-        },
-        {
-          "sec": 50,
+          "sec": 120,
           "watts": 130,
           "label": "Spin"
         },
         {
-          "sec": 10,
-          "watts": 420,
-          "label": "Sprint 2/3"
+          "sec": 20,
+          "watts": 300,
+          "label": "Opener 1/3"
         },
         {
-          "sec": 50,
+          "sec": 70,
           "watts": 130,
           "label": "Spin"
         },
         {
-          "sec": 10,
-          "watts": 420,
-          "label": "Sprint 3/3"
+          "sec": 20,
+          "watts": 335,
+          "label": "Opener 2/3"
         },
         {
-          "sec": 170,
+          "sec": 70,
+          "watts": 130,
+          "label": "Spin"
+        },
+        {
+          "sec": 20,
+          "watts": 370,
+          "label": "Opener 3/3"
+        },
+        {
+          "sec": 190,
           "watts": 130,
           "label": "Spin"
         },

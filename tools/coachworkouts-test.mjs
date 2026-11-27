@@ -110,14 +110,14 @@ test('the example file: its first workout is exactly the built-in c_30_15_3x13, 
   const sig = w => w.steps.map(s => [s.dur, s.watts ?? s.pct, s.pct2 ?? null, s.label]);
   assert.deepEqual(sig(e), sig(b));
   assert.equal(e.id, b.id); assert.equal(e.name, b.name); assert.equal(e.what, b.what); assert.equal(e.rampIn, b.rampIn); assert.equal(e.rampOut, b.rampOut);
-  assert.equal(workoutDuration(e), workoutDuration(b)); assert.equal(Math.round(workoutDuration(e) / 60), 63);
+  assert.equal(workoutDuration(e), workoutDuration(b)); assert.equal(Math.round(workoutDuration(e) / 60), 64);
   assert.ok(r.workouts[1].steps.every(s => s.watts == null && s.pct >= 30));
   assert.ok(r.workouts[1].steps.some(s => s.label === 'Sweet Spot · 4/4'));
 });
 
 test('the check tool: prints the workouts, exit 0; exit 1 on errors', () => {
   const ok = spawnSync(process.execPath, [ROOT + 'tools/coach-workout.mjs', 'check', ROOT + 'coach/workouts.example.json'], { encoding: 'utf8' });
-  assert.equal(ok.status, 0, ok.stdout + ok.stderr); assert.match(ok.stdout, /c_30_15_3x13.*63 min · 86 steps · max 420 W/); assert.match(ok.stdout, /2 workouts OK, 0 errors/);
+  assert.equal(ok.status, 0, ok.stdout + ok.stderr); assert.match(ok.stdout, /c_30_15_3x13.*64 min · 87 steps · max 370 W/); assert.match(ok.stdout, /2 workouts OK, 0 errors/);
   const tmp = fileURLToPath(new URL('./coach-check-bad.tmp.json', import.meta.url));
   const fs = { w: (p, s) => import('node:fs').then(m => m.writeFileSync(p, s)) };
   return fs.w(tmp, JSON.stringify({ workouts: [one(), one({ id: 'bad' })] })).then(async () => {
