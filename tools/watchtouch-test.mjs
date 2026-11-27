@@ -69,9 +69,9 @@ test('27.11.6 the wheel: the next row one finger pitch away, closer towards the 
   assert.deepEqual([0, .49, -.49, .5, 1.49, -1.5, 2.4].map(wheelBand), [0, 0, 0, 1, 1, 2, 2]);
   const m = wheelRows(S, 2.4, 8, .2, 0); assert.ok(m.every((x, i) => i === 0 || x[2] > m[i - 1][2]), 'mid-drag: in order'); assert.ok(Math.abs(m.find(x => x[0] === 2)[2] - S / 2 + .42 * S * Math.sin(Math.asin(.2 / .42) * .4)) < 1e-9);
 });
-test('27.11.6 version 27.11.6 on the watch and in the preview', () => {
-  assert.equal(VERSION, '27.11.6');
-  assert.match(readFileSync(new URL('../garmin/source/Flow.mc', import.meta.url), 'utf8'), /RF_VERSION = "27\.11\.6"/);
+test('27.11.7 version 27.11.7 on the watch and in the preview', () => {
+  assert.equal(VERSION, '27.11.7');
+  assert.match(readFileSync(new URL('../garmin/source/Flow.mc', import.meta.url), 'utf8'), /RF_VERSION = "27\.11\.7"/);
 });
 test('27.11.6 the trainer chooser: Free ride / Training, the categories with workouts, a category\'s workouts; BACK one step up; the category from the data', async () => {
   const { setRides, rides, catOf, tCats, tRows, catName, FREE_RIDE, TRAINING } = await import('../js/watchflow.js');
@@ -102,4 +102,57 @@ test('27.11.6 the chooser is mirrored in garmin/source (Flow.mc CAT_K / CAT_N / 
   assert.ok(fmc.includes(`const TRAINING = "${TRAINING}";`)); assert.match(tmc, /"n" => "30\/15, 3 x 13", "c" => "v"/);
   for (const f of ['tPick', 'tSel', 'tUp', 'tCats', 'tRows', 'catOf', 'catName']) assert.match(fmc, new RegExp(`function ${f}\\(`), f);
   assert.match(dmc, /F\.tlev == 2/); assert.match(fmc, /else if \(s == S_TPICK\) \{ tUp\(\); \}/);
+});
+
+/* ---- 27.11.7: two things the Mac build of 27.11.6 found ---- */
+/** Monkey C's reserved words: none may name a local, a parameter or a function (Flow.mc tCats had "var has": a compile error, the second time) */
+const MC_RESERVED = new Set(['and', 'as', 'break', 'case', 'catch', 'class', 'const', 'continue', 'default', 'do', 'else', 'enum', 'extends', 'false', 'finally', 'for',
+  'function', 'has', 'hidden', 'if', 'instanceof', 'me', 'module', 'native', 'new', 'not', 'null', 'or', 'private', 'protected', 'public', 'return', 'self', 'static',
+  'switch', 'throw', 'true', 'try', 'typedef', 'using', 'var', 'while']);
+/** the names declared in a Monkey C source (var lists, for (var ...), function names and their parameters) that are reserved words */
+export function mcReservedNames(text, file = '') {
+  const src = text.replace(/\/\/[^\n]*/g, '').replace(/"(?:[^"\\\n]|\\.)*"/g, '""'), bad = [];
+  const top = t => { const out = []; let d = 0, cur = ''; for (const c of t) { if ('([{'.includes(c)) d++; else if (')]}'.includes(c)) d--; if (c === ',' && d === 0) { out.push(cur); cur = ''; } else cur += c; } out.push(cur); return out; };
+  const first = p => /^\s*([A-Za-z_]\w*)/.exec(p)?.[1];
+  for (const m of src.matchAll(/\bvar\s+([^;]*?)(?:;|\)\s*\{)/g)) for (const p of top(m[1])) { const id = first(p); if (id && MC_RESERVED.has(id)) bad.push(`${file}: var ${id}`); }
+  for (const m of src.matchAll(/\bfunction\s+(\w+)\s*\(([^)]*)\)/g)) {
+    if (MC_RESERVED.has(m[1])) bad.push(`${file}: function ${m[1]}`);
+    for (const p of top(m[2])) { const id = first(p); if (id && MC_RESERVED.has(id)) bad.push(`${file}: parameter ${id} of ${m[1]}`); }
+  }
+  for (const m of src.matchAll(/\bcatch\s*\(\s*(\w+)/g)) if (MC_RESERVED.has(m[1])) bad.push(`${file}: catch ${m[1]}`);
+  return bad;
+}
+test('27.11.7 no Monkey C local, parameter or function is named after a reserved word (has, and, or, not, me, self, new, module ...)', async () => {
+  const { readdirSync } = await import('node:fs');
+  assert.deepEqual(mcReservedNames('function f(a as Number, or) { var has = false, ok = [1, 2], me = 3; for (var not = 0; not < 2; not++) { } var x = "var has"; // var and\n}'),
+    [': var has', ': var me', ': var not', ': parameter or of f'], 'the check itself finds them (not in strings or comments)');
+  const bad = [];
+  for (const dir of ['../garmin/source/', '../garmin/tests/']) {
+    const u = new URL(dir, import.meta.url);
+    for (const f of readdirSync(u).filter(x => x.endsWith('.mc'))) bad.push(...mcReservedNames(readFileSync(new URL(f, u), 'utf8'), dir.slice(3) + f));
+  }
+  assert.deepEqual(bad, []);
+});
+test('27.11.7 handle() is never entered from inside itself (the Mac build: a stack overflow through handle -> flushPress -> handle): a press, its flash, the next input', async () => {
+  const { handleDepth } = await import('../js/watchflow.js');
+  const F = pick(); let ms = 0;
+  // rows that act after the flash, then another input flushes; a button that acts at once; drags, coasts, UP / DOWN slides; ticks
+  for (let i = 0; i < 400; i++) {
+    ms += 20 + (i * 37) % 90; const r = i % 9;
+    if (r === 0) handle(F, 'press', 1000, ['row', i % 5, 'item', i % 5, ms, i % 2 === 0]);
+    else if (r === 1) handle(F, 'press', 1000, ['plus', -1, 'item', 1, ms, false]);
+    else if (r === 2) handle(F, i % 4 ? 'down' : 'up', 1000);
+    else if (r === 3) handle(F, 'drag', 1000, [((i % 7) - 3) * .03, ms]);
+    else if (r === 4) handle(F, 'dragEnd', 1000, ms);
+    else if (r === 5) handle(F, 'back', 1000);
+    else if (r === 6) handle(F, 'tick', 1000 + i, ms);
+    else handle(F, 'anim', 1000, ms);
+    if (F.scr !== SCR.PICK && i % 3 === 0) go(F, ['back', 'back']);
+  }
+  assert.equal(handleDepth(), 1, 'depth 1: the pending action and the input are each one step() from handle()');
+  const code = t => t.replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/[^\n]*/g, ''); // without the comments
+  const js = code(readFileSync(new URL('../js/watchflow.js', import.meta.url), 'utf8')), mc = code(readFileSync(new URL('../garmin/source/Flow.mc', import.meta.url), 'utf8'));
+  assert.equal((js.match(/\bhandle\(F,/g) || []).length, 1, 'watchflow.js: handle( only in its own definition');
+  assert.deepEqual(mc.match(/\bhandle\(/g), ['handle('], 'Flow.mc: handle( only in its own definition');
+  assert.ok(!/flushPress|function anim\(/.test(js + mc), 'no nested path left');
 });

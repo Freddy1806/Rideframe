@@ -47,7 +47,7 @@ export function setHrZones(F, z) { F.hrZ = hrZones(z); }
 /** 23.11.: the strength list: the exercises (free), then the saved workouts (the phone's and those saved on the watch) */
 export const FREE = 'Free';
 /** shown in the menu title on the watch and in the preview, so the user can tell which file is on the watch; raise it with every watch file (garmin/source/Flow.mc VERSION) */
-export const VERSION = '27.11.6';
+export const VERSION = '27.11.7';
 /** BACK from the exercise list once sets are logged: nothing is lost without a second step */
 export const END_ROWS = ['Keep training', 'Finish & save', 'Discard'];
 /** the pause screen (every mode): BACK held this long (or a finger on the "Hold to finish" pill) saves; the short-press hint shows this long */
@@ -261,16 +261,12 @@ function lStep(F, ms) {
 function lBtn(F, d) { if (!pxList(F)) return; F.lpos = F.sel - d; F.ltgt = F.sel; F.lmode = 3; F.lt = -1; F.lscr = F.scr; F.lbtn = true; }
 function lStop(F) { F.lmode = 0; F.lbtn = false; }
 /** a tap on a row / button: a = [k ('row', 'done', 'minus', 'plus', 'tgt', 'resume'), row, ev, arg, ms, later (the action after the flash)] */
-function press(F, now, a) {
+/** true: the action runs now (handle() steps it, a button that acts while it flashes); false: after the flash, or none */
+function press(F, a) {
   const [k, i, ev, arg, ms, later] = a;
-  if (k === 'row' && (F.lmode === 2 || F.lmode === 3) && !F.lbtn) { lStop(F); return; } // a tap on a moving list stops it
+  if (k === 'row' && (F.lmode === 2 || F.lmode === 3) && !F.lbtn) { lStop(F); return false; } // a tap on a moving list stops it
   lStop(F); F.pr = { k, i, scr: F.scr, at: ms, ev: later ? ev : null, arg }; F.cues.push('tap');
-  if (!later) handle(F, ev, now, arg);
-}
-function flushPress(F, now) { const p = F.pr; if (p && p.ev != null) { F.pr = null; handle(F, p.ev, now, p.arg); } }
-function anim(F, now, ms) {
-  const p = F.pr; if (p && (ms - p.at >= PRESS_MS || ms < p.at)) { F.pr = null; if (p.ev != null) handle(F, p.ev, now, p.arg); }
-  lStep(F, ms);
+  return !later;
 }
 /** the app's timer runs at ANIM_MS while this is true (Flow.animating) */
 export const animating = F => F.lmode === 2 || F.lmode === 3 || !!F.pr;
@@ -579,21 +575,21 @@ function onTScan(F, ev, now, arg) {
     else if (ev === 'start' || ev === 'tap' || ev === 'item') tConnect(L, L.list[clamp(ev === 'item' ? arg | 0 : F.sel, 0, n - 1)].name, now);
     return;
   }
-  // 27.11.: START (a tap) opens the choice Free ride / a workout (TPICK), also while connecting; once chosen and connected START rides
-  // (refused: ride anyway, the power is recorded); UP / DOWN open the choice again
+  // 27.11.7 (the owner's order): connected, START (a tap, UP / DOWN) = the heart rate step, then the choice (TPICK), then the ride
+  // (refused: ride anyway, the power is recorded). A choice made while the link was lost (F.tw) rides at once once it is back
   const go = v === 'ready' || v === 'refused';
-  if (ev === 'start' || ev === 'tap') { if (go && F.tw >= 0) tHr(F, now); else if (go || v === 'conn') tPick(F); }
-  else if (ev === 'up' || ev === 'down') { if (go || v === 'conn') tPick(F); }
+  if (ev === 'start' || ev === 'tap' || ev === 'up' || ev === 'down') { if (go && F.tw >= 0 && (ev === 'start' || ev === 'tap')) tBegin(F, now); else if (go) tHr(F, now); }
   else if (ev === 'back') { tStop(L); L.want = ''; F.tw = -1; tScan(L, now); F.sel = 0; } // cancel: back to the list, no automatic connect this time
 }
-/* ---- 27.11.2: the heart rate step between the choice and the ride (THR). A watch app cannot pair a strap (the watch's own Sensors menu
- *      does), so the step only waits for a heart rate: one that came in the last HR_LIVE_S seconds is shown HR_SHOW_S seconds, then the ride
- *      starts by itself; START (a tap) starts at once, with or without one; BACK = the trainer's state. ---- */
+/* ---- 27.11.2: the heart rate step (THR), 27.11.7: between the connected trainer and the choice (TPICK). A watch app cannot pair a strap (the watch's own Sensors menu
+ *      does), so the step only waits for a heart rate: one that came in the last HR_LIVE_S seconds is shown HR_SHOW_S seconds, then
+ *      the choice opens by itself; START (a tap) opens it at once, with or without one; BACK = the trainer's state.
+ *      BACK on the choice's first step = the trainer's state too (not this step: it would move on again by itself). ---- */
 export const HR_LIVE_S = 15, HR_SHOW_S = 2;
 export const hrOn = (F, now) => F.hr > 0 && now - F.hrAt <= HR_LIVE_S;
 function tHr(F, now) { F.sel = 0; F.thr = hrOn(F, now) ? now : 0; F.scr = SCR.THR; }
 function onTHr(F, ev, now) {
-  if (ev === 'start' || ev === 'tap') tBegin(F, now);
+  if (ev === 'start' || ev === 'tap') tPick(F);
   else if (ev === 'back') { F.sel = 0; F.scr = SCR.TSCAN; }
 }
 function tPick(F) {
@@ -614,7 +610,7 @@ function tUp(F) {
   else { F.sel = 0; F.scr = SCR.TSCAN; } // the trainer's state, still connected
 }
 /** TPICK row i: 0 = free ride, else that workout; connected: the ride starts, else back to the trainer's state until it is */
-function tChoose(F, i, now) { F.tw = i; const v = shown(F.link); if (v === 'ready' || v === 'refused') tHr(F, now); else { F.sel = 0; F.scr = SCR.TSCAN; } }
+function tChoose(F, i, now) { F.tw = i; const v = shown(F.link); if (v === 'ready' || v === 'refused') tBegin(F, now); else { F.sel = 0; F.scr = SCR.TSCAN; } }
 /** TREC (28.11., the owner's first ride: "UP / DOWN must page like Garmin's own activity screens"): UP / DOWN = the previous / next page
  *  (wrapping; swipe down / up the same), UP / DOWN held = + / - one step of the current size (repeating while held, 'tick' each), the - / +
  *  touch zones of the target page (item 0 / 1) = one step, a tap on its target (item 2) = step size 5 / 10 / 25; a tap on another page =
@@ -649,14 +645,30 @@ function onTSum(F, ev) {
  *  wheel (23.11.7: a finger dragged over the set screen's kg / reps or the trainer's target, arg = [column 0 kg / 1 reps, steps, + = finger up = more]),
  *  focus (arg = 0 kg / 1 reps / digit), hr (arg = bpm), tick, sample (arg = one second of movement), seg (arg = segment state),
  *  holdStart / holdEnd (BACK pressed / released, or a finger on the pause screen's "Hold to finish" pill) */
-export function handle(F, ev, now, arg) {
+export function handle(F, ev, now, arg) { depth++; if (depth > maxDepth) maxDepth = depth; try { input(F, ev, now, arg); } finally { depth--; } }
+/** 27.11.7: how deep handle() was ever entered (1 = never from inside itself; tools/watchtouch-test.mjs) */
+let depth = 0, maxDepth = 0;
+export const handleDepth = () => maxDepth;
+function input(F, ev, now, arg) {
+  // 27.11.7 (the Mac build: "Stack Overflow Error" through handle -> flushPress -> handle): flat. A tapped row's pending action and then
+  // this input are each one call of step() from here; nothing calls handle() from inside handle() (Connect IQ's stack is small)
+  if (ev === 'anim') { // the app's ANIM_MS timer: a row's action once its flash is over, the moving list's next frame
+    const p = F.pr; if (p && (arg - p.at >= PRESS_MS || arg < p.at)) { F.pr = null; if (p.ev != null) step(F, p.ev, now, p.arg); }
+    lStep(F, arg); return;
+  }
+  if (prWait(F) && !QUIET.includes(ev)) { const p = F.pr; F.pr = null; step(F, p.ev, now, p.arg); } // a tapped row's action comes before the next input
+  if (ev === 'press') { if (press(F, arg)) step(F, arg[2], now, arg[3]); return; }
+  step(F, ev, now, arg);
+}
+/** the inputs that do not run a pending row action first (they are no input of the rider's) */
+const QUIET = ['tick', 'hr', 'sample', 'seg', 'ble'];
+/** one input (handle() calls it, nothing else does) */
+function step(F, ev, now, arg) {
   const ev0 = ev;
   if (ev === 'hr') { F.hr = arg || 0; if (arg > 0) F.hrAt = now; if (F.start && arg > 0) { F.hrN++; F.hrSum += arg; F.hrMax = Math.max(F.hrMax, arg); } return; }
   if (ev === 'sample') { sample(F, now, arg || {}); return; }
   if (ev === 'seg') { segment(F, now, arg); return; }
   if (ev === 'ble') { const w = F.link.want; bleEv(F.link, now, arg); if (F.link.want && F.link.want !== w) F.out.push({ k: 'trainer' }); return; } // the trainer's radio (js/watchtrainer.js)
-  if (ev === 'anim') { anim(F, now, arg); return; }
-  if (prWait(F) && ev !== 'tick') flushPress(F, now); // a tapped row's action comes before the next input
   if (ev === 'holdStart' || ev === 'holdEnd') { // BACK pressed / released (and the touch pill): only the pause screen listens
     const P = F.scr === SCR.PAUSE && F.pz; if (!P || P.conf) return;
     if (ev === 'holdStart') P.hold = now; else if (P.hold) { P.hold = 0; P.hint = now + HINT_S; } // released early: nothing, the hint
@@ -664,7 +676,7 @@ export function handle(F, ev, now, arg) {
   }
   if (ev === 'tick') {
     linkTick(F.link, now); tSecs(F, now);
-    if (F.scr === SCR.THR) { const on = hrOn(F, now); if (!on) F.thr = 0; else if (!F.thr) F.thr = now; if (F.thr && now - F.thr >= HR_SHOW_S) { tBegin(F, now); return; } }
+    if (F.scr === SCR.THR) { const on = hrOn(F, now); if (!on) F.thr = 0; else if (!F.thr) F.thr = now; if (F.thr && now - F.thr >= HR_SHOW_S) { tPick(F); return; } }
     if (F.scr === SCR.PAUSE && F.pz && F.pz.hold && now - F.pz.hold >= HOLD_S) { endPaused(F, now); return; }
     if (F.flash && now >= F.flash.until) F.flash = null;
     if (F.seg && F.seg.k === 'end' && now >= F.seg.until) F.seg = null;
@@ -673,7 +685,6 @@ export function handle(F, ev, now, arg) {
   }
   if (ev === 'drag') { if (!F.flash) lDrag(F, +arg[0] || 0, arg[1]); return; }
   if (ev === 'dragEnd') { lRelease(F, arg); return; }
-  if (ev === 'press') { press(F, now, arg); return; }
   lStop(F); // any other input stops a moving list where it is
   if (F.flash) { F.flash = null; if (ev !== 'menu') return; } // the first touch after a record only clears the flash
   if (ev === 'wheel') { wheel(F, now, arg); return; }

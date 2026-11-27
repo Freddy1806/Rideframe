@@ -62,14 +62,15 @@ export function storeHealth(uid, s, now = Date.now()) {
   });
 }
 
-/** the account's records of the last n days (by the watch's day), newest first: [{ day, first, last, ...values }] */
+/** the account's records of the last n days (by the watch's day), newest first: [{ day, first, last, at: { key: ms }, ...values }]
+ *  (27.11.7: at = per field the time of the snapshot that carried its value, as stored since 25.11.; {} when missing) */
 export async function healthOf(uid, n = 30, now = Date.now()) {
   const f = await readJSON(file(uid), null), days = f && typeof f.days === 'object' && f.days ? f.days : {}, from = dayKey(now - (n - 1) * 864e5);
-  return Object.keys(days).filter(k => k >= from).sort().reverse().map(k => ({ day: k, first: days[k].first, last: days[k].last, ...days[k].v }));
+  return Object.keys(days).filter(k => k >= from).sort().reverse().map(k => ({ day: k, first: days[k].first, last: days[k].last, at: days[k].at && typeof days[k].at === 'object' ? days[k].at : {}, ...days[k].v }));
 }
-/** the newest value of each field over the list (with the day it is from) */
+/** the newest value of each field over the list (with the day it is from; 27.11.7: t = its snapshot's time in ms, else the day's last) */
 export function latestOf(list) {
-  const o = {}; for (const r of list) for (const k of Object.keys(HEALTH)) if (r[k] != null && !o[k]) o[k] = { v: r[k], day: r.day };
+  const o = {}; for (const r of list) for (const k of Object.keys(HEALTH)) if (r[k] != null && !o[k]) o[k] = { v: r[k], day: r.day, t: r.at?.[k] > 0 ? r.at[k] : r.last };
   return o;
 }
 

@@ -34,8 +34,9 @@ test('scan list -> connect -> subscribe, request control, start -> the target go
   assert.deepEqual(K.writes, [['fcp', 0x00], ['fcp', 0x07]], 'request control, then start, one at a time');
   assert.equal(shown(F.link), 'ready', 'the 0x80 0x00 0x01 answer = control'); assert.ok(F.out.some(o => o.k === 'trainer'), 'the trainer is remembered');
   assert.equal(F.link.want, 'KICKR CORE 2 5A1F');
-  ev(F, K, 1003, 'start'); assert.equal(F.scr, SCR.TPICK, '27.11.: START: Free ride or a workout'); assert.equal(listItems(F)[0], 'Free ride (ERG)'); assert.equal(F.sel, 0);
-  ev(F, K, 1003, 'start'); assert.equal(F.scr, SCR.THR, '27.11.2: the heart rate step'); ev(F, K, 1003, 'start'); assert.equal(F.scr, SCR.TREC); assert.equal(F.wk, null, 'a free ride'); assert.equal(F.tr.tgt, 100, 'default 100 W'); assert.deepEqual(tgtWrites(K), [100]); assert.equal(K.tgt, 100);
+  ev(F, K, 1003, 'start'); assert.equal(F.scr, SCR.THR, '27.11.7: START: the heart rate step first');
+  ev(F, K, 1003, 'start'); assert.equal(F.scr, SCR.TPICK, 'then Free ride or a workout'); assert.equal(listItems(F)[0], 'Free ride (ERG)'); assert.equal(F.sel, 0);
+  ev(F, K, 1003, 'start'); assert.equal(F.scr, SCR.TREC); assert.equal(F.wk, null, 'a free ride'); assert.equal(F.tr.tgt, 100, 'default 100 W'); assert.deepEqual(tgtWrites(K), [100]); assert.equal(K.tgt, 100);
   assert.equal(F.last, 'trainer');
 });
 test('the trainer used last connects by itself; a cancel goes back to the list without connecting again', () => {
@@ -212,8 +213,8 @@ test('server form: repeats fold (the 30 / 15 in a few hundred bytes), labels los
   assert.equal(newWk({ id: 'x', n: 'x', s: [[100, [[100, [[1, 100, null, 0, 'a']], 0]], 0]] }).dur.length, WK_STEPS, `at most ${WK_STEPS} steps`);
   assert.equal(newWk({ id: 'x', n: 'x', s: [['a', 1], [0, 100, null, 0, 'a']] }), null, 'nothing usable: null');
 });
-/** a ride with a workout: connected, START (the choice), the workout's row, START */
-function wkRide(row = 1, o = {}) { const [F, K] = ride({ ...o, ride: false }); if (o.rides) setRides(F, o.rides, o.ftp); ev(F, K, 1005, 'start'); assert.equal(F.scr, SCR.TPICK); pickWk(F, K, 1005, row); ev(F, K, 1005, 'start'); return [F, K]; }
+/** a ride with a workout: connected, START (the heart rate step), START (the choice), the workout */
+function wkRide(row = 1, o = {}) { const [F, K] = ride({ ...o, ride: false }); if (o.rides) setRides(F, o.rides, o.ftp); ev(F, K, 1005, 'start', 'start'); assert.equal(F.scr, SCR.TPICK); pickWk(F, K, 1005, row); assert.equal(F.scr, SCR.TREC); return [F, K]; }
 /** 27.11.6: on the chooser (first step): Training, the workout's category, the workout (row = its index in rides + 1) */
 function pickWk(F, K, t, row) {
   assert.equal(F.tlev, 0); ev(F, K, t, 'down', 'start'); assert.equal(F.tlev, 1);
@@ -222,17 +223,19 @@ function pickWk(F, K, t, row) {
 }
 /** n seconds of riding, one tick per second; the cues */
 function secs(F, K, n) { const cues = []; for (let i = 0; i < n; i++) { const t = F.tr.ts + 1; handle(F, 'tick', t); radio(F, K, t); cues.push(...F.cues.splice(0)); } return cues; }
-test('choice: Free ride (ERG) or a workout, also while connecting (then START rides it once connected); BACK keeps the link', () => {
-  const [F, K] = ride({ ride: false }); ev(F, K, 1005, 'start'); assert.deepEqual(listItems(F), [FREE_RIDE, TRAINING], '27.11.6: Free ride or Training');
+test('choice: Free ride (ERG) or a workout, after the heart rate step; nothing while connecting; BACK keeps the link', () => {
+  const [F, K] = ride({ ride: false }); ev(F, K, 1005, 'start', 'start'); assert.deepEqual(listItems(F), [FREE_RIDE, TRAINING], '27.11.6: Free ride or Training');
   ev(F, K, 1005, ['item', 1]); assert.deepEqual(listItems(F), ['VO2max'], 'no sync yet: the built-in 30 / 15, a VO2max workout');
   ev(F, K, 1005, ['item', 0]); assert.deepEqual(listItems(F), ['30/15, 3 x 13']); ev(F, K, 1005, 'back'); assert.equal(F.tlev, 1); ev(F, K, 1005, 'back'); assert.equal(F.tlev, 0); assert.equal(F.sel, 1, 'BACK: one step up, Training selected');
   ev(F, K, 1005, 'back'); assert.equal(F.scr, SCR.TSCAN); assert.equal(shown(F.link), 'ready', 'still connected');
-  ev(F, K, 1005, 'down'); assert.equal(F.scr, SCR.TPICK, 'UP / DOWN open it too'); ev(F, K, 1005, ['item', 1], ['item', 0], ['item', 0], 'start'); assert.equal(F.scr, SCR.TREC); assert.equal(F.wk.n, '30/15, 3 x 13');
-  // while connecting: the choice waits, START rides it once connected
+  ev(F, K, 1005, 'down'); assert.equal(F.scr, SCR.THR, 'UP / DOWN open the heart rate step too'); ev(F, K, 1005, 'start', ['item', 1], ['item', 0], ['item', 0]); assert.equal(F.scr, SCR.TREC); assert.equal(F.wk.n, '30/15, 3 x 13');
+  // while connecting: START waits; once connected the heart rate step, then the choice
   const G = fl(), K2 = fakeKickr(); ev(G, K2, 1000, ['item', homeItems(G).indexOf('trainer')]); K2.hold = true; ev(G, K2, 1000, 'start'); assert.equal(shown(G.link), 'conn');
-  ev(G, K2, 1000, 'start'); assert.equal(G.scr, SCR.TPICK); pickWk(G, K2, 1000, 1); assert.equal(G.scr, SCR.TSCAN, 'not connected yet: back to the state'); assert.equal(G.tw, 1);
+  ev(G, K2, 1000, 'start', 'down'); assert.equal(G.scr, SCR.TSCAN, 'not connected yet: it waits');
   for (const e of K2.release()) handle(G, 'ble', 1001, e); K2.hold = false; radio(G, K2, 1001); handle(G, 'tick', 1001 + OP_S + .5); radio(G, K2, 1005); assert.equal(shown(G.link), 'ready');
-  ev(G, K2, 1005, 'start', 'start'); assert.equal(G.scr, SCR.TREC); assert.ok(G.wk, 'the workout chosen while connecting'); assert.equal(G.tw, -1);
+  ev(G, K2, 1005, 'start'); assert.equal(G.scr, SCR.THR); ev(G, K2, 1005, 'start'); assert.equal(G.scr, SCR.TPICK);
+  // a choice made while the link was lost (back to the state) rides at once once it is back
+  ev(G, K2, 1005, 'back'); assert.equal(G.scr, SCR.TSCAN); G.tw = 1; ev(G, K2, 1005, 'start'); assert.equal(G.scr, SCR.TREC); assert.ok(G.wk); assert.equal(G.tw, -1);
   // the server's list replaces the built-in one when it has the 30 / 15
   setFtp(260); const srv = [wkFromRide(WORKOUTS[0], 260, isHard), wkFromRide(WO, 260, isHard)]; const H = fl(); setRides(H, srv, 260);
   assert.deepEqual(rides(H).map(w => w.id), ['ss3x10', WK_FB_ID]); setRides(H, [srv[0]], 260); assert.deepEqual(rides(H).map(w => w.id), [WK_FB_ID, 'ss3x10'], 'without it: the built-in first');
@@ -293,18 +296,19 @@ test('Monkey C: Trainer.mc TWork / Flow.mc have the JavaScript\'s constants, fun
     assert.deepEqual(mcS, js.s, `the 30 / 15 at FTP ${ftp}: Trainer.mc = js`);
   }
   assert.match(tmc, /"n" => "30\/15, 3 x 13", "c" => "v", "ri" => 3, "ro" => 2/); assert.deepEqual([wkFallback(1).n, wkFallback(1).ri, wkFallback(1).ro], ['30/15, 3 x 13', 3, 2]);
-  assert.match(fmc, new RegExp(`RF_VERSION = "${VERSION.replace(/\./g, '\\.')}"`)); assert.equal(VERSION, '27.11.6');
+  assert.match(fmc, new RegExp(`RF_VERSION = "${VERSION.replace(/\./g, '\\.')}"`)); assert.equal(VERSION, '27.11.7');
 });
 
-test('27.11.2 the heart rate step: a live heart rate starts the ride after 2 s, none waits, START skips, BACK = the trainer; stale after 15 s', () => {
-  const [F, K] = ride({ ride: false }); ev(F, K, 1005, 'start', 'start'); assert.equal(F.scr, SCR.THR); assert.equal(hrOn(F, 1005), false);
+test('27.11.2 the heart rate step: a live heart rate opens the choice after 2 s (27.11.7), none waits, START skips, BACK = the trainer; stale after 15 s', () => {
+  const [F, K] = ride({ ride: false }); ev(F, K, 1005, 'start'); assert.equal(F.scr, SCR.THR); assert.equal(hrOn(F, 1005), false);
   for (let t = 1006; t <= 1012; t++) handle(F, 'tick', t); assert.equal(F.scr, SCR.THR, 'no heart rate: it waits');
   handle(F, 'hr', 1013, 72); assert.equal(hrOn(F, 1013), true); handle(F, 'tick', 1013); handle(F, 'tick', 1014); assert.equal(F.scr, SCR.THR, 'shown first');
-  handle(F, 'tick', 1015); assert.equal(F.scr, SCR.TREC, 'then the ride'); assert.equal(F.tr.tgt, 100);
+  handle(F, 'tick', 1015); assert.equal(F.scr, SCR.TPICK, 'then the choice'); assert.equal(F.tlev, 0); ev(F, K, 1015, 'start'); assert.equal(F.scr, SCR.TREC); assert.equal(F.tr.tgt, 100);
   assert.equal(hrOn(F, 1028), true); assert.equal(hrOn(F, 1029), false, 'no value for 15 s: the heart is off');
-  const [G, K2] = ride({ ride: false }); handle(G, 'hr', 1004, 60); ev(G, K2, 1005, 'start', 'start'); assert.equal(G.scr, SCR.THR, 'already there: still shown');
+  const [G, K2] = ride({ ride: false }); handle(G, 'hr', 1004, 60); ev(G, K2, 1005, 'start'); assert.equal(G.scr, SCR.THR, 'already there: still shown');
   ev(G, K2, 1005, 'back'); assert.equal(G.scr, SCR.TSCAN); assert.equal(shown(G.link), 'ready', 'still connected'); ev(G, K2, 1005, 'start'); assert.equal(G.scr, SCR.THR);
-  handle(G, 'tick', 1006); assert.equal(G.scr, SCR.THR); handle(G, 'tick', 1007); assert.equal(G.scr, SCR.TREC);
+  handle(G, 'tick', 1006); assert.equal(G.scr, SCR.THR); handle(G, 'tick', 1007); assert.equal(G.scr, SCR.TPICK);
+  ev(G, K2, 1007, 'back'); assert.equal(G.scr, SCR.TSCAN, 'BACK on the choice: the trainer\'s state (the step would move on by itself)'); assert.equal(shown(G.link), 'ready');
 });
 
 /* ---- 28.11. (27.11.3): the ride's pages, the buttons, the menu that never pauses, the cadence of an FTMS trainer, the phone's page config ---- */

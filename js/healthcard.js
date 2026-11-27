@@ -27,6 +27,12 @@ export const word = (v, l) => l.find(([x]) => v >= x)?.[1] || l[l.length - 1][1]
 /** the words for a value (the overview's small cards say the same, js/cards.js) */
 export const WORDS = { ss: [[90, 'excellent'], [80, 'good'], [60, 'fair'], [0, 'poor']], bb: [[75, 'charged'], [50, 'medium'], [25, 'low'], [0, 'drained']], st: [[76, 'high'], [51, 'medium'], [26, 'low'], [0, 'resting']] };
 export { ago as dayAgo, ICON as MOON };
+/** 27.11.7 (the owner could not tell how old the body battery was): a value of today older than this shows its time instead of its word */
+export const STALE_MS = 3 * 3600e3;
+/** the values that change during the day (the sleep score, resting heart rate and VO2max are one per day) */
+export const AGED = ['bb', 'rt', 'st'];
+/** the time ("18:05") for a value of today (latest[k]: { v, day, t }) older than STALE_MS, else '' */
+export function staleTime(x, now, k) { return x && AGED.includes(k) && x.day === dayKey(now) && x.t > 0 && now - x.t > STALE_MS ? hm(x.t) : ''; }
 
 /** the resting heart rate of the newest day against the average of the 7 days before it: { v, avg, d } or null */
 export function rhrCompare(days) {
@@ -43,7 +49,7 @@ export function renderHealthCard(el, data, { now = Date.now() } = {}) {
   if (!days.length) { el.innerHTML = `<div class="hcard hcempty"><span class="hcico" aria-hidden="true">${ICON}</span><div><b>Recovery</b><small>Open the RIDEFRAME app on your watch once a day to sync these: sleep score, body battery, resting heart rate, recovery time.</small></div></div>`; return; }
   const top = days[0], fresh = top.day === dayKey(now), tiles = [];
   const tile = (label, v, unit, sub = '', cls = '') => tiles.push(`<div class="hct"><span>${label}</span><b>${v}${unit ? `<small> ${unit}</small>` : ''}</b>${sub ? `<em class="${cls}">${sub}</em>` : ''}</div>`);
-  const from = k => L[k] && L[k].day !== top.day ? ago(L[k].day, now) : '';
+  const from = k => L[k] && L[k].day !== top.day ? ago(L[k].day, now) : staleTime(L[k], now, k);
   if (L.ss) tile('Sleep score', L.ss.v, '', from('ss') || word(L.ss.v, WORDS.ss));
   if (L.bb) tile('Body battery', L.bb.v, '', from('bb') || word(L.bb.v, WORDS.bb));
   const R = rhrCompare(days);
