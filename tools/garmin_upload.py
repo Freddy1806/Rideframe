@@ -26,7 +26,7 @@ def log(base: Path, text: str) -> None:
 def client(tokens: Path):
     from garminconnect import Garmin  # imported late: --help works without the package
     g = Garmin()
-    g.login(str(tokens))  # tokens only; raises when they are missing or expired
+    g.login(str(tokens))  # tokens only (garminconnect 0.3.x keeps them in <tokens>/garmin_tokens.json and refreshes them itself); raises without usable ones
     return g
 
 
@@ -34,15 +34,13 @@ def do_login(base: Path, tokens: Path) -> int:
     from garminconnect import Garmin
     email = input("Garmin e-mail: ").strip()
     pw = getpass.getpass("Garmin password (not shown, not stored): ")
-    g = Garmin(email=email, password=pw, return_on_mfa=True)
-    r = g.login()
-    if isinstance(r, tuple) and r and r[0] == "needs_mfa":
-        g.resume_login(r[1], input("MFA code from your e-mail or app: ").strip())
     tokens.mkdir(parents=True, exist_ok=True)
     os.chmod(tokens, 0o700)
-    g.garth.dump(str(tokens))
-    for f in tokens.iterdir():
-        os.chmod(f, 0o600)
+    g = Garmin(email=email, password=pw, prompt_mfa=lambda: input("Code from Garmin (e-mail or app): ").strip())
+    g.login(str(tokens))
+    g.client.dump(str(tokens))  # the library saves by itself but stays silent when that fails: once more, loudly
+    if not any(tokens.iterdir()):
+        log(base, "login worked but no token file was written"); return 6
     log(base, "login ok, tokens saved")
     return 0
 
@@ -81,7 +79,7 @@ def main() -> int:
         try:
             g.upload_activity(str(f)); ok += 1
         except Exception as e:
-            if "409" in str(e) or "Conflict" in str(e) or "uplicate" in str(e):
+            if getattr(getattr(e, "response", None), "status_code", None) == 409 or "API Error 409" in str(e):
                 dup += 1  # Garmin has it already: done as well
             else:
                 bad += 1; log(base, f"upload failed ({type(e).__name__}): file stays for the next run"); continue
