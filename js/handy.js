@@ -22,7 +22,12 @@ window.addEventListener('beforeinstallprompt', e => { e.preventDefault(); instal
 async function load() {
   S = (await db.kvGet('settings').catch(() => null)) || {};
   applyTheme(S, null);
-  D = await loadActs(); rides = D.acts.filter(a => !a.kraft); kraft = D.acts.filter(a => a.kraft); // one loader for all sports (feed.js)
+  D = await loadActs();
+  // FTP follows the training (owner 27.11.: "die FTP muss sich immer automatisch anpassen"): one careful step a day from the evidence
+  // of the rides (js/stats.js ftpUpdate: up at most 8 %, down slowly), off with the setting ftpAuto === false; the bell says what moved.
+  try { const st = D.S || {}; if (st.ftpAuto !== false && Date.now() - (+st.ftpAutoAt || 0) > 20 * 36e5) { const u = (await import('./fitness.js')).ftpUpdate(st.ftp, D.P.ftpEv);
+    if (u) { const all = (await db.kvGet('settings').catch(() => null)) || {}; Object.assign(all, { ftp: u.to, ftpAutoAt: Date.now(), ftpNews: { ...u, at: Date.now() } }); await db.kvSet('settings', all); import('./account.js').then(a => a.settingsChanged?.(all)).catch(() => {}); D = await loadActs(); } } } catch {}
+  rides = D.acts.filter(a => !a.kraft); kraft = D.acts.filter(a => a.kraft); // one loader for all sports (feed.js)
   try { acc = (await import('./account.js')).account(); } catch {}
   try { const W = await import('./workouts.js'); W.setMyWorkouts(S.myWorkouts); await (await import('./myworkouts-store.js')).loadPersonal(); WK = W; } catch { WK = null; } // the shape of a planned workout (27.11.: Today's training)
   if (!load.coach) { load.coach = import('./coachworkouts.js').then(m => m.loadCoach({ timeout: 2500 })).catch(() => {}); }
@@ -61,6 +66,7 @@ function render() {
 const BELL = '<svg class="gico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"/><path d="M10.3 21a1.94 1.94 0 0 0 3.4 0"/></svg>';
 let upd = null, todayP = null;
 async function updatesIn(lines) {
+  const n = D?.S?.ftpNews; if (n?.to && Date.now() - n.at < 3 * 864e5) lines = [{ k: 'ftp', text: `FTP ${n.from ? n.from + ' → ' : ''}${n.to} W. ${n.reason}`, href: 'profil.html' }, ...(lines || [])];
   const U = await import('./updates.js'); upd = U.merge(upd || await U.loadStore(), lines, acc?.name || ''); await U.saveStore(upd); dot();
 }
 function dot() { const d = $('#hDot'); if (!d) return; import('./updates.js').then(U => { const n = U.unseen(upd); d.hidden = !n; $('#hBell')?.setAttribute('aria-label', n ? `Updates, ${n} new` : 'Updates'); }); }

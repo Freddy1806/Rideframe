@@ -28,9 +28,10 @@ export function inputsOf(acts, ld, h, now = Date.now()) {
   const days = (h?.days || []).filter(d => d.rhr > 0);
   if (days.length && fresh(days[0].day, now)) { const prev = days.slice(1, 8); if (prev.length >= 3) x.rhr = { v: days[0].rhr, avg: prev.reduce((s, d) => s + d.rhr, 0) / prev.length }; }
   if (acts.some(a => now - a.date < 28 * DAY)) {
-    const F = C.fitnessSummary(acts, ld, { now }); if (!F.empty) x.form = F.tsb;
+    const F = C.fitnessSummary(acts, ld, { now }); if (!F.empty) { x.form = F.tsb; x.hist = F.hist; } // hist: a short history makes form count less (readiness.js formTrust)
     const d0 = new Date(now).setHours(0, 0, 0, 0), y0 = new Date(d0); y0.setDate(y0.getDate() - 1);
-    x.load = { y: acts.filter(a => a.date >= y0.getTime() && a.date < d0).reduce((s, a) => s + ld(a), 0), ctl: F.empty ? 0 : F.ctl };
+    const yd = acts.filter(a => a.date >= y0.getTime() && a.date < d0);
+    x.load = { y: yd.reduce((s, a) => s + ld(a), 0), ctl: F.empty ? 0 : F.ctl, min: yd.reduce((s, a) => s + (+(a.duration || a.elapsed || a.dur) || 0), 0) / 60 || undefined };
   }
   return x;
 }

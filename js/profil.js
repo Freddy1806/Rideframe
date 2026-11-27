@@ -29,7 +29,7 @@ const level = p => { const L = [[0, 'Beginner'], [500, 'Active'], [2000, 'Fit'],
 // 27.11. (owner: "totally overloaded, it overwhelms me"): the header, four key numbers in one row, the FTP estimate in one line, then short
 // rows that open the rest: Personal data, Records & bests, Totals, Settings, Export. "My workouts" and the builder live on Workouts now.
 let extra = { vo2w: null, kg: null }; // the watch's VO2max and the newest weigh-in (signed in)
-const estSrc = est => { const l = Array.isArray(est?.sources) ? est.sources.map(x => typeof x === 'string' ? x : x?.label || x?.what || x?.from || '').filter(Boolean).slice(0, 3) : []; return l; };
+const estSrc = est => { const u = Array.isArray(est?.sources) ? est.sources.filter(x => x?.used && x.kind === 'estimate' && x.label).map(x => x.label).slice(0, 3) : []; if (u.length) return u; const l = Array.isArray(est?.sources) ? est.sources.map(x => typeof x === 'string' ? x : x?.label || x?.what || x?.from || '').filter(Boolean).slice(0, 3) : []; return l; };
 function render() {
   const P = profileOf(S, acts), V = vo2(acts, P), pts = Math.round(acts.reduce((a, x) => a + loadOf(x, P).pts, 0)), lv = level(pts), st = streak(acts);
   const kg = extra.kg || S.riderKg || null, ftp = +S.ftp || 0, est = P.ftpEst, vo = extra.vo2w || (V.bike || V.run ? Math.round(Math.max(V.bike?.v || 0, V.run?.v || 0)) : null);
@@ -43,7 +43,7 @@ function render() {
       ${lv.next ? `<div class="fbar" role="img" aria-label="${fmtNum(lv.next - pts)} points to the next level"><i style="width:${Math.min(100, (pts - lv.from) / (lv.next - lv.from) * 100)}%"></i></div>` : ''}</div></section>
     <input type="file" id="fFile" accept="image/*" hidden>
     <section class="fkeys" aria-label="Key numbers">${key(ftp ? ftp : '–', ' W', 'FTP', ftp && kg ? `${fmtNum(ftp / kg, 2)} W/kg` : '')}${key(vo ?? '–', '', 'VO2max', vo ? (extra.vo2w ? 'watch' : 'estimate') : '')}${key(kg ? fmtNum(kg, 1) : '–', ' kg', 'Weight', extra.kg ? 'weigh-in' : kg ? 'profile' : '')}${key(P.hrMax || '–', '', 'Max HR', S.hrMax ? 'entered' : P.hrMax ? 'measured' : '')}</section>
-    ${est && est.w !== ftp ? `<div class="fsug"><span><b>Estimated FTP ${est.w} W</b>${src.length ? `<small>based on ${src.map(esc).join(', ')}</small>` : ''}</span><button class="btn ghost ksmall" id="fFtp">Apply</button></div>` : ''}
+    ${est && est.w !== ftp ? `<div class="fsug"><span><b>Estimated FTP ${est.w} W</b>${src.length ? `<small>based on ${src.map(esc).join(', ')}</small>` : ''}</span><button class="btn ghost ksmall" id="fFtp">Apply</button></div>` : !est && P.ftpEv?.floor > ftp ? `<div class="fsug"><span><b>FTP at least ${P.ftpEv.floor} W</b><small>your rides held that; a hard effort of 5 to 20 minutes gives an estimate</small></span></div>` : ''}
     <nav class="flinks" aria-label="Profile">
       ${link('personal', 'user', 'Personal data', 'Weight, FTP, heart rate', 'fSet')}
       ${link('records', 'chart', 'Records &amp; bests', 'Power, run times, lifts, VO2max')}
@@ -93,12 +93,13 @@ function dataSheet() {
   const s = document.createElement('div'); s.className = 'psheet'; document.body.append(s);
   const f = (id, l, v, u, ph = '') => `<label class="prow"><span>${l}</span><input id="${id}" type="number" inputmode="decimal" value="${v ?? ''}" placeholder="${ph}"><span>${u}</span></label>`;
   s.id = 'fDataSheet';
-  s.innerHTML = `<div class="psheetin"><div class="label">Personal data</div><p class="hint">Used for zones, target watts, calories and fitness. Weight follows your weigh-ins.</p>
+  s.innerHTML = `<div class="psheetin"><div class="label">Personal data</div>
     ${f('dKg', 'Weight', S.riderKg || '', 'kg', '75')}${f('dFtp', 'FTP', S.ftp || '', 'W', 'e.g. 250')}${f('dMax', 'Max HR', S.hrMax || '', '', 'auto')}${f('dRest', 'Resting HR', S.hrRest || '', '', '60')}
+    <label class="hrow" style="gap:10px;min-height:44px"><input type="checkbox" id="dAuto"${S.ftpAuto !== false ? ' checked' : ''}><div><b>FTP follows my training</b></div></label>
     <div class="pfoot"><button class="btn ghost" id="dX">Cancel</button><button class="btn" id="dOk">Save</button></div></div>`;
   const n = (id, lo, hi) => { const v = +$(id, s).value; return v >= lo && v <= hi ? v : undefined; };
   $('#dX', s).onclick = () => s.remove(); s.onclick = e => { if (e.target === s) s.remove(); };
-  $('#dOk', s).onclick = async () => { const p = { riderKg: n('#dKg', 30, 200), ftp: n('#dFtp', 60, 600), hrMax: n('#dMax', 120, 230), hrRest: n('#dRest', 30, 110) };
+  $('#dOk', s).onclick = async () => { const p = { riderKg: n('#dKg', 30, 200), ftp: n('#dFtp', 60, 600), hrMax: n('#dMax', 120, 230), hrRest: n('#dRest', 30, 110), ftpAuto: $('#dAuto', s).checked };
     for (const k in p) if (p[k] === undefined) delete p[k]; await save(p); s.remove(); render(); };
 }
 async function exportAll() {
