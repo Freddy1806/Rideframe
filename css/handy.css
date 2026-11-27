@@ -67,6 +67,8 @@ button.wcrow { width: 100%; text-align: left; color: inherit; }
 .wcgrp h4 { font-size: 12px; font-weight: 800; color: var(--muted); margin: 6px 0 2px; }
 .wccount { float: right; font-size: 12px; letter-spacing: 0; text-transform: none; }
 .wclead { font-size: 13px; }
+.wctp { display: flex; gap: 6px; align-items: center; min-width: 0; } .wctp > .prow { flex: 1; min-width: 0; } .wctpmv { display: flex; gap: 6px; } .wctpmv .wcx { height: 44px; } .wctpmv .wcx:disabled { opacity: .35; }
+.wctp.wcoff b { color: var(--muted); } .wctp .wcfixed { font-size: 12px; font-weight: 800; color: var(--muted); white-space: nowrap; } /* 28.11.: the trainer's pages */
 #wcState { min-height: 1.4em; } #wcState.wcok { color: var(--paper); }
 .wcpick button { height: auto; min-height: 50px; padding: 6px 12px; display: flex; flex-direction: column; align-items: flex-start; justify-content: center; gap: 1px; }
 .wcpick small { font-size: 11px; color: var(--muted); font-weight: 600; } .wcpick button.on small { color: inherit; }

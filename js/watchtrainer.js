@@ -23,7 +23,7 @@ const le = w => [w & 255, (w >> 8) & 255];
 /** a fresh link; want = the trainer used last (its advertised name): connected by itself when the scan sees it */
 export function newLink(want = '') {
   return { st: LST.OFF, list: [], name: '', want: want || '', mode: '', ever: false, q: [], op: null, opAt: 0, erg: false, tgt: W_START, sent: -1, ctl: false,
-    pw: 0, cad: 0, at: -1e9, crank: null, t0: 0, setAt: 0, lostAt: 0, ctlAt: 0, act: [] };
+    pw: 0, cad: 0, at: -1e9, crank: null, cadAt: -1e9, icAt: -1e9, ccAt: -1e9, t0: 0, setAt: 0, lostAt: 0, ctlAt: 0, act: [] };
 }
 function act(L, a) { L.act.push(a); }
 /** start searching: FTMS trainers, else Cycling Power devices with a name */
@@ -43,6 +43,9 @@ export function setTarget(L, w, now) { L.tgt = clamp(Math.round(w), 0, 2000); L.
 export const applied = L => !L.ctl || L.sent === L.tgt && !(L.op && L.op.k === 'tgt');
 /** the live values, 0 when the trainer has been silent for DATA_S */
 export const live = (L, now) => now - L.at > DATA_S ? { pw: 0, cad: 0 } : { pw: L.pw, cad: L.cad };
+/** 28.11. (the owner saw no cadence on his KICKR CORE 2): a cadence value came in the last DATA_S s (FTMS Indoor Bike Data with the
+ *  cadence field, or Cycling Power crank revolutions); without one the screens show "--", not a 0 that looks like "not pedalling" */
+export const hasCad = (L, now) => now - L.cadAt <= DATA_S;
 /** what the screens say: 'scan' | 'conn' | 'ready' | 'refused' | 'lost' (connecting again after it had worked) | 'off' */
 export function shown(L) {
   if (L.ever && (L.st === LST.LOST || L.st === LST.CONN || L.st === LST.SETUP)) return 'lost';
@@ -62,7 +65,9 @@ const step = (k, ch, v) => ({ k, ch, v });
 function setup(L, e, now) {
   L.st = LST.SETUP; L.setAt = now; L.sent = -1; L.ctl = false; L.op = null; L.crank = null;
   L.mode = e.ftms ? 'ftms' : e.wahoo ? 'wahoo' : 'pm';
-  if (L.mode === 'ftms') L.q = [step('cccd', 'ibd', [1, 0]), step('cccd', 'fcp', [2, 0]), step('write', 'fcp', [0x00]), step('write', 'fcp', [0x07])];
+  // 28.11.: an FTMS trainer that also has Cycling Power: its measurement too (after control), for the crank revolutions: a KICKR may send
+  // no cadence (or 0) in Indoor Bike Data and the cadence only there; a failed subscription is no data from it, the ride goes on
+  if (L.mode === 'ftms') { L.q = [step('cccd', 'ibd', [1, 0]), step('cccd', 'fcp', [2, 0]), step('write', 'fcp', [0x00]), step('write', 'fcp', [0x07])]; if (e.cps) L.q.push(step('cccd', 'cpm', [1, 0])); }
   else if (L.mode === 'wahoo') L.q = [step('cccd', 'cpm', [1, 0]), step('cccd', 'wcp', [2, 0]), step('write', 'wcp', [0x20, 0xee, 0xfc])];
   else L.q = [step('cccd', 'cpm', [1, 0])];
   pump(L, now);
@@ -132,7 +137,7 @@ export function ibd(L, v, now) {
   if (v.length < 2) return; const f = u16(v, 0); let o = 2;
   if (!(f & 0x0001)) o += 2;                                   // instantaneous speed
   if (f & 0x0002) o += 2;                                      // average speed
-  if (f & 0x0004) { if (o + 1 < v.length) L.cad = Math.round(u16(v, o) / 2); o += 2; } // cadence, 0.5 rpm
+  if (f & 0x0004) { if (o + 1 < v.length) { const c = Math.round(u16(v, o) / 2); if (c > 0 || now - L.ccAt > DATA_S) L.cad = c; if (c > 0) L.icAt = now; L.cadAt = now; } o += 2; } // cadence, 0.5 rpm; a 0 does not hide the crank's
   if (f & 0x0008) o += 2;                                      // average cadence
   if (f & 0x0010) o += 3;                                      // total distance
   if (f & 0x0020) o += 2;                                      // resistance level
@@ -141,11 +146,13 @@ export function ibd(L, v, now) {
 }
 /** Cycling Power Measurement (0x2A63): power, and the cadence from the crank revolutions when they are there */
 export function cpm(L, v, now) {
-  if (v.length < 4) return; const f = u16(v, 0); L.pw = Math.max(0, s16(v, 2)); let o = 4;
+  if (v.length < 4) return; const f = u16(v, 0); let o = 4;
+  if (L.mode !== 'ftms') L.pw = Math.max(0, s16(v, 2)); // 28.11.: an FTMS trainer's power comes from Indoor Bike Data, here only its cadence
   if (f & 0x01) o += 1; if (f & 0x04) o += 2; if (f & 0x10) o += 6;
-  if (f & 0x20 && o + 3 < v.length) {
-    const revs = u16(v, o), t = u16(v, o + 2), c = L.crank;
-    if (c) { const dr = (revs - c.revs + 65536) % 65536, dt = ((t - c.t + 65536) % 65536) / 1024; if (dt > 0) L.cad = Math.round(dr / dt * 60); else if (now - c.at > 2.5) L.cad = 0; }
+  if (f & 0x20 && o + 3 < v.length) { // crank revolutions (uint16, wrap) and the last crank event (uint16, 1/1024 s, wrap)
+    const revs = u16(v, o), t = u16(v, o + 2), c = L.crank, use = L.mode !== 'ftms' || now - L.icAt > DATA_S;
+    if (c) { const dr = (revs - c.revs + 65536) % 65536, dt = ((t - c.t + 65536) % 65536) / 1024; L.ccAt = now; if (use) L.cadAt = now;
+      if (dt > 0) { if (use) L.cad = Math.round(dr / dt * 60); } else if (now - c.at > 2.5 && use) L.cad = 0; }
     if (!c || revs !== c.revs) L.crank = { revs, t, at: now };
   }
   L.at = now;
@@ -201,10 +208,21 @@ const wkLab = v => typeof v === 'string' ? v : '';
 /** a step entry: [sec, w, w2, hard, label] with sec >= 1 (else it is a repeat or nothing) */
 const isStep = e => Array.isArray(e) && e.length >= 2 && typeof e[1] === 'number';
 const isRep = e => Array.isArray(e) && e.length >= 2 && typeof e[0] === 'number' && Array.isArray(e[1]);
-/** the counter of a step inside repeats: "7/13" (the innermost), ", SET 2" for the one around it */
+/** the counter of a step inside repeats: "7/13" (the innermost), ", SET 2/3" for the one around it */
 function wkCnt(ctx) {
   const k = ctx.length; if (!k) return '';
-  return (ctx[k - 1][0] + 1) + '/' + ctx[k - 1][1] + (k > 1 ? ', SET ' + (ctx[k - 2][0] + 1) : '');
+  return (ctx[k - 1][0] + 1) + '/' + ctx[k - 1][1] + (k > 1 ? ', SET ' + (ctx[k - 2][0] + 1) + '/' + ctx[k - 2][1] : '');
+}
+/** 28.11.: a step's kind, for its colour (the workout builder's step types, js/myworkouts.js STEP_TYPES): 1 work (hard), 2 warm-up (its label,
+ *  or a ramp up), 3 cool-down (its label, or a ramp down), 0 recovery / rest / anything else easy */
+export const WK_WORK = 1, WK_WARM = 2, WK_COOL = 3;
+function wkKind(X, i) {
+  const l = X.lab[i].toLowerCase();
+  if (X.hard[i]) return WK_WORK;
+  if (l.indexOf('warm') >= 0) return WK_WARM;
+  if (l.indexOf('cool') >= 0) return WK_COOL;
+  if (X.w2[i] >= 0) return X.w2[i] > X.w[i] ? WK_WARM : WK_COOL;
+  return 0;
 }
 function wkAdd(X, l, ctx) {
   for (let j = 0; j < l.length; j++) {
@@ -216,14 +234,14 @@ function wkAdd(X, l, ctx) {
     } else if (isStep(e)) {
       const sec = Math.round(e[0]); if (!(sec >= 1 && sec <= 36000)) continue;
       X.dur.push(sec); X.w.push(Math.max(0, Math.min(2000, Math.round(e[1])))); X.w2.push(typeof e[2] === 'number' && e[2] >= 0 ? Math.min(2000, Math.round(e[2])) : -1);
-      X.hard.push(e[3] === 1 || e[3] === true); X.lab.push(wkLab(e[4])); X.cnt.push(wkCnt(ctx));
+      X.hard.push(e[3] === 1 || e[3] === true); X.lab.push(wkLab(e[4])); X.cnt.push(wkCnt(ctx)); X.kd.push(wkKind(X, X.dur.length - 1));
     }
   }
 }
 /** one workout from the server (or the built-in one), ready to ride: its steps as flat lists; null when it has no step */
 export function newWk(def) {
   if (!def || !Array.isArray(def.s)) return null;
-  const W = { id: String(def.id || ''), n: wkLab(def.n), dur: [], w: [], w2: [], hard: [], lab: [], cnt: [], tot: 0, i: 0, s0: 0, ha: 0, ea: 0, ri: WK_RI, ro: WK_RO };
+  const W = { id: String(def.id || ''), n: wkLab(def.n), dur: [], w: [], w2: [], hard: [], lab: [], cnt: [], kd: [], tot: 0, i: 0, s0: 0, ha: 0, ea: 0, ri: WK_RI, ro: WK_RO };
   if (typeof def.ri === 'number') W.ri = Math.max(0, Math.round(def.ri));
   if (typeof def.ro === 'number') W.ro = Math.max(0, Math.round(def.ro));
   wkAdd(W, def.s, []);
@@ -268,12 +286,14 @@ export const wkTotLeft = (W, t) => Math.max(0, W.tot - t);
 export function wkEasy(W) { const k = W.dur.length - 1, b = wkBase(W, k, W.dur[k]); return Math.max(W_MIN, Math.min(WK_EASY, b)); }
 
 /** 27.11. (the owner's session today, js/workouts.js c_30_15_3x13): built into the watch, so it can be ridden before the first sync.
- *  The ramps are % of the FTP the server sent last (setup "ftp"), else 250 W; the hard 30 s are WK_FB_HARD. */
+ *  The ramps are % of the FTP the server sent last (setup "ftp"), else 250 W; the hard 30 s are WK_FB_HARD. 28.11. (the owner's new warm-up
+ *  in js/workouts.js): a ramp 8 min 40 -> 75 %, a build ramp 3 min 75 -> 95 %, 2 min 130 W, openers 20 s at 300 / 335 / 370 W with 70 s
+ *  at 130 W between, 190 s 130 W; then the sets as before (the coach review: 20 s, so only the 39 reps are 30 s hard). */
 export const WK_FB_ID = 'c_30_15_3x13', WK_FB_HARD = 370;
 export function wkFallback(ftp) {
   const f = ftp > 0 ? ftp : 250, p = x => Math.round(x * f / 100);
-  return { id: WK_FB_ID, n: '30/15, 3 x 13', ri: 3, ro: 2, s: [[600, p(40), p(72), 0, 'Warm-up'], [180, p(72), null, 0, 'Warm-up'],
-    [3, [[10, 420, null, 1, 'Sprint'], [50, 130, null, 0, 'Spin']], 1], [170, 130, null, 0, 'Spin'],
+  return { id: WK_FB_ID, n: '30/15, 3 x 13', ri: 3, ro: 2, s: [[480, p(40), p(75), 0, 'Warm-up'], [180, p(75), p(95), 0, 'Build'], [120, 130, null, 0, 'Spin'],
+    [20, 300, null, 1, 'Opener'], [70, 130, null, 0, 'Spin'], [20, 335, null, 1, 'Opener'], [70, 130, null, 0, 'Spin'], [20, WK_FB_HARD, null, 1, 'Opener'], [190, 130, null, 0, 'Spin'],
     [3, [[13, [[30, WK_FB_HARD, null, 1, '30/15'], [15, 125, null, 0, 'Float']], 1], [180, 130, null, 0, 'Rest']], 1],
     [600, p(50), p(35), 0, 'Cool-down']] };
 }
@@ -336,3 +356,5 @@ export function wkDur(l) {
 export function wkShown(W) { const i = W.i; if (i >= W.dur.length) return ''; return W.hard[i] && W.cnt[i].length > 0 ? W.cnt[i] : (W.lab[i].length > 0 ? W.lab[i].toUpperCase() : (W.hard[i] ? 'HARD' : 'EASY')); }
 /** the next step's target with the offsets, -1 after the last */
 export const wkNextW = W => W.i + 1 < W.dur.length ? wkPlat(W, W.i + 1, 0) : -1;
+/** 28.11.: a ramp step now: [its start watts, its end watts] with the offset (the target page says "WARM-UP 100 TO 180 W"), else null */
+export const wkRamp = W => W.i < W.dur.length && W.w2[W.i] >= 0 ? [wkPlat(W, W.i, 0), wkPlat(W, W.i, W.dur[W.i])] : null;

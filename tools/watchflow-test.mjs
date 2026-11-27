@@ -314,7 +314,7 @@ test('watchfields: defaults pass the check, compact form, field texts, top 20, m
   assert.deepEqual(validate(defaults()).cfg, defaults()); assert.equal(TOP.length, 21); assert.equal(new Set(TOP.map(e => e.id)).size, 21);
   assert.ok(MORE.includes('Basketball') && MORE.includes('IceSkate') && !MORE.includes('Run') && !MORE.includes('Swim') && !MORE.includes('WeightTraining') && !MORE.includes('VirtualRide'));
   for (const sp of ['run', 'ride', 'other']) for (const p of defaults().sports[sp].pages) assert.ok(p.fields.every(f => FIELDS[sp][f]?.demo));
-  const c = compact(defaults()); assert.deepEqual(Object.keys(c), ['v', 'run', 'ride', 'other', 'more', 'w']); assert.deepEqual(c.more[0], ['Walk', 'Walk']);
+  const c = compact(defaults()); assert.deepEqual(Object.keys(c), ['v', 'run', 'ride', 'other', 'more', 'tp', 'w']); assert.deepEqual(c.tp, ['wk', 'body', 'stats']); assert.deepEqual(c.more[0], ['Walk', 'Walk']);
   assert.deepEqual([zoneOf(100), zoneOf(120), zoneOf(140), zoneOf(160), zoneOf(180), zoneOf(0)], [1, 2, 3, 4, 5, 0]);
   const R = { t: 3725, d: 12345, v: 0, hr: 0, cad: 0, pw: 0, p3: [], pwSum: 0, np4: 0, npN: 0, gain: 0, kcal: 1234.4, lapT0: 3600, lapD0: 12000 };
   assert.deepEqual(['time', 'lapTime', 'pace', 'dist', 'lapPace', 'kcal', 'hr', 'np', 'avgSpeed'].map(k => fieldText(k, R, 0)), ['1:02:05', '2:05', '--:--', '12.35', '6:02', '1,234', '--', '--', '11.9']);

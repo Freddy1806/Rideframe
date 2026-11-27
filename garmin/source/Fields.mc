@@ -57,7 +57,8 @@ module Fields {
             "ride" => { "p" => [["power3s", "speed", "hr", "time"], ["dist", "climb", "avgPower", "cadence"]], "map" => 1, "seg" => 1, "lap" => 1, "pause" => 1, "vib" => 1 },
             "other" => { "p" => [["hr", "time", "clock", "kcal"]] },
             "more" => [["Walk", "Walk"], ["Hike", "Hike"], ["Yoga", "Yoga"], ["Workout", "Workout"]],
-            "w" => []
+            "w" => [],
+            "tp" => ["wk", "body", "stats"]  // 28.11.: the trainer's pages after the target page (js TRAINER_DEF)
         } as Dictionary;
     }
 

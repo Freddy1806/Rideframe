@@ -9,12 +9,12 @@ const stravaHdr = () => { try { const k = localStorage.getItem('rf_strava_key');
 import { CATALOG } from './kraftlib.js';
 import { STRAVA } from './sports.js';
 import { MODES, icon } from './theme.js';
-import { FIELDS, MORE, TOP, LIM, MAX_PAGES, MAX_FIELDS, MAX_WORKOUTS, MAX_ITEMS, defaults, validate, labelOf } from './watchfields.js';
+import { FIELDS, MORE, TOP, LIM, MAX_PAGES, MAX_FIELDS, MAX_WORKOUTS, MAX_ITEMS, TRAINER_PAGES, TRAINER_DEF, defaults, validate, labelOf } from './watchfields.js';
 import { FACES, tint, drawPage, pageDots, recRing, paintFace } from './watchdraw.js';
 
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 const $ = (s, r = document) => r.querySelector(s);
-const TABS = [['run', 'Run'], ['ride', 'Ride'], ['kraft', 'Strength'], ['more', 'More']];
+const TABS = [['run', 'Run'], ['ride', 'Ride'], ['trainer', 'Trainer'], ['kraft', 'Strength'], ['more', 'More']];
 const SLOTS = { 1: ['Full screen'], 2: ['Top', 'Bottom'], 3: ['Top · big', 'Bottom left', 'Bottom right'], 4: ['Top · big', 'Middle left', 'Middle right', 'Bottom'] };
 const GROUP = { Beine: 'Legs', Rücken: 'Back', Brust: 'Chest', Schultern: 'Shoulders', Arme: 'Arms', Rumpf: 'Core', Ganzkörper: 'Full body', Eigene: 'Custom' };
 const mmss = s => s >= 60 ? `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}` : `${s} s`;
@@ -86,7 +86,7 @@ function draw() {
   const m = MODES.world; // the watch stays orange (the main colour), whatever the phone's mode colours are
   sh.style.setProperty('--accent', document.documentElement.dataset.theme === 'light' ? m.light : m.color); // the sport's own colour, like on the watch
   const body = $('#wcBody', sh);
-  if (tab === 'run' || tab === 'ride') sportTab(body, tab); else if (tab === 'kraft') strengthTab(body); else moreTab(body);
+  if (tab === 'run' || tab === 'ride') sportTab(body, tab); else if (tab === 'trainer') trainerTab(body); else if (tab === 'kraft') strengthTab(body); else moreTab(body);
   status();
 }
 
@@ -189,6 +189,23 @@ function exPicker(pick) {
   const q = $('#wcQ', p); q.oninput = () => { const t = q.value.trim().toLowerCase(); p.querySelectorAll('[data-q]').forEach(b => b.hidden = !!t && !b.dataset.q.includes(t)); p.querySelectorAll('[data-g]').forEach(h => { let n = h.nextElementSibling, any = false; while (n && !n.matches('[data-g]')) { any ||= !n.hidden; n = n.nextElementSibling; } h.hidden = !any; }); };
   p.querySelectorAll('[data-ex]').forEach(b => b.onclick = () => { p.remove(); pick(b.dataset.ex); });
   $('#wcExX', p).onclick = () => p.remove(); p.onclick = e => { if (e.target === p) p.remove(); };
+}
+
+/* -- 28.11.: the indoor trainer's pages on the watch: Target always first (the overview), the others on / off and in order (config "trainer") -- */
+function trainerTab(body) {
+  const on = (C.trainer && Array.isArray(C.trainer.pages) ? C.trainer.pages : TRAINER_DEF).filter(k => TRAINER_PAGES[k]), off = TRAINER_DEF.filter(k => !on.includes(k));
+  const set = l => { C.trainer = { pages: l }; changed(); draw(); };
+  const row = (k, i) => { const [l, h] = TRAINER_PAGES[k], at = on.indexOf(k);
+    return `<div class="wctp${at < 0 ? ' wcoff' : ''}" data-tp="${k}"><label class="prow wcsw"><span><b>${esc(l)}</b><small>${esc(h)}</small></span><input type="checkbox" class="toggle" data-tpon="${k}" ${at >= 0 ? 'checked' : ''} aria-label="${esc(l)} page"></label>
+      ${at >= 0 ? `<div class="wctpmv"><button class="wcx" data-tpup="${k}" ${at === 0 ? 'disabled' : ''} aria-label="Move ${esc(l)} up">↑</button><button class="wcx" data-tpdn="${k}" ${at === on.length - 1 ? 'disabled' : ''} aria-label="Move ${esc(l)} down">↓</button></div>` : ''}</div>`; };
+  body.innerHTML = `<p class="phint wclead">The pages of an indoor trainer ride. UP / DOWN (or a swipe) goes to the next page; held UP / DOWN changes the target on any page.</p>
+    <h3 class="ksec">Pages, in this order <span class="wccount">${on.length + 1} of ${TRAINER_DEF.length + 1}</span></h3>
+    <div class="wctp wcfix"><label class="prow wcsw"><span><b>Target</b><small>Always first: time left in the step, target and actual watts, heart rate, cadence, − / +</small></span><span class="wcfixed">Always on</span></label></div>
+    ${on.map(row).join('')}${off.map(row).join('')}`;
+  body.querySelectorAll('[data-tpon]').forEach(i => i.onchange = () => { const k = i.dataset.tpon; set(i.checked ? [...on, k] : on.filter(x => x !== k)); });
+  const mv = (k, d) => { const l = on.slice(), a = l.indexOf(k), b = a + d; if (a < 0 || b < 0 || b >= l.length) return; [l[a], l[b]] = [l[b], l[a]]; set(l); };
+  body.querySelectorAll('[data-tpup]').forEach(b => b.onclick = () => mv(b.dataset.tpup, -1));
+  body.querySelectorAll('[data-tpdn]').forEach(b => b.onclick = () => mv(b.dataset.tpdn, 1));
 }
 
 /* -- more: the other sports on the watch, one fixed screen -- */

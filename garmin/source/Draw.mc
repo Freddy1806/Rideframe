@@ -28,6 +28,7 @@ class Palette {
     var fg as Number; var dim as Number; var faint as Number; var acc as Number; var ink as Number; var hr as Number;
     var lbl as Number; var line as Number; var good as Number; var bad as Number; var far as Number; var path as Number;
     var cRun as Number; var cRide as Number; var cKraft as Number; var cOther as Number;
+    var wWarm as Number; var wRec as Number; var wCool as Number;   // 28.11.: the workout builder's step colours (work = acc)
     var mip as Boolean;
     function initialize() {
         var amoled = isAmoled();
@@ -40,6 +41,8 @@ class Palette {
             far = dim; path = dim; cRun = 0xFF5500; cRide = 0xFF5500; cKraft = 0xFF5500; cOther = 0xFF5500;
         }
         acc = cKraft;
+        // 28.11.: js/myworkouts.js STEP_TYPES (warm-up #f2b630, recover #2fb36b, cool-down #2f8fe0); MIP: the nearest of the 64 colours
+        wWarm = amoled ? 0xF2B630 : 0xFFAA00; wRec = amoled ? 0x2FB36B : 0x00AA55; wCool = amoled ? 0x2F8FE0 : 0x00AAFF;
     }
 }
 
@@ -1055,14 +1058,72 @@ module Draw {
         icon(dc, "trainer", S / 2 - S * 0.04, y, S * 0.045, v == TL_READY ? P.good : (v == TL_REFUSED ? P.fg : P.bad));
         heart(dc, S / 2 + S * 0.04, y, S * 0.036, F.hrOn(now) ? P.hr : P.dim);
     }
-    // the ERG ride: the time, the target big with - / + beside it, the trainer's power, cadence, heart rate below; a stats page.
-    // gT0 .. gT1: the target's zone (the taps on - / + / the target, the wheel)
+    // 28.11. (27.11.3, js drawTRec): the ride's pages (F.tPages: the target page first, then the phone's choice of workout, body, stats),
+    // the edge ring, the dots and the trainer / heart marks on every page
     function drawTRec(dc as Dc, F as Flow, S as Number, P as Palette, now as Number) as Void {
         var R = F.tr;
         if (R == null) { return; }
+        var pg = F.tPages(), n = pg.size(), id = pg[R.pg % n];
+        trRing(dc, F, S, P, n, id.equals("wk")); pageDots(dc, S, P, n, R.pg % n); linkMarks(dc, F, S, P, now);
+        if (id.equals("wk") && F.wk != null) { trWork(dc, F, S, P, now); }
+        else if (id.equals("body")) { trBody(dc, F, S, P, now); }
+        else if (id.equals("stats")) { trStats(dc, S, P, R); }
+        else { trTarget(dc, F, S, P, now); }
+    }
+    // 28.11.: the step kinds' colours, the workout builder's (js/myworkouts.js STEP_TYPES): work = the accent (orange), warm-up yellow,
+    // cool-down blue, recovery / rest green (MIP: the 64-colour palette's nearest)
+    function kindCol(P as Palette, k as Number) as Number { return k == 1 ? P.acc : (k == 2 ? P.wWarm : (k == 3 ? P.wCool : P.wRec)); }
+    // a band on the bezel from p0 to p1 degrees clockwise from 12 o'clock, in pieces of at most 180 degrees (none under 1: an arc from a
+    // degree to itself would be a whole circle), the page dots' gap (ga degrees each side of 9 o'clock) left out
+    // VERIFY (Dc.drawArc, ARC_CLOCKWISE): degrees counter-clockwise from 3 o'clock, drawn clockwise from degreeStart to degreeEnd (as recRing)
+    function arcP(dc as Dc, S as Number, col as Number, p0, p1, ga as Number) as Void {
+        var c = S / 2, r = S / 2 - (S * 0.01).toNumber();
+        dc.setColor(col, Graphics.COLOR_TRANSPARENT); dc.setPenWidth(pw(S * 0.02));
+        var cuts = ga > 0 ? [[p0, p1 < 270 - ga ? p1 : 270 - ga], [p0 > 270 + ga ? p0 : 270 + ga, p1]] as Array<Array> : [[p0, p1]] as Array<Array>;
+        for (var j = 0; j < cuts.size(); j++) {
+            var a = cuts[j][0].toFloat(), b = cuts[j][1].toFloat();
+            while (b - a >= 1) {
+                var e = b - a > 180 ? a + 180 : b, d0 = (90 - a + 720).toNumber() % 360, d1 = (90 - e + 720).toNumber() % 360;
+                if (d0 != d1) { dc.drawArc(c, c, r, Graphics.ARC_CLOCKWISE, d0, d1); }
+                a = e;
+            }
+        }
+        dc.setPenWidth(1);
+    }
+    // 28.11. (the owner: "a progress bar along the edge that runs down like a timer"): in a workout the time left as a band that ends at 12
+    // o'clock and shrinks from its front, in the step kinds' colours (grey while paused) over a faint track: whole = the whole workout (its
+    // steps still to come), else the step now. A free ride has nothing to count down: the short recording arc at the top, as on a run.
+    function trRing(dc as Dc, F as Flow, S as Number, P as Palette, n as Number, whole as Boolean) as Void {
+        var R = F.tr, W = F.wk;
+        if (R == null) { return; }
+        if (W == null || W.i >= W.dur.size()) { recRing(dc, S, P, R.st == RS_RUN); return; }
+        var ga = n > 1 ? (n - 1) * 5 + 6 : 0, run = R.st == RS_RUN;
+        arcP(dc, S, P.faint, 0, 360, ga);
+        if (!whole) { var d = W.dur[W.i], lf = W.left(R.t); arcP(dc, S, run ? kindCol(P, W.kd[W.i]) : P.dim, 360 - 360.0 * lf / d, 360, ga); return; }
+        var k0 = 360.0 / W.tot, s = W.s0, from = R.t * k0, col = -1;
+        for (var k = W.i; k < W.dur.size(); k++) {
+            var ck = run ? kindCol(P, W.kd[k]) : P.dim;
+            if (ck != col) { if (col >= 0) { arcP(dc, S, col, from, s * k0, ga); } col = ck; from = s * k0 > from ? s * k0 : from; }
+            s += W.dur[k];
+        }
+        if (col >= 0) { arcP(dc, S, col, from, 360, ga); }
+    }
+    // 28.11.: a small - / + button (the owner: "too big, write the step inside"): a faint pill w x h with the step in it ("-5", "+25") in the
+    // largest font that fits it; where none does (font size setting) the drawn sign (the fonts may have no minus sign, the hyphen they have)
+    function trBtn(dc as Dc, S as Number, P as Palette, x, y, t as String, plus as Boolean) as Void {
+        var w = S * 0.16, h = S * 0.11, tp = "+" + (t.substring(1, t.length()) as String), f = inPill(dc, tp, [SM, XT], w - 6, h); // both buttons in the font the wider "+25" fits
+        pill(dc, x, y, w, h, P.faint);
+        if (dc.getTextWidthInPixels(tp, f) <= w - 6 && up(dc, f) <= h / 2 - 1 && dn(dc, f, tp) <= h / 2 - 1) { txt(dc, x, y, f, t, P.fg); return; }
+        var k = S * 0.025; dc.setColor(P.fg, Graphics.COLOR_TRANSPARENT); dc.setPenWidth(pw(S * 0.014)); dc.drawLine(x - k, y, x + k, y); if (plus) { dc.drawLine(x, y - k, x, y + k); } dc.setPenWidth(1);
+    }
+    // the target page, the overview (the owner: "one sheet with everything"): the time left in the step (a free ride: the ride's time) with
+    // the ring, the step's label (a ramp: "WARM-UP 100 TO 180 W"), the target big with small - / + buttons that carry the step, the offset
+    // under it (only when there is one), the trainer's power, cadence and heart rate, the next step (a free ride: the average).
+    // gT0 .. gT1: the target's zone (the taps on - / + / the target, the wheel)
+    function trTarget(dc as Dc, F as Flow, S as Number, P as Palette, now as Number) as Void {
+        var R = F.tr;
+        if (R == null) { return; }
         var L = F.link, v = L.shown(), paused = R.st != RS_RUN, c = S / 2, G = gap(S), W = F.wk;
-        recRing(dc, S, P, !paused); pageDots(dc, S, P, 2, R.pg); linkMarks(dc, F, S, P, now);
-        if (R.pg != 0) { trStats(dc, S, P, R); return; }
         // 27.11.: in a workout the time left in the step (orange in a hard one), its label / counter, the offset, the next step and the time left
         var ct = clock(W != null ? W.left(R.t) : R.t), tf = fontIn(dc, ct, [NMI, ME, SM, XT], (S * 0.5).toNumber(), S * 0.1), ty = S * 0.13 > up(dc, tf) + S * 0.075 ? S * 0.13 : up(dc, tf) + S * 0.075;
         put(dc, c, ty, tf, ct, S, W != null && W.isHard() ? P.acc : P.fg, false, R0);
@@ -1083,8 +1144,9 @@ module Draw {
             else { put(dc, c, by, XT, nx, S, P.fg, false, R0); bt = by - up(dc, XT) - G; }
         }
         else { var ap = "AVG " + R.avgPw().toString(); put(dc, c, by, XT, ap + " W, " + rnd(R.kj).toString() + " kJ|" + ap + " W|" + ap, S, P.lbl, false, R0); bt = by - up(dc, XT) - G; }
-        // the three numbers: the largest font whose row and labels fit 0.2 S and the circle (WATTS is W where it does not)
-        var vals = [L.livePw(now).toString(), L.liveCad(now).toString(), F.hr > 0 ? F.hr.toString() : "--"] as Array<String>, vfs = [NMI, ME, SM, XT], vl = above(dc, bt, XT, "G", S * 0.735);
+        // the three numbers: the largest font whose row and labels fit 0.2 S and the circle (WATTS is W where it does not); 28.11.: no
+        // cadence from the trainer = "--" (a 0 would say "not pedalling")
+        var vals = [L.livePw(now).toString(), L.hasCad(now) ? L.liveCad(now).toString() : "--", F.hr > 0 ? F.hr.toString() : "--"] as Array<String>, vfs = [NMI, ME, SM, XT], vl = above(dc, bt, XT, "G", S * 0.735);
         var labs = ["WATTS", "RPM", "BPM"] as Array<String>, vf = XT, vy = 0.0, dx = -1.0, hOn = true;
         for (var pass = 0; pass < 3 && dx < 0; pass++) {
             if (pass == 1) { labs = ["W", "RPM", "BPM"] as Array<String>; }
@@ -1104,18 +1166,16 @@ module Draw {
             txt(dc, x + (i == 2 && hOn ? S * 0.015 : 0), vl, XT, labs[i], P.lbl);
         }
         dc.setColor(P.line, Graphics.COLOR_TRANSPARENT); dc.setPenWidth(pw(S * 0.006 > 2 ? S * 0.006 : 2)); dc.drawLine(S * 0.12, sep, S * 0.88, sep); dc.setPenWidth(1);
-        // the target between the label and the separator, - / + beside it, the step under it (the wheel: the neighbours instead)
-        var t = R.tgt.toString(), top = (wh ? ty + dn(dc, tf, "0") : ly + dn(dc, XT, "W")) + G, sf = XT;
-        var room = sep - G - top - (wh ? 0 : inkH(dc, sf) + G), gf = numIn(dc, [t], [NTH, NHO, NME, NMI], [(S * 0.46).toNumber()], [c], top, top + room, R0), gy = numY(dc, gf, top, top + room);
+        // the target between the label and the separator, the small - / + beside it, the offset under it when there is one (the wheel: the
+        // neighbours instead)
+        // 28.11.: a ramp says so under the target, plain: "WARM-UP" above it, "100 TO 180 W" (with the offset in it) under it, the offset after it
+        var aj = W != null ? W.adj() : 0, t = R.tgt.toString(), top = (wh ? ty + dn(dc, tf, "0") : ly + dn(dc, XT, "W")) + G, sf = XT;
+        var rp = W != null ? W.ramp() : null, ajt = (aj > 0 ? "+" : "-") + (aj > 0 ? aj : -aj).toString() + " W", ut = aj != 0 ? ajt : "";
+        if (rp != null) { var ra = rp[0].toString() + " TO " + rp[1].toString() + " W"; ut = aj != 0 ? ra + ", " + ajt + "|" + ra : ra; }
+        var room = sep - G - top - (wh || ut.length() == 0 ? 0 : inkH(dc, sf) + G), gf = numIn(dc, [t], [NTH, NHO, NME, NMI], [(S * 0.44).toNumber()], [c], top, top + room, R0), gy = numY(dc, gf, top, top + room);
         txt(dc, c, gy, gf, t, paused ? P.dim : P.acc); $.gT0 = top / S; $.gT1 = sep / S;
-        var xs = [0.15, 0.85] as Array<Float>;
-        for (var i = 0; i < 2; i++) {
-            var x = S * xs[i], h = S * 0.035;
-            dc.setColor(P.faint, Graphics.COLOR_TRANSPARENT); dc.fillCircle(x, gy, S * 0.085);
-            dc.setColor(P.fg, Graphics.COLOR_TRANSPARENT); dc.setPenWidth(pw(S * 0.018));
-            dc.drawLine(x - h, gy, x + h, gy); if (i == 1) { dc.drawLine(x, gy - h, x, gy + h); } // drawn: the fonts may have no minus sign
-            dc.setPenWidth(1);
-        }
+        var xs = [0.16, 0.84] as Array<Float>;
+        for (var i = 0; i < 2; i++) { trBtn(dc, S, P, S * xs[i], gy, (i == 0 ? "-" : "+") + R.step.toString(), i == 1); }
         if (wh) {
             for (var dd = -1; dd <= 1; dd += 2) {
                 var w = W != null ? R.tgt + dd * R.step : R.nextTarget(dd, false);
@@ -1123,10 +1183,90 @@ module Draw {
                 var yy = dd < 0 ? above(dc, gy - up(dc, gf), XT, "0", S) : below(dc, gy + dn(dc, gf, "0"), XT, 0);
                 if (yy - up(dc, XT) >= ty + dn(dc, tf, "0") + G && yy + dn(dc, XT, "0") <= sep - G) { txt(dc, c, yy, XT, w.toString(), P.dim); }
             }
-        } else {
-            var aj = W != null ? W.adj() : 0;
-            put(dc, c, below(dc, gy + dn(dc, gf, "0"), sf, 0), sf, aj != 0 ? (aj > 0 ? "+" : "-") + (aj > 0 ? aj : -aj).toString() + " W" : "+/- " + R.step.toString() + " W", S, aj != 0 ? P.fg : P.lbl, false, R0);
+        } else if (ut.length() > 0) {
+            put(dc, c, below(dc, gy + dn(dc, gf, "0"), sf, 0), sf, ut, (S * 0.8).toNumber(), P.fg, false, R0); // clear of the page dots
         }
+    }
+    // 28.11.: the workout page (where am I, what comes next, how long is left): the repeat's counter (else the step's label), the target and
+    // the time left in the step, the workout as blocks under a magnifying glass (the step now wide in the middle with its progress and a
+    // marker, four steps each side narrower towards the edges; height = target watts, ramps as slopes, the step kinds' colours, done ones
+    // grey), NEXT with its watts and length, the time left of the whole workout (the ring: the whole workout)
+    function trWork(dc as Dc, F as Flow, S as Number, P as Palette, now as Number) as Void {
+        var R = F.tr, W = F.wk;
+        if (R == null || W == null) { return; }
+        var c = S / 2, G = gap(S), i = W.i, n = W.dur.size(), run = R.st == RS_RUN;
+        if (i >= n) { return; }
+        var ly = S * 0.15 > up(dc, XT) + S * 0.1 ? S * 0.15 : up(dc, XT) + S * 0.1, cn = W.cnt[i], k = cn.find(","), lm = roomC(dc, c, ly, XT, cn, R0);
+        // the counter "5/13, SET 2/3", where it does not fit "5/13"; outside repeats the step's label
+        var lab = cn;
+        if (cn.length() == 0) { lab = W.shown(); }
+        else if (k != null && k > 0 && dc.getTextWidthInPixels(cn, XT) > (lm < (S * 0.62).toNumber() ? lm : (S * 0.62).toNumber())) { lab = cn.substring(0, k) as String; }
+        put(dc, c, ly, XT, lab, (S * 0.62).toNumber(), W.hard[i] ? P.acc : P.lbl, true, R0);
+        // the target and the time left in the step: one line, one font
+        var tw = R.tgt.toString() + " W", tl = clock(W.left(R.t)), sp = S * 0.06, fs = [ME, SM, XT], f2 = XT, y2 = 0.0;
+        for (var j = 0; j < fs.size(); j++) {
+            f2 = fs[j]; y2 = below(dc, ly + dn(dc, XT, lab), f2, 0);
+            if (dc.getTextWidthInPixels(tw, f2) + sp + dc.getTextWidthInPixels(tl, f2) <= roomC(dc, c, y2, f2, tw + tl, R0) && inkH(dc, f2) <= S * 0.12) { break; }
+        }
+        var w1 = dc.getTextWidthInPixels(tw, f2), x0 = c - (w1 + sp + dc.getTextWidthInPixels(tl, f2)) / 2.0;
+        txtL(dc, x0, y2, f2, tw, run ? P.acc : P.dim); txtL(dc, x0 + w1 + sp, y2, f2, tl, P.fg);
+        // the bottom: the time left of the workout (where two lines fit), NEXT above it
+        var by = S * 0.84, nw = W.nextW(), nx = "LAST STEP", tot = clock(W.totLeft(R.t)), ny = by;
+        if (nw >= 0) { var nd = clock(W.dur[i + 1]), ns = nw.toString() + " W"; nx = "NEXT " + ns + ", " + nd + "|" + ns + ", " + nd + "|" + ns; }
+        if (inkH(dc, XT) <= S * 0.08) { put(dc, c, by, XT, tot + " LEFT|" + tot, S, P.lbl, false, R0); ny = above(dc, by - up(dc, XT), XT, "g", S); }
+        put(dc, c, ny, XT, nx, S, P.fg, false, R0);
+        // the magnifying glass between them
+        var top = y2 + dn(dc, f2, "0") + 3 * G, bot = ny - up(dc, XT) - 2 * G;
+        if (bot - top < S * 0.06) { return; }
+        var hw = half(S, top, bot, 0.44), mw = 2 * hw * 0.32, sw = (2 * hw - mw) / 2.0, g = pw(S * 0.008), fr = [0.36, 0.27, 0.21, 0.16] as Array<Float>;
+        var mx = 1;
+        for (var q = i - 4; q <= i + 4; q++) { if (q < 0 || q >= n) { continue; } var a = W.plat(q, 0), b = W.plat(q, W.dur[q]); if (a > mx) { mx = a; } if (b > mx) { mx = b; } }
+        for (var d = -4; d <= 4; d++) {
+            var q = i + d, ad = d < 0 ? -d : d;
+            if (q < 0 || q >= n) { continue; }
+            var xa = c - mw / 2.0, xb = c + mw / 2.0;
+            if (d != 0) { var o = mw / 2.0; for (var j = 1; j < ad; j++) { o += sw * fr[j - 1]; } var wd = sw * fr[ad - 1]; xa = d < 0 ? c - o - wd : c + o; xb = xa + wd; }
+            xa += g / 2.0; xb -= g / 2.0;
+            var ha = trH(top, bot, W.plat(q, 0), mx), hb = trH(top, bot, W.plat(q, W.dur[q]), mx), col = kindCol(P, W.kd[q]);
+            if (d != 0) { dc.setColor(d < 0 ? P.faint : col, Graphics.COLOR_TRANSPARENT); dc.fillPolygon([[xa, bot], [xa, bot - ha], [xb, bot - hb], [xb, bot]]); continue; }
+            var into = R.t - W.s0, f = into <= 0 ? 0.0 : (into >= W.dur[q] ? 1.0 : into * 1.0 / W.dur[q]), xs = xa + (xb - xa) * f, hs = trH(top, bot, W.plat(q, into), mx);
+            if (xs - xa >= 1) { dc.setColor(P.faint, Graphics.COLOR_TRANSPARENT); dc.fillPolygon([[xa, bot], [xa, bot - ha], [xs, bot - hs], [xs, bot]]); }
+            if (xb - xs >= 1) { dc.setColor(run ? col : P.dim, Graphics.COLOR_TRANSPARENT); dc.fillPolygon([[xs, bot], [xs, bot - hs], [xb, bot - hb], [xb, bot]]); }
+            dc.setColor(P.fg, Graphics.COLOR_TRANSPARENT); dc.setPenWidth(pw(S * 0.008)); dc.drawLine(xs, top, xs, bot); dc.setPenWidth(1);
+            tri(dc, xs, top, S * 0.018, false, P.fg);
+        }
+    }
+    // a block's height for w watts (the highest shown = the whole height top .. bot), at least 2 px
+    function trH(top, bot, w as Number, mx as Number) as Float { var h = (bot - top) * w / mx.toFloat(); return h > 2 ? h.toFloat() : 2.0; }
+    // 28.11.: the body page (how is my body doing): the ride's time, the heart rate big with the heart, its average and max, then cadence,
+    // average power and kJ in a row
+    function trBody(dc as Dc, F as Flow, S as Number, P as Palette, now as Number) as Void {
+        var R = F.tr;
+        if (R == null) { return; }
+        var L = F.link, c = S / 2, G = gap(S);
+        var ct = clock(R.t), tf = fontIn(dc, ct, [NMI, ME, SM, XT], (S * 0.44).toNumber(), S * 0.1), ty = S * 0.15 > up(dc, tf) + S * 0.085 ? S * 0.15 : up(dc, tf) + S * 0.085;
+        put(dc, c, ty, tf, ct, S, P.fg, false, R0);
+        var ly = below(dc, ty + dn(dc, tf, "0"), XT, 0); put(dc, c, ly, XT, "RIDE TIME|TIME", S, P.lbl, false, R0);
+        // the row at the bottom: the largest font whose numbers and labels fit the circle
+        var v = [L.hasCad(now) ? L.liveCad(now).toString() : "--", R.avgPw().toString(), rnd(R.kj).toString()] as Array<String>, fs = [ME, SM, XT];
+        var l = ["RPM", "AVG W", "KJ"] as Array<String>, vf = XT, vy = 0.0, vl = 0.0, dx = -1.0;
+        for (var pass = 0; pass < 2 && dx < 0; pass++) {
+            if (pass == 1) { l = ["RPM", "W", "KJ"] as Array<String>; }
+            for (var i = 0; i < fs.size() && dx < 0; i++) {
+                vf = fs[i]; vy = S * 0.68; vl = below(dc, vy + dn(dc, vf, "0"), XT, 0);
+                if (vl + dn(dc, XT, "G") > S * 0.9) { vy = vy - (vl + dn(dc, XT, "G") - S * 0.9); vl = below(dc, vy + dn(dc, vf, "0"), XT, 0); }
+                dx = colDx(dc, S, v, l, vf, vy, vl, S * 0.03);
+            }
+        }
+        if (dx < 0) { dx = S * 0.2; }
+        for (var j = 0; j < 3; j++) { txt(dc, c + (j - 1) * dx, vy, vf, v[j], P.fg); txt(dc, c + (j - 1) * dx, vl, XT, l[j], P.lbl); }
+        // the average and max heart rate above the row, the heart rate big between
+        var am = R.hrN > 0 ? rnd(R.hrSum.toFloat() / R.hrN) : 0, at = "AVG " + orDash(am) + ", MAX " + orDash(R.hrMax) + "|" + orDash(am) + " / " + orDash(R.hrMax);
+        var ay = above(dc, vy - up(dc, vf) - G, XT, "g", S); put(dc, c, ay, XT, at, S, P.lbl, false, R0);
+        var top = ly + dn(dc, XT, "T") + G, bt = ay - up(dc, XT) - G, h = F.hr > 0 ? F.hr.toString() : "--", hx = c + S * 0.04;
+        var hf = numIn(dc, [h], [NTH, NHO, NME, NMI], [(S * 0.5).toNumber()], [hx], top, bt, R0), hy = numY(dc, hf, top, bt), hs = S * 0.06;
+        txt(dc, hx, hy, hf, h, P.fg);
+        heart(dc, hx - dc.getTextWidthInPixels(h, hf) / 2.0 - G - hs * 0.7, hy, hs, F.hr > 0 ? P.hr : P.dim);
     }
     // 27.11.: the trainer's choice: a free ride (one target) or a workout (its length under it); while connecting it says so
     function drawTPick(dc as Dc, F as Flow, S as Number, P as Palette) as Void {
@@ -1159,11 +1299,12 @@ module Draw {
             return;
         }
     }
-    // BACK on the ride: Resume, Stats page, Finish & save, Discard (with a confirm step)
+    // BACK on the ride (28.11.: "it must be obvious this is a menu and not a pause"): RIDE MENU, the line under the rows says the ride goes
+    // on ("Riding 12:34, 180 W", green; "Paused 12:34", orange); Back to ride (Resume when paused), Finish & save, Discard (asks once more)
     function drawTEnd(dc as Dc, F as Flow, S as Number, P as Palette) as Void {
         var R = F.tr, ex = [] as Array;
-        if (R != null) { var a = clock(R.t) + ", " + R.tgt.toString() + " W"; ex = [[a + (R.st != RS_RUN ? ", paused" : "") + "|" + a, P.lbl, false]] as Array; }
-        list(dc, F, S, P, F.listItems(), F.tConf ? "DISCARD RIDE?" : "INDOOR TRAINER", F.tConf ? "DISCARD?" : "TRAINER", true, null, null, ex);
+        if (R != null) { var run = R.st == RS_RUN, a = (run ? "Riding " : "Paused ") + clock(R.t); ex = [[a + ", " + R.tgt.toString() + " W|" + a, run ? P.good : P.acc, false]] as Array; }
+        list(dc, F, S, P, F.listItems(), F.tConf ? "DISCARD RIDE?" : "RIDE MENU", F.tConf ? "DISCARD?" : "MENU", true, null, null, ex);
     }
     function drawTSum(dc as Dc, F as Flow, S as Number, P as Palette) as Void {
         var s = F.tsum, c = S / 2, G = gap(S);

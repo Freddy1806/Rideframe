@@ -2,7 +2,7 @@
 // workout name, heart rate 188, 1:23:45, 4-digit power, pace 12:34 ...), as js/watchflow.js states for js/watchscreens.js.
 // Used by tools/watch-layout.mjs (the layout check on all five watches) and tools/watch-sheets.cjs (the contact sheets).
 import { newFlow, handle, SCR, setRoutes, setRoute, startPlan, newRec, saveOffer, END_ROWS } from '../js/watchflow.js';
-import { newLink, newRide, newWk, wkAt } from '../js/watchtrainer.js';
+import { newLink, newRide, newWk, wkAt, wkFallback } from '../js/watchtrainer.js';
 
 export const NOW = 1700000000;
 const LONG_W = 'Push day with a very long name';
@@ -42,7 +42,7 @@ const routeOf = () => { const pts = []; for (let i = 0; i <= 40; i++) { const a 
 function trainer(st, o = {}) {
   const F = mk({ last: 'trainer' }); F.hr = 188; F.hrAt = NOW; const L = F.link = newLink('');
   L.list = [{ name: 'KICKR CORE 2 5A1F', ftms: true }, { name: 'Assioma DUO power meter', ftms: false }, { name: 'Tacx Neo 2T', ftms: true }];
-  L.st = st; L.name = 'KICKR CORE 2 5A1F'; L.ctl = o.ctl !== false; L.ever = !!o.ever; L.pw = 1250; L.cad = 120; L.at = NOW;
+  L.st = st; L.name = 'KICKR CORE 2 5A1F'; L.ctl = o.ctl !== false; L.ever = !!o.ever; L.pw = 1250; L.cad = 120; L.at = NOW; L.cadAt = o.noCad ? -1e9 : NOW;
   if (o.empty) L.list = [];
   F.scr = SCR.TSCAN; F.sel = 0;
   return F;
@@ -58,7 +58,7 @@ const LONG_RIDE = 'Threshold over-unders XL';
 const WKDEF = { id: 'wx', n: LONG_RIDE, s: [[3000, 100, 250, 0, 'Warm-up'], [3, [[13, [[600, 1250, null, 1, '30/15'], [600, 1125, null, 0, 'Recovery spin']], 1], [600, 130, null, 0, 'Rest']], 1], [600, 1250, 999, 0, 'Cool-down']] };
 function wkRide(o = {}) {
   const F = ride(o), W = F.wk = newWk(WKDEF); W.ha = o.ha ?? 25; W.ea = o.ea ?? 0;
-  const t = o.last ? W.tot - 300 : o.at ?? W.tot - 1200 + 1; wkAt(W, t); F.tr.t = t; F.tr.tgt = o.tgt || 1275;
+  const t = o.last ? W.tot - 300 : o.at ?? W.tot - 1200 + 1; wkAt(W, t); F.tr.t = t; F.tr.tgt = o.tgt || 1275; F.tr.pg = o.pg || 0;
   return F;
 }
 
@@ -129,8 +129,13 @@ export const SCENES = [
   ['trec', 'Trainer ride: 1000 W target', () => ({ F: ride() })],
   ['trec-paused', 'Trainer ride: paused, no ERG', () => ({ F: ride({ paused: true, ctl: false }) })],
   ['trec-wheel', 'Trainer ride: wheel on the target', () => { const F = ride({ tgt: 975 }); return { F, ui: W(0, SCR.TREC) }; }],
-  ['trec-stats', 'Trainer ride: stats page', () => ({ F: ride({ pg: 1 }) })],
-  ['tend', 'Trainer menu', () => { const F = ride({ paused: true }); F.scr = SCR.TEND; F.sel = 1; return { F }; }],
+  ['trec-body', 'Trainer ride: body page (free ride: page 2 of 3)', () => ({ F: ride({ pg: 1 }) })],
+  ['trec-stats', 'Trainer ride: stats page (the last)', () => ({ F: ride({ pg: 2 }) })],
+  ['trec-nocad', 'Trainer ride: no cadence from the trainer (--)', () => ({ F: ride({ noCad: true }) })],
+  ['trec-body-nocad', 'Body page: no cadence, no heart rate', () => { const F = ride({ pg: 1, noCad: true }); F.hr = 0; F.tr.hrN = 0; F.tr.hrMax = 0; return { F }; }],
+  ['trec-only', 'Trainer ride: only the target page (phone config), a workout', () => { const F = wkRide(); F.cfg = { ...F.cfg, tp: [] }; return { F }; }],
+  ['tend', 'Trainer menu, paused', () => { const F = ride({ paused: true }); F.scr = SCR.TEND; F.sel = 1; return { F }; }],
+  ['tend-run', 'Trainer menu, the ride goes on', () => { const F = ride(); F.scr = SCR.TEND; F.sel = 0; return { F }; }],
   ['tend-conf', 'Trainer: discard ride?', () => { const F = ride(); F.scr = SCR.TEND; F.tConf = true; F.sel = 1; return { F }; }],
   ['thr', 'Trainer: heart rate found', () => { const F = trainer('ready'); F.scr = SCR.THR; return { F }; }],
   ['thr-none', 'Trainer: no heart rate yet', () => { const F = trainer('ready'); F.hr = 0; F.scr = SCR.THR; return { F }; }],
@@ -145,6 +150,18 @@ export const SCENES = [
   ['trec-wk-paused', 'Workout: paused', () => ({ F: wkRide({ paused: true }) })],
   ['trec-wk-wheel', 'Workout: wheel on the target', () => { const F = wkRide(); return { F, ui: W(0, SCR.TREC) }; }],
   ['trec-wk-done', 'Workout done, free ERG', () => { const F = ride({ tgt: 100 }); F.wkDone = NOW + 20; return { F }; }],
+  ['trec-wk-ramp', 'Workout: the warm-up ramp, a long label above, "100 TO 250 W" under the target', () => { const F = wkRide({ at: 1500, tgt: 1175 }); F.wk.lab[0] = 'Long warm-up ramp'; return { F }; }],
+  ['trec-wk-ramp-adj', 'Workout: a ramp with an offset: "110 TO 260 W, +10 W"', () => { const F = wkRide({ at: 1500, tgt: 1185 }); F.wk.ea = 10; return { F }; }],
+  ['trec-wk-step25', 'Workout: step 25 (the buttons say -25 / +25), offset -150 W', () => { const F = wkRide({ at: 3000 + 600 + 1, ea: -150, tgt: 975 }); F.tr.step = 25; return { F }; }],
+  ['trec-wk-page', 'Workout page: 13/13, SET 3/3, the magnifying glass', () => ({ F: wkRide({ pg: 1 }) })],
+  ['trec-wk-page-ramp', 'Workout page: in the warm-up ramp (first step)', () => ({ F: wkRide({ pg: 1, at: 1000, tgt: 150 }) })],
+  ['trec-wk-page-easy', 'Workout page: recovery, 1:23:45 left', () => { const F = wkRide({ pg: 1, at: 3000 + 600 + 1, ea: -150, tgt: 975 }); F.wk.tot = 5025 + 3601; return { F }; }],
+  ['trec-wk-page-last', 'Workout page: the last step (cool-down ramp)', () => ({ F: wkRide({ pg: 1, last: true, tgt: 1000 }) })],
+  ['trec-wk-page-paused', 'Workout page: paused', () => ({ F: wkRide({ pg: 1, paused: true }) })],
+  ['trec-wk-body', 'Workout: body page', () => ({ F: wkRide({ pg: 2 }) })],
+  ['trec-wk-stats', 'Workout: stats page (page 4 of 4)', () => ({ F: wkRide({ pg: 3 }) })],
+  ['trec-fb-page', 'Built-in 30/15: workout page in the openers', () => { const F = ride(); const W = F.wk = newWk(wkFallback(250)); const t = 480 + 180 + 120 + 30 + 20; wkAt(W, t); F.tr.t = t; F.tr.tgt = 130; F.tr.pg = 1; return { F }; }],
+  ['trec-fb-build', 'Built-in 30/15: the build ramp on the target page', () => { const F = ride(); const W = F.wk = newWk(wkFallback(250)); const t = 480 + 90; wkAt(W, t); F.tr.t = t; F.tr.tgt = 213; F.tr.step = 5; return { F }; }],
   ['tsum', 'Trainer saved', () => { const F = mk(); F.scr = SCR.TSUM; F.tsum = { t: 5025, avgPw: 1250, maxPw: 1888, kj: 6281, cad: 120, hr: 188, maxHr: 199, name: 'KICKR' }; return { F }; }],
   ['pr-flash', 'New record flash', () => { const F = onSet('incline', { kg: 102.5, reps: 100 }); F.flash = { k: 'pr', until: NOW + 3, kg: 102.5, reps: 100, t: 'w' }; return { F }; }],
   ['lap-flash', 'Lap flash', () => { const F = rec('run'); F.flash = { k: 'lap', n: 188, t: 5025, d: 1000, until: NOW + 5 }; return { F }; }],

@@ -32,11 +32,18 @@ export const TOP = [['bench', 'Bench press', 'w'], ['incline', 'Incline bench pr
   ['dead', 'Deadlift', 'w'], ['rdl', 'Romanian deadlift', 'w'], ['lunge', 'Lunges', 'w'], ['legcurl', 'Leg curl', 'w'], ['calf', 'Calf raise', 'w'], ['curl', 'Biceps curl', 'w'],
   ['tri', 'Triceps pushdown', 'w'], ['lateral', 'Lateral raise', 'w'], ['plank', 'Plank', 'time']].map(([id, n, t]) => ({ id, n, t }));
 
+/** 28.11.: the indoor trainer's pages after the target page (always first, the overview: time left in the step, target and actual watts,
+ *  cadence, heart rate): id -> [name, the rider's question it answers]. The config keeps the ones switched on, in their order
+ *  ({ trainer: { pages: [...] } }, the watch's compact form "tp"); a config without it (an older phone or server) = all three. */
+export const TRAINER_PAGES = { wk: ['Workout', 'Where am I in the workout, what comes next, how long is left? (only while a workout runs)'],
+  body: ['Body', 'How is my body doing: heart rate big, its average and max, cadence, average power, kJ, ride time'],
+  stats: ['Stats', 'How did this block and the whole ride go: time and average at this target, ride averages, max, NP'] };
+export const TRAINER_DEF = ['wk', 'body', 'stats'];
 const sport = (pages, x = {}) => ({ pages: pages.map(fields => ({ fields })), map: true, segWarn: true, autoLap: true, autoPause: false, vibrate: true, ...x });
 /** what the watch uses while nothing is stored */
 export function defaults() {
   return { v: 1, sports: { run: sport([['pace', 'dist', 'time', 'hr'], ['lapPace', 'lapDist', 'avgPace', 'hrZone']]), ride: sport([['power3s', 'speed', 'hr', 'time'], ['dist', 'climb', 'avgPower', 'cadence']], { autoPause: true }),
-    other: { pages: [{ fields: ['hr', 'time', 'clock', 'kcal'] }] } }, more: ['Walk', 'Hike', 'Yoga', 'Workout'], workouts: [] };
+    other: { pages: [{ fields: ['hr', 'time', 'clock', 'kcal'] }] } }, more: ['Walk', 'Hike', 'Yoga', 'Workout'], workouts: [], trainer: { pages: TRAINER_DEF.slice() } };
 }
 
 /* ---- the strict check: everything the phone may PUT, nothing else ---- */
@@ -57,7 +64,7 @@ function pages(v, sp, where) {
 export function validate(c) {
   try {
     if (!isObj(c)) throw new Error('Config must be an object.');
-    keysOk(c, ['v', 'sports', 'more', 'workouts'], 'config');
+    keysOk(c, ['v', 'sports', 'more', 'workouts', 'trainer'], 'config');
     if (c.v !== 1) throw new Error('v: 1.');
     if (!isObj(c.sports)) throw new Error('sports: an object.'); keysOk(c.sports, SPORTS, 'sports');
     const out = { v: 1, sports: {}, more: [], workouts: [] }, D = defaults();
@@ -84,6 +91,13 @@ export function validate(c) {
           if (typeof it.ex !== 'string' || !/^[\w-]{1,64}$/.test(it.ex)) throw new Error(`${v}.ex: an exercise id.`);
           return { ex: it.ex, sets: int(it.sets, LIM.sets, v + '.sets'), reps: int(it.reps, LIM.reps, v + '.reps'), kg: int(it.kg, LIM.kg, v + '.kg', .25), rest: int(it.rest, LIM.rest, v + '.rest', 5) }; }) }; });
     }
+    if (c.trainer !== undefined) { // 28.11.: the trainer's pages, on and in order (none = only the target page)
+      if (!isObj(c.trainer)) throw new Error('trainer: an object.'); keysOk(c.trainer, ['pages'], 'trainer');
+      const p = c.trainer.pages; if (!Array.isArray(p) || p.length > TRAINER_DEF.length) throw new Error(`trainer.pages: up to ${TRAINER_DEF.length} pages.`);
+      for (const x of p) if (typeof x !== 'string' || !TRAINER_DEF.includes(x)) throw new Error(`trainer.pages: "${String(x).slice(0, 20)}" is not a trainer page.`);
+      if (new Set(p).size !== p.length) throw new Error('trainer.pages: a page twice.');
+      out.trainer = { pages: p.slice() };
+    }
     if (JSON.stringify(out).length > MAX_BYTES) throw new Error('Config too large.');
     return { cfg: out };
   } catch (e) { return { error: e.message }; }
@@ -93,7 +107,7 @@ export function validate(c) {
  *  names = exercise id -> short name, for the workouts (the watch also gets them with the strength setup) */
 export function compact(cfg, names = null) {
   const c = validate(cfg).cfg || defaults(), b = v => v ? 1 : 0, sp = s => ({ p: s.pages.map(p => p.fields), map: b(s.map), seg: b(s.segWarn), lap: b(s.autoLap), pause: b(s.autoPause), vib: b(s.vibrate) });
-  return { v: 1, run: sp(c.sports.run), ride: sp(c.sports.ride), other: { p: c.sports.other.pages.map(p => p.fields) }, more: c.more.map(t => [t, labelOf(t)]),
+  return { v: 1, run: sp(c.sports.run), ride: sp(c.sports.ride), other: { p: c.sports.other.pages.map(p => p.fields) }, more: c.more.map(t => [t, labelOf(t)]), tp: (c.trainer ? c.trainer.pages : TRAINER_DEF).slice(),
     w: c.workouts.filter(w => w.items.length).map(w => ({ id: w.id, n: w.name, it: w.items.map(i => names ? [i.ex, i.sets, i.reps, i.kg, i.rest, names(i.ex)] : [i.ex, i.sets, i.reps, i.kg, i.rest]) })) };
 }
 

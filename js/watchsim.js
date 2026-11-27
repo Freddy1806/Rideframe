@@ -11,7 +11,7 @@
 // no strength ready screen: Strength on the start menu opens the choice / the exercise list at once.
 // 23.11.7: the wheel (a finger dragged over kg / reps / the trainer's target steps it, the neighbours show small above and below), lists
 // track the finger 1:1 (dragRow), a drag is never also a tap or a swipe; the six standard workouts (watchflow STD_W) instead of demo ones.
-import { newFlow, handle, SCR, curEx, setNo, restLeft, clock, sent, paired, setSetup, setConfig, setRoute, setRoutes, routeFace, routeInfo, recPages, homeItems, listItems, workouts, planItem, HOME, HOME_FIT, HOME_LAY, homeTop, holdPart, pausedTime, HOLD_S,
+import { newFlow, handle, SCR, tPage, curEx, setNo, restLeft, clock, sent, paired, setSetup, setConfig, setRoute, setRoutes, routeFace, routeInfo, recPages, homeItems, listItems, workouts, planItem, HOME, HOME_FIT, HOME_LAY, homeTop, holdPart, pausedTime, HOLD_S,
   LIST_LAY, healthBody, DEMO_HEALTH, dragRow, pickRows, doneOf, prefillOf, lastSet, lastTxt, loading, VERSION, stepOf, WHEEL_STEP, WHEEL_SHOW, DRAG_MIN, setRides } from './watchflow.js';
 import { nextTarget } from './watchtrainer.js';
 import { compact, defaults, fieldText, labelOf, TOP } from './watchfields.js';
@@ -236,7 +236,7 @@ function touch(cv, f) {
 function dragMode(u, v, f) {
   if (F.flash) return null; const L = f.lay || LAY;
   if (F.scr === SCR.SET && v > .36 && v < .72) return ['wheel', curEx(F).t === 'time' || u >= .51 ? 1 : 0];
-  if (F.scr === SCR.TREC && F.tr && !F.tr.pg && v > L.t0 && v < L.t1) return ['wheel', 0];
+  if (F.scr === SCR.TREC && F.tr && tPage(F) === 'target' && v > L.t0 && v < L.t1) return ['wheel', 0];
   return scrollable() ? ['list', 0] : null;
 }
 /** the screens a dragged finger scrolls (FlowDelegate.scrollable) */
@@ -251,7 +251,7 @@ function tapAt(u, v, f) {
   if (F.flash) return ev('tap');
   if (s === SCR.SET) { if (v > .72 && Math.abs(u - .5) < .24) return ev('done'); if (v > .36 && v < .72) return ev('focus', u < .51 ? 0 : 1); return; } // DONE logs; a value takes the focus
   if (s === SCR.READY && F.sp !== 'other' && L.route > 0 && Math.abs(v - L.route) < .04) return ev('down'); // the route line
-  if (s === SCR.TREC) { if (F.tr && F.tr.pg) return ev('tap'); // the stats page: back to the ERG page
+  if (s === SCR.TREC) { if (F.tr && tPage(F) !== 'target') return ev('tap'); // another page: back to the target page
     if (v > L.t0 && v < L.t1) return ev('item', u < .31 ? 0 : u > .69 ? 1 : 2); // - / + (the whole side) and the target (step size)
     if (v > .78 && F.tr && F.tr.st !== 'run') return ev('start'); return; } // the resume pill
   if (s === SCR.THR || s === SCR.TSCAN && !tList()) return ev('tap');

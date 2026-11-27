@@ -56,6 +56,9 @@ class TLink {
     var crRevs as Number = -1;    // the last crank revolutions (Cycling Power), -1 = none
     var crT as Number = 0;
     var crAt as Number = 0;
+    var cadAt as Number = -1000000; // 28.11.: the last second a cadence value came (hasCad), from Indoor Bike Data (icAt: one above 0) or the crank (ccAt)
+    var icAt as Number = -1000000;
+    var ccAt as Number = -1000000;
     var t0 as Number = 0;
     var setAt as Number = 0;
     var lostAt as Number = 0;
@@ -80,6 +83,8 @@ class TLink {
     // js: live(L, now): power and cadence, 0 when the trainer has been silent
     function livePw(now as Number) as Number { return now - at > T_DATA_S ? 0 : pw; }
     function liveCad(now as Number) as Number { return now - at > T_DATA_S ? 0 : cad; }
+    // js: hasCad(L, now) (28.11.): a cadence came in the last T_DATA_S s; without one the screens show "--"
+    function hasCad(now as Number) as Boolean { return now - cadAt <= T_DATA_S; }
     // js: shown(L): TL_LOST also for connecting again after it had worked; TL_SETUP shows as TL_CONN
     function shown() as Number {
         if (ever && (st == TL_LOST || st == TL_CONN || st == TL_SETUP)) { return TL_LOST; }
@@ -104,7 +109,12 @@ class TLink {
     function setup(e as Dictionary, now as Number) as Void {
         st = TL_SETUP; setAt = now; sent = -1; ctl = false; op = null; crRevs = -1;
         mode = e["ftms"] == true ? TM_FTMS : (e["wahoo"] == true ? TM_WAHOO : TM_PM);
-        if (mode == TM_FTMS) { q = [step("cccd", "ibd", [1, 0]), step("cccd", "fcp", [2, 0]), step("write", "fcp", [0x00]), step("write", "fcp", [0x07])] as Array<Dictionary>; }
+        // 28.11.: an FTMS trainer with Cycling Power: its measurement too (after control), for the crank revolutions (a KICKR may send no
+        // cadence, or 0, in Indoor Bike Data); a failed subscription is no data from it
+        if (mode == TM_FTMS) {
+            q = [step("cccd", "ibd", [1, 0]), step("cccd", "fcp", [2, 0]), step("write", "fcp", [0x00]), step("write", "fcp", [0x07])] as Array<Dictionary>;
+            if (e["cps"] == true) { q.add(step("cccd", "cpm", [1, 0])); }
+        }
         else if (mode == TM_WAHOO) { q = [step("cccd", "cpm", [1, 0]), step("cccd", "wcp", [2, 0]), step("write", "wcp", [0x20, 0xEE, 0xFC])] as Array<Dictionary>; }
         else { q = [step("cccd", "cpm", [1, 0])] as Array<Dictionary>; }
         pump(now);
@@ -204,7 +214,10 @@ class TLink {
         var f = u16(v, 0), o = 2;
         if ((f & 0x0001) == 0) { o += 2; }                         // instantaneous speed
         if ((f & 0x0002) != 0) { o += 2; }                         // average speed
-        if ((f & 0x0004) != 0) { if (o + 1 < n) { cad = (u16(v, o) + 1) / 2; } o += 2; } // cadence, 0.5 rpm
+        if ((f & 0x0004) != 0) { // cadence, 0.5 rpm; a 0 does not hide the crank's
+            if (o + 1 < n) { var c = (u16(v, o) + 1) / 2; if (c > 0 || now - ccAt > T_DATA_S) { cad = c; } if (c > 0) { icAt = now; } cadAt = now; }
+            o += 2;
+        }
         if ((f & 0x0008) != 0) { o += 2; }
         if ((f & 0x0010) != 0) { o += 3; }
         if ((f & 0x0020) != 0) { o += 2; }
@@ -216,15 +229,16 @@ class TLink {
         var n = v.size();
         if (n < 4) { return; }
         var f = u16(v, 0), p = s16(v, 2), o = 4;
-        pw = p > 0 ? p : 0;
+        if (mode != TM_FTMS) { pw = p > 0 ? p : 0; } // 28.11.: an FTMS trainer's power comes from Indoor Bike Data, here only its cadence
         if ((f & 0x01) != 0) { o += 1; }
         if ((f & 0x04) != 0) { o += 2; }
         if ((f & 0x10) != 0) { o += 6; }
-        if ((f & 0x20) != 0 && o + 3 < n) {
-            var revs = u16(v, o), t = u16(v, o + 2);
+        if ((f & 0x20) != 0 && o + 3 < n) { // crank revolutions (uint16, wrap) and the last crank event (uint16, 1/1024 s, wrap)
+            var revs = u16(v, o), t = u16(v, o + 2), useIt = mode != TM_FTMS || now - icAt > T_DATA_S;
             if (crRevs >= 0) {
                 var dr = (revs - crRevs + 65536) % 65536, dt = ((t - crT + 65536) % 65536) / 1024.0;
-                if (dt > 0) { cad = rnd(dr / dt * 60.0); } else if (now - crAt > 2) { cad = 0; }
+                ccAt = now; if (useIt) { cadAt = now; }
+                if (dt > 0) { if (useIt) { cad = rnd(dr / dt * 60.0); } } else if (now - crAt > 2 && useIt) { cad = 0; }
             }
             if (crRevs < 0 || revs != crRevs) { crRevs = revs; crT = t; crAt = now; }
         }
@@ -242,7 +256,7 @@ class TRide {
     var t as Number = 0;           // seconds ridden (not paused)
     var tgt as Number = TW_START;
     var step as Number = 5;
-    var pg as Number = 0;          // 0 = ERG page, 1 = stats page
+    var pg as Number = 0;          // the page on screen, counted in Flow.tPages (28.11.: target, workout, body, stats)
     var pwSum as Number = 0;
     var pwMax as Number = 0;
     var cadSum as Number = 0;
@@ -334,6 +348,9 @@ const WK_RO = 5;
 const WK_EASY = 100;      // after the end: free ERG at the last step's end watts, at most 100 W
 const WK_FB_HARD = 370;   // the built-in 30 / 15's hard watts
 const WK_FB_ID = "c_30_15_3x13";
+const WK_WORK = 1;        // 28.11.: the step kinds (js WK_WORK, WK_WARM, WK_COOL; 0 = recovery)
+const WK_WARM = 2;
+const WK_COOL = 3;
 
 function wkNum(v) as Boolean { return v instanceof Number || v instanceof Float || v instanceof Double || v instanceof Long; }
 // js: wkDur(l): the length of entries in seconds, without expanding them (the TPICK sub line)
@@ -355,12 +372,13 @@ function wkDur(l) as Number {
     return t;
 }
 // js: wkFallback(ftp): the owner's 30 / 15 (js/workouts.js c_30_15_3x13), built in so it can be ridden before the first sync; the ramps
-// in % of the FTP sent last (else 250 W)
+// in % of the FTP sent last (else 250 W). 28.11.: the new warm-up (ramp 8 min 40 -> 75 %, build 3 min 75 -> 95 %, 2 min 130 W, openers
+// 20 s at 300 / 335 / 370 W with 70 s at 130 W between, 190 s 130 W; = js/workouts.js after the coach review)
 function wkFallback(ftp as Number) as Dictionary {
     var f = ftp > 0 ? ftp : 250;
     return { "id" => WK_FB_ID, "n" => "30/15, 3 x 13", "ri" => 3, "ro" => 2, "s" => [
-        [600, rnd(40.0 * f / 100), rnd(72.0 * f / 100), 0, "Warm-up"], [180, rnd(72.0 * f / 100), null, 0, "Warm-up"],
-        [3, [[10, 420, null, 1, "Sprint"], [50, 130, null, 0, "Spin"]], 1], [170, 130, null, 0, "Spin"],
+        [480, rnd(40.0 * f / 100), rnd(75.0 * f / 100), 0, "Warm-up"], [180, rnd(75.0 * f / 100), rnd(95.0 * f / 100), 0, "Build"], [120, 130, null, 0, "Spin"],
+        [20, 300, null, 1, "Opener"], [70, 130, null, 0, "Spin"], [20, 335, null, 1, "Opener"], [70, 130, null, 0, "Spin"], [20, WK_FB_HARD, null, 1, "Opener"], [190, 130, null, 0, "Spin"],
         [3, [[13, [[30, WK_FB_HARD, null, 1, "30/15"], [15, 125, null, 0, "Float"]], 1], [180, 130, null, 0, "Rest"]], 1],
         [600, rnd(50.0 * f / 100), rnd(35.0 * f / 100), 0, "Cool-down"]] } as Dictionary;
 }
@@ -379,7 +397,8 @@ class TWork {
     var w2 as Array<Number> = [] as Array<Number>;     // -1 = flat
     var hard as Array<Boolean> = [] as Array<Boolean>;
     var lab as Array<String> = [] as Array<String>;
-    var cnt as Array<String> = [] as Array<String>;    // "7/13, SET 2" inside repeats, else ""
+    var cnt as Array<String> = [] as Array<String>;    // "7/13, SET 2/3" inside repeats, else ""
+    var kd as Array<Number> = [] as Array<Number>;     // 28.11.: the step's kind (its colour): WK_WORK, WK_WARM, WK_COOL, else 0 (recovery)
     var ctx as Array<Array<Number>> = [] as Array<Array<Number>>;
     var tot as Number = 0;
     var i as Number = 0;          // the step now (dur.size() = over)
@@ -402,7 +421,7 @@ class TWork {
         var k = ctx.size();
         if (k == 0) { return ""; }
         var s = (ctx[k - 1][0] + 1).toString() + "/" + ctx[k - 1][1].toString();
-        if (k > 1) { s += ", SET " + (ctx[k - 2][0] + 1).toString(); }
+        if (k > 1) { s += ", SET " + (ctx[k - 2][0] + 1).toString() + "/" + ctx[k - 2][1].toString(); }
         return s;
     }
     // js: wkAdd(X, l, ctx)
@@ -426,10 +445,21 @@ class TWork {
                 if (sec < 1 || sec > 36000) { continue; }
                 var x2 = a.size() > 2 && wkNum(a[2]) ? numOf(a[2]) : -1, h = a.size() > 3 ? a[3] : null;
                 dur.add(sec); w.add(cl(numOf(a[1]))); w2.add(x2 < 0 ? -1 : cl(x2));
-                hard.add(h instanceof Boolean ? h as Boolean : numOf(h) == 1); lab.add(a.size() > 4 ? strOf(a[4]) : ""); cnt.add(cntOf());
+                hard.add(h instanceof Boolean ? h as Boolean : numOf(h) == 1); lab.add(a.size() > 4 ? strOf(a[4]) : ""); cnt.add(cntOf()); kd.add(kindOf(dur.size() - 1));
             }
         }
     }
+    // js: wkKind(X, i) (28.11.): the builder's step types: work (hard), warm-up (label or a ramp up), cool-down (label or a ramp down), else recovery
+    function kindOf(k as Number) as Number {
+        var l = lab[k].toLower();
+        if (hard[k]) { return WK_WORK; }
+        if (l.find("warm") != null) { return WK_WARM; }
+        if (l.find("cool") != null) { return WK_COOL; }
+        if (w2[k] >= 0) { return w2[k] > w[k] ? WK_WARM : WK_COOL; }
+        return 0;
+    }
+    // js: wkRamp(W) (28.11.): a ramp step now: [start, end] watts with the offset, else null
+    function ramp() as Array<Number> or Null { return i < dur.size() && w2[i] >= 0 ? [plat(i, 0), plat(i, dur[i])] as Array<Number> : null; }
     // js: wkBase(W, i, into): a ramp moves evenly from w to w2
     function base(k as Number, into as Number) as Number {
         var a = w[k], b = w2[k];

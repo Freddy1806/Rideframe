@@ -72,7 +72,7 @@ function smokeWalk(logger as Logger) as Boolean {
             steps++;
         }
     }
-    // 2. the indoor trainer: ride, the wheel on the target, the stats page, pause, its menu, Finish & save
+    // 2. the indoor trainer: ride, the wheel on the target, every page (28.11.: DOWN pages, held UP = + one step), pause, its menu, Finish & save
     var T = new Flow(setup, true, [], null, null, null, null), tn = 1700000000;
     SmokeKit.smokeEv(T, dc, P, seen, E_ITEM, tn, T.homeItems().indexOf("trainer"));
     SmokeKit.smokeTrainer(T, dc, P, seen, tn);
@@ -82,15 +82,35 @@ function smokeWalk(logger as Logger) as Boolean {
         tn++;
         SmokeKit.smokeEv(T, dc, P, seen, E_TICK, tn, System.getTimer());
         if (i % 5 == 0) { gWheel = 0; gWheelScr = T.scr; gWheelEnd = 0; SmokeKit.smokeEv(T, dc, P, seen, E_WHEEL, tn, [0, i % 10 == 0 ? 3 : -2]); gWheel = -1; }
-        if (i == 12) { SmokeKit.smokeEv(T, dc, P, seen, E_SWIPE_UP, tn, null); }   // the stats page
+        if (i == 10 || i == 11) { SmokeKit.smokeEv(T, dc, P, seen, E_DOWN, tn, null); } // the body page, the stats page
+        if (i == 12) { SmokeKit.smokeEv(T, dc, P, seen, E_SWIPE_UP, tn, null); }   // wraps to the target page
+        if (i == 13) { SmokeKit.smokeEv(T, dc, P, seen, E_UP, tn, null); SmokeKit.smokeEv(T, dc, P, seen, E_UP_HOLD, tn, null); SmokeKit.smokeEv(T, dc, P, seen, E_DOWN_HOLD, tn, null); }
         if (i == 14) { SmokeKit.smokeEv(T, dc, P, seen, E_TAP, tn, null); }        // back to the target
         if (i == 20) { SmokeKit.smokeEv(T, dc, P, seen, E_START, tn, null); }      // pause
         if (i == 24) { SmokeKit.smokeEv(T, dc, P, seen, E_BLE, tn, { "k" => "drop" }); }
         if (i == 28) { SmokeKit.smokeEv(T, dc, P, seen, E_START, tn, null); }      // resume
     }
-    SmokeKit.smokeEv(T, dc, P, seen, E_BACK, tn, null);                         // its menu
+    SmokeKit.smokeEv(T, dc, P, seen, E_BACK, tn, null);                         // its menu (the ride goes on)
+    Test.assertMessage(T.listItems()[0].equals("Back to ride"), "TEND: Back to ride");
     SmokeKit.smokeEv(T, dc, P, seen, E_ITEM, tn, T.listItems().indexOf("Finish & save"));
     SmokeKit.smokeEv(T, dc, P, seen, E_START, tn, null);
+    // 2b. 28.11.: the built-in 30 / 15: every page of a workout ride (target, workout, body, stats), the warm-up ramp and a step of the sets
+    var U = new Flow(setup, true, [], null, null, null, null), un = 1700000000;
+    SmokeKit.smokeEv(U, dc, P, seen, E_ITEM, un, U.homeItems().indexOf("trainer"));
+    SmokeKit.smokeTrainer(U, dc, P, seen, un);
+    for (var k = 0; k < 4 && U.scr != S_TREC; k++) {
+        if (U.scr == S_TPICK && U.sel == 0) { SmokeKit.smokeEv(U, dc, P, seen, E_DOWN, un, null); } // the workout under Free ride
+        SmokeKit.smokeEv(U, dc, P, seen, E_START, un, null);
+    }
+    Test.assertMessage(U.scr == S_TREC && U.tPages().size() == 4, "a workout ride with four pages");
+    for (var i = 0; i < 1300; i++) {
+        un++;
+        SmokeKit.smokeEv(U, dc, P, seen, E_TICK, un, System.getTimer());
+        if (i % 97 == 0) { SmokeKit.smokeEv(U, dc, P, seen, E_DOWN, un, null); }   // through the pages, wrapping
+    }
+    SmokeKit.smokeEv(U, dc, P, seen, E_MENU, un, null);
+    SmokeKit.smokeEv(U, dc, P, seen, E_ITEM, un, U.listItems().indexOf("Discard"));
+    SmokeKit.smokeEv(U, dc, P, seen, E_ITEM, un, 1);
     // 3. a run: ready, recording, pause, BACK held 3 s: saved, the summary
     var R = new Flow(setup, true, [], null, null, null, null), rn = 1700000000;
     SmokeKit.smokeEv(R, dc, P, seen, E_ITEM, rn, R.homeItems().indexOf("run"));
