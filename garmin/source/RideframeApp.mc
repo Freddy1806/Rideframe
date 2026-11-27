@@ -55,6 +55,8 @@ class RideframeApp extends Application.AppBase {
         var f = new Flow(Application.Storage.getValue("setup"), token != null, q instanceof Array ? q : [], Application.Storage.getValue("cfg"), Application.Storage.getValue("last"),
             Application.Storage.getValue("trainer"), Application.Storage.getValue("tgt"));
         flow = f; lastKey = f.last;
+        var rd = Application.Storage.getValue("rides"); // 27.11.: the trainer's workouts (GET /api/watch/rides), kept for the next start
+        if (rd instanceof Dictionary) { f.setRides((rd as Dictionary)["rides"], (rd as Dictionary)["ftp"]); }
         api = new Api();
         recorder = new Recorder(f);
         var aq = Application.Storage.getValue("aqueue");
@@ -211,12 +213,17 @@ class RideframeApp extends Application.AppBase {
     function refresh() as Void {
         api.setup(method(:onSetup));
         api.summary(method(:onSummary));
+        api.rides(method(:onRides));
         // the watch config: after pairing and at every start while the phone is reachable (else the cached one or the defaults)
         if (System.getDeviceSettings().phoneConnected) { api.config(method(:onConfig)); }
     }
     function onSetup(code as Number, data) as Void {
         if (code == 401) { unpair(); return; }
         if (code == 200 && data instanceof Dictionary) { flow.setSetup(data); store("setup", data as Dictionary); WatchUi.requestUpdate(); }
+    }
+    // 27.11.: { ftp, rides }: the trainer's workouts in watts, a Storage value of their own (the setup stays small)
+    function onRides(code as Number, data) as Void {
+        if (code == 200 && data instanceof Dictionary) { var d = data as Dictionary; flow.setRides(d["rides"], d["ftp"]); store("rides", d); WatchUi.requestUpdate(); }
     }
     function onSummary(code as Number, data) as Void {
         if (code == 200 && data instanceof Dictionary) { summary = data; store("summary", data as Dictionary); WatchUi.requestUpdate(); }

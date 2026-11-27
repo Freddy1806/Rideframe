@@ -15,12 +15,12 @@ const fl = (o = {}) => newFlow(null, { id: () => 'tr' + (++n), ...o });
 const radio = (F, K, now) => { for (let i = 0; i < 100 && F.link.act.length; i++) for (const a of F.link.act.splice(0)) for (const e of K.handle(a)) handle(F, 'ble', now, e); };
 const ev = (F, K, now, ...evs) => { for (const e of evs) { if (Array.isArray(e)) handle(F, e[0], now, e[1]); else handle(F, e, now); radio(F, K, now); } };
 const tgtWrites = K => K.writes.filter(w => w[0] === 'fcp' && w[1] === 0x05).map(w => w[2] + (w[3] << 8));
-/** HOME -> Indoor trainer -> the list -> START: connected; then START: riding at the start target */
+/** HOME -> Indoor trainer -> the list -> START: connected; then START, START (27.11.: the choice, Free ride on top): riding at the start target */
 function ride(o = {}, K = fakeKickr(o.k)) {
   const F = fl(o.f); ev(F, K, 1000, ['item', homeItems(F).indexOf('trainer')]);
   if (shown(F.link) === 'scan') ev(F, K, 1000, 'start');
   handle(F, 'tick', 1000 + OP_S + .5); radio(F, K, 1000 + OP_S + .5);
-  if (o.ride !== false) ev(F, K, 1005, 'start');
+  if (o.ride !== false) ev(F, K, 1005, 'start', 'start');
   return [F, K];
 }
 
@@ -34,14 +34,15 @@ test('scan list -> connect -> subscribe, request control, start -> the target go
   assert.deepEqual(K.writes, [['fcp', 0x00], ['fcp', 0x07]], 'request control, then start, one at a time');
   assert.equal(shown(F.link), 'ready', 'the 0x80 0x00 0x01 answer = control'); assert.ok(F.out.some(o => o.k === 'trainer'), 'the trainer is remembered');
   assert.equal(F.link.want, 'KICKR CORE 2 5A1F');
-  ev(F, K, 1003, 'start'); assert.equal(F.scr, SCR.TREC); assert.equal(F.tr.tgt, 100, 'default 100 W'); assert.deepEqual(tgtWrites(K), [100]); assert.equal(K.tgt, 100);
+  ev(F, K, 1003, 'start'); assert.equal(F.scr, SCR.TPICK, '27.11.: START: Free ride or a workout'); assert.equal(listItems(F)[0], 'Free ride (ERG)'); assert.equal(F.sel, 0);
+  ev(F, K, 1003, 'start'); assert.equal(F.scr, SCR.TREC); assert.equal(F.wk, null, 'a free ride'); assert.equal(F.tr.tgt, 100, 'default 100 W'); assert.deepEqual(tgtWrites(K), [100]); assert.equal(K.tgt, 100);
   assert.equal(F.last, 'trainer');
 });
 test('the trainer used last connects by itself; a cancel goes back to the list without connecting again', () => {
   const K = fakeKickr(), F = fl({ trainer: 'KICKR CORE 2 5A1F', tgt: 185 });
   ev(F, K, 1000, ['item', homeItems(F).indexOf('trainer')]); assert.equal(shown(F.link), 'ready', 'seen in the scan: connected at once');
   ev(F, K, 1001, 'back'); assert.equal(shown(F.link), 'scan'); assert.ok(!K.paired, 'let go'); assert.equal(F.link.want, '');
-  assert.deepEqual(listItems(F), ['KICKR CORE 2 5A1F'], 'listed, not connected'); ev(F, K, 1002, 'start', 'start'); assert.equal(F.tr.tgt, 185, 'the last target');
+  assert.deepEqual(listItems(F), ['KICKR CORE 2 5A1F'], 'listed, not connected'); ev(F, K, 1002, 'start', 'start', 'start'); assert.equal(F.tr.tgt, 185, 'the last target');
   const G = fl(); ev(G, K, 1000, ['item', homeItems(G).indexOf('trainer'), 'back']); ev(G, K, 1000, 'back'); assert.equal(G.scr, SCR.HOME, 'BACK on the list: home, scan off'); assert.ok(!K.scanning);
 });
 test('+ / - steps, step size 5 / 10 / 25 on a tap, held = 25 W, limits 30..1000', () => {
@@ -72,7 +73,7 @@ test('refused control (another app controls it): the state, ride anyway, retried
   assert.equal(shown(F.link), 'refused'); assert.equal(F.scr, SCR.TSCAN); assert.deepEqual(K.writes, [['fcp', 0], ['fcp', 7]], 'no target');
   const w0 = K.writes.length; handle(F, 'tick', 1004); radio(F, K, 1004); assert.equal(K.writes.length, w0, 'not before 5 s');
   handle(F, 'tick', 1005.5); radio(F, K, 1005.5); assert.deepEqual(K.writes.slice(w0), [['fcp', 0], ['fcp', 7]], 'asks for control again'); assert.equal(shown(F.link), 'refused');
-  ev(F, K, 1006, 'start'); assert.equal(F.scr, SCR.TREC, 'riding anyway (the power is still recorded)'); assert.deepEqual(tgtWrites(K), [], 'no target without control');
+  ev(F, K, 1006, 'start', 'start'); assert.equal(F.scr, SCR.TREC, 'riding anyway (the power is still recorded)'); assert.deepEqual(tgtWrites(K), [], 'no target without control');
   K.refuse = false; handle(F, 'tick', 1018); radio(F, K, 1018); assert.equal(shown(F.link), 'ready'); assert.equal(K.tgt, 100, 'the target once control is back');
   // refused mid-ride: the answer to a target is 0x05
   K.refuse = true; ev(F, K, 1020, 'up'); assert.equal(shown(F.link), 'refused'); K.refuse = false; handle(F, 'tick', 1020 + CTL_S); radio(F, K, 1026); handle(F, 'tick', 1027); radio(F, K, 1027);

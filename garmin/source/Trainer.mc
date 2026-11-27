@@ -320,3 +320,160 @@ class TRide {
                  "s" => { "dt" => dt, "pw" => sPw, "cad" => sCad, "hr" => sHr, "tgt" => sTgt } };
     }
 }
+
+// 27.11.: a structured workout in ERG (js/watchtrainer.js newWk ... wkNextW, one function per function). The server sends the ride
+// workouts (GET /api/watch/rides, Storage "rides") in watts: { "id", "n", "s" => [entry], "ri"?, "ro"? }; an entry is a step
+// [sec, watts, wattsEnd (ramp) or null, hard (1 / 0), label] or a repeat [n, [entry ...], trim] (trim 1: the last round leaves out its last
+// entry). One workout is expanded when it starts (at most WK_STEPS steps) and stepped through by the ride's own clock (TRide.t).
+const WK_STEPS = 400;
+const WK_ADJ = 150;       // the offsets stay inside -150 .. +150 W
+const WK_FLOOR = 50;      // an offset never takes a target below 50 W
+const WK_SHORT = 60;      // hard steps up to 60 s get no ramp in / out (30 / 15, sprints): the target jumps
+const WK_RI = 10;         // a flat easy step ramps into a long hard one over its last 10 s, out of it over its first 5 s
+const WK_RO = 5;
+const WK_EASY = 100;      // after the end: free ERG at the last step's end watts, at most 100 W
+const WK_FB_HARD = 370;   // the built-in 30 / 15's hard watts
+const WK_FB_ID = "c_30_15_3x13";
+
+function wkNum(v) as Boolean { return v instanceof Number || v instanceof Float || v instanceof Double || v instanceof Long; }
+// js: wkDur(l): the length of entries in seconds, without expanding them (the TPICK sub line)
+function wkDur(l) as Number {
+    var t = 0;
+    if (!(l instanceof Array)) { return 0; }
+    var a = l as Array;
+    for (var j = 0; j < a.size(); j++) {
+        var e = a[j];
+        if (!(e instanceof Array)) { continue; }
+        var x = e as Array;
+        if (x.size() < 2) { continue; }
+        if (wkNum(x[0]) && x[1] instanceof Array) {
+            var n = numOf(x[0]), sub = x[1] as Array;
+            n = n < 0 ? 0 : (n > 100 ? 100 : n);
+            if (n > 0) { t += n * wkDur(sub); if (x.size() > 2 && numOf(x[2]) == 1 && sub.size() > 0) { t -= wkDur([sub[sub.size() - 1]] as Array); } }
+        } else if (wkNum(x[1])) { var s = numOf(x[0]); if (s >= 1 && s <= 36000) { t += s; } }
+    }
+    return t;
+}
+// js: wkFallback(ftp): the owner's 30 / 15 (js/workouts.js c_30_15_3x13), built in so it can be ridden before the first sync; the ramps
+// in % of the FTP sent last (else 250 W)
+function wkFallback(ftp as Number) as Dictionary {
+    var f = ftp > 0 ? ftp : 250;
+    return { "id" => WK_FB_ID, "n" => "30/15, 3 x 13", "ri" => 3, "ro" => 2, "s" => [
+        [600, rnd(40.0 * f / 100), rnd(72.0 * f / 100), 0, "Warm-up"], [180, rnd(72.0 * f / 100), null, 0, "Warm-up"],
+        [3, [[10, 420, null, 1, "Sprint"], [50, 130, null, 0, "Spin"]], 1], [170, 130, null, 0, "Spin"],
+        [3, [[13, [[30, WK_FB_HARD, null, 1, "30/15"], [15, 125, null, 0, "Float"]], 1], [180, 130, null, 0, "Rest"]], 1],
+        [600, rnd(50.0 * f / 100), rnd(35.0 * f / 100), 0, "Cool-down"]] } as Dictionary;
+}
+// js: newWk(def): null when it has no step
+function newWk(def) as TWork or Null {
+    if (!(def instanceof Dictionary)) { return null; }
+    var W = new TWork(def as Dictionary);
+    return W.dur.size() > 0 ? W : null;
+}
+
+class TWork {
+    var id as String = "";
+    var n as String = "";
+    var dur as Array<Number> = [] as Array<Number>;
+    var w as Array<Number> = [] as Array<Number>;
+    var w2 as Array<Number> = [] as Array<Number>;     // -1 = flat
+    var hard as Array<Boolean> = [] as Array<Boolean>;
+    var lab as Array<String> = [] as Array<String>;
+    var cnt as Array<String> = [] as Array<String>;    // "7/13, SET 2" inside repeats, else ""
+    var ctx as Array<Array<Number>> = [] as Array<Array<Number>>;
+    var tot as Number = 0;
+    var i as Number = 0;          // the step now (dur.size() = over)
+    var s0 as Number = 0;         // the ride second it started
+    var ha as Number = 0;         // the rider's offset on the hard steps
+    var ea as Number = 0;         // and on the others
+    var ri as Number = WK_RI;
+    var ro as Number = WK_RO;
+
+    function initialize(def as Dictionary) {
+        id = strOf(def["id"]); n = strOf(def["n"]);
+        if (wkNum(def["ri"])) { ri = imax(0, numOf(def["ri"])); }
+        if (wkNum(def["ro"])) { ro = imax(0, numOf(def["ro"])); }
+        add(arrOf(def["s"]));
+        for (var k = 0; k < dur.size(); k++) { tot += dur[k]; }
+    }
+    function cl(x as Number) as Number { return x < 0 ? 0 : (x > 2000 ? 2000 : x); }
+    // js: wkCnt(ctx)
+    function cntOf() as String {
+        var k = ctx.size();
+        if (k == 0) { return ""; }
+        var s = (ctx[k - 1][0] + 1).toString() + "/" + ctx[k - 1][1].toString();
+        if (k > 1) { s += ", SET " + (ctx[k - 2][0] + 1).toString(); }
+        return s;
+    }
+    // js: wkAdd(X, l, ctx)
+    function add(l as Array) as Void {
+        for (var j = 0; j < l.size(); j++) {
+            if (dur.size() >= WK_STEPS) { return; }
+            var e = l[j];
+            if (!(e instanceof Array)) { continue; }
+            var a = e as Array;
+            if (a.size() < 2) { continue; }
+            if (wkNum(a[0]) && a[1] instanceof Array) {
+                var nn = numOf(a[0]), sub = a[1] as Array, trim = a.size() > 2 && numOf(a[2]) == 1;
+                nn = nn < 0 ? 0 : (nn > 100 ? 100 : nn);
+                for (var r = 0; r < nn; r++) {
+                    ctx.add([r, nn] as Array<Number>);
+                    if (trim && r == nn - 1) { if (sub.size() > 1) { add(sub.slice(0, sub.size() - 1)); } } else { add(sub); }
+                    ctx = ctx.slice(0, ctx.size() - 1) as Array<Array<Number>>;
+                }
+            } else if (wkNum(a[1])) {
+                var sec = numOf(a[0]);
+                if (sec < 1 || sec > 36000) { continue; }
+                var x2 = a.size() > 2 && wkNum(a[2]) ? numOf(a[2]) : -1, h = a.size() > 3 ? a[3] : null;
+                dur.add(sec); w.add(cl(numOf(a[1]))); w2.add(x2 < 0 ? -1 : cl(x2));
+                hard.add(h instanceof Boolean ? h as Boolean : numOf(h) == 1); lab.add(a.size() > 4 ? strOf(a[4]) : ""); cnt.add(cntOf());
+            }
+        }
+    }
+    // js: wkBase(W, i, into): a ramp moves evenly from w to w2
+    function base(k as Number, into as Number) as Number {
+        var a = w[k], b = w2[k];
+        if (b < 0) { return a; }
+        var f = into <= 0 ? 0.0 : (into >= dur[k] ? 1.0 : into.toFloat() / dur[k]);
+        return rnd(a + (b - a) * f);
+    }
+    // js: wkPlat(W, i, into): with the offset of its kind, never below 50 W
+    function plat(k as Number, into as Number) as Number {
+        var b = base(k, into), d = hard[k] ? ha : ea;
+        if (d == 0) { return b; }
+        return b + d > WK_FLOOR ? b + d : WK_FLOOR;
+    }
+    // js: wkAt(W, t)
+    function at(t as Number) as Void { while (i < dur.size() && t >= s0 + dur[i]) { s0 += dur[i]; i++; } }
+    // js: wkTarget(W, t): -1 after the end
+    function target(t as Number) as Number {
+        var k = i, nn = dur.size();
+        if (k >= nn) { return -1; }
+        var into = t - s0, lf = dur[k] - into, p = plat(k, into);
+        if (hard[k] || w2[k] >= 0) { return p; }
+        if (k + 1 < nn && ri > 0) { if (hard[k + 1] && dur[k + 1] > WK_SHORT && lf < ri) { var a = plat(k, dur[k]), b = plat(k + 1, 0); return rnd(a + (b - a) * (1.0 - lf.toFloat() / ri)); } }
+        if (k > 0 && ro > 0) { if (hard[k - 1] && dur[k - 1] > WK_SHORT && into < ro) { var a2 = plat(k - 1, dur[k - 1]), b2 = plat(k, 0); return rnd(a2 + (b2 - a2) * (into.toFloat() / ro)); } }
+        return p;
+    }
+    // js: wkTune(W, d): the hard offset in a hard step, else the easy one
+    function tune(d as Number) as Void {
+        if (i >= dur.size()) { return; }
+        if (hard[i]) { var x = ha + d; ha = x < -WK_ADJ ? -WK_ADJ : (x > WK_ADJ ? WK_ADJ : x); }
+        else { var y = ea + d; ea = y < -WK_ADJ ? -WK_ADJ : (y > WK_ADJ ? WK_ADJ : y); }
+    }
+    // js: wkAdj(W), wkLeft(W, t), wkTotLeft(W, t)
+    function adj() as Number { return i < dur.size() && hard[i] ? ha : ea; }
+    function left(t as Number) as Number { return i < dur.size() ? s0 + dur[i] - t : 0; }
+    function totLeft(t as Number) as Number { var x = tot - t; return x > 0 ? x : 0; }
+    function isHard() as Boolean { return i < dur.size() && hard[i]; }
+    // js: wkEasy(W): the last step's end watts, at most WK_EASY
+    function easy() as Number { var k = dur.size() - 1, b = base(k, dur[k]); b = b < WK_EASY ? b : WK_EASY; return b > TW_MIN ? b : TW_MIN; }
+    // js: wkShown(W): the counter in a hard step of a repeat, else the label in capitals
+    function shown() as String {
+        if (i >= dur.size()) { return ""; }
+        if (hard[i] && cnt[i].length() > 0) { return cnt[i]; }
+        return lab[i].length() > 0 ? lab[i].toUpper() : (hard[i] ? "HARD" : "EASY");
+    }
+    // js: wkNextW(W): the next step's target with the offsets, -1 after the last
+    function nextW() as Number { return i + 1 < dur.size() ? plat(i + 1, 0) : -1; }
+}

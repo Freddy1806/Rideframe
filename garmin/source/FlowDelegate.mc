@@ -146,7 +146,7 @@ class FlowDelegate extends WatchUi.BehaviorDelegate {
     function scrollable() as Boolean {
         var s = flow.scr;
         return flow.flash == null && (s == S_PICK || s == S_MENU || s == S_HOME || s == S_MORE || s == S_SMODE || s == S_RPICK || s == S_END || s == S_SAVEQ || s == S_SUM
-            || s == S_TEND || (s == S_TSCAN && tList()));
+            || s == S_TEND || s == S_TPICK || (s == S_TSCAN && tList()));
     }
     // 23.11.: the trainer screen shows the list (searching), not one trainer's state (js tList)
     function tList() as Boolean { var v = flow.link.shown(); return v == TL_SCAN || v == TL_OFF; }
@@ -251,7 +251,7 @@ class FlowDelegate extends WatchUi.BehaviorDelegate {
             return true;
         }
         if (s == S_TSCAN && !tList()) { app.input(E_TAP, null); return true; } // one trainer's state: like START
-        var menu = s == S_MENU || s == S_END || s == S_SAVEQ || s == S_TEND, pick = s == S_PICK || s == S_MORE || s == S_SMODE || s == S_RPICK || s == S_TSCAN;
+        var menu = s == S_MENU || s == S_END || s == S_SAVEQ || s == S_TEND, pick = s == S_PICK || s == S_MORE || s == S_SMODE || s == S_RPICK || s == S_TSCAN || s == S_TPICK;
         if (s == S_HOME) { // 23.11.8: the rows as Draw.drawHome drew them (gRows: [row, y / S])
             var r = rowAt(v), hn = flow.listItems().size(), hi = r == null ? -1 : flow.homeTop(hn) + (r[0] as Number);
             if (hi >= 0 && hi < hn) { app.input(E_ITEM, hi); }

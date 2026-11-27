@@ -2,7 +2,7 @@
 // workout name, heart rate 188, 1:23:45, 4-digit power, pace 12:34 ...), as js/watchflow.js states for js/watchscreens.js.
 // Used by tools/watch-layout.mjs (the layout check on all five watches) and tools/watch-sheets.cjs (the contact sheets).
 import { newFlow, handle, SCR, setRoutes, setRoute, startPlan, newRec, saveOffer, END_ROWS } from '../js/watchflow.js';
-import { newLink, newRide } from '../js/watchtrainer.js';
+import { newLink, newRide, newWk, wkAt } from '../js/watchtrainer.js';
 
 export const NOW = 1700000000;
 const LONG_W = 'Push day with a very long name';
@@ -53,6 +53,14 @@ function ride(o = {}) {
   F.scr = SCR.TREC; return F;
 }
 const W = (c, scr) => ({ wheel: { c, scr, until: Infinity } });
+// 27.11.: a trainer workout with worst-case text: 13 x 3 hard 1250 W (4 digits), the 13th of set 3, +25 W, a long label, 1:23:45 left
+const LONG_RIDE = 'Threshold over-unders XL';
+const WKDEF = { id: 'wx', n: LONG_RIDE, s: [[3000, 100, 250, 0, 'Warm-up'], [3, [[13, [[600, 1250, null, 1, '30/15'], [600, 1125, null, 0, 'Recovery spin']], 1], [600, 130, null, 0, 'Rest']], 1], [600, 1250, 999, 0, 'Cool-down']] };
+function wkRide(o = {}) {
+  const F = ride(o), W = F.wk = newWk(WKDEF); W.ha = o.ha ?? 25; W.ea = o.ea ?? 0;
+  const t = o.last ? W.tot - 300 : o.at ?? W.tot - 1200 + 1; wkAt(W, t); F.tr.t = t; F.tr.tgt = o.tgt || 1275;
+  return F;
+}
 
 /** [id, label, () => { F, now?, sum?, ui? }] */
 export const SCENES = [
@@ -124,6 +132,16 @@ export const SCENES = [
   ['trec-stats', 'Trainer ride: stats page', () => ({ F: ride({ pg: 1 }) })],
   ['tend', 'Trainer menu', () => { const F = ride({ paused: true }); F.scr = SCR.TEND; F.sel = 1; return { F }; }],
   ['tend-conf', 'Trainer: discard ride?', () => { const F = ride(); F.scr = SCR.TEND; F.tConf = true; F.sel = 1; return { F }; }],
+  ['tpick', 'Trainer: Free ride or a workout (long name)', () => { const F = trainer('ready'); F.rides = [WKDEF, { id: 'w2', n: '30 / 15, 3 x 13', s: [[30, 370, null, 1, '30/15']] }]; F.scr = SCR.TPICK; F.sel = 1; return { F }; }],
+  ['tpick-free', 'Trainer: Free ride, still connecting', () => { const F = trainer('conn'); F.scr = SCR.TPICK; F.sel = 0; return { F }; }],
+  ['tscan-chosen', 'Trainer: connected, a workout chosen', () => { const F = trainer('ready'); F.rides = [WKDEF]; F.tw = 1; return { F }; }],
+  ['tscan-conn-chosen', 'Trainer: connecting, a workout chosen', () => { const F = trainer('conn'); F.rides = [WKDEF]; F.tw = 1; return { F }; }],
+  ['trec-wk-hard', 'Workout: 13/13, SET 3, 1275 W, +25 W, next 1125 W', () => ({ F: wkRide() })],
+  ['trec-wk-easy', 'Workout: recovery, -150 W, 1:23:45 left', () => { const F = wkRide({ at: 3000 + 600 + 1, ea: -150, tgt: 975 }); F.wk.tot = 5025 + 3601; return { F }; }],
+  ['trec-wk-last', 'Workout: the last step', () => ({ F: wkRide({ last: true, tgt: 1000 }) })],
+  ['trec-wk-paused', 'Workout: paused', () => ({ F: wkRide({ paused: true }) })],
+  ['trec-wk-wheel', 'Workout: wheel on the target', () => { const F = wkRide(); return { F, ui: W(0, SCR.TREC) }; }],
+  ['trec-wk-done', 'Workout done, free ERG', () => { const F = ride({ tgt: 100 }); F.wkDone = NOW + 20; return { F }; }],
   ['tsum', 'Trainer saved', () => { const F = mk(); F.scr = SCR.TSUM; F.tsum = { t: 5025, avgPw: 1250, maxPw: 1888, kj: 6281, cad: 120, hr: 188, maxHr: 199, name: 'KICKR' }; return { F }; }],
   ['pr-flash', 'New record flash', () => { const F = onSet('incline', { kg: 102.5, reps: 100 }); F.flash = { k: 'pr', until: NOW + 3, kg: 102.5, reps: 100, t: 'w' }; return { F }; }],
   ['lap-flash', 'Lap flash', () => { const F = rec('run'); F.flash = { k: 'lap', n: 188, t: 5025, d: 1000, until: NOW + 5 }; return { F }; }],

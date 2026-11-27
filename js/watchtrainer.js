@@ -190,3 +190,149 @@ export function rideBody(R, sum, id, now) {
   return { id, type: 'VirtualRide', start: R.start, duration: Math.max(1, Math.round(now - R.start)), moving: sum.t, dist: 0, climb: 0, hr: sum.hr, maxHr: sum.maxHr, kcal: sum.kj,
     power: sum.avgPw, maxPower: sum.maxPw, np: sum.np, kj: sum.kj, cad: sum.cad, s: { dt: R.dt, pw: R.s.pw.slice(), cad: R.s.cad.slice(), hr: R.s.hr.slice(), tgt: R.s.tgt.slice() } };
 }
+
+/* ---- 27.11.: a structured workout in ERG (garmin/source/Trainer.mc TWork, the same functions). The server sends the rider's ride
+ *      workouts with the setup ("rides", tools/watch-api.mjs) in absolute watts: { id, n, s: [entry] }, an entry is a step
+ *      [sec, watts, wattsEnd (ramp) | null, hard (1 / 0), label] or a repeat [n, [entry …], trim] (trim 1 = the last round leaves out
+ *      its last entry: 13 × (30 s on + 15 s float) without the float after the 13th). The watch expands one workout when it starts
+ *      (at most WK_STEPS steps) and steps through it by the ride's own clock (R.t: seconds ridden, so a pause keeps the place). ---- */
+export const WK_STEPS = 400, WK_ADJ = 150, WK_FLOOR = 50, WK_SHORT = 60, WK_RI = 10, WK_RO = 5, WK_EASY = 100;
+const wkLab = v => typeof v === 'string' ? v : '';
+/** a step entry: [sec, w, w2, hard, label] with sec >= 1 (else it is a repeat or nothing) */
+const isStep = e => Array.isArray(e) && e.length >= 2 && typeof e[1] === 'number';
+const isRep = e => Array.isArray(e) && e.length >= 2 && typeof e[0] === 'number' && Array.isArray(e[1]);
+/** the counter of a step inside repeats: "7/13" (the innermost), ", SET 2" for the one around it */
+function wkCnt(ctx) {
+  const k = ctx.length; if (!k) return '';
+  return (ctx[k - 1][0] + 1) + '/' + ctx[k - 1][1] + (k > 1 ? ', SET ' + (ctx[k - 2][0] + 1) : '');
+}
+function wkAdd(X, l, ctx) {
+  for (let j = 0; j < l.length; j++) {
+    const e = l[j];
+    if (X.dur.length >= WK_STEPS) return;
+    if (isRep(e)) {
+      const n = Math.max(0, Math.min(100, Math.round(e[0]))), sub = e[1], trim = e[2] === 1;
+      for (let r = 0; r < n; r++) { ctx.push([r, n]); wkAdd(X, trim && r === n - 1 ? sub.slice(0, sub.length - 1) : sub, ctx); ctx.pop(); }
+    } else if (isStep(e)) {
+      const sec = Math.round(e[0]); if (!(sec >= 1 && sec <= 36000)) continue;
+      X.dur.push(sec); X.w.push(Math.max(0, Math.min(2000, Math.round(e[1])))); X.w2.push(typeof e[2] === 'number' && e[2] >= 0 ? Math.min(2000, Math.round(e[2])) : -1);
+      X.hard.push(e[3] === 1 || e[3] === true); X.lab.push(wkLab(e[4])); X.cnt.push(wkCnt(ctx));
+    }
+  }
+}
+/** one workout from the server (or the built-in one), ready to ride: its steps as flat lists; null when it has no step */
+export function newWk(def) {
+  if (!def || !Array.isArray(def.s)) return null;
+  const W = { id: String(def.id || ''), n: wkLab(def.n), dur: [], w: [], w2: [], hard: [], lab: [], cnt: [], tot: 0, i: 0, s0: 0, ha: 0, ea: 0, ri: WK_RI, ro: WK_RO };
+  if (typeof def.ri === 'number') W.ri = Math.max(0, Math.round(def.ri));
+  if (typeof def.ro === 'number') W.ro = Math.max(0, Math.round(def.ro));
+  wkAdd(W, def.s, []);
+  if (!W.dur.length) return null;
+  for (let i = 0; i < W.dur.length; i++) W.tot += W.dur[i];
+  return W;
+}
+/** the step's own watts after into seconds (a ramp moves evenly from w to w2), without the rider's offset */
+export function wkBase(W, i, into) {
+  const a = W.w[i], b = W.w2[i]; if (b < 0) return a;
+  const k = into <= 0 ? 0 : (into >= W.dur[i] ? 1 : into / W.dur[i]); return Math.round(a + (b - a) * k);
+}
+/** with the rider's offset (js/workouts.js workoutState W0): the hard one on hard steps, the easy one on the others, never below 50 W */
+export function wkPlat(W, i, into) {
+  const b = wkBase(W, i, into), d = W.hard[i] ? W.ha : W.ea;
+  return d === 0 ? b : Math.max(WK_FLOOR, b + d);
+}
+/** moves the workout on to second t of the ride (forward only); W.i = W.dur.length when it is over */
+export function wkAt(W, t) { while (W.i < W.dur.length && t >= W.s0 + W.dur[W.i]) { W.s0 += W.dur[W.i]; W.i++; } }
+/** the target at second t (W.i is the step of t): the step's watts with the offset; a flat easy step next to a long hard one (more than
+ *  WK_SHORT s) ramps into it over its last ri s and out of it over its first ro s; short efforts (30 / 15, sprints) jump */
+export function wkTarget(W, t) {
+  const i = W.i, n = W.dur.length; if (i >= n) return -1;
+  const into = t - W.s0, left = W.dur[i] - into, p = wkPlat(W, i, into);
+  if (W.hard[i] || W.w2[i] >= 0) return p;
+  if (i + 1 < n && W.hard[i + 1] && W.dur[i + 1] > WK_SHORT && left < W.ri && W.ri > 0) { const a = wkPlat(W, i, W.dur[i]), b = wkPlat(W, i + 1, 0); return Math.round(a + (b - a) * (1 - left / W.ri)); }
+  if (i > 0 && W.hard[i - 1] && W.dur[i - 1] > WK_SHORT && into < W.ro && W.ro > 0) { const a = wkPlat(W, i - 1, W.dur[i - 1]), b = wkPlat(W, i, 0); return Math.round(a + (b - a) * (into / W.ro)); }
+  return p;
+}
+/** + / - in a workout (js/ride.js _wTune): d W on the hard offset in a hard step, else on the easy one; both stay for the rest of it */
+export function wkTune(W, d) {
+  if (W.i >= W.dur.length) return;
+  const c = v => Math.max(-WK_ADJ, Math.min(WK_ADJ, v));
+  if (W.hard[W.i]) W.ha = c(W.ha + d); else W.ea = c(W.ea + d);
+}
+/** the offset of the step now (the screen shows it when it is not 0) */
+export const wkAdj = W => W.i < W.dur.length && W.hard[W.i] ? W.ha : W.ea;
+/** seconds left in the step now and in the whole workout at second t */
+export const wkLeft = (W, t) => W.i < W.dur.length ? W.s0 + W.dur[W.i] - t : 0;
+export const wkTotLeft = (W, t) => Math.max(0, W.tot - t);
+/** the easy watts after the end: the last step's end watts, at most WK_EASY */
+export function wkEasy(W) { const k = W.dur.length - 1, b = wkBase(W, k, W.dur[k]); return Math.max(W_MIN, Math.min(WK_EASY, b)); }
+
+/** 27.11. (the owner's session today, js/workouts.js c_30_15_3x13): built into the watch, so it can be ridden before the first sync.
+ *  The ramps are % of the FTP the server sent last (setup "ftp"), else 250 W; the hard 30 s are WK_FB_HARD. */
+export const WK_FB_ID = 'c_30_15_3x13', WK_FB_HARD = 370;
+export function wkFallback(ftp) {
+  const f = ftp > 0 ? ftp : 250, p = x => Math.round(x * f / 100);
+  return { id: WK_FB_ID, n: '30/15, 3 x 13', ri: 3, ro: 2, s: [[600, p(40), p(72), 0, 'Warm-up'], [180, p(72), null, 0, 'Warm-up'],
+    [3, [[10, 420, null, 1, 'Sprint'], [50, 130, null, 0, 'Spin']], 1], [170, 130, null, 0, 'Spin'],
+    [3, [[13, [[30, WK_FB_HARD, null, 1, '30/15'], [15, 125, null, 0, 'Float']], 1], [180, 130, null, 0, 'Rest']], 1],
+    [600, p(50), p(35), 0, 'Cool-down']] };
+}
+
+/* ---- the server side (tools/watch-api.mjs): a workout of js/workouts.js shape in watts, made small ---- */
+/** watch text: ASCII only (the watch fonts), "·" -> ",", "×" -> "x", no "|" (the screens' "long|short" variants), at most n characters */
+export const wkTxt = (s, n) => String(s ?? '').replace(/·/g, ',').replace(/\|/g, '/').replace(/×/g, 'x').replace(/[–—]/g, '-').replace(/[^\x20-\x7e]/g, '').replace(/\s+/g, ' ').replace(/\s+,/g, ',').trim().slice(0, n).trim();
+/** a label inside a repeat loses its counter (the watch counts): "30 / 15 · set 1 · 3/13" -> "30 / 15" */
+export const wkStem = s => String(s ?? '').replace(/\s*\d+\/\d+\s*$/, '').replace(/[\s·]+$/, '').replace(/\s*·\s*set\s*\d+$/i, '').replace(/[\s·]+$/, '');
+const LAB_N = 14;
+/** flat steps [{ sec, w, w2 (null), hard, label }] -> entries with repeats ([n, [entry …], trim]), nested where a repeat repeats */
+export function wkCompact(steps) {
+  // neighbours that are the same flat step become one
+  const flat = [];
+  for (const s of steps) { const l = flat[flat.length - 1];
+    if (l && l.w2 == null && s.w2 == null && l.w === s.w && l.hard === s.hard && l.label === s.label) l.sec += s.sec; else flat.push({ ...s }); }
+  let items = flat.map(s => ({ e: [s.sec, s.w, s.w2 ?? null, s.hard ? 1 : 0, wkTxt(s.label, LAB_N)], k: JSON.stringify([s.sec, s.w, s.w2 ?? null, s.hard ? 1 : 0, wkStem(s.label)]), st: [s.sec, s.w, s.w2 ?? null, s.hard ? 1 : 0, wkTxt(wkStem(s.label), LAB_N)] }));
+  for (let pass = 0; pass < 3; pass++) {
+    const out = []; let i = 0, n = items.length, moved = false;
+    const eq = (a, b, p) => { for (let j = 0; j < p; j++) if (items[a + j].k !== items[b + j].k) return false; return true; };
+    while (i < n) {
+      let best = null;
+      for (let p = 1; p <= 12 && i + 2 * p - 1 <= n; p++) {
+        let k = 1; while (i + (k + 1) * p <= n && eq(i, i + k * p, p)) k++;
+        const trim = p > 1 && i + k * p + p - 1 <= n && eq(i, i + k * p, p - 1) ? 1 : 0, reps = k + trim, cov = k * p + trim * (p - 1);
+        if (reps >= 2 && cov - p >= 2 && cov - p > (best ? best.cov - best.p : 0)) best = { p, reps, trim, cov };
+      }
+      if (best) { const blk = items.slice(i, i + best.p).map(x => x.st), e = [best.reps, blk, best.trim]; out.push({ e, k: JSON.stringify(e), st: e }); i += best.cov; moved = true; }
+      else { out.push(items[i]); i++; }
+    }
+    items = out; if (!moved) break;
+  }
+  return items.map(x => x.e);
+}
+/** a js/workouts.js workout -> { id, n, s } for the watch in watts with this FTP, or null (an open-ended step, a step not in ERG / power) */
+export function wkFromRide(w, ftp, isHard) {
+  if (!w || !Array.isArray(w.steps) || !w.steps.length || !(ftp > 0)) return null;
+  const steps = [];
+  for (const st of w.steps) {
+    if (!st || st.free || st.tgt || (st.end && st.end.kind !== 'time') || !(st.dur >= 1)) return null;
+    const pct = typeof st.watts === 'number' ? null : st.pct; if (typeof st.watts !== 'number' && !(pct > 0)) return null;
+    const wt = typeof st.watts === 'number' ? Math.round(st.watts) : Math.round(pct / 100 * ftp), w2 = st.pct2 != null ? Math.round(st.pct2 / 100 * ftp) : null;
+    steps.push({ sec: Math.round(st.dur), w: wt, w2: w2 != null && w2 !== wt ? w2 : null, hard: !!isHard(st), label: st.label || '' });
+  }
+  const o = { id: String(w.id), n: wkTxt(w.name, 24) || 'Workout', s: wkCompact(steps) };
+  if (typeof w.rampIn === 'number') o.ri = w.rampIn; if (typeof w.rampOut === 'number') o.ro = w.rampOut;
+  return o;
+}
+/** the length of a workout's entries in seconds, without expanding them (the TPICK sub line) */
+export function wkDur(l) {
+  let t = 0; if (!Array.isArray(l)) return 0;
+  for (let j = 0; j < l.length; j++) {
+    const e = l[j];
+    if (isRep(e)) { const n = Math.max(0, Math.min(100, Math.round(e[0]))), sub = e[1]; if (n > 0) { const a = wkDur(sub); t += n * a; if (e[2] === 1 && sub.length > 0) t -= wkDur([sub[sub.length - 1]]); } }
+    else if (isStep(e)) { const s = Math.round(e[0]); if (s >= 1 && s <= 36000) t += s; }
+  }
+  return t;
+}
+/** the ERG page's step line: the counter in a hard step of a repeat ("7/13, SET 2"), else the step's label in capitals */
+export function wkShown(W) { const i = W.i; if (i >= W.dur.length) return ''; return W.hard[i] && W.cnt[i].length > 0 ? W.cnt[i] : (W.lab[i].length > 0 ? W.lab[i].toUpperCase() : (W.hard[i] ? 'HARD' : 'EASY')); }
+/** the next step's target with the offsets, -1 after the last */
+export const wkNextW = W => W.i + 1 < W.dur.length ? wkPlat(W, W.i + 1, 0) : -1;

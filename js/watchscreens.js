@@ -4,9 +4,9 @@
 // tools/watch-layout-test.mjs compares the numbers of both files function by function.
 import { G } from './watchdc.js';
 import { SCR, HOME, curEx, setNo, restLeft, clock, homeItems, homeTop, listItems, workouts, planItem, pickRows, doneOf, prefillOf, lastSet, lastTxt, recPages, routeInfo,
-  holdPart, pausedTime, stepOf, HOME_FIT, VERSION, loading } from './watchflow.js';
+  holdPart, pausedTime, stepOf, HOME_FIT, VERSION, loading, rides } from './watchflow.js';
 import { FIELDS, fieldText, labelOf } from './watchfields.js';
-import { shown, live as tLive, nextTarget } from './watchtrainer.js';
+import { shown, live as tLive, nextTarget, wkLeft, wkTotLeft, wkShown, wkNextW, wkAdj, wkDur } from './watchtrainer.js';
 import { groupOf } from './sports.js';
 
 const VC = G.TEXT_JUSTIFY_CENTER | G.TEXT_JUSTIFY_VCENTER, VL = G.TEXT_JUSTIFY_LEFT | G.TEXT_JUSTIFY_VCENTER;
@@ -166,6 +166,7 @@ export function screen(dc, F, P, now, sum, ui = {}) {
   else if (s === SCR.TREC) drawTRec(dc, F, S, P, now, ui);
   else if (s === SCR.TEND) drawTEnd(dc, F, S, P);
   else if (s === SCR.TSUM) drawTSum(dc, F, S, P);
+  else if (s === SCR.TPICK) drawTPick(dc, F, S, P);
   else if (s === SCR.GLANCE) drawGlance(dc, S, P, sum);
   else drawHome(dc, F, S, P, sum);
 }
@@ -789,6 +790,8 @@ function drawTScan(dc, F, S, P) {
   let a = '', col = P.fg, b = '', d = '';
   if (v === 'conn') { a = 'Connecting'; b = 'Taking control'; }
   else if (v === 'ready') { a = 'Connected'; col = P.good; b = L.ctl ? 'ERG ready' : 'Power only, no ERG|Power only'; }
+  const nm = F.tw >= 0 && (v === 'conn' || v === 'ready'); // 27.11.: the choice made while connecting (TPICK), START rides it
+  if (nm) d = F.tw > 0 && F.tw <= rides(F).length ? rides(F)[F.tw - 1].n : 'Free ride (ERG)';
   else if (v === 'refused') { a = 'Refuses control'; col = P.bad; b = 'Another app controls it.|Another app has it.|App in use'; d = 'Close it, or ride without ERG|Or ride without ERG|Or ride, no ERG'; }
   else if (v === 'lost') { a = 'Lost, reconnecting|Lost'; col = P.bad; b = 'Keeps trying'; }
   const start = v === 'ready' || v === 'refused', py = S * .81, ph = S * .13;
@@ -803,25 +806,33 @@ function drawTScan(dc, F, S, P) {
     if (lines[i].length === 0) continue;
     const y = below(dc, yb, XT, S * (i === 0 ? .61 : .675)), m = roomC(dc, c, y, XT, 'g', R0), t = pick(dc, lines[i], XT, m < T(S * .74) ? m : T(S * .74), false);
     if (y + dn(dc, XT, t) > bt) break;
-    put(dc, c, y, XT, t, T(S * .74), i === 0 ? P.fg : P.lbl, false, R0); yb = y + dn(dc, XT, t);
+    put(dc, c, y, XT, t, T(S * .74), i === 0 ? P.fg : (nm ? P.acc : P.lbl), i === 1 && nm, R0); yb = y + dn(dc, XT, t);
   }
 }
 const avgPw = R => R.t ? Math.round(R.pwSum / R.t) : 0;
 // the ERG ride: the time, the target big with - / + beside it, the trainer's power, cadence, heart rate below; a stats page
 function drawTRec(dc, F, S, P, now, ui) {
   const R = F.tr; if (!R) return;
-  const L = F.link, v = shown(L), paused = R.st !== 'run', c = S / 2, G = gap(S);
+  const L = F.link, v = shown(L), paused = R.st !== 'run', c = S / 2, G = gap(S), W = F.wk;
   recRing(dc, S, P, !paused); pageDots(dc, S, P, 2, R.pg);
   if (R.pg !== 0) { trStats(dc, S, P, R); return; }
-  const ct = clock(R.t), tf = fontIn(dc, ct, [NMI, ME, SM, XT], T(S * .5), S * .1), ty = S * .13 > up(dc, tf) + S * .075 ? S * .13 : up(dc, tf) + S * .075;
-  put(dc, c, ty, tf, ct, S, P.fg, false, R0);
+  // 27.11.: in a workout the time left in the step (orange in a hard one), its label / counter, the offset, the next step and the time left
+  const ct = clock(W ? wkLeft(W, R.t) : R.t), tf = fontIn(dc, ct, [NMI, ME, SM, XT], T(S * .5), S * .1), ty = S * .13 > up(dc, tf) + S * .075 ? S * .13 : up(dc, tf) + S * .075;
+  put(dc, c, ty, tf, ct, S, W && W.hard[W.i] ? P.acc : P.fg, false, R0);
   const warn = v === 'lost' ? 'LOST, RECONNECTING|LOST' : (v === 'refused' ? 'NO CONTROL, OTHER APP|NO CONTROL' : (!L.ctl ? 'POWER ONLY, NO ERG|NO ERG' : (paused ? 'PAUSED' : '')));
-  const wc = warn.length === 0 ? P.lbl : (paused && L.ctl && v !== 'lost' && v !== 'refused' ? P.acc : P.bad);
-  const wh = wheelOn(F, 0, ui), ly = below(dc, ty + dn(dc, tf, '0'), XT, S * .205), lp = (warn.length > 0 ? warn : 'TARGET W').split('|'), lm = roomC(dc, c, ly, XT, 'W', R0);
-  if (!wh) put(dc, c, ly, XT, lp.length > 1 ? alt(dc, lp[0], lp[1], XT, lm) : lp[0], S, wc, false, R0);
-  // the bottom: AVG / the resume pill, the three numbers with labels, the separator
+  const done = !W && F.wkDone > now, lab = W ? wkShown(W) : (done ? 'WORKOUT DONE' : 'TARGET W');
+  const wc = warn.length === 0 ? (done ? P.good : (W ? P.fg : P.lbl)) : (paused && L.ctl && v !== 'lost' && v !== 'refused' ? P.acc : P.bad);
+  const wh = wheelOn(F, 0, ui), ly = below(dc, ty + dn(dc, tf, '0'), XT, S * .205), lp = (warn.length > 0 ? warn : lab).split('|'), lm = roomC(dc, c, ly, XT, 'W', R0);
+  if (!wh) put(dc, c, ly, XT, lp.length > 1 ? alt(dc, lp[0], lp[1], XT, lm) : lp[0], S, wc, warn.length === 0 && W != null, R0);
+  // the bottom: AVG / the resume pill (a workout: the time left, the next step above it), the three numbers with labels, the separator
   const by = S * .85; let bt = 0;
   if (paused) { const ph = S * .1; pill(dc, c, by, S * .44, ph, P.acc); put(dc, c, by, inPill(dc, 'START', [XT], S * .4, ph), 'START resume|Resume', S * .4, P.ink, false, R0); bt = by - ph / 2 - G; }
+  else if (W) {
+    const tl = clock(wkTotLeft(W, R.t)), nw = wkNextW(W), nx = nw < 0 ? 'LAST STEP' : 'NEXT ' + nw + ' W, ' + clock(W.dur[W.i + 1]) + '|' + nw + ' W, ' + clock(W.dur[W.i + 1]) + '|' + nw + ' W';
+    // the time left goes where the font size setting leaves no room for two lines
+    if (inkH(dc, XT) <= S * .08) { put(dc, c, by, XT, tl + ' LEFT|' + tl, S, P.lbl, false, R0); const ny = above(dc, by - up(dc, XT), XT, 'g', S); put(dc, c, ny, XT, nx, S, P.fg, false, R0); bt = ny - up(dc, XT) - G; }
+    else { put(dc, c, by, XT, nx, S, P.fg, false, R0); bt = by - up(dc, XT) - G; }
+  }
   else { const t = 'AVG ' + avgPw(R) + ' W, ' + Math.round(R.kj) + ' kJ'; put(dc, c, by, XT, t + '|AVG ' + avgPw(R) + ' W|AVG ' + avgPw(R), S, P.lbl, false, R0); bt = by - up(dc, XT) - G; }
   // the three numbers: the largest font whose row and labels fit 0.2 S and the circle (WATTS is W where it does not)
   const d = tLive(L, now), vals = [String(d.pw), String(d.cad), F.hr > 0 ? String(F.hr) : '--'], vfs = [NMI, ME, SM, XT], vl = above(dc, bt, XT, 'G', S * .735);
@@ -853,9 +864,15 @@ function drawTRec(dc, F, S, P, now, ui) {
     dc.setColor(P.faint); dc.fillCircle(x, gy, S * .085);
     dc.setColor(P.fg); dc.setPenWidth(pw(S * .018)); dc.drawLine(x - h, gy, x + h, gy); if (i === 1) dc.drawLine(x, gy - h, x, gy + h); dc.setPenWidth(1);
   }
-  if (wh) { for (let dd = -1; dd <= 1; dd += 2) { const w = nextTarget(R, dd, false); if (w === R.tgt) continue; const yy = dd < 0 ? above(dc, gy - up(dc, gf), XT, '0', S) : below(dc, gy + dn(dc, gf, '0'), XT, 0);
+  if (wh) { for (let dd = -1; dd <= 1; dd += 2) { const w = W ? R.tgt + dd * R.step : nextTarget(R, dd, false); if (w === R.tgt) continue; const yy = dd < 0 ? above(dc, gy - up(dc, gf), XT, '0', S) : below(dc, gy + dn(dc, gf, '0'), XT, 0);
     if (yy - up(dc, XT) >= ty + dn(dc, tf, '0') + G && yy + dn(dc, XT, '0') <= sep - G) txt(dc, c, yy, XT, String(w), P.dim); } }
-  else put(dc, c, below(dc, gy + dn(dc, gf, '0'), sf, 0), sf, '+/- ' + R.step + ' W', S, P.lbl, false, R0);
+  else { const a = W ? wkAdj(W) : 0; put(dc, c, below(dc, gy + dn(dc, gf, '0'), sf, 0), sf, a !== 0 ? (a > 0 ? '+' : '-') + Math.abs(a) + ' W' : '+/- ' + R.step + ' W', S, a !== 0 ? P.fg : P.lbl, false, R0); }
+}
+// 27.11.: the trainer's choice: a free ride (one target) or a workout (its length under it); while connecting it says so
+function drawTPick(dc, F, S, P) {
+  const l = rides(F), v = shown(F.link), w = F.sel > 0 && F.sel <= l.length ? l[F.sel - 1] : null, m = w ? T((wkDur(w.s) + 30) / 60) : 0;
+  const sub = w ? m + ' min' : 'One target, + / - change it|One target';
+  list(dc, F, S, P, listItems(F), 'INDOOR TRAINER', 'TRAINER', false, sub, null, v === 'ready' || v === 'refused' ? [] : [['Still connecting|Connecting|Wait', P.lbl, false]]);
 }
 const orDash = n => n > 0 ? String(n) : '--';
 // the ride's second page: this target's block (time, avg power), then the whole ride

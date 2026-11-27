@@ -98,6 +98,30 @@ export async function setup(u) {
     top, recent, workouts: W.compact(C).w };
 }
 
+/* ---- 27.11.: GET /api/watch/rides -> { ftp, rides }: the ride workouts for the watch's indoor trainer (garmin Flow.mc S_TPICK, js/watchtrainer.js newWk), a call of its own (the setup stays under 8 KB): the account's own ones
+ *      (the Training tab's builder: settings.myWorkouts; the personal ones: workouts.json) whose steps all run on the clock with a power /
+ *      FTP target, then the built-in ones (the coach's first), in watts with the rider's FTP, repeats folded ([n, [steps], trim]).
+ *      Kept small for Connect IQ: at most RIDE_MAX workouts and RIDE_BYTES of JSON (the watch keeps them in Storage "rides"). ---- */
+export const RIDE_MAX = 24, RIDE_BYTES = 9000, RIDE_FTP = 250;
+export async function ridesFor(uid) { const S = await settingsOf(uid), ftp = +S.ftp > 0 ? Math.round(+S.ftp) : RIDE_FTP; return { ftp, rides: await rideWorkouts(uid, S, ftp) }; }
+export async function rideWorkouts(uid, S, ftp) {
+  const WO = await import('../js/workouts.js'), WT = await import('../js/watchtrainer.js'), MW = await import('../js/myworkouts.js');
+  const own = [];
+  for (const d of Array.isArray(S.myWorkouts) ? S.myWorkouts : []) { try { if (d && d.id) own.push(WO.buildMy(d)); } catch { /* a broken row: left out */ } }
+  const pf = await readJSON(join(userDir(uid), 'workouts.json'), null);
+  for (const w of MW.validateList(pf?.list)) { try { own.push(MW.toRide(w)); } catch { /* left out */ } }
+  const builtIn = WO.WORKOUTS.filter(w => w.coach).concat(WO.WORKOUTS.filter(w => !w.coach));
+  WO.setFtp(ftp); // A() steps (absolute watts) and isHard read the FTP
+  const out = [], seen = new Set(); let bytes = 2;
+  for (const w of [...own, ...builtIn]) {
+    if (out.length >= RIDE_MAX || !w || seen.has(String(w.id))) continue;
+    const c = WT.wkFromRide(w, ftp, WO.isHard); if (!c) continue; // an open-ended step or a target that is not power: not for the watch
+    const n = JSON.stringify(c).length + 1; if (bytes + n > RIDE_BYTES) continue;
+    seen.add(c.id); out.push(c); bytes += n;
+  }
+  return out;
+}
+
 /* ---- 23.11.: a workout saved on the watch (the session as a template) -> the account's watch config, so it shows on the phone
  *      (Settings > Devices > Watch screens & workouts, the Strength page) and comes back to the watch with the setup / config ---- */
 let cfgLock = Promise.resolve(); // serialise the read-change-write of one config against itself
@@ -285,12 +309,13 @@ export async function watchApi(req, res, path) {
         await writeJSON(WF, W); return send(res, 200, { token, name: u.name, label });
       });
     }
-    if (!['strength/setup', 'strength', 'summary', 'me', 'config', 'activity', 'segments', 'routes', 'route', 'workout', 'health'].includes(op)) return send(res, 404, { error: 'unknown' });
+    if (!['strength/setup', 'strength', 'summary', 'me', 'config', 'activity', 'segments', 'routes', 'route', 'workout', 'health', 'rides'].includes(op)) return send(res, 404, { error: 'unknown' });
     const w = await watchOf(req); if (!w) return send(res, 401, { error: 'Not paired.' });
     if (limited('wcall:' + w.h, 120, 10 * 60e3)) return send(res, 429, { error: 'Too many requests.' });
     if (op === 'me') return send(res, 200, { name: w.u.name, label: w.d.label });
     if (op === 'strength/setup' && M === 'GET') return send(res, 200, await setup(w.u));
     if (op === 'summary' && M === 'GET') return send(res, 200, await summaryOf(w.u));
+    if (op === 'rides' && M === 'GET') return send(res, 200, await ridesFor(w.u.id)); // 27.11.: the trainer's workouts in watts
     if (op === 'config' && M === 'GET') { const c = await configOf(w.u.id); return send(res, 200, { ...(await WFM()).compact(c.cfg), at: Math.round(c.at / 1000) }); }
     if (op === 'strength' && M === 'POST') {
       let b; try { b = await body(req, 32e3); } catch (e) { return send(res, e.message === 'too large' ? 413 : 400, { error: e.message === 'too large' ? 'Session too large.' : 'Body must be JSON.' }); }
