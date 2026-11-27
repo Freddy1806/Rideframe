@@ -408,3 +408,42 @@ test('API: a v2 workout with repeats is stored and read back, a bad one refused'
   assert.equal((await call('PUT', '/api/account/workouts/pw_v2bad', { token: A, body: V2([{ repeat: 2, steps: [{ repeat: 2, steps: [S2('work', T(60))] }] }]) })).status, 400);
   assert.equal((await call('DELETE', '/api/account/workouts/pw_v2api', { token: A })).status, 200);
 });
+/* ---- builder audit 27.11. (the owner's 3 × 13 × 30/15 at 370 W, FTP-independent watts) ---- */
+const P370 = w => ({ kind: 'power', lo: w, hi: w });
+const SET3015 = () => ({ repeat: 13, skipLast: true, steps: [S2('work', T(30), P370(370)), S2('recover', T(15), P370(125))] });
+const OWNER = () => V2([S2('warmup', T(600), { kind: 'ftp', pct: 40, pct2: 72 }), { repeat: 3, steps: [S2('work', T(10), P370(420)), S2('recover', T(50), P370(130))] },
+  SET3015(), S2('rest', T(180), P370(130)), SET3015(), S2('rest', T(180), P370(130)), SET3015(), S2('cooldown', T(600), { kind: 'ftp', pct: 55, pct2: 35 })]);
+test('audit: the owner workout round-trips, runs in the built order, absolute watts at any FTP', () => {
+  const v = MW.validateWorkout(OWNER()); assert.ifError(v.error);
+  assert.deepEqual(v.w.steps, OWNER().steps, 'nothing changed on save');
+  assert.deepEqual(MW.summary2(v.w.steps, 287), { ...MW.summary2(v.w.steps, 287), sec: 3450, exact: true, steps: 85 });
+  for (const ftp of [180, 250, 287, 400]) {
+    const w = MW.toRide(v.w); let t = 0; const got = [];
+    for (const s of w.steps) { const a = workoutAt(w, t + 0.5, ftp); got.push(`${a.step.label}@${a.target}`); t += s.dur; }
+    const want = ['Warm up@' + Math.round(0.4 * ftp + (0.32 * ftp) * 0.5 / 600), ...[1, 2, 3].flatMap(i => [`Bike ${i}/3@420`, 'Recover@130']),
+      ...[0, 1, 2].flatMap(k => [...Array.from({ length: 13 }, (_, i) => [`Bike ${i + 1}/13@370`, ...(i < 12 ? ['Recover@125'] : [])]).flat(), ...(k < 2 ? ['Rest@130'] : [])]), `Cool down@${Math.round(0.55 * ftp - 0.2 * ftp * 0.5 / 600)}`];
+    assert.deepEqual(got, want, `FTP ${ftp}`);
+  }
+});
+test('audit: each repeat block is its own interval series (3 × 13, not 1 of 42 with the sprints)', () => {
+  const w = MW.toRide(MW.validateWorkout(OWNER()).w);
+  const t2 = 600 + 180 + 13 * 45 - 15 + 180; // set 2, first interval
+  const a = workoutState(w, 600 + 180 + 3 * 45 + 2, 287), b = workoutState(w, t2 + 2, 287), sp = workoutState(w, 600 + 60 + 2, 287);
+  assert.deepEqual([a.step.label, a.hardNo, a.hardCount], ['Bike 4/13', 4, 13]);
+  assert.deepEqual([b.step.label, b.hardNo, b.hardCount], ['Bike 1/13', 1, 13]);
+  assert.deepEqual([sp.step.label, sp.hardNo, sp.hardCount], ['Bike 2/3', 2, 3]);
+  assert.equal(workoutState(w, 10, 287).hardCount, 13, 'before the first interval: the main series counts 13');
+});
+test('audit: "skip the last recovery" counts only where it applies, the tick survives a step passing through', () => {
+  const r = { repeat: 3, skipLast: true, steps: [S2('work', T(30)), S2('recover', T(15))] };
+  assert.equal(MW.skips(r), true); assert.equal(MW.countSteps([r]), 5);
+  const r2 = { ...r, steps: [...r.steps, S2('work', T(60))] }; // a step dropped in at the end for a moment
+  assert.equal(MW.skips(r2), false); assert.equal(MW.countSteps([r2]), 9, 'nothing skipped while the last step is a bike step');
+  assert.equal(MW.validateWorkout(V2([r2])).w.steps[0].skipLast, undefined, 'and not saved so');
+  assert.equal(MW.countSteps([{ ...r, repeat: 1 }]), 2, '× 1: nothing skipped (as saved)');
+  assert.equal(MW.validateWorkout(V2([{ ...r, repeat: 1 }])).w.steps[0].skipLast, undefined);
+});
+test('audit: the list stats use the rider\'s FTP (custom watts, distance and calories estimates)', () => {
+  const w = MW.validateWorkout(V2([S2('work', { kind: 'distance', m: 2000 }, P370(260)), S2('recover', { kind: 'calories', kcal: 50 }, { kind: 'ftp', pct: 55 })])).w;
+  assert.deepEqual(MW.statsOf(w, 280), MW.summary2(w.steps, 280)); assert.notDeepEqual(MW.statsOf(w, 280).avg, MW.statsOf(w, 200).avg);
+});

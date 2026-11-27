@@ -51,6 +51,8 @@
 .wbfn .label { flex: 1 1 100%; }
 .wbpair { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; min-width: 0; }
 .mwmodal .wbcard select, .mwmodal .wbsheet select, .mwmodal .wbrep input, .mwmodal .wbcard input, .mwmodal .wbsheet input { height: 38px; padding: 0 8px; font-weight: 700; min-width: 0; max-width: 100%; }
+.mwmodal .wbcard select, .mwmodal .wbsheet select { padding-right: 28px; text-overflow: ellipsis; } /* room for the arrow (app.css draws it 11–21 px from the right) */
+.mwmodal select.wbzone { font-size: 13.5px; } .mwmodal select[data-f="dop"] { min-width: 100px; }
 .mwmodal select.wbtype { color: var(--tc); border-color: color-mix(in srgb, var(--tc) 55%, var(--line-2)); width: 100%; }
 .wbpair > select { flex: 1 1 140px; }
 .wbin { display: inline-flex; align-items: center; gap: 4px; min-width: 0; }
@@ -121,6 +123,11 @@
   .wbacts .mwsp { display: none; } .mwmodal .wbacts { flex-direction: row; flex-wrap: wrap; align-items: stretch; } .mwmodal .wbacts .btn, .mwmodal .wbacts .btn.small { flex: 1 1 40%; width: auto; min-width: 0; height: 44px; padding: 0 8px; font-size: 12px; letter-spacing: .04em; }
   .wbrephead { gap: 6px; } .mwmodal .wbstep input { width: 46px; } .wbrepl { font-size: 14px; }
   .wbtoast { bottom: 72px; position: sticky; }
+  /* thumb-sized: every control at least 40 px */
+  .wbcard.compact { grid-template-columns: 36px minmax(0, 1fr) 14px; } .wbgrip { width: 36px; }
+  .wbicon { width: 40px; height: 40px; } .wbtoast .btn.ghost { height: 40px; } .wbx { display: none; } /* "times": the field says it (aria), the row stays one line */
+  .mwmodal .wbrep input, .mwmodal .wbsheet input, .mwmodal .wbsheet select { height: 42px; }
+  .wblink { min-height: 40px; padding: 10px 0; border-bottom: 0; text-decoration: underline dashed var(--line-2); text-underline-offset: 4px; }
 }
 /* the phone's step sheet */
 .wbsheetwrap { --tc: #7d8794; position: fixed; inset: 0; z-index: 70; background: rgba(0,0,0,.5); display: flex; align-items: flex-end; justify-content: center; }
@@ -131,7 +138,8 @@
 .wbsheet .wbfields { grid-template-columns: minmax(0, 1fr); }
 .wbsheet .wbfg2, .wbsheet .wbfn, .wbsheet .wbft { grid-column: 1; }
 .wbsheet .wbicon { width: 40px; height: 40px; }
-.wbsfoot { display: flex; justify-content: flex-end; margin-top: 14px; }
+.wbsfoot { display: flex; justify-content: flex-end; align-items: center; gap: 10px; margin-top: 14px; }
+.mwmodal .wbsfoot .mwerr { flex: 1; margin: 0; }
 .wbsfoot .btn { min-width: 120px; }
 
 /* route page */

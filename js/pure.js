@@ -106,7 +106,7 @@ const wSample = () => ({ d: R.d, kj: R.kj, hr: live.hr, power: live.power, kmh: 
 function wNext() { const w = work(); if (!w || R.wDone || R.state !== 'run') return; if (runNext(w, R.run ||= runInit(), R.wT, wSample())) { const a = wAt(); flash(a?.done ? 'Last step done' : `Next: ${a.step.label || 'Block'}`, 2000); applyTrainer(); paint(); } }
 function targetW() {
   if (P.mode === 'erg') return P.erg;
-  const a = wAt(); return a && !a.done && !(a.step.free && a.step.type) ? tunedTarget(a.step, Math.round(a.target * R.intensity / 100), R.wAdj) : null; // a builder step without a power target: the trainer is left free
+  const a = wAt(); return a && !a.done && !(a.step.free && a.step.type) ? Math.min(2000, tunedTarget(a.step, Math.round(a.target * R.intensity / 100), R.wAdj)) : null; // a builder step without a power target: the trainer is left free; 2000 W is all a trainer takes (js/trainer.js)
 }
 /** workout: the hard intervals a few watts up or down (as in the 3D ride), on top of the % intensity; ERG follows */
 function tune(d) {

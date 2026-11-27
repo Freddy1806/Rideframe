@@ -6,7 +6,7 @@
 // workout) move the hard intervals' target in watts (±150 W); rests stay; the gear keys + / − and pad R still shift; the saved
 // ride keeps wAdj and its time-weighted average, the summary shows "Intervals +10 W". Also: the preset in the Training tab
 // and route picker, a free ride without the control, and the phone indoor page ("Intensity" %, interval watts by buttons,
-// arrows, Q/E/PageUp/PageDown).
+// arrows, Q/E/PageUp/PageDown; a builder workout in absolute watts: 30 / 15 with the offset during the interval, the float, the next set).
 // Starts its own serve.mjs on a free port with a temp data folder.
 // Usage: NODE_PATH=$(npm root -g) node tools/intensity-ui.cjs   SHOTS=<dir> saves screenshots (deviceScaleFactor 2).
 const { chromium } = require('playwright');
@@ -361,6 +361,36 @@ function fakePad() { // a standard-mapping gamepad; window.__pad.press(i) holds 
     ok(/^Target \d+ W$/.test(warmT) && await P.textContent('#pTarget') === warmT, `phone indoor: warm-up target unchanged by the offset (${warmT}), the offset is only on intervals`, await P.textContent('#pTarget'));
     if (SHOTS) await P.screenshot({ path: path.join(SHOTS, 'pure_workout_390.png') });
     await c3.close();
+
+    // ---- phone indoor page, a builder workout in absolute watts (audit 27.11., the owner's 3 × 13 × 30 s at 370 W / 15 s at 125 W):
+    //      + / − during a running interval reach the trainer at once, the float stays, the offset stays for the next set, no ramp eats
+    //      the 30 s, the saved ride keeps it. The page clock is skipped ahead (pure.js catches up second by second) ----
+    {
+      const P3 = lo => ({ kind: 'power', lo, hi: lo }), set = () => ({ repeat: 13, skipLast: true, steps: [{ type: 'work', dur: { kind: 'time', sec: 30 }, target: P3(370) }, { type: 'recover', dur: { kind: 'time', sec: 15 }, target: P3(125) }] });
+      const OW = { v: 2, id: 'pw_aud3015', name: 'Audit 30/15', notes: '', sport: 'bike', base: null, updated: 1, steps: [{ type: 'warmup', dur: { kind: 'time', sec: 600 }, target: { kind: 'ftp', pct: 40, pct2: 72 } }, set(), { type: 'rest', dur: { kind: 'time', sec: 180 }, target: P3(130) }, set(), { type: 'cooldown', dur: { kind: 'time', sec: 300 }, target: { kind: 'ftp', pct: 50 } }] };
+      const c4 = await b.newContext({ viewport: { width: 360, height: 740 }, deviceScaleFactor: 2, isMobile: true, hasTouch: true });
+      await c4.addInitScript(w => { let off = 0; const dn = Date.now.bind(Date), pn = performance.now.bind(performance); Date.now = () => dn() + off; performance.now = () => pn() + off; window.__skip = s => { off += s * 1000; };
+        localStorage.setItem('rf_myworkouts', JSON.stringify([w])); }, OW);
+      const Q = await c4.newPage(); Q.on('pageerror', e => errs.push('pure 30/15: ' + e.message)); Q.on('dialog', d => d.accept());
+      await Q.goto(BASE + '/pure.html?demo'); await Q.evaluate(async () => { const { db } = await import('/js/db.js'); await db.kvSet('settings', { ...((await db.kvGet('settings')) || {}), ftp: 287 }); });
+      await Q.goto(BASE + '/pure.html?demo&workout=pw_aud3015'); await Q.waitForSelector('#pWork'); await Q.waitForTimeout(300);
+      await Q.evaluate(async () => { const { Trainer } = await import('/js/trainer.js'); const o = Trainer.prototype.setPower; window.__erg = []; Trainer.prototype.setPower = function (w) { window.__erg.push(w); return o.call(this, w); }; });
+      const skip = async n => { while (n > 0) { const k = Math.min(200, n); await Q.evaluate(k => window.__skip(k), k); await Q.waitForTimeout(350); n -= k; } }; // the page counts at most 600 s per catch-up
+      const st = () => Q.evaluate(() => ({ step: document.querySelector('#pStep').textContent.replace(/\s+/g, ' '), t: +(/Target (\d+)/.exec(document.querySelector('#pTarget').textContent) || [])[1], adj: document.querySelector('#pAdj b').textContent, erg: window.__erg.at(-1) }));
+      await Q.tap('#pStart'); await skip(605); let s = await st();
+      ok(/^Bike 1\/13 · 0:2\d left/.test(s.step) && s.t === 370 && s.erg === 370, `pure 30/15: Bike 1/13 at 370 W whatever the FTP (287), the trainer gets 370`, JSON.stringify(s));
+      await Q.tap('[data-wa="5"]'); s = await st(); ok(s.t === 375 && s.erg === 375 && s.adj === '+5 W', 'pure 30/15: +5 W in the running interval: target and trainer 375 W at once, "+5 W" shown', JSON.stringify(s));
+      await Q.keyboard.press('Shift+ArrowUp'); await Q.keyboard.press('ArrowUp'); s = await st(); ok(s.t === 381 && s.erg === 381 && s.adj === '+11 W', 'pure 30/15: Shift+↑ +1, ↑ +5: 381 W', JSON.stringify(s));
+      await Q.tap('[data-wa="-5"]'); await Q.keyboard.press('Shift+ArrowDown'); s = await st(); ok(s.t === 375 && s.adj === '+5 W', 'pure 30/15: −5 W, Shift+↓ −1: 375 W', JSON.stringify(s));
+      if (SHOTS) await Q.screenshot({ path: path.join(SHOTS, 'pure_3015_offset_360.png') });
+      await skip(27); s = await st(); ok(/^Recover/.test(s.step) && s.t === 125 && s.erg === 125 && /then 375 W/.test(s.step), 'pure 30/15: the 15 s float stays 125 W, "then 375 W"', JSON.stringify(s));
+      await skip(15); s = await st(); ok(/^Bike 2\/13 · 0:2\d left/.test(s.step) && s.t === 375 && s.erg === 375, 'pure 30/15: Bike 2/13 at 375 W from its first second (no ramp)', JSON.stringify(s));
+      await skip(11 * 45 + 30 + 180 + 2); s = await st(); ok(/^Bike 1\/13/.test(s.step) && s.t === 375, 'pure 30/15: set 2 starts at 375 W, the offset stays (last float skipped, 3 min rest)', JSON.stringify(s));
+      await Q.tap('#pPause'); await Q.tap('#pEnd'); await Q.tap('#eSave'); await Q.waitForTimeout(600);
+      const rec = await Q.evaluate(async () => { const { db } = await import('/js/db.js'); return (await db.all('rides')).sort((a, b) => b.date - a.date)[0]; });
+      ok(rec?.workout === 'Audit 30/15' && rec.wAdj === 5 && rec.wAdjAvg === 5, `pure 30/15: the saved ride keeps the offset (wAdj ${rec?.wAdj}, average ${rec?.wAdjAvg})`);
+      await c4.close();
+    }
 
     ok(!errs.length, 'no page errors' + (errs.length ? ': ' + errs.join(' | ') : ''));
   } catch (e) { console.log('✗ ' + (e.stack || e.message)); fails++; }
