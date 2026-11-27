@@ -41,6 +41,14 @@ class RideframeApp extends Application.AppBase {
     var hrAt as Number = 0;     // 24.11.: System.getTimer() of the last heart rate a sensor event brought
     var hrPoll as Number = 0;   // and of the last poll (once a second while the events are silent)
     var healthAt as Number = 0; // 25.11.: Time.now() seconds of the last recovery snapshot sent
+    // 27.11.6 (touch-concept.md: 5 full redraws a second competed with the drag events): one timer, three speeds (retime): ANIM_MS while a
+    // list moves or a tap flashes, TICK_MS on the live screens (pause hold, rest, a recording / ride / strength session, the wheel), IDLE_MS
+    // on the others. Input redraws at once (input); the timer redraws only when the second changed (every clock on screen counts whole
+    // seconds), the screen changed in the tick, the pause hold runs (Flow.needsFrame) or the wheel's neighbours are due to go.
+    var tickP as Number = 0;    // the timer's period now
+    var slowAt as Number = 0;   // System.getTimer() of the last full tick
+    var drawnSec as Number = -1; // Time.now() of the last frame (FlowView.onUpdate)
+    var wheelSeen as Number = 0; // gWheelEnd whose "neighbours gone" frame was drawn
 
     function initialize() { AppBase.initialize(); }
 
@@ -64,7 +72,7 @@ class RideframeApp extends Application.AppBase {
         if (aq instanceof Array) { acts = aq as Array<Dictionary>; }
         sensorsOn();
         timer = new Timer.Timer();
-        timer.start(method(:onTick), 200, true);
+        retime();
         if (token != null) { sendHealth(); refresh(); push(); pushAct(); }
         return [new FlowView(f, self), new FlowDelegate(f, self)];
     }
@@ -99,12 +107,27 @@ class RideframeApp extends Application.AppBase {
         if (wasStart == 0 && flow.start != 0) { startRecording(); }
         drain();
         WatchUi.requestUpdate();
+        retime();
+    }
+    // the timer's speed for what is on screen now (Timer: at most 3 timers, 50 ms minimum; this one is restarted, never a second one)
+    function retime() as Void {
+        var s = flow.scr, p = IDLE_MS;
+        if (flow.animating()) { p = ANIM_MS; }
+        else if (s == S_PAUSE || s == S_REST || s == S_SET || flow.rec != null || flow.tr != null || flow.start != 0 || gWheel >= 0) { p = TICK_MS; }
+        if (p == tickP) { return; }
+        tickP = p;
+        // VERIFY (Toybox.Timer.Timer start / stop): restarting the one repeating timer from its own callback is allowed
+        timer.stop(); timer.start(method(:onTick), p, true);
     }
     function onTick() as Void {
-        var t = now();
-        flow.handle(E_TICK, t, System.getTimer()); // ms for the pause screen's 3 s hold (t has whole seconds)
-        recorder.tick(System.getTimer(), t);
-        pollHr(System.getTimer());
+        var ms = System.getTimer();
+        if (flow.stepDue(ms)) { input(E_ANIM, ms); } // a moving list / a tap's flash (input redraws)
+        if (tickP == ANIM_MS && ms - slowAt < TICK_MS - 20) { return; } // the rest only every TICK_MS
+        slowAt = ms;
+        var t = now(), sc = flow.scr;
+        flow.handle(E_TICK, t, ms); // ms for the pause screen's 3 s hold (t has whole seconds)
+        recorder.tick(ms, t);
+        pollHr(ms);
         drain();
         // retry the queue every 30 s while the app is open (the phone may be back)
         if (flow.queue.size() > 0 && !sending && t - lastTry >= 30 && flow.paired) { push(); }
@@ -114,7 +137,11 @@ class RideframeApp extends Application.AppBase {
             recorder.segsAsked();
             api.segments(recorder.segLat, recorder.segLon, flow.sp, method(:onSegs));
         }
-        WatchUi.requestUpdate();
+        // the wheel's neighbours go WHEEL_SHOW_MS after the lift (one frame then); the wheel is done after that
+        var wheelDue = gWheelEnd != 0 && gWheelEnd != wheelSeen && ms - gWheelEnd >= WHEEL_SHOW_MS;
+        if (wheelDue) { wheelSeen = gWheelEnd; gWheel = -1; }
+        if (t != drawnSec || flow.scr != sc || flow.needsFrame() || wheelDue) { WatchUi.requestUpdate(); }
+        retime();
     }
     // 23.11.: an event of the trainer's radio (TrainerBle callbacks)
     function bleEv(d as Dictionary) as Void {
@@ -154,7 +181,7 @@ class RideframeApp extends Application.AppBase {
     }
     // once a second while no sensor event brought a heart rate for 5 s: the activity's, else the sensor's current value
     function pollHr(ms as Number) as Void {
-        if (ms - hrPoll < 1000 || ms - hrAt < 5000) { return; }
+        if (ms - hrPoll < 900 || ms - hrAt < 5000) { return; } // 27.11.6: 900, so a 1 s timer polls every second
         hrPoll = ms;
         var h = null;
         var ai = Activity.getActivityInfo(); // VERIFY: currentHeartRate is filled outside a recording session (wrist sensor)
@@ -205,6 +232,7 @@ class RideframeApp extends Application.AppBase {
         else if (c == C_DONE) { p = [new Attention.VibeProfile(100, 500)]; }
         else if (c == C_ERROR) { p = [new Attention.VibeProfile(50, 100), new Attention.VibeProfile(0, 100), new Attention.VibeProfile(50, 100)]; }
         else if (c == C_TICK) { p = [new Attention.VibeProfile(30, 20)]; } // 23.11.7: one wheel step, as short as the motor allows
+        else if (c == C_TAP) { p = [new Attention.VibeProfile(50, 40)]; } // 27.11.6: a tap taken (VERIFY on the fenix 8: felt, not annoying)
         else if (c == C_STOP || c == C_SEG) { p = [new Attention.VibeProfile(80, 150), new Attention.VibeProfile(0, 120), new Attention.VibeProfile(80, 150)]; }
         else { p = [new Attention.VibeProfile(60, 150)]; } // set, start
         Attention.vibrate(p);

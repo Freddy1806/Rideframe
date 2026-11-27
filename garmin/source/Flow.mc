@@ -61,7 +61,7 @@ const HOME_DY = 0.155;
 const S_THR = 24;          // 27.11.2: the heart rate step between the choice and the ride
 const HR_LIVE_S = 15;      // a heart rate older than this is not there any more
 const HR_SHOW_S = 2;       // the step shows a heart rate this long, then the ride starts by itself
-const S_TPICK = 23;        // 27.11.: the trainer: Free ride (ERG) or a workout (rideList)
+const S_TPICK = 23;        // 27.11.: the trainer: Free ride (ERG) or a workout (rideList); 27.11.6: in three steps (tlev)
 // events (js: the ev strings of handle())
 const E_UP = 1;
 const E_DOWN = 2;
@@ -88,6 +88,30 @@ const E_DONE = 22;         // 23.11.: the set screen's DONE pill (logs at once; 
 const E_START_HOLD = 23;   // 23.11.: START held: weight <-> reps
 const E_BLE = 24;          // 23.11.: the trainer's radio (TrainerBle.mc): arg = { "k" => "found" | "conn" | "drop" | "done" | "ind", ... }
 const E_WHEEL = 25;        // 23.11.7: a finger dragged over a number (js 'wheel'), arg = [column (0 kg / 1 reps), steps (+ = finger up = more)]
+const E_DRAG = 26;         // 27.11.6: a finger moved a list (js 'drag'), arg = [screen fraction (Float, + = on down the list), System.getTimer() ms]
+const E_DRAG_END = 27;     // 27.11.6: it lifted (js 'dragEnd'), arg = ms
+const E_ANIM = 28;         // 27.11.6: the app's timer while a list moves or a tap flashes (js 'anim'), arg = ms
+const E_PRESS = 29;        // 27.11.6: a tapped row / button (js 'press'), arg = [PK_*, row, ev, its arg, ms, later (Boolean: the action after the flash)]
+// 27.11.6 (js PRESS_MS ... DRAG_IDLE_MS): the list's motion and the tap flash (Flow.lDrag ... anim; js/watchflow.js has the reasons)
+const PRESS_MS = 130;
+const ANIM_MS = 50;
+const L_OVER = 0.3;
+const V_COAST = 3.0;
+const V_STOP = 1.5;
+const V_MAX = 25.0;
+const COAST_TAU = 200;
+const COAST_MS = 500;
+const SNAP_TAU = 60;
+const DRAG_IDLE_MS = 1500;
+const TICK_MS = 200;       // RideframeApp's timer on the live screens
+const IDLE_MS = 1000;      // and on the others
+// the things a tap flashes (js 'row', 'done', 'minus', 'plus', 'tgt', 'resume')
+const PK_ROW = 1;
+const PK_DONE = 2;
+const PK_MINUS = 3;
+const PK_PLUS = 4;
+const PK_TGT = 5;
+const PK_RESUME = 6;
 // vibration cues
 const C_SET = 1;
 const C_PR = 2;
@@ -100,6 +124,7 @@ const C_LAP = 8;
 const C_SEG = 9;
 const C_HOLD = 10;
 const C_TICK = 11;         // 23.11.7: one wheel step (js 'tick'): a very short vibration
+const C_TAP = 12;          // 27.11.6: a tap taken (js 'tap'): a short light vibration
 // requests
 const O_SEND = 1;
 const O_PAIR = 2;
@@ -121,6 +146,11 @@ const M_SYNC = "Sync now";
 const M_PAIR = "Pair with phone";
 const FREE_ROW = "Free";
 const FREE_RIDE = "Free ride (ERG)";   // 27.11.: js FREE_RIDE
+// 27.11.6 (js TRAINING, CATS): S_TPICK is a chooser in three steps (tlev): Free ride / Training, the categories with workouts, a category's
+// workouts. The server sends each workout's category letter as "c" (tools/watch-api.mjs rideWorkouts); one without it is under Other
+const TRAINING = "Training";
+const CAT_K = ["e", "t", "v", "a", "f", "o"];
+const CAT_N = ["Endurance", "Threshold", "VO2max", "Anaerobic", "FTP test", "Other"];
 const WK_DONE_S = 30;                  // "Workout done" shows this long
 // 28.11. (js TEND_ROWS, TEND_RESUME, TP_DEF): the ride menu's rows ("Resume" only for a paused ride: the menu never pauses), the ride's pages
 // after the target page while the config has none ("tp")
@@ -130,7 +160,7 @@ const TEND_RESUME = "Resume";
 // workout: its offset), the menu stays open for the next press
 const TEND_W = 5;
 // js/watchflow.js VERSION: the menu title shows it
-const RF_VERSION = "27.11.5";
+const RF_VERSION = "27.11.6";
 // pairing states / sum states
 const P_ENTER = 0;
 const P_SENDING = 1;
@@ -343,6 +373,24 @@ class Flow {
     var hrMax as Number = 0;
     var pairD as Array<Number> = [0, 0, 0, 0, 0, 0] as Array<Number>;
     var pairI as Number = 0;
+    // 27.11.6 (js lpos ... pr): the list's position in rows while a finger drags it (lmode 1), it coasts (2) or snaps / slides (3), on
+    // screen lscr; lbtn: UP / DOWN slide it (the selection is already the new row); the tap flash: what (PK_*), which row, on which
+    // screen, since when (ms), the action waiting for it (prEv -1: none)
+    var lpos as Float = 0.0;
+    var lvel as Float = 0.0;
+    var lmode as Number = 0;
+    var lscr as Number = -1;
+    var ltgt as Number = 0;
+    var lt as Number = 0;
+    var lat as Number = 0;
+    var l0 as Number = 0;
+    var lbtn as Boolean = false;
+    var prK as Number = 0;
+    var prI as Number = -1;
+    var prScr as Number = -1;
+    var prAt as Number = 0;
+    var prEv as Number = -1;
+    var prArg = null;
     var pairSt as Number = P_ENTER;
     var cues as Array<Number> = [] as Array<Number>;
     var out as Array<Dictionary> = [] as Array<Dictionary>;    // [{ "k" => O_..., "code" => "123456" }]
@@ -388,6 +436,8 @@ class Flow {
     var ftp as Number = 0;
     var wk as TWork or Null = null;
     var tw as Number = -1;                                      // the choice on S_TPICK: -1 none, 0 free ride, k = rideList()[k - 1]
+    var tlev as Number = 0;                                     // 27.11.6: the chooser's step (0 Free ride / Training, 1 categories, 2 workouts)
+    var tcat as String = "";                                    // 27.11.6: the category of step 2 (a CAT_K letter)
     var wkDone as Number = 0;
     var wkSum as TWork or Null = null;                          // 27.11.4 (js F.wkSum): the workout's numbers for the summary (stays after wkEnd)
     var hrZ as Array<Number> or Null = null;                    // 27.11.4 (js F.hrZ): the profile's cycling heart rate zones (hrZones), null none
@@ -589,6 +639,100 @@ class Flow {
         }
     }
     // js: dragRow(s): the finger distance (screen fraction) that moves the list on screen s by one row
+    /* ---- 27.11.6: lists follow the finger (js/watchflow.js lDrag ... needsFrame, the same numbers) ---- */
+    // js pxList(F): the screen shows a list that follows the finger (FlowDelegate sends E_DRAG there, else E_SCROLL rows)
+    function pxList() as Boolean {
+        var s = scr;
+        if (flash != null) { return false; }
+        if (s == S_TSCAN) { var v = link.shown(); return v == TL_SCAN || v == TL_OFF; }
+        return s == S_PICK || s == S_MENU || s == S_HOME || s == S_MORE || s == S_SMODE || s == S_RPICK || s == S_END || s == S_SAVEQ || s == S_TEND || s == S_TPICK;
+    }
+    function lCount() as Number { return pxList() ? listItems().size() : 0; }
+    function lSel(n as Number) as Number { var r = rnd(lpos); return r < 0 ? 0 : (r > n - 1 ? n - 1 : r); }
+    function lClamp(x as Float, n as Number) as Float { var hi = (n - 1).toFloat() + L_OVER; return x < -L_OVER ? -L_OVER : (x > hi ? hi : x); }
+    // js listPos(F): where the list is drawn, in rows
+    function listPos() as Float { return lmode != 0 && lscr == scr ? lpos : sel.toFloat(); }
+    // js prRow(F) / prOn(F, k): the row / the button a tap flashes right now
+    function prRow() as Number { return prK == PK_ROW && prScr == scr ? prI : -1; }
+    function prOn(k as Number) as Boolean { return prK == k && prScr == scr; }
+    function lDrag(d as Float, ms as Number) as Void {
+        var n = lCount(), row = dragRow();
+        if (n == 0) { return; }
+        if (lmode == 0 || lscr != scr) { lpos = sel.toFloat(); lvel = 0.0; lscr = scr; lat = ms; }
+        else if (lmode != 1) { lvel = 0.0; lat = ms; } // a moving list caught by the finger
+        else {
+            var dt = ms - lat;
+            if (dt > 0) { var vi = d / row * 1000.0 / dt.toFloat(); lvel = dt > 200 ? vi : lvel * 0.3 + vi * 0.7; }
+        }
+        lvel = lvel < -V_MAX ? -V_MAX : (lvel > V_MAX ? V_MAX : lvel);
+        lpos = lClamp(lpos + d / row, n);
+        lmode = 1; lbtn = false; lat = ms; lt = ms; sel = lSel(n);
+    }
+    function lRelease(ms as Number) as Void {
+        if (lmode != 1) { return; }
+        var n = lCount();
+        if (n == 0 || lscr != scr) { lmode = 0; return; }
+        if (ms - lat > 120) { lvel = 0.0; } // the finger rested before it lifted
+        lt = ms; l0 = ms;
+        if (absF(lvel) >= V_COAST && lpos >= 0.0 && lpos <= (n - 1).toFloat()) { lmode = 2; } else { lmode = 3; ltgt = lSel(n); }
+    }
+    function lStep(ms as Number) as Void {
+        if (lmode == 0) { return; }
+        var n = lCount();
+        if (n == 0 || lscr != scr) { lmode = 0; lbtn = false; return; }
+        if (lmode == 1) { if (ms - lat > DRAG_IDLE_MS) { lRelease(ms); } return; } // a drag whose end never came
+        var dt = lt < 0 ? ANIM_MS : ms - lt;
+        lt = ms; dt = dt < 0 ? 0 : (dt > 100 ? 100 : dt); // a late timer: no big jump
+        if (lmode == 2) {
+            lpos = lClamp(lpos + lvel * dt.toFloat() / 1000.0, n); lvel = lvel * COAST_TAU.toFloat() / (COAST_TAU + dt).toFloat();
+            if (lpos < 0.0 || lpos > (n - 1).toFloat() || absF(lvel) < V_STOP || ms - l0 >= COAST_MS) {
+                lmode = 3; var t = rnd(lpos + lvel * 0.08); ltgt = t < 0 ? 0 : (t > n - 1 ? n - 1 : t);
+            }
+        } else {
+            var k = dt.toFloat() / SNAP_TAU.toFloat();
+            lpos = lpos + (ltgt.toFloat() - lpos) * (k > 1.0 ? 1.0 : k);
+            if (absF(ltgt.toFloat() - lpos) < 0.02) { lpos = ltgt.toFloat(); lmode = 0; }
+        }
+        if (!lbtn) { sel = lSel(n); }
+        if (lmode == 0) { lbtn = false; }
+    }
+    // UP / DOWN moved the selection one row (d = +1 on down the list): the list slides there
+    function lBtn(d as Number) as Void {
+        if (!pxList()) { return; }
+        lpos = (sel - d).toFloat(); ltgt = sel; lmode = 3; lt = -1; lscr = scr; lbtn = true;
+    }
+    function lStop() as Void { lmode = 0; lbtn = false; }
+    // a tap on a row / button: a = [PK_*, row, ev, its arg, ms, later]
+    function press(now as Number, a as Array) as Void {
+        var k = numOf(a[0]), later = a[5] == true;
+        if (k == PK_ROW && (lmode == 2 || lmode == 3) && !lbtn) { lStop(); return; } // a tap on a moving list stops it
+        lStop();
+        prK = k; prI = numOf(a[1]); prScr = scr; prAt = numOf(a[4]); prEv = later ? numOf(a[2]) : -1; prArg = a[3];
+        cues.add(C_TAP);
+        if (!later) { handle(numOf(a[2]), now, a[3]); }
+    }
+    function flushPress(now as Number) as Void {
+        if (prEv < 0) { return; }
+        var e = prEv, x = prArg;
+        prEv = -1; prArg = null; prK = 0; prI = -1;
+        handle(e, now, x);
+    }
+    function anim(now as Number, ms as Number) as Void {
+        if (prK != 0 && (ms - prAt >= PRESS_MS || ms < prAt)) {
+            var e = prEv, x = prArg;
+            prK = 0; prI = -1; prEv = -1; prArg = null;
+            if (e >= 0) { handle(e, now, x); }
+        }
+        lStep(ms);
+    }
+    // js animating(F): the app's timer runs at ANIM_MS while this is true
+    function animating() as Boolean { return lmode == 2 || lmode == 3 || prK != 0; }
+    // js stepDue(F, ms): the app sends E_ANIM now
+    function stepDue(ms as Number) as Boolean { return animating() || (lmode == 1 && ms - lat > DRAG_IDLE_MS); }
+    // js prWait(F): a tapped row waits for its flash (FlowDelegate drops taps meanwhile)
+    function prWait() as Boolean { return prK != 0 && prEv >= 0; }
+    // js needsFrame(F): the screen changes between whole seconds (the pause screen's hold to finish)
+    function needsFrame() as Boolean { return scr == S_PAUSE && pzHolding; }
     function dragRow() as Float {
         if (scr == S_HOME) { return HOME_DY; }
         if (scr == S_MENU || scr == S_END || scr == S_SAVEQ || scr == S_TEND) { return DRAG_MENU; }
@@ -1133,8 +1277,55 @@ class Flow {
         if (ev == E_START || ev == E_TAP) { tBegin(now); }
         else if (ev == E_BACK) { sel = 0; scr = S_TSCAN; }
     }
-    function tPick() as Void { sel = tw > 0 ? tw : 0; scr = S_TPICK; }
-    // S_TPICK row i: 0 = free ride, else that workout; connected: the ride starts, else back to the trainer's state until it is
+    // 27.11.6 (js catOf, tCats, catName, tRows): a workout's category letter (Other without a known one), the categories with workouts
+    // in CAT_K order, a letter's name, the workouts of tcat (indices into rideList)
+    function catOf(w as Dictionary) as String {
+        var c = strOf(w["c"]);
+        for (var k = 0; k < CAT_K.size() - 1; k++) { if (CAT_K[k].equals(c)) { return c; } }
+        return "o";
+    }
+    function tCats() as Array<String> {
+        var l = rideList(), r = [] as Array<String>;
+        for (var k = 0; k < CAT_K.size(); k++) {
+            var has = false;
+            for (var j = 0; j < l.size(); j++) { if (catOf(l[j]).equals(CAT_K[k])) { has = true; } }
+            if (has) { r.add(CAT_K[k]); }
+        }
+        return r;
+    }
+    function catName(c as String) as String {
+        for (var k = 0; k < CAT_K.size(); k++) { if (CAT_K[k].equals(c)) { return CAT_N[k]; } }
+        return CAT_N[CAT_N.size() - 1];
+    }
+    function tRows() as Array<Number> {
+        var l = rideList(), r = [] as Array<Number>;
+        for (var j = 0; j < l.size(); j++) { if (catOf(l[j]).equals(tcat)) { r.add(j); } }
+        return r;
+    }
+    function idxOf(a as Array, v) as Number {
+        for (var k = 0; k < a.size(); k++) { if (a[k].equals(v)) { return k; } }
+        return -1;
+    }
+    // the choice made before: its category's list with it selected; else the first step
+    function tPick() as Void {
+        var l = rideList();
+        if (tw > 0 && tw <= l.size()) { tcat = catOf(l[tw - 1]); tlev = 2; var k = idxOf(tRows(), tw - 1); sel = k < 0 ? 0 : k; }
+        else { tlev = 0; sel = 0; }
+        scr = S_TPICK;
+    }
+    // S_TPICK row i on its step: Free ride (chosen at once) or Training, a category, a workout (chosen)
+    function tSel(i as Number, now as Number) as Void {
+        if (tlev == 0) { if (i == 0) { tChoose(0, now); } else { tlev = 1; sel = 0; } }
+        else if (tlev == 1) { var c = tCats(); tcat = i < c.size() ? c[i] : "o"; tlev = 2; sel = 0; }
+        else { var r = tRows(); if (i < r.size()) { tChoose(r[i] + 1, now); } }
+    }
+    // BACK on S_TPICK: one step up (the category / Training selected), from the first step the trainer's state
+    function tUp() as Void {
+        if (tlev == 2) { tlev = 1; var k = idxOf(tCats(), tcat); sel = k < 0 ? 0 : k; }
+        else if (tlev == 1) { tlev = 0; sel = 1; }
+        else { sel = 0; scr = S_TSCAN; } // the trainer's state, still connected
+    }
+    // the choice: 0 = free ride, else that workout; connected: the ride starts, else back to the trainer's state until it is
     function tChoose(i as Number, now as Number) as Void {
         tw = i; var v = link.shown();
         if (v == TL_READY || v == TL_REFUSED) { tHr(now); } else { sel = 0; scr = S_TSCAN; }
@@ -1204,8 +1395,8 @@ class Flow {
             if (ev == E_SCROLL) { var x = sel + numOf(arg); sel = x < 0 ? 0 : (x > n - 1 ? imax(0, n - 1) : x); return; }
             if (ev == E_BACK) { link.stop(); sel = 0; scr = S_HOME; return; }
             if (n == 0) { return; }
-            if (ev == E_UP) { sel = (sel + n - 1) % n; }
-            else if (ev == E_DOWN) { sel = (sel + 1) % n; }
+            if (ev == E_UP) { sel = (sel + n - 1) % n; lBtn(-1); }
+            else if (ev == E_DOWN) { sel = (sel + 1) % n; lBtn(1); }
             else if (ev == E_START || ev == E_TAP || ev == E_ITEM) {
                 var i = ev == E_ITEM ? numOf(arg) : sel; i = i < 0 ? 0 : (i > n - 1 ? n - 1 : i);
                 link.connect(strOf(link.list[i]["name"]), now);
@@ -1289,6 +1480,8 @@ class Flow {
             if (arg instanceof Dictionary) { var w = link.want; link.bleEv(now, arg as Dictionary); if (link.want.length() > 0 && !link.want.equals(w)) { out.add({ "k" => O_TRAINER } as Dictionary); } }
             return;
         }
+        if (ev == E_ANIM) { anim(now, numOf(arg)); return; }
+        if (prWait() && ev != E_TICK) { flushPress(now); } // a tapped row's action comes before the next input
         if (ev == E_HOLD_START || ev == E_HOLD_END) { // BACK pressed / released (and the touch pill): only the pause screen listens
             if (scr != S_PAUSE || pzConf) { return; }
             if (ev == E_HOLD_START) { pzHolding = true; pzHold = numOf(arg); }
@@ -1307,6 +1500,10 @@ class Flow {
             if (scr == S_SET && holdAt > 0 && !holdCued && now - holdAt >= reps) { holdCued = true; cues.add(C_HOLD); }
             return;
         }
+        if (ev == E_DRAG) { if (flash == null && arg instanceof Array) { lDrag(fltOf((arg as Array)[0]), numOf((arg as Array)[1])); } return; }
+        if (ev == E_DRAG_END) { lRelease(numOf(arg)); return; }
+        if (ev == E_PRESS) { if (arg instanceof Array) { press(now, arg as Array); } return; }
+        lStop(); // any other input stops a moving list where it is
         if (flash != null) { flash = null; if (ev != E_MENU) { return; } } // the first touch after a record only clears the flash
         if (ev == E_WHEEL) { wheel(now, arg); return; }
         if (ev == E_SWIPE_LEFT) { ev = E_MENU; }
@@ -1365,8 +1562,8 @@ class Flow {
                 }
                 return;
             }
-            if (ev == E_UP) { sel = (sel + n - 1) % n; }
-            else if (ev == E_DOWN) { sel = (sel + 1) % n; }
+            if (ev == E_UP) { sel = (sel + n - 1) % n; lBtn(-1); }
+            else if (ev == E_DOWN) { sel = (sel + 1) % n; lBtn(1); }
             else if (ev == E_START || ev == E_ITEM || (ev == E_TAP && s != S_PICK && s != S_MENU)) {
                 var i = ev == E_ITEM ? numOf(arg) : sel;
                 pickItem(i < 0 ? 0 : (i > n - 1 ? n - 1 : i), now);
@@ -1378,7 +1575,7 @@ class Flow {
                 else if (s == S_PICK) { pickBack(); }
                 else if (s == S_END) { if (endConf) { endConf = false; sel = 2; } else { toPick(true); } } // BACK = keep training
                 else if (s == S_TEND) { if (tConf) { tConf = false; sel = 4; } else { scr = S_TREC; } }  // BACK = back to the ride (paused stays paused)
-                else if (s == S_TPICK) { sel = 0; scr = S_TSCAN; }                                     // the trainer's state, still connected
+                else if (s == S_TPICK) { tUp(); }                                                       // 27.11.6: one step up
                 else { reset(); } // SMODE: the strength screen; SAVEQ: = No
             }
             return;
@@ -1451,7 +1648,11 @@ class Flow {
             else { r = [R != null && R.st != RS_RUN ? TEND_RESUME : TEND_BACK, "+5 W", "-5 W", "Finish & save", "Discard"] as Array<String>; }
         }
         else if (s == S_TSCAN) { for (var i = 0; i < link.list.size(); i++) { r.add(strOf(link.list[i]["name"])); } }
-        else if (s == S_TPICK) { r.add(FREE_RIDE); var l = rideList(); for (var i = 0; i < l.size(); i++) { r.add(strOf(l[i]["n"])); } }
+        else if (s == S_TPICK) {
+            if (tlev == 0) { r.add(FREE_RIDE); r.add(TRAINING); }
+            else if (tlev == 1) { var c = tCats(); for (var i = 0; i < c.size(); i++) { r.add(catName(c[i])); } }
+            else { var l = rideList(), rw = tRows(); for (var j = 0; j < rw.size(); j++) { r.add(strOf(l[rw[j]]["n"])); } }
+        }
         return r;
     }
     function pickItem(i as Number, now as Number) as Void {
@@ -1484,7 +1685,7 @@ class Flow {
             else if (i == 1 || i == 2) { tPlus(i == 1 ? TEND_W : -TEND_W, now); }   // 27.11.5: + / - 5 W, the menu stays
             else if (i == 3) { tFinish(now); } else { tConf = true; sel = 0; }
         }
-        else if (s == S_TPICK) { tChoose(i, now); }
+        else if (s == S_TPICK) { tSel(i, now); }
         else if (s == S_SAVEQ) { // the last row is No
             var q = saveq;
             if (q != null) { var lastRow = (q["rows"] as Array).size() - 1; if (i < lastRow) { saveTpl(q["wid"] == null || i == 1, now); } }

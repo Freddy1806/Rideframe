@@ -4,7 +4,7 @@
 // tools/watch-layout-test.mjs compares the numbers of both files function by function.
 import { G } from './watchdc.js';
 import { SCR, HOME, curEx, setNo, restLeft, clock, homeItems, homeTop, listItems, workouts, planItem, pickRows, doneOf, prefillOf, lastSet, lastTxt, recPages, routeInfo,
-  holdPart, pausedTime, stepOf, HOME_FIT, VERSION, loading, rides, hrOn, tPages, tsPages } from './watchflow.js';
+  holdPart, pausedTime, stepOf, HOME_FIT, VERSION, loading, rides, hrOn, tPages, tsPages, listPos, prRow, prOn, dragRow, tCats, catOf, catName, tRows } from './watchflow.js';
 import { FIELDS, fieldText, labelOf } from './watchfields.js';
 import { shown, live as tLive, hasCad, nextTarget, wkLeft, wkTotLeft, wkShown, wkNextW, wkAdj, wkDur, wkRamp, wkPlat, REC_NONE } from './watchtrainer.js';
 import { groupOf } from './sports.js';
@@ -134,6 +134,8 @@ export function topFont(dc, t, fonts, w, h, yb, y0) {
 /** a pill's height: h, or more where XTINY with descenders would not fit (font size setting) */
 export function pillH(dc, h) { const k = inkH(dc, XT) + 4; return k > h ? k : h; }
 /** a, or b when a is wider than w in font f */
+/** 27.11.6: the last (shortest) variant of "long|short" */
+function lastV(t) { t = String(t); let i = t.indexOf('|'); while (i >= 0) { t = t.slice(i + 1); i = t.indexOf('|'); } return t; }
 function alt(dc, a, b, f, w) { return dc.getTextWidthInPixels(a, f) <= w ? a : b; }
 /** the y of a line in font f below ink bottom yb (and not above y0) */
 function below(dc, yb, f, y0) { const y = yb + gap(dc.getWidth()) + up(dc, f); return y > y0 ? y : y0; }
@@ -149,11 +151,12 @@ export function screen(dc, F, P, now, sum, ui = {}) {
   P.acc = P.cKraft; ui.now = now; LAY.rows = []; LAY.route = 0; LAY.t0 = 0; LAY.t1 = 0;
   const f = F.flash;
   if (f) { if (f.k === 'lap') lapFlash(dc, F, S, P, f); else prFlash(dc, S, P, f); return; }
+  if (ui.design) { const d = ui.design; list(dc, F, S, P, d.items, d.title, d.tshort, false, d.sub, null, []); return; } // design scenes only (tools/watch-scenes.mjs)
   if (s === SCR.HOME) drawHome(dc, F, S, P, sum);
   else if (s === SCR.PICK) drawPick(dc, F, S, P);
   else if (s === SCR.SMODE) drawSmode(dc, F, S, P);
   else if (s === SCR.MORE) drawMore(dc, F, S, P);
-  else if (s === SCR.MENU) list(dc, F, S, P, F.menu, 'MENU v' + VERSION, 'v' + VERSION, true, null, null, ui.touch != null ? [[ui.touch, P.lbl, true]] : []);
+  else if (s === SCR.MENU) list(dc, F, S, P, F.menu, 'MENU v' + VERSION, 'v' + VERSION, true, null, null, []);
   else if (s === SCR.END) drawEnd(dc, F, S, P, now);
   else if (s === SCR.SAVEQ) drawSaveq(dc, F, S, P);
   else if (s === SCR.SET) drawSet(dc, F, S, P, now, ui);
@@ -180,28 +183,24 @@ function logo(dc, S, y, col, P) {
 }
 /** the start menu's label: "Indoor trainer" is "Trainer" where it does not fit */
 function homeLab(dc, k, f, w) { return k === 'trainer' ? alt(dc, HOME[k], 'Trainer', f, w) : HOME[k]; }
-// the start menu: Run, Ride, Indoor trainer, Strength, More (the last used on top), the selected one as the orange pill (MEDIUM, else
-// the next font that fits the pill), the week points below; rows at HOME_Y0 + r * HOME_DY (the tap table in FlowDelegate.onTap)
+// the start menu: Run, Ride, Indoor trainer, Strength, More (the last used on top) on the wheel (27.11.6, wheelRows): the row at the
+// centre in the orange pill (MEDIUM, else the next font that fits it), the others smaller and dimmer towards the edge; the week points
+// below; the rows as drawn go to the tap table ([offset to the selection, y / S], FlowDelegate.onTap)
 function drawHome(dc, F, S, P, sum) {
-  const items = homeItems(F), n = items.length, c = S / 2, top = homeTop(F.sel, n), G = gap(S), ph = S * .14, w = T(S * .52);
+  const items = homeItems(F), n = items.length, c = S / 2, G = gap(S), ph = S * .14, w = T(S * .52), pos = listPos(F), pr = prRow(F);
   logo(dc, S, S * .12, P.cKraft, P);
-  let yb = downTo(dc, XT, 'RIDEFRAME', S * .12, R0) + dn(dc, XT, 'R');
-  for (let r = 0; r < HOME_FIT; r++) {
-    const i = top + r; if (i >= n) break;
-    const k = items[i], y = S * (HOME_Y0 + r * HOME_DY);
-    if (i === F.sel) {
-      pill(dc, c, y, S * .74, ph, P.acc); icon(dc, k, S * .25, y, S * .085, P.ink);
-      const f = inPill(dc, 'Ag', [ME, SM, XT], S, ph), lab = homeLab(dc, k, f, w);
-      putL(dc, S * .33, y, f, lab, w, P.ink, false, R0); yb = y + ph / 2;
-    } else {
-      icon(dc, k, S * .25, y, S * .075, P.acc);
-      const f = byInk(dc, [SM, XT], S * HOME_DY - 2 * G - S * .01), lab = homeLab(dc, k, f, w);
-      putL(dc, S * .33, y, f, lab, w, P.fg, false, R0); yb = y + dn(dc, f, lab);
-    }
-    LAY.rows.push([r, y / S]);
+  const tb = downTo(dc, XT, 'RIDEFRAME', S * .12, R0) + dn(dc, XT, 'R'), pts = !!sum && sum.pts != null, et = pts ? S * .86 - up(dc, SM) : S * (.5 + R0);
+  for (const [i, d, y] of wheelRows(S, pos, n, HOME_DY, 0)) {
+    const k = items[i], b = wheelBand(d), on = b === 0;
+    const f = b > 1 ? XT : (b > 0 ? byInk(dc, [TI, XT], S * HOME_DY - 2 * G - S * .01) : inPill(dc, 'Ag', [ME, SM, XT], S, ph)), lab = homeLab(dc, k, f, w);
+    if (y - up(dc, f) < tb + G || y + dn(dc, f, lab) > et) continue;
+    if (on) pill(dc, c, y, S * .74, ph, pr === i ? P.fg : P.acc); // the pill goes with the centre row
+    icon(dc, k, S * .25, y, S * (b > 1 ? .06 : (b > 0 ? .075 : .085)), on ? P.ink : (b > 1 ? P.far : P.acc));
+    putL(dc, S * .33, y, f, lab, w, on ? P.ink : (pr === i ? P.acc : (b > 1 ? P.far : (b > 0 ? P.dim : P.fg))), false, R0);
+    LAY.rows.push([i - F.sel, y / S]);
   }
-  if (sum && sum.pts != null) points(dc, S, P, sum, yb);
-  if (n > HOME_FIT) scrollArc(dc, S, P, F.sel, n);
+  if (pts) points(dc, S, P, sum, 0);
+  if (n > HOME_FIT) scrollArc(dc, S, P, pos, n);
   startHint(dc, S, P);
 }
 // "245 pts" and the change against last week below yb (SMALL, else XTINY; the change goes first when there is no room)
@@ -221,7 +220,7 @@ function points(g, S, P, sum, yb) {
 function scrollArc(dc, S, P, sel, n) {
   if (n < 2) return; const c = S / 2;
   dc.setPenWidth(pw(S * .012 + 1)); dc.setColor(P.faint); dc.drawArc(c, c, c - S * .03, ARC_COUNTER_CW, 150, 210);
-  const p = sel / (n - 1), a = 150 + T(p * 51); dc.setColor(P.acc); dc.drawArc(c, c, c - S * .03, ARC_COUNTER_CW, a, a + 9); dc.setPenWidth(1);
+  const p = sel < 0 ? 0 : (sel > n - 1 ? 1 : sel / (n - 1)), a = 150 + T(p * 51); dc.setColor(P.acc); dc.drawArc(c, c, c - S * .03, ARC_COUNTER_CW, a, a + 9); dc.setPenWidth(1);
 }
 /** setShort without spaces and units ("102.5x10", "+10x8", "12", "1:30") */
 export function setMini(t, kg, r) {
@@ -305,56 +304,68 @@ function drawMore(dc, F, S, P) {
   if (F.sel < m.length) sub = GROUP[groupOf(m[F.sel][0])] || 'Other sports';
   list(dc, F, S, P, listItems(F), 'MORE SPORTS', 'MORE', false, sub, null, m.length ? [] : [['Choose sports in the app:|Choose in the app:|In the app:', P.fg, false], ['Settings > Watch > More|Watch > More|Watch', P.fg, false]]);
 }
-// every list: the selected row big in the middle (a menu: in the pill), its sub line under it, the neighbours smaller (one more below);
-// the rows are stacked from the fonts' real sizes around the selected one (23.11.: about 0.17 S apart = 44 px touch targets on the fenix 8),
-// the counter under the title and the far row only where there is room; title: a fixed one with its short form tshort, or a name (tshort
-// null); count: the counter ("long|short", null: n/N); extra = lines under the rows ([text ("long|short"), colour, a name])
+/** 27.11.6, the wheel (the owner: "a bit iPhone-like, 3D"): every list is a drum seen from the front. Row i at the distance d = i - pos
+ *  (rows, pos = listPos: it follows the finger) from the centre sits at y = S (0.5 + 0.42 sin(a d)), a chosen so that the next row is
+ *  pitch away (the finger's row distance, dragRow), so the rows close up towards the round edge; rows below the centre leave gb more
+ *  (the centre row's sub line). Returns [[i, d, y]] for |d| < 2.5 (Draw.mc wheelRows) */
+export function wheelRows(S, pos, n, pitch, gb) {
+  const a = Math.asin(pitch / .42), out = [];
+  for (let i = 0; i < n; i++) {
+    const d = i - pos; if (d <= -2.5 || d >= 2.5) continue;
+    const x = a * d > 1.5 ? 1.5 : (a * d < -1.5 ? -1.5 : a * d);
+    out.push([i, d, S * .5 + S * .42 * Math.sin(x) + (d > 0 ? gb * (d < 1 ? d : 1) : 0)]);
+  }
+  return out;
+}
+/** the wheel's bands by |d| (Draw.mc wheelBand): 0 (< 0.5) the centre: MEDIUM (else SMALL; a menu: the pill's font), white, the marker or
+ *  the pill; 1 (< 1.5) TINY (else XTINY), grey (dim); 2 (< 2.5) XTINY, dark grey (far). Monkey C cannot scale a font, so the size
+ *  and the grey step change where a row crosses a band, its place moves smoothly */
+export function wheelBand(d) { const m = d < 0 ? -d : d; return m < .5 ? 0 : (m < 1.5 ? 1 : 2); }
+/** the y of the line k of ne lines at the bottom of a list (the last at 0.845 S), lifted by lf, lh apart */
+function footY(S, k, ne, lf, lh) { return S * .845 - lf - (ne - 1 - k) * lh; }
+// every list on the wheel (wheelRows, wheelBand): the centre row big and white in the pill (a menu) or beside the orange marker, its
+// sub line under it while it is centred, the counter under the title where there is room; title: a fixed one with its short form
+// tshort, or a name (tshort null); count: the counter ("long|short", null: n/N); extra = lines at the bottom ([text ("long|short"),
+// colour, a name]), as many as fit from the first. The rows drawn go to LAY.rows ([offset to the selection, y / S], the tap table)
 function list(dc, F, S, P, items, title, tshort, isMenu, sub, count, extra) {
-  const n = items.length, c = S / 2, sel = F.sel, G = gap(S);
+  const n = items.length, c = S / 2, sel = F.sel, G = gap(S), pos = listPos(F), pr = prRow(F);
   // the title: a fixed one moves down until its short form fits the circle, a name is cut
   const fixed = tshort != null, tv = fixed ? title + '|' + tshort : title, ty = fixed ? downTo(dc, XT, tshort, S * .12, R0) : S * .12;
   const tt = pick(dc, tv, XT, roomC(dc, c, ty, XT, 'A', R0) < T(S * .62) ? roomC(dc, c, ty, XT, 'A', R0) : T(S * .62), !fixed);
   put(dc, c, ty, XT, tt, T(S * .62), P.dim, !fixed, R0);
   const tb = ty + dn(dc, XT, tt);
-  let yb = 0;
-  if (n === 0) { const f = byInk(dc, [SM, XT], S * .12); put(dc, c, c, f, 'Nothing yet', T(S * .74), P.dim, false, R0); yb = c + dn(dc, f, 'Nothing yet'); }
-  else {
-    // the selected row
-    const ys = S * .5, ph = S * .14; let st = 0, sb = 0;
-    if (isMenu) {
-      const f = inPill(dc, 'Ag', [ME, SM, XT], S, ph);
-      pill(dc, c, ys, S * .78, ph, P.acc); put(dc, c, ys, f, items[sel], T(S * .7), P.ink, true, R0); st = ys - ph / 2; sb = ys + ph / 2;
-    } else {
-      const f = fontIn(dc, items[sel], [ME, SM], T(S * .74), S * .15);
-      dc.setColor(P.acc); dc.fillRectangle(S * .1, ys - S * .055, S * .012 + 1, S * .11);
-      put(dc, c, ys, f, items[sel], T(S * .74), P.fg, true, R0); st = ys - up(dc, f); sb = ys + dn(dc, f, items[sel]);
-    }
-    LAY.rows.push([0, .5]); yb = sb;
-    if (!isMenu && typeof sub === 'string') { const y = below(dc, yb, XT, 0); put(dc, c, y, XT, sub, T(S * .7), P.acc, false, R0); yb = y + dn(dc, XT, sub); }
-    const side = byInk(dc, [SM, XT], S * .11);
-    // the row above, with the counter between it and the title where there is room
-    if (sel > 0) {
-      const t = items[sel - 1], y = above(dc, st, side, t, S * (isMenu ? .33 : .3));
-      if (y - up(dc, side) >= tb + G) { put(dc, c, y, side, t, T(S * .74), P.dim, true, R0); LAY.rows.push([-1, y / S]); st = y - up(dc, side); }
-    }
-    if (!isMenu) {
-      const ct = pick(dc, count != null ? count : (sel + 1) + '/' + n, XT, T(S * .62), false), y = below(dc, tb, XT, S * .19);
-      if (y + dn(dc, XT, ct) <= st - G) put(dc, c, y, XT, ct, T(S * .62), P.dim, false, R0);
-    }
-    // the rows below: the next one, then the far one (non-menu)
-    for (let o = 1; o <= (isMenu ? 1 : 2); o++) {
-      const i = sel + o; if (i >= n) break;
-      const f = o > 1 ? XT : side, t = items[i], y = below(dc, yb, f, S * (isMenu ? .67 : (o > 1 ? .845 : .72)));
-      if (y + dn(dc, f, t) > S * (.5 + R0) || roomC(dc, c, y, f, t, R0) < S * .3) break;
-      put(dc, c, y, f, t, T(S * (o > 1 ? .55 : .74)), o > 1 ? P.far : P.dim, true, R0); LAY.rows.push([o, y / S]); yb = y + dn(dc, f, t);
-    }
+  // the lines at the bottom: the last one at 0.845 S, the others above it, lifted until their shortest variants fit the circle (the block
+  // stays below 0.6 S); one without room goes (from the last)
+  let ne = extra.length, lf = 0, et = S * (.5 + R0);
+  const lh = inkH(dc, XT) + G;
+  while (ne > 0) {
+    let ok = true;
+    for (let k = 0; k < ne && ok; k++) { const m = roomC(dc, c, footY(S, k, ne, lf, lh), XT, 'g', R0), e = extra[k]; if (m < S * .3 || (e[2] !== true && dc.getTextWidthInPixels(lastV(e[0]), XT) > m)) ok = false; }
+    if (ok) break;
+    if (footY(S, 0, ne, lf, lh) - up(dc, XT) - G >= S * .6) lf += G; else { ne--; lf = 0; }
   }
-  for (let k = 0; k < extra.length; k++) {
-    const e = extra[k], y = below(dc, yb, XT, 0), m = roomC(dc, c, y, XT, 'g', R0), t = pick(dc, e[0], XT, m < T(S * .7) ? m : T(S * .7), e[2]);
-    if (y + dn(dc, XT, t) > S * (.5 + R0) || m < S * .3) break;
-    put(dc, c, y, XT, t, T(S * .7), e[1], e[2], R0); yb = y + dn(dc, XT, t);
+  for (let k = 0; k < ne; k++) { const y = footY(S, k, ne, lf, lh), m = roomC(dc, c, y, XT, 'g', R0), e = extra[k]; put(dc, c, y, XT, pick(dc, e[0], XT, m < T(S * .7) ? m : T(S * .7), e[2]), T(S * .7), e[1], e[2], R0); if (k === 0) et = y - up(dc, XT) - G; }
+  if (n === 0) { const f = byInk(dc, [SM, XT], S * .12); put(dc, c, c, f, 'Nothing yet', T(S * .74), P.dim, false, R0); startHint(dc, S, P); return; }
+  const ph = S * .14, side = byInk(dc, [TI, XT], S * .11), gb = !isMenu && typeof sub === 'string' ? inkH(dc, XT) + G : 0;
+  let st = et, k0 = -1, ky = 0, kf = XT, nt = et;
+  for (const [i, d, y] of wheelRows(S, pos, n, dragRow(F.scr), gb)) {
+    const b = wheelBand(d), t = items[i], on = isMenu && b === 0;
+    const f = b > 1 ? XT : (b > 0 ? side : (isMenu ? inPill(dc, 'Ag', [ME, SM, XT], S, ph) : fontIn(dc, t, [ME, SM], T(S * .74), S * .15)));
+    if (y - up(dc, f) < tb + G || y + dn(dc, f, t) > et || (b > 0 && roomC(dc, c, y, f, t, R0) < S * .3)) continue;
+    if (on) pill(dc, c, y, S * .78, ph, pr === i ? P.fg : P.acc); // the pill (a menu) or the marker goes with the centre row
+    else if (b === 0) { dc.setColor(P.acc); dc.fillRectangle(S * .1, y - S * .055, S * .012 + 1, S * .11); }
+    put(dc, c, y, f, t, T(S * (b > 1 ? .55 : (on ? .7 : (b > 0 ? .66 : .74)))), on ? P.ink : (pr === i ? P.acc : (b > 1 ? P.far : (b > 0 ? P.dim : P.fg))), true, R0);
+    LAY.rows.push([i - sel, y / S]);
+    if (on && y - ph / 2 < st) st = y - ph / 2; else if (y - up(dc, f) < st) st = y - up(dc, f);
+    if (b === 0) { k0 = i; ky = y; kf = f; } else if (k0 >= 0 && i === k0 + 1) nt = y - up(dc, f);
   }
-  if (n > 0) scrollArc(dc, S, P, sel, n);
+  // the centre row's sub line (while it is the selection and centred)
+  if (gb > 0 && k0 === sel && Math.abs(k0 - pos) < .3) { const y = below(dc, ky + dn(dc, kf, items[k0]), XT, 0); if (y + dn(dc, XT, sub) + G <= nt) put(dc, c, y, XT, sub, T(S * .7), P.acc, false, R0); }
+  if (!isMenu) {
+    const ct = pick(dc, count != null ? count : (sel + 1) + '/' + n, XT, T(S * .62), false), y = below(dc, tb, XT, S * .19);
+    if (y + dn(dc, XT, ct) <= st - G) put(dc, c, y, XT, ct, T(S * .62), P.dim, false, R0);
+  }
+  scrollArc(dc, S, P, pos, n);
   startHint(dc, S, P);
 }
 // the heart rate (and the session clock) on one line, centred at y; the clock goes where there is no room for both
@@ -397,7 +408,7 @@ function drawSet(dc, F, S, P, now, ui) {
   yb = sy + dn(dc, XT, no);
   // DONE at the bottom, the units (timed: hold / of 10:00) and the focus bar above it
   const py = S * .815, ph = S * .12, lab = timed && !(F.holdAt > 0) ? 'GO' : 'DONE', pf = inPill(dc, lab, [SM, XT], S * .36, ph);
-  pill(dc, c, py, S * .4, ph, P.acc); put(dc, c, py, pf, lab, T(S * .36), P.ink, false, R0);
+  pill(dc, c, py, S * .4, ph, prOn(F, 'done') ? P.fg : P.acc); put(dc, c, py, pf, lab, T(S * .36), P.ink, false, R0);
   const uy = above(dc, py - ph / 2, XT, 'reps', S * .665), bh = S * .016 + 1, by = uy - up(dc, XT) - G - bh;
   // the wheel (a finger on a number): the numbers make room for its neighbours above and below
   const wh = wheelOn(F, 0, ui) || wheelOn(F, 1, ui), nb = inkH(dc, XT) + G, nbot = py - ph / 2 - G - nb;
@@ -883,11 +894,11 @@ function trRing(dc, F, S, P, n, whole) {
 }
 // 28.11.: a small - / + button (the owner: "too big, write the step inside"): a faint pill w x h with the step in it ("-5", "+25") in the
 // largest font that fits it; where none does (font size setting) the drawn sign (the fonts may have no minus sign, the hyphen they have)
-function trBtn(dc, S, P, x, y, t, plus) {
+function trBtn(dc, S, P, x, y, t, plus, on) {
   const w = S * .16, h = S * .11, tp = '+' + t.substring(1), f = inPill(dc, tp, [SM, XT], w - 6, h); // both buttons in the font the wider "+25" fits
-  pill(dc, x, y, w, h, P.faint);
-  if (dc.getTextWidthInPixels(tp, f) <= w - 6 && up(dc, f) <= h / 2 - 1 && dn(dc, f, tp) <= h / 2 - 1) { txt(dc, x, y, f, t, P.fg); return; }
-  const k = S * .025; dc.setColor(P.fg); dc.setPenWidth(pw(S * .014)); dc.drawLine(x - k, y, x + k, y); if (plus) dc.drawLine(x, y - k, x, y + k); dc.setPenWidth(1);
+  pill(dc, x, y, w, h, on ? P.acc : P.faint); // 27.11.6: a tap flashes it orange
+  if (dc.getTextWidthInPixels(tp, f) <= w - 6 && up(dc, f) <= h / 2 - 1 && dn(dc, f, tp) <= h / 2 - 1) { txt(dc, x, y, f, t, on ? P.ink : P.fg); return; }
+  const k = S * .025; dc.setColor(on ? P.ink : P.fg); dc.setPenWidth(pw(S * .014)); dc.drawLine(x - k, y, x + k, y); if (plus) dc.drawLine(x, y - k, x, y + k); dc.setPenWidth(1);
 }
 // the target page, the overview (the owner: "one sheet with everything"): the time left in the step (a free ride: the ride's time) with the
 // ring, the step's label (a ramp: "WARM-UP 100 TO 180 W"), the target big with small - / + buttons that carry the step, the offset under it
@@ -905,7 +916,7 @@ function trTarget(dc, F, S, P, now, ui) {
   if (!wh) put(dc, c, ly, XT, lp.length > 1 ? alt(dc, lp[0], lp[1], XT, lm) : lp[0], S, wc, warn.length === 0 && W != null, R0);
   // the bottom: AVG / the resume pill (a workout: the time left, the next step above it), the three numbers with labels, the separator
   const by = S * .85; let bt = 0;
-  if (paused) { const ph = S * .1; pill(dc, c, by, S * .44, ph, P.acc); put(dc, c, by, inPill(dc, 'START', [XT], S * .4, ph), 'START resume|Resume', S * .4, P.ink, false, R0); bt = by - ph / 2 - G; }
+  if (paused) { const ph = S * .1; pill(dc, c, by, S * .44, ph, prOn(F, 'resume') ? P.fg : P.acc); put(dc, c, by, inPill(dc, 'START', [XT], S * .4, ph), 'START resume|Resume', S * .4, P.ink, false, R0); bt = by - ph / 2 - G; }
   else if (W) {
     const tl = clock(wkTotLeft(W, R.t)), nw = wkNextW(W), nx = nw < 0 ? 'LAST STEP' : 'NEXT ' + nw + ' W, ' + clock(W.dur[W.i + 1]) + '|' + nw + ' W, ' + clock(W.dur[W.i + 1]) + '|' + nw + ' W';
     // the time left goes where the font size setting leaves no room for two lines
@@ -940,9 +951,9 @@ function trTarget(dc, F, S, P, now, ui) {
   const aj = W ? wkAdj(W) : 0, t = String(R.tgt), top = (wh ? ty + dn(dc, tf, '0') : ly + dn(dc, XT, 'W')) + G, sf = XT, rp = W ? wkRamp(W) : null;
   const ajt = (aj > 0 ? '+' : '-') + Math.abs(aj) + ' W', ut = rp ? rp[0] + ' TO ' + rp[1] + ' W' + (aj !== 0 ? ', ' + ajt + '|' + rp[0] + ' TO ' + rp[1] + ' W' : '') : (aj !== 0 ? ajt : '');
   const room = sep - G - top - (wh || ut.length === 0 ? 0 : inkH(dc, sf) + G), gf = numIn(dc, [t], [NTH, NHO, NME, NMI], [T(S * .44)], [c], top, top + room, R0), gy = numY(dc, gf, top, top + room);
-  txt(dc, c, gy, gf, t, paused ? P.dim : P.acc); LAY.t0 = top / S; LAY.t1 = sep / S;
+  txt(dc, c, gy, gf, t, prOn(F, 'tgt') ? P.fg : (paused ? P.dim : P.acc)); LAY.t0 = top / S; LAY.t1 = sep / S;
   const xs = [.16, .84];
-  for (let i = 0; i < 2; i++) trBtn(dc, S, P, S * xs[i], gy, (i === 0 ? '-' : '+') + R.step, i === 1);
+  for (let i = 0; i < 2; i++) trBtn(dc, S, P, S * xs[i], gy, (i === 0 ? '-' : '+') + R.step, i === 1, prOn(F, i === 0 ? 'minus' : 'plus'));
   if (wh) { for (let dd = -1; dd <= 1; dd += 2) { const w = W ? R.tgt + dd * R.step : nextTarget(R, dd, false); if (w === R.tgt) continue; const yy = dd < 0 ? above(dc, gy - up(dc, gf), XT, '0', S) : below(dc, gy + dn(dc, gf, '0'), XT, 0);
     if (yy - up(dc, XT) >= ty + dn(dc, tf, '0') + G && yy + dn(dc, XT, '0') <= sep - G) txt(dc, c, yy, XT, String(w), P.dim); } }
   else if (ut.length > 0) put(dc, c, below(dc, gy + dn(dc, gf, '0'), sf, 0), sf, ut, T(S * .8), P.fg, false, R0); // clear of the page dots
@@ -1025,9 +1036,13 @@ function trBody(dc, F, S, P, now) {
 }
 // 27.11.: the trainer's choice: a free ride (one target) or a workout (its length under it); while connecting it says so
 function drawTPick(dc, F, S, P) {
-  const l = rides(F), v = shown(F.link), w = F.sel > 0 && F.sel <= l.length ? l[F.sel - 1] : null, m = w ? T((wkDur(w.s) + 30) / 60) : 0;
-  const sub = w ? m + ' min' : 'One target, + / - change it|One target';
-  list(dc, F, S, P, listItems(F), 'INDOOR TRAINER', 'TRAINER', false, sub, null, v === 'ready' || v === 'refused' ? [] : [['Still connecting|Connecting|Wait', P.lbl, false]]);
+  const l = rides(F), v = shown(F.link), it = listItems(F), ex = v === 'ready' || v === 'refused' ? [] : [['Still connecting|Connecting|Wait', P.lbl, false]];
+  // 27.11.6: three steps: Free ride / Training (the number of workouts), the categories (theirs), a category's workouts (their length)
+  let sub = 'One target, + / - change it|One target', ti = 'INDOOR TRAINER', ts = 'TRAINER';
+  if (F.tlev === 0 && F.sel === 1) sub = plural(l.length, 'workout', 'workouts');
+  if (F.tlev === 1) { ti = 'TRAINING'; ts = ti; const c = tCats(F)[F.sel]; let k = 0; for (let i = 0; i < l.length; i++) if (catOf(l[i]) === c) k++; sub = plural(k, 'workout', 'workouts'); }
+  if (F.tlev === 2) { ti = catName(F.tcat).toUpperCase(); ts = ti; const r = tRows(F), w = F.sel < r.length ? l[r[F.sel]] : null; sub = w ? T((wkDur(w.s) + 30) / 60) + ' min' : null; }
+  list(dc, F, S, P, it, ti, ts, false, sub, null, ex);
 }
 const orDash = n => n > 0 ? String(n) : '--';
 // the ride's second page: this target's block (time, avg power), then the whole ride

@@ -445,7 +445,7 @@ function wkDur(l) as Number {
 // 20 s at 300 / 335 / 370 W with 70 s at 130 W between, 190 s 130 W; = js/workouts.js after the coach review)
 function wkFallback(ftp as Number) as Dictionary {
     var f = ftp > 0 ? ftp : 250;
-    return { "id" => WK_FB_ID, "n" => "30/15, 3 x 13", "ri" => 3, "ro" => 2, "s" => [
+    return { "id" => WK_FB_ID, "n" => "30/15, 3 x 13", "c" => "v", "ri" => 3, "ro" => 2, "s" => [
         [480, rnd(40.0 * f / 100), rnd(75.0 * f / 100), 0, "Warm-up"], [180, rnd(75.0 * f / 100), rnd(95.0 * f / 100), 0, "Build"], [120, 130, null, 0, "Spin"],
         [20, 300, null, 1, "Opener"], [70, 130, null, 0, "Spin"], [20, 335, null, 1, "Opener"], [70, 130, null, 0, "Spin"], [20, WK_FB_HARD, null, 1, "Opener"], [190, 130, null, 0, "Spin"],
         [3, [[13, [[30, WK_FB_HARD, null, 1, "30/15"], [15, 125, null, 0, "Float"]], 1], [180, 130, null, 0, "Rest"]], 1],

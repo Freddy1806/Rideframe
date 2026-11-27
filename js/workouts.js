@@ -77,6 +77,25 @@ export const WORKOUTS = [
       ...set3015(1), A(180, 130, 'Rest'), ...set3015(2), A(180, 130, 'Rest'), ...set3015(3), R(10, 50, 35, 'Cool-down')] },
 ];
 
+// ---- 27.11.6: the category of a workout (the watch's trainer chooser: Training > Endurance / Threshold / VO2max / Anaerobic / FTP test).
+//      The built-ins have one fixed here (ids unchanged); an own or personal workout gets it from its hardest step (rideCat). ----
+export const CATS = ['endurance', 'threshold', 'vo2max', 'anaerobic', 'ftp'];
+const CAT_OF = { z2_60: 'endurance', z2_90: 'endurance', rec30: 'endurance', ss3x10: 'threshold', thr2x20: 'threshold', over_under: 'threshold',
+  tempo2x15: 'threshold', ss2x12: 'threshold', vo2_5x3: 'vo2max', vo2_4x4: 'vo2max', vo2_5x5: 'vo2max', vo2_4x8: 'vo2max', vo2_30_30: 'vo2max',
+  pyramid: 'vo2max', c_30_15_3x13: 'vo2max', sprints: 'anaerobic', ramp: 'ftp', ftp20: 'ftp' };
+for (const w of WORKOUTS) if (CAT_OF[w.id]) w.cat = CAT_OF[w.id];
+/** a workout's category: its own (cat), a test by its name, else by the hardest step: from 150 % FTP in efforts of a minute or less
+ *  anaerobic, from 106 % VO2max, from 85 % threshold, else endurance */
+export function rideCat(w) {
+  if (w && CATS.includes(w.cat)) return w.cat;
+  if (w && /\btest\b/i.test(w.name || '')) return 'ftp';
+  let top = 0, short = false;
+  for (const st of (w && w.steps) || []) {
+    const p = Math.max(+st.pct || 0, +st.pct2 || 0); if (p > top) { top = p; short = st.dur <= 60; } else if (p === top && st.dur > 60) short = false;
+  }
+  return top >= 150 && short ? 'anaerobic' : top >= 106 ? 'vo2max' : top >= 85 ? 'threshold' : 'endurance';
+}
+
 // ---- own workouts (Pro-Modus): built in the Training tab, stored in settings.myWorkouts as plain rows ----
 // def = { id, name, warm, cool, rows: [{ t: 'b', min, pct, label } | { t: 'i', n, onMin, onPct, offMin, offPct, label }] }
 export const MY = [];

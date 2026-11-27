@@ -166,7 +166,7 @@ test('23.11.7 wheel on the ERG target: one step of the current size per finger s
 import { readFileSync } from 'node:fs';
 import { newWk, wkAt, wkTarget, wkTune, wkFallback, wkFromRide, wkCompact, wkDur, wkEasy, wkShown, WK_FB_HARD, WK_FB_ID, WK_STEPS } from '../js/watchtrainer.js';
 import * as WT from '../js/watchtrainer.js';
-import { rides, setRides, FREE_RIDE, WK_DONE_S, VERSION, hrOn } from '../js/watchflow.js';
+import { rides, setRides, FREE_RIDE, WK_DONE_S, VERSION, hrOn, TRAINING, CATS, catOf, catName, tCats, tRows } from '../js/watchflow.js';
 import { WORKOUTS, workoutDuration, workoutState, setFtp, isHard } from '../js/workouts.js';
 const WO = WORKOUTS.find(w => w.id === WK_FB_ID);
 /** the watch's target at every second of a workout (step by step like the flow does) */
@@ -213,16 +213,24 @@ test('server form: repeats fold (the 30 / 15 in a few hundred bytes), labels los
   assert.equal(newWk({ id: 'x', n: 'x', s: [['a', 1], [0, 100, null, 0, 'a']] }), null, 'nothing usable: null');
 });
 /** a ride with a workout: connected, START (the choice), the workout's row, START */
-function wkRide(row = 1, o = {}) { const [F, K] = ride({ ...o, ride: false }); if (o.rides) setRides(F, o.rides, o.ftp); ev(F, K, 1005, 'start'); assert.equal(F.scr, SCR.TPICK); for (let i = 0; i < row; i++) ev(F, K, 1005, 'down'); ev(F, K, 1005, 'start', 'start'); return [F, K]; }
+function wkRide(row = 1, o = {}) { const [F, K] = ride({ ...o, ride: false }); if (o.rides) setRides(F, o.rides, o.ftp); ev(F, K, 1005, 'start'); assert.equal(F.scr, SCR.TPICK); pickWk(F, K, 1005, row); ev(F, K, 1005, 'start'); return [F, K]; }
+/** 27.11.6: on the chooser (first step): Training, the workout's category, the workout (row = its index in rides + 1) */
+function pickWk(F, K, t, row) {
+  assert.equal(F.tlev, 0); ev(F, K, t, 'down', 'start'); assert.equal(F.tlev, 1);
+  const c = catOf(rides(F)[row - 1]); for (let i = 0; i < tCats(F).indexOf(c); i++) ev(F, K, t, 'down'); ev(F, K, t, 'start'); assert.equal(F.tlev, 2); assert.equal(F.tcat, c);
+  for (let i = 0; i < tRows(F).indexOf(row - 1); i++) ev(F, K, t, 'down'); ev(F, K, t, 'start');
+}
 /** n seconds of riding, one tick per second; the cues */
 function secs(F, K, n) { const cues = []; for (let i = 0; i < n; i++) { const t = F.tr.ts + 1; handle(F, 'tick', t); radio(F, K, t); cues.push(...F.cues.splice(0)); } return cues; }
 test('choice: Free ride (ERG) or a workout, also while connecting (then START rides it once connected); BACK keeps the link', () => {
-  const [F, K] = ride({ ride: false }); ev(F, K, 1005, 'start'); assert.deepEqual(listItems(F), [FREE_RIDE, '30/15, 3 x 13'], 'no sync yet: the built-in 30 / 15');
+  const [F, K] = ride({ ride: false }); ev(F, K, 1005, 'start'); assert.deepEqual(listItems(F), [FREE_RIDE, TRAINING], '27.11.6: Free ride or Training');
+  ev(F, K, 1005, ['item', 1]); assert.deepEqual(listItems(F), ['VO2max'], 'no sync yet: the built-in 30 / 15, a VO2max workout');
+  ev(F, K, 1005, ['item', 0]); assert.deepEqual(listItems(F), ['30/15, 3 x 13']); ev(F, K, 1005, 'back'); assert.equal(F.tlev, 1); ev(F, K, 1005, 'back'); assert.equal(F.tlev, 0); assert.equal(F.sel, 1, 'BACK: one step up, Training selected');
   ev(F, K, 1005, 'back'); assert.equal(F.scr, SCR.TSCAN); assert.equal(shown(F.link), 'ready', 'still connected');
-  ev(F, K, 1005, 'down'); assert.equal(F.scr, SCR.TPICK, 'UP / DOWN open it too'); ev(F, K, 1005, ['item', 1], 'start'); assert.equal(F.scr, SCR.TREC); assert.equal(F.wk.n, '30/15, 3 x 13');
+  ev(F, K, 1005, 'down'); assert.equal(F.scr, SCR.TPICK, 'UP / DOWN open it too'); ev(F, K, 1005, ['item', 1], ['item', 0], ['item', 0], 'start'); assert.equal(F.scr, SCR.TREC); assert.equal(F.wk.n, '30/15, 3 x 13');
   // while connecting: the choice waits, START rides it once connected
   const G = fl(), K2 = fakeKickr(); ev(G, K2, 1000, ['item', homeItems(G).indexOf('trainer')]); K2.hold = true; ev(G, K2, 1000, 'start'); assert.equal(shown(G.link), 'conn');
-  ev(G, K2, 1000, 'start'); assert.equal(G.scr, SCR.TPICK); ev(G, K2, 1000, 'down', 'start'); assert.equal(G.scr, SCR.TSCAN, 'not connected yet: back to the state'); assert.equal(G.tw, 1);
+  ev(G, K2, 1000, 'start'); assert.equal(G.scr, SCR.TPICK); pickWk(G, K2, 1000, 1); assert.equal(G.scr, SCR.TSCAN, 'not connected yet: back to the state'); assert.equal(G.tw, 1);
   for (const e of K2.release()) handle(G, 'ble', 1001, e); K2.hold = false; radio(G, K2, 1001); handle(G, 'tick', 1001 + OP_S + .5); radio(G, K2, 1005); assert.equal(shown(G.link), 'ready');
   ev(G, K2, 1005, 'start', 'start'); assert.equal(G.scr, SCR.TREC); assert.ok(G.wk, 'the workout chosen while connecting'); assert.equal(G.tw, -1);
   // the server's list replaces the built-in one when it has the 30 / 15
@@ -284,8 +292,8 @@ test('Monkey C: Trainer.mc TWork / Flow.mc have the JavaScript\'s constants, fun
     const mcS = Function('f', 'rnd', 'WK_FB_HARD', `return ${src};`)(ftp, x => Math.round(x), WK_FB_HARD), js = wkFallback(ftp);
     assert.deepEqual(mcS, js.s, `the 30 / 15 at FTP ${ftp}: Trainer.mc = js`);
   }
-  assert.match(tmc, /"n" => "30\/15, 3 x 13", "ri" => 3, "ro" => 2/); assert.deepEqual([wkFallback(1).n, wkFallback(1).ri, wkFallback(1).ro], ['30/15, 3 x 13', 3, 2]);
-  assert.match(fmc, new RegExp(`RF_VERSION = "${VERSION.replace(/\./g, '\\.')}"`)); assert.equal(VERSION, '27.11.5');
+  assert.match(tmc, /"n" => "30\/15, 3 x 13", "c" => "v", "ri" => 3, "ro" => 2/); assert.deepEqual([wkFallback(1).n, wkFallback(1).ri, wkFallback(1).ro], ['30/15, 3 x 13', 3, 2]);
+  assert.match(fmc, new RegExp(`RF_VERSION = "${VERSION.replace(/\./g, '\\.')}"`)); assert.equal(VERSION, '27.11.6');
 });
 
 test('27.11.2 the heart rate step: a live heart rate starts the ride after 2 s, none waits, START skips, BACK = the trainer; stale after 15 s', () => {

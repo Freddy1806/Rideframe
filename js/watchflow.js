@@ -47,7 +47,7 @@ export function setHrZones(F, z) { F.hrZ = hrZones(z); }
 /** 23.11.: the strength list: the exercises (free), then the saved workouts (the phone's and those saved on the watch) */
 export const FREE = 'Free';
 /** shown in the menu title on the watch and in the preview, so the user can tell which file is on the watch; raise it with every watch file (garmin/source/Flow.mc VERSION) */
-export const VERSION = '27.11.5';
+export const VERSION = '27.11.6';
 /** BACK from the exercise list once sets are logged: nothing is lost without a second step */
 export const END_ROWS = ['Keep training', 'Finish & save', 'Discard'];
 /** the pause screen (every mode): BACK held this long (or a finger on the "Hold to finish" pill) saves; the short-press hint shows this long */
@@ -77,7 +77,8 @@ export function newFlow(setup, o = {}) {
     flash: null, sum: null, pz: null, pauseT: 0, hr: 0, hrAt: 0, thr: 0, hrN: 0, hrSum: 0, hrMax: 0, pair: { d: [0, 0, 0, 0, 0, 0], i: 0, st: 'enter' }, cues: [], out: [],
     sp: 'run', type: '', rec: null, seg: null, route: null, rsum: null, routes: null, routeId: null, nav: null,
     link: newLink(o.trainer || ''), tr: null, tsum: null, tbody: null, tTgt: o.tgt >= W_MIN && o.tgt <= W_MAX ? o.tgt : W_START, tConf: false,
-    rides: [], ftp: 0, wk: null, tw: -1, wkDone: 0, wkSum: null, hrZ: null };
+    rides: [], ftp: 0, wk: null, tw: -1, wkDone: 0, wkSum: null, hrZ: null,
+    lpos: 0, lvel: 0, lmode: 0, lscr: '', ltgt: 0, lt: 0, lat: 0, l0: 0, lbtn: false, pr: null, tlev: 0, tcat: '' };
   setSetup(F, setup);
   if (!F.paired) F.scr = SCR.PAIR;
   return F;
@@ -207,7 +208,78 @@ function wheel(F, now, arg) {
   }
 }
 /** the finger distance (screen fraction) that moves the list on screen s by one row: the rows as drawn (FlowDelegate.dragRow) */
+/** 27.11.6: where the list on screen is drawn, in rows (Flow.listPos): the finger's position while it drags, coasts or snaps (lpos), else the selection */
+export const listPos = F => F.lmode && F.lscr === F.scr ? F.lpos : F.sel;
+/** 27.11.6: the list row a tap flashes right now (Flow.prRow), -1 none */
+export const prRow = F => F.pr && F.pr.k === 'row' && F.pr.scr === F.scr ? F.pr.i : -1;
+/** 27.11.6: a tapped button (k: done, minus, plus, tgt, resume) flashes right now (Flow.prOn) */
+export const prOn = (F, k) => !!F.pr && F.pr.k === k && F.pr.scr === F.scr;
 export const dragRow = s => s === SCR.HOME ? HOME_LAY.dy : [SCR.MENU, SCR.END, SCR.SAVEQ, SCR.TEND].includes(s) ? DRAG_MENU : DRAG_ROW;
+/* ---- 27.11.6 (the owner: "like the first touch phone, medieval"): lists follow the finger. Every list (the wheel, js/watchscreens.js
+ *      wheelRows) is drawn at a position in rows, F.lpos, while F.lmode is 1 (a finger drags it: 'drag' [screen fraction, + = on down the
+ *      list, ms]), 2 (it coasts after the lift: 'dragEnd' ms, the speed decays over COAST_TAU ms, at most COAST_MS) or 3 (it snaps onto
+ *      a row in about four ANIM_MS frames); the selection is the row nearest the centre. UP / DOWN still move exactly one row, the list
+ *      slides there (lbtn: the selection is already the new one). The time comes in as ms ('anim' ms from the app's timer), so it is
+ *      deterministic. A tap on a row or a button flashes it PRESS_MS ('press'), a row's action runs after the flash. Flow.mc lDrag ... ---- */
+export const PRESS_MS = 130, ANIM_MS = 50, L_OVER = .3, V_COAST = 3, V_STOP = 1.5, V_MAX = 25, COAST_TAU = 200, COAST_MS = 500, SNAP_TAU = 60, DRAG_IDLE_MS = 1500;
+const LISTS = [SCR.PICK, SCR.MENU, SCR.HOME, SCR.MORE, SCR.SMODE, SCR.RPICK, SCR.END, SCR.SAVEQ, SCR.TEND, SCR.TPICK];
+/** the screen shows a list that follows the finger (FlowDelegate / watchsim send 'drag' there, else 'scroll' rows) */
+export const pxList = F => !F.flash && (LISTS.includes(F.scr) || F.scr === SCR.TSCAN && ['scan', 'off'].includes(shown(F.link)));
+const lCount = F => pxList(F) ? listItems(F).length : 0;
+const lSel = (F, n) => clamp(Math.round(F.lpos), 0, n - 1);
+function lDrag(F, d, ms) {
+  const n = lCount(F), row = dragRow(F.scr); if (!n) return;
+  if (!F.lmode || F.lscr !== F.scr) { F.lpos = F.sel; F.lvel = 0; F.lscr = F.scr; F.lat = ms; }
+  else if (F.lmode !== 1) { F.lvel = 0; F.lat = ms; } // a moving list caught by the finger
+  else { const dt = ms - F.lat; if (dt > 0) { const vi = d / row * 1000 / dt; F.lvel = dt > 200 ? vi : F.lvel * .3 + vi * .7; } }
+  F.lvel = clamp(F.lvel, -V_MAX, V_MAX); F.lpos = clamp(F.lpos + d / row, -L_OVER, n - 1 + L_OVER);
+  F.lmode = 1; F.lbtn = false; F.lat = ms; F.lt = ms; F.sel = lSel(F, n);
+}
+function lRelease(F, ms) {
+  if (F.lmode !== 1) return; const n = lCount(F);
+  if (!n || F.lscr !== F.scr) { F.lmode = 0; return; }
+  if (ms - F.lat > 120) F.lvel = 0; // the finger rested before it lifted
+  F.lt = ms; F.l0 = ms;
+  if (Math.abs(F.lvel) >= V_COAST && F.lpos >= 0 && F.lpos <= n - 1) F.lmode = 2; else { F.lmode = 3; F.ltgt = lSel(F, n); }
+}
+function lStep(F, ms) {
+  if (!F.lmode) return; const n = lCount(F);
+  if (!n || F.lscr !== F.scr) { F.lmode = 0; F.lbtn = false; return; }
+  if (F.lmode === 1) { if (ms - F.lat > DRAG_IDLE_MS) lRelease(F, ms); return; } // a drag whose end never came
+  let dt = F.lt < 0 ? ANIM_MS : ms - F.lt; F.lt = ms; dt = dt < 0 ? 0 : (dt > 100 ? 100 : dt); // a late timer: no big jump
+  if (F.lmode === 2) {
+    F.lpos = clamp(F.lpos + F.lvel * dt / 1000, -L_OVER, n - 1 + L_OVER); F.lvel = F.lvel * COAST_TAU / (COAST_TAU + dt);
+    if (F.lpos < 0 || F.lpos > n - 1 || Math.abs(F.lvel) < V_STOP || ms - F.l0 >= COAST_MS) { F.lmode = 3; F.ltgt = clamp(Math.round(F.lpos + F.lvel * .08), 0, n - 1); }
+  } else {
+    const k = dt / SNAP_TAU; F.lpos += (F.ltgt - F.lpos) * (k > 1 ? 1 : k);
+    if (Math.abs(F.ltgt - F.lpos) < .02) { F.lpos = F.ltgt; F.lmode = 0; }
+  }
+  if (!F.lbtn) F.sel = lSel(F, n);
+  if (!F.lmode) F.lbtn = false;
+}
+/** UP / DOWN moved the selection one row (d = +1 on down the list): the list slides there */
+function lBtn(F, d) { if (!pxList(F)) return; F.lpos = F.sel - d; F.ltgt = F.sel; F.lmode = 3; F.lt = -1; F.lscr = F.scr; F.lbtn = true; }
+function lStop(F) { F.lmode = 0; F.lbtn = false; }
+/** a tap on a row / button: a = [k ('row', 'done', 'minus', 'plus', 'tgt', 'resume'), row, ev, arg, ms, later (the action after the flash)] */
+function press(F, now, a) {
+  const [k, i, ev, arg, ms, later] = a;
+  if (k === 'row' && (F.lmode === 2 || F.lmode === 3) && !F.lbtn) { lStop(F); return; } // a tap on a moving list stops it
+  lStop(F); F.pr = { k, i, scr: F.scr, at: ms, ev: later ? ev : null, arg }; F.cues.push('tap');
+  if (!later) handle(F, ev, now, arg);
+}
+function flushPress(F, now) { const p = F.pr; if (p && p.ev != null) { F.pr = null; handle(F, p.ev, now, p.arg); } }
+function anim(F, now, ms) {
+  const p = F.pr; if (p && (ms - p.at >= PRESS_MS || ms < p.at)) { F.pr = null; if (p.ev != null) handle(F, p.ev, now, p.arg); }
+  lStep(F, ms);
+}
+/** the app's timer runs at ANIM_MS while this is true (Flow.animating) */
+export const animating = F => F.lmode === 2 || F.lmode === 3 || !!F.pr;
+/** the app sends 'anim' now: an animation, or a drag whose end never came (Flow.stepDue) */
+export const stepDue = (F, ms) => animating(F) || (F.lmode === 1 && ms - F.lat > DRAG_IDLE_MS);
+/** a tapped row waits for its flash (FlowDelegate / watchsim drop taps meanwhile: the screen may change) */
+export const prWait = F => !!F.pr && F.pr.ev != null;
+/** the screen changes between whole seconds (the app's timer redraws then too): the pause screen's hold to finish (Flow.needsFrame) */
+export const needsFrame = F => F.scr === SCR.PAUSE && !!F.pz && !!F.pz.hold;
 function menuFor(F) {
   if (F.start) return [MENU.EX, ...(planItem(F) ? [MENU.SKIP] : []), ...(F.sets.length ? [MENU.UNDO] : []), MENU.FIN, MENU.PAUSE];
   return F.paired ? [MENU.SYNC, MENU.PAIR] : [MENU.PAIR];
@@ -325,6 +397,17 @@ export function setRides(F, l, ftp) { if (Array.isArray(l)) F.rides = l.filter(w
 /** the trainer's workout list: the built-in 30 / 15 first when the server has not sent it (yet), then the server's */
 export const rides = F => F.rides.some(w => w.id === WK_FB_ID) ? F.rides.slice() : [wkFallback(F.ftp), ...F.rides];
 export const FREE_RIDE = 'Free ride (ERG)';
+/* ---- 27.11.6 (the owner): TPICK is a chooser in three steps: Free ride / Training (tlev 0), the training's categories that have
+ *      workouts (tlev 1), the category's workouts with their length (tlev 2, F.tcat). The server sends each workout's category as "c"
+ *      (tools/watch-api.mjs rideWorkouts, js/workouts.js rideCat); one without it (an older cache) is under Other. ---- */
+export const TRAINING = 'Training';
+export const CATS = [['e', 'Endurance'], ['t', 'Threshold'], ['v', 'VO2max'], ['a', 'Anaerobic'], ['f', 'FTP test'], ['o', 'Other']];
+export const catOf = w => CATS.some(c => c[0] === w.c && c[0] !== 'o') ? w.c : 'o';
+/** the categories with workouts, in CATS order (codes) */
+export const tCats = F => { const l = rides(F); return CATS.filter(([k]) => l.some(w => catOf(w) === k)).map(c => c[0]); };
+export const catName = k => (CATS.find(c => c[0] === k) || CATS[CATS.length - 1])[1];
+/** the workouts of category F.tcat: indices into rides(F) */
+export const tRows = F => { const r = []; rides(F).forEach((w, i) => { if (catOf(w) === F.tcat) r.push(i); }); return r; };
 /** "Workout done" shows this long on the ERG page */
 export const WK_DONE_S = 30;
 /** a new config from the phone (GET /api/watch/config); a running recording keeps its pages */
@@ -492,7 +575,7 @@ function onTScan(F, ev, now, arg) {
     if (ev === 'scroll') { F.sel = clamp(F.sel + Math.round(+arg || 0), 0, Math.max(0, n - 1)); return; }
     if (ev === 'back') { tStop(L); F.sel = 0; F.scr = SCR.HOME; return; }
     if (!n) return;
-    if (ev === 'up') F.sel = (F.sel + n - 1) % n; else if (ev === 'down') F.sel = (F.sel + 1) % n;
+    if (ev === 'up') { F.sel = (F.sel + n - 1) % n; lBtn(F, -1); } else if (ev === 'down') { F.sel = (F.sel + 1) % n; lBtn(F, 1); }
     else if (ev === 'start' || ev === 'tap' || ev === 'item') tConnect(L, L.list[clamp(ev === 'item' ? arg | 0 : F.sel, 0, n - 1)].name, now);
     return;
   }
@@ -513,7 +596,23 @@ function onTHr(F, ev, now) {
   if (ev === 'start' || ev === 'tap') tBegin(F, now);
   else if (ev === 'back') { F.sel = 0; F.scr = SCR.TSCAN; }
 }
-function tPick(F) { F.sel = F.tw > 0 ? F.tw : 0; F.scr = SCR.TPICK; }
+function tPick(F) {
+  const l = rides(F), w = F.tw > 0 ? l[F.tw - 1] : null; // the choice made before: its category's list with it selected
+  if (w) { F.tcat = catOf(w); F.tlev = 2; F.sel = Math.max(0, tRows(F).indexOf(F.tw - 1)); } else { F.tlev = 0; F.sel = 0; }
+  F.scr = SCR.TPICK;
+}
+/** TPICK row i on its step: Free ride (chosen at once) or Training, a category, a workout (chosen) */
+function tSel(F, i, now) {
+  if (F.tlev === 0) { if (i === 0) tChoose(F, 0, now); else { F.tlev = 1; F.sel = 0; } }
+  else if (F.tlev === 1) { const c = tCats(F); F.tcat = c[i] || 'o'; F.tlev = 2; F.sel = 0; }
+  else { const r = tRows(F); if (i < r.length) tChoose(F, r[i] + 1, now); }
+}
+/** BACK on TPICK: one step up (the category / Training selected), from the first step the trainer's state */
+function tUp(F) {
+  if (F.tlev === 2) { F.tlev = 1; F.sel = Math.max(0, tCats(F).indexOf(F.tcat)); }
+  else if (F.tlev === 1) { F.tlev = 0; F.sel = 1; }
+  else { F.sel = 0; F.scr = SCR.TSCAN; } // the trainer's state, still connected
+}
 /** TPICK row i: 0 = free ride, else that workout; connected: the ride starts, else back to the trainer's state until it is */
 function tChoose(F, i, now) { F.tw = i; const v = shown(F.link); if (v === 'ready' || v === 'refused') tHr(F, now); else { F.sel = 0; F.scr = SCR.TSCAN; } }
 /** TREC (28.11., the owner's first ride: "UP / DOWN must page like Garmin's own activity screens"): UP / DOWN = the previous / next page
@@ -556,6 +655,8 @@ export function handle(F, ev, now, arg) {
   if (ev === 'sample') { sample(F, now, arg || {}); return; }
   if (ev === 'seg') { segment(F, now, arg); return; }
   if (ev === 'ble') { const w = F.link.want; bleEv(F.link, now, arg); if (F.link.want && F.link.want !== w) F.out.push({ k: 'trainer' }); return; } // the trainer's radio (js/watchtrainer.js)
+  if (ev === 'anim') { anim(F, now, arg); return; }
+  if (prWait(F) && ev !== 'tick') flushPress(F, now); // a tapped row's action comes before the next input
   if (ev === 'holdStart' || ev === 'holdEnd') { // BACK pressed / released (and the touch pill): only the pause screen listens
     const P = F.scr === SCR.PAUSE && F.pz; if (!P || P.conf) return;
     if (ev === 'holdStart') P.hold = now; else if (P.hold) { P.hold = 0; P.hint = now + HINT_S; } // released early: nothing, the hint
@@ -570,6 +671,10 @@ export function handle(F, ev, now, arg) {
     if (F.scr === SCR.REST && now >= F.restEnd) endRest(F, true);
     return;
   }
+  if (ev === 'drag') { if (!F.flash) lDrag(F, +arg[0] || 0, arg[1]); return; }
+  if (ev === 'dragEnd') { lRelease(F, arg); return; }
+  if (ev === 'press') { press(F, now, arg); return; }
+  lStop(F); // any other input stops a moving list where it is
   if (F.flash) { F.flash = null; if (ev !== 'menu') return; } // the first touch after a record only clears the flash
   if (ev === 'wheel') { wheel(F, now, arg); return; }
   if (ev === 'swipeLeft') ev = 'menu';
@@ -607,8 +712,8 @@ export function handle(F, ev, now, arg) {
   if (list) {
     const items = listItems(F), n = items.length;
     if (!n) { if (ev === 'back') { if (s === SCR.MENU) F.scr = F.back; else if (s === SCR.MORE) F.scr = SCR.HOME; else if (s === SCR.HOME) F.out.push({ k: 'exit' }); else if (s === SCR.RPICK) F.scr = SCR.READY; else if (s === SCR.PICK) pickBack(F); else reset(F); } return; }
-    if (ev === 'up') F.sel = (F.sel + n - 1) % n;
-    else if (ev === 'down') F.sel = (F.sel + 1) % n;
+    if (ev === 'up') { F.sel = (F.sel + n - 1) % n; lBtn(F, -1); }
+    else if (ev === 'down') { F.sel = (F.sel + 1) % n; lBtn(F, 1); }
     else if (ev === 'start' || ev === 'item' || (ev === 'tap' && s !== SCR.PICK && s !== SCR.MENU)) pickItem(F, ev === 'item' ? clamp(arg | 0, 0, n - 1) : F.sel, now);
     else if (ev === 'back') {
       if (s === SCR.MENU) F.scr = F.back;
@@ -619,7 +724,7 @@ export function handle(F, ev, now, arg) {
       else if (s === SCR.END) { if (F.endConf) { F.endConf = false; F.sel = 2; } else toPick(F, true); } // BACK = keep training
       else if (s === SCR.SAVEQ) reset(F); // = No
       else if (s === SCR.TEND) { if (F.tConf) { F.tConf = false; F.sel = 4; } else F.scr = SCR.TREC; } // BACK = back to the ride (a paused one stays paused)
-      else if (s === SCR.TPICK) { F.sel = 0; F.scr = SCR.TSCAN; } // the trainer's state, still connected
+      else if (s === SCR.TPICK) tUp(F);
       else reset(F); // SMODE: the strength screen
     }
     return;
@@ -672,7 +777,7 @@ export function listItems(F) {
   if (s === SCR.SAVEQ) return F.saveq ? F.saveq.rows : [];
   if (s === SCR.TEND) return F.tConf ? ['Keep riding', 'Discard ride'] : TEND_ROWS.map((r, i) => i === 0 && F.tr && F.tr.st !== 'run' ? TEND_RESUME : r);
   if (s === SCR.TSCAN) return F.link.list.map(x => x.name);
-  if (s === SCR.TPICK) return [FREE_RIDE, ...rides(F).map(w => w.n)];
+  if (s === SCR.TPICK) { const l = rides(F); return F.tlev === 0 ? [FREE_RIDE, TRAINING] : F.tlev === 1 ? tCats(F).map(catName) : tRows(F).map(i => l[i].n); }
   return [];
 }
 function pickItem(F, i, now) {
@@ -693,7 +798,7 @@ function pickItem(F, i, now) {
     else if (i === 1 || i === 2) tPlus(F, i === 1 ? TEND_W : -TEND_W, now); // 27.11.5: + / - 5 W, the menu stays
     else if (i === 3) tFinish(F, now); else { F.tConf = true; F.sel = 0; }
   }
-  else if (s === SCR.TPICK) tChoose(F, i, now);
+  else if (s === SCR.TPICK) tSel(F, i, now);
   else if (s === SCR.SAVEQ) { const q = F.saveq, k = q.rows.length - 1; if (i < k) saveTpl(F, !q.w || i === 1); reset(F); } // the last row is No
 }
 function act(F, item, now) {
