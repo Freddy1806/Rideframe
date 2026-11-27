@@ -825,7 +825,7 @@ function drawTScan(dc, F, S, P) {
     put(dc, c, y, XT, t, T(S * .74), i === 0 ? P.fg : (nm ? P.acc : P.lbl), i === 1 && nm, R0); yb = y + dn(dc, XT, t);
   }
 }
-// 27.11.2: the heart rate step: the heart, Searching (where a strap is paired) or Connected with the value, START / SKIP
+// 27.11.2: the heart rate step: the heart, Searching (where a strap is paired) or Connected with the value, NEXT (27.11.7: the choice follows) / SKIP
 function drawTHr(dc, F, S, P, now) {
   const c = S / 2, on = hrOn(F, now), w = T(S * .74);
   put(dc, c, S * .12, XT, 'HEART RATE|HR', S, P.dim, false, R0);
@@ -834,7 +834,7 @@ function drawTHr(dc, F, S, P, now) {
   const b = on ? F.hr + ' bpm' : 'Strap: watch menu, Sensors|Pair it in Sensors|In Sensors', y1 = below(dc, y + dn(dc, f, 'g'), XT, S * .58);
   put(dc, c, y1, XT, b, w, on ? P.fg : P.lbl, false, R0);
   if (!on) { const y2 = below(dc, y1 + dn(dc, XT, 'g'), XT, S * .65); put(dc, c, y2, XT, 'or ride without', w, P.lbl, false, R0); }
-  const py = S * .81, ph = S * .13, t = on ? 'START' : 'SKIP';
+  const py = S * .81, ph = S * .13, t = on ? 'NEXT' : 'SKIP';
   startHint(dc, S, P); pill(dc, c, py, S * .42, ph, P.acc); put(dc, c, py, inPill(dc, t, [SM, XT], S * .38, ph), t, S, P.ink, false, R0);
 }
 // 27.11.2: two small marks at the very top of the ride: the trainer (green connected, white without control, red lost) and the heart

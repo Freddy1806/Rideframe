@@ -127,17 +127,19 @@ function smokeWalk(logger as Logger) as Boolean {
     var U = new Flow(setup, true, [], null, null, null, null), un = 1700000000;
     SmokeKit.smokeEv(U, dc, P, seen, E_ITEM, un, U.homeItems().indexOf("trainer"));
     SmokeKit.smokeTrainer(U, dc, P, seen, un);
-    // 27.11.6: the chooser: Training (under Free ride), its only category (VO2max), the 30 / 15, then the heart rate step; BACK one step up
-    for (var k = 0; k < 8 && U.scr != S_TREC; k++) {
+    // 27.11.7: the heart rate step, then the chooser: Training (under Free ride), its only category (VO2max), the 30 / 15; BACK one step up
+    var backed = false;
+    for (var k = 0; k < 9 && U.scr != S_TREC; k++) {
         if (U.scr == S_TPICK && U.tlev == 0 && U.sel == 0) { SmokeKit.smokeEv(U, dc, P, seen, E_DOWN, un, null); }
-        if (U.scr == S_TPICK && U.tlev == 2 && k < 4) {
+        if (U.scr == S_TPICK && U.tlev == 2 && !backed) {
+            backed = true;
             Test.assertMessage(U.tcat.equals("v") && U.listItems().size() == 1, "the built-in 30 / 15 under VO2max");
             SmokeKit.smokeEv(U, dc, P, seen, E_BACK, un, null);
             Test.assertMessage(U.scr == S_TPICK && U.tlev == 1 && U.sel == 0, "BACK: the categories, VO2max selected");
         }
         SmokeKit.smokeEv(U, dc, P, seen, E_START, un, null);
     }
-    Test.assertMessage(U.scr == S_TREC && U.tPages().size() == 4, "a workout ride with four pages");
+    Test.assertMessage(backed && U.scr == S_TREC && U.tPages().size() == 4, "a workout ride with four pages");
     for (var i = 0; i < 1300; i++) {
         un++;
         SmokeKit.smokeEv(U, dc, P, seen, E_TICK, un, System.getTimer());

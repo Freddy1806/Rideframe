@@ -241,7 +241,8 @@ let fails = 0; const ok = (c, m) => { console.log(`${c ? '✓' : '✗'} ${m}`); 
     // START and the text in one page task (the page clock flows on its own: the pretend KICKR's answers can come before a later look)
     const conn = await T.evaluate(() => { __watch.ev('start'); return __watch.texts.join(' | '); }); await tshot('connecting', 30); ok(/Connecting/.test(conn), 'START: "Connecting…"');
     await T.clock.runFor(1000); x = await ts(); ok(x.st === 'ready' && x.ctl, 'connected, control taken (FTMS request control + start)'); await tshot('connected'); ok(/Connected/.test(await tt()), '"Connected", START to ride');
-    await tb('start'); x = await ts(); ok(x.scr === 'tpick' && x.sel === 0, '27.11.: START: the choice, Free ride first'); ok(/Free ride \(ERG\)/.test(await tt()), '"Free ride (ERG)"');
+    await tb('start'); x = await ts(); ok(x.scr === 'thr', '27.11.7: START: the heart rate step first');
+    await tb('start'); x = await ts(); ok(x.scr === 'tpick' && x.sel === 0, 'then the choice, Free ride first'); ok(/Free ride \(ERG\)/.test(await tt()), '"Free ride (ERG)"');
     await tb('start'); await T.clock.runFor(3000); x = await ts(); ok(x.scr === 'trec' && x.tgt === 100 && x.kt === 100, 'riding: target 100 W, the trainer has it'); await tshot('erg_page');
     ok(/TARGET W/.test(await tt()) && /WATTS/.test(await tt()) && /RPM/.test(await tt()) && /BPM/.test(await tt()), 'ERG page: target, watts, rpm, heart rate');
     await tb('up', 3); x = await ts(); ok(x.tgt === 115 && x.kt === 115, 'UP 3×: 115 W, sent');

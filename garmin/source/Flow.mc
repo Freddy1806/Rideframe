@@ -58,9 +58,9 @@ const DRAG_MIN = 0.03;
 const HOME_FIT = 4;
 const HOME_Y0 = 0.27;
 const HOME_DY = 0.155;
-const S_THR = 24;          // 27.11.2: the heart rate step between the choice and the ride
+const S_THR = 24;          // 27.11.2: the heart rate step, 27.11.7: between the connected trainer and the choice
 const HR_LIVE_S = 15;      // a heart rate older than this is not there any more
-const HR_SHOW_S = 2;       // the step shows a heart rate this long, then the ride starts by itself
+const HR_SHOW_S = 2;       // the step shows a heart rate this long, then the choice opens by itself (27.11.7)
 const S_TPICK = 23;        // 27.11.: the trainer: Free ride (ERG) or a workout (rideList); 27.11.6: in three steps (tlev)
 // events (js: the ev strings of handle())
 const E_UP = 1;
@@ -160,7 +160,7 @@ const TEND_RESUME = "Resume";
 // workout: its offset), the menu stays open for the next press
 const TEND_W = 5;
 // js/watchflow.js VERSION: the menu title shows it
-const RF_VERSION = "27.11.6";
+const RF_VERSION = "27.11.7";
 // pairing states / sum states
 const P_ENTER = 0;
 const P_SENDING = 1;
@@ -703,27 +703,14 @@ class Flow {
     }
     function lStop() as Void { lmode = 0; lbtn = false; }
     // a tap on a row / button: a = [PK_*, row, ev, its arg, ms, later]
-    function press(now as Number, a as Array) as Void {
+    // true: the action runs now (handle() steps it: a button that acts while it flashes); false: after the flash, or none
+    function press(a as Array) as Boolean {
         var k = numOf(a[0]), later = a[5] == true;
-        if (k == PK_ROW && (lmode == 2 || lmode == 3) && !lbtn) { lStop(); return; } // a tap on a moving list stops it
+        if (k == PK_ROW && (lmode == 2 || lmode == 3) && !lbtn) { lStop(); return false; } // a tap on a moving list stops it
         lStop();
         prK = k; prI = numOf(a[1]); prScr = scr; prAt = numOf(a[4]); prEv = later ? numOf(a[2]) : -1; prArg = a[3];
         cues.add(C_TAP);
-        if (!later) { handle(numOf(a[2]), now, a[3]); }
-    }
-    function flushPress(now as Number) as Void {
-        if (prEv < 0) { return; }
-        var e = prEv, x = prArg;
-        prEv = -1; prArg = null; prK = 0; prI = -1;
-        handle(e, now, x);
-    }
-    function anim(now as Number, ms as Number) as Void {
-        if (prK != 0 && (ms - prAt >= PRESS_MS || ms < prAt)) {
-            var e = prEv, x = prArg;
-            prK = 0; prI = -1; prEv = -1; prArg = null;
-            if (e >= 0) { handle(e, now, x); }
-        }
-        lStep(ms);
+        return !later;
     }
     // js animating(F): the app's timer runs at ANIM_MS while this is true
     function animating() as Boolean { return lmode == 2 || lmode == 3 || prK != 0; }
@@ -1270,11 +1257,11 @@ class Flow {
     // + / - in a workout: d W on the offset of the step now, sent at once (paused: on the resume)
     function wkStep(d as Number, now as Number) as Void { var W = wk; if (W == null) { return; } W.tune(d); wkApply(now); }
     // 27.11.2 (js hrOn, tHr, onTHr): the heart rate step. A watch app cannot pair a strap (the watch's Sensors menu does), so the step only
-    // waits for a heart rate; one is shown HR_SHOW_S seconds, then the ride starts; START (a tap) starts at once; BACK = the trainer's state
+    // waits for a heart rate; one is shown HR_SHOW_S seconds, then (27.11.7) the choice S_TPICK; START (a tap) opens it at once; BACK = the trainer's state
     function hrOn(now as Number) as Boolean { return hr > 0 && now - hrAt <= HR_LIVE_S; }
     function tHr(now as Number) as Void { sel = 0; thr = hrOn(now) ? now : 0; scr = S_THR; }
     function onTHr(ev as Number, now as Number) as Void {
-        if (ev == E_START || ev == E_TAP) { tBegin(now); }
+        if (ev == E_START || ev == E_TAP) { tPick(); }   // 27.11.7: the choice follows
         else if (ev == E_BACK) { sel = 0; scr = S_TSCAN; }
     }
     // 27.11.6 (js catOf, tCats, catName, tRows): a workout's category letter (Other without a known one), the categories with workouts
@@ -1287,9 +1274,9 @@ class Flow {
     function tCats() as Array<String> {
         var l = rideList(), r = [] as Array<String>;
         for (var k = 0; k < CAT_K.size(); k++) {
-            var has = false;
-            for (var j = 0; j < l.size(); j++) { if (catOf(l[j]).equals(CAT_K[k])) { has = true; } }
-            if (has) { r.add(CAT_K[k]); }
+            var found = false; // not "has": a reserved word (tools/watchtouch-test.mjs checks the locals)
+            for (var j = 0; j < l.size(); j++) { if (catOf(l[j]).equals(CAT_K[k])) { found = true; } }
+            if (found) { r.add(CAT_K[k]); }
         }
         return r;
     }
@@ -1328,7 +1315,7 @@ class Flow {
     // the choice: 0 = free ride, else that workout; connected: the ride starts, else back to the trainer's state until it is
     function tChoose(i as Number, now as Number) as Void {
         tw = i; var v = link.shown();
-        if (v == TL_READY || v == TL_REFUSED) { tHr(now); } else { sel = 0; scr = S_TSCAN; }
+        if (v == TL_READY || v == TL_REFUSED) { tBegin(now); } else { sel = 0; scr = S_TSCAN; }   // 27.11.7: the heart rate step came before
     }
 
     /* ---- 23.11.: the indoor trainer (js/watchflow.js tOpen, tBegin, tTarget, tPause, tResume, tFinish, tDiscard, tSecs, onTScan, onTRec) ---- */
@@ -1403,11 +1390,12 @@ class Flow {
             }
             return;
         }
-        // 27.11.: START (a tap) opens the choice (S_TPICK), also while connecting; once chosen and connected START rides (refused: ride
-        // anyway, the power is recorded); UP / DOWN open the choice again
+        // 27.11.7 (js onTScan, the owner's order): connected, START (a tap, UP / DOWN) = the heart rate step, then the choice (S_TPICK),
+        // then the ride (refused: ride anyway, the power is recorded). A choice made while the link was lost (tw) rides at once once it is back
         var go = v == TL_READY || v == TL_REFUSED;
-        if (ev == E_START || ev == E_TAP) { if (go && tw >= 0) { tHr(now); } else if (go || v == TL_CONN) { tPick(); } }
-        else if (ev == E_UP || ev == E_DOWN) { if (go || v == TL_CONN) { tPick(); } }
+        if (ev == E_START || ev == E_TAP || ev == E_UP || ev == E_DOWN) {
+            if (go && tw >= 0 && (ev == E_START || ev == E_TAP)) { tBegin(now); } else if (go) { tHr(now); }
+        }
         else if (ev == E_BACK) { link.stop(); link.want = ""; tw = -1; link.scan(now); sel = 0; }   // cancel: the list, no automatic connect this time
     }
     // js: tPages(F) (28.11.): the ride's pages: "target" (the overview) first, then the config's ("tp": "wk", "body", "stats" in the order
@@ -1466,8 +1454,33 @@ class Flow {
         else if (ev == E_BACK || ev == E_MENU) { tConf = false; sel = 0; scr = S_TEND; }
     }
 
-    // js: handle(F, ev, now, arg)
+    // js: handle(F, ev, now, arg). 27.11.7 (the Mac build: "Stack Overflow Error" through handle -> flushPress -> handle): flat. A tapped
+    // row's pending action and then this input are each one call of step() from here; nothing calls handle() from inside handle()
+    // (Connect IQ's stack is small; step() has many locals, this one few)
     function handle(ev as Number, now as Number, arg) as Void {
+        if (ev == E_ANIM) { // the app's ANIM_MS timer: a row's action once its flash is over, the moving list's next frame
+            var ms = numOf(arg);
+            if (prK != 0 && (ms - prAt >= PRESS_MS || ms < prAt)) {
+                var e = prEv, x = prArg;
+                prK = 0; prI = -1; prEv = -1; prArg = null;
+                if (e >= 0) { step(e, now, x); }
+            }
+            lStep(ms);
+            return;
+        }
+        if (prWait() && ev != E_TICK && ev != E_HR && ev != E_SAMPLE && ev != E_SEG && ev != E_BLE) { // a tapped row's action comes before the next input
+            var e2 = prEv, x2 = prArg;
+            prEv = -1; prArg = null; prK = 0; prI = -1;
+            step(e2, now, x2);
+        }
+        if (ev == E_PRESS) {
+            if (arg instanceof Array) { var a = arg as Array; if (press(a)) { step(numOf(a[2]), now, a[3]); } }
+            return;
+        }
+        step(ev, now, arg);
+    }
+    // one input (handle() calls it, nothing else does)
+    function step(ev as Number, now as Number, arg) as Void {
         if (ev == E_HR) {
             hr = numOf(arg);
             if (hr > 0) { hrAt = now; }
@@ -1480,8 +1493,6 @@ class Flow {
             if (arg instanceof Dictionary) { var w = link.want; link.bleEv(now, arg as Dictionary); if (link.want.length() > 0 && !link.want.equals(w)) { out.add({ "k" => O_TRAINER } as Dictionary); } }
             return;
         }
-        if (ev == E_ANIM) { anim(now, numOf(arg)); return; }
-        if (prWait() && ev != E_TICK) { flushPress(now); } // a tapped row's action comes before the next input
         if (ev == E_HOLD_START || ev == E_HOLD_END) { // BACK pressed / released (and the touch pill): only the pause screen listens
             if (scr != S_PAUSE || pzConf) { return; }
             if (ev == E_HOLD_START) { pzHolding = true; pzHold = numOf(arg); }
@@ -1490,7 +1501,7 @@ class Flow {
         }
         if (ev == E_TICK) { // arg = System.getTimer() (RideframeApp.onTick)
             link.tick(now); tSecs(now);
-            if (scr == S_THR) { if (!hrOn(now)) { thr = 0; } else if (thr == 0) { thr = now; } if (thr != 0 && now - thr >= HR_SHOW_S) { tBegin(now); return; } }
+            if (scr == S_THR) { if (!hrOn(now)) { thr = 0; } else if (thr == 0) { thr = now; } if (thr != 0 && now - thr >= HR_SHOW_S) { tPick(); return; } }
             if (scr == S_PAUSE && pzHolding && numOf(arg) - pzHold >= HOLD_MS) { endPaused(now); return; }
             var f = flash;
             if (f != null) { if (now >= numOf(f["until"])) { flash = null; } }
@@ -1502,7 +1513,6 @@ class Flow {
         }
         if (ev == E_DRAG) { if (flash == null && arg instanceof Array) { lDrag(fltOf((arg as Array)[0]), numOf((arg as Array)[1])); } return; }
         if (ev == E_DRAG_END) { lRelease(numOf(arg)); return; }
-        if (ev == E_PRESS) { if (arg instanceof Array) { press(now, arg as Array); } return; }
         lStop(); // any other input stops a moving list where it is
         if (flash != null) { flash = null; if (ev != E_MENU) { return; } } // the first touch after a record only clears the flash
         if (ev == E_WHEEL) { wheel(now, arg); return; }

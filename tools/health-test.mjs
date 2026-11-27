@@ -42,7 +42,7 @@ test('the watch sends its snapshot (healthBody of the demo values); the phone re
   assert.equal((await call('GET', '/api/account/health')).status, 401, 'signed in only');
   const g = await call('GET', '/api/account/health', { token: A.token }); assert.equal(g.status, 200);
   assert.equal(g.j.days.length, 1); assert.equal(g.j.days[0].ss, 84); assert.equal(g.j.days[0].ts, 'Productive'); assert.equal(g.j.days[0].rr, 13.4);
-  assert.deepEqual(g.j.latest.rhr, { v: 47, day: dk(now) }); assert.deepEqual(g.j.keys.rt, ['recovery time', 'minutes']);
+  assert.deepEqual(g.j.latest.rhr, { v: 47, day: dk(now), t: b.t * 1000 }, '27.11.7: t = the time of the snapshot that carried it'); assert.deepEqual(g.j.keys.rt, ['recovery time', 'minutes']);
   const f = JSON.parse(await readFile(join(DATA, 'users', (JSON.parse(await readFile(join(DATA, 'accounts.json'), 'utf8')).users['health hanna'].id), 'health.json'), 'utf8'));
   assert.ok(f.days[dk(now)].first > 0, 'stored per day in users/<id>/health.json');
 });
@@ -70,7 +70,8 @@ test('merge per day: the newest snapshot wins per field, also when an older one 
   assert.deepEqual(g.days.map(x => x.day), [dk(now), day], 'newest first');
   const d = g.days[1]; assert.deepEqual([d.bb, d.steps, d.ss, d.rhr], [65, 4000, 77, 50], 'newest per field, the late one fills only what was missing');
   assert.equal(d.first, t0 * 1000); assert.equal(d.last, t2 * 1000);
-  assert.deepEqual(g.latest.bb, { v: 40, day: dk(now) }); assert.deepEqual(g.latest.rhr, { v: 50, day });
+  assert.deepEqual(g.latest.bb, { v: 40, day: dk(now), t: S(now) * 1000 }); assert.deepEqual(g.latest.rhr, { v: 50, day, t: t0 * 1000 }, 'per field: the snapshot that carried it');
+  assert.equal(d.at.bb, t2 * 1000); assert.equal(d.at.ss, t1 * 1000);
   assert.equal((await call('GET', '/api/account/health?days=1', { token: B.token })).j.days.length, 1);
 });
 
@@ -88,4 +89,20 @@ test('400 days kept: older days go when a new snapshot is stored', async () => {
   const recent = H.validateHealth({ day: dk(now), t: S(now), bb: 60 }); await H.storeHealth(uid, recent);
   const all = await H.healthOf(uid, 400); assert.deepEqual(all.map(x => x.day), [dk(now)]);
   assert.equal(H.validateHealth({ day: dk(now), t: S(now), bb: 50.6 }).v.bb, 51);
+});
+
+test('27.11.7 the card: a value of today older than 3 h (body battery, recovery time, stress) shows its time instead of its word; the header stays', async () => {
+  const { renderHealthCard, staleTime, STALE_MS } = await import('../js/healthcard.js');
+  const N = new Date(2026, 10, 27, 21, 16).getTime(), at = (h, m) => new Date(2026, 10, 27, h, m).getTime(), today = dk(N), yest = dk(N - DAY);
+  const latest = { bb: { v: 62, day: today, t: at(18, 5) }, st: { v: 30, day: today, t: at(20, 0) }, ss: { v: 84, day: today, t: at(7, 2) }, rt: { v: 600, day: yest, t: at(9, 0) - DAY } };
+  const el = {}; renderHealthCard(el, { days: [{ day: today, first: at(7, 2), last: at(21, 16), rhr: 48, at: {} }], latest }, { now: N });
+  const h = el.innerHTML, tileOf = l => (h.split('<div class="hct">').find(x => x.startsWith(`<span>${l}</span>`)) || '');
+  assert.match(h, /Garmin watch · today 21:16/, 'the header as before');
+  assert.match(tileOf('Body battery'), /<em class="">18:05<\/em>/, 'body battery from 18:05: its time');
+  assert.match(tileOf('Stress'), /<em class="">low<\/em>/, 'stress from 20:00: under 3 h, the word');
+  assert.match(tileOf('Sleep score'), /good|excellent/, 'the sleep score keeps its word (one per day)');
+  assert.match(tileOf('Recovery'), /yesterday/, 'another day: the day as before');
+  assert.equal(staleTime({ v: 1, day: today, t: N - STALE_MS }, N, 'bb'), '', 'exactly 3 h: not yet');
+  assert.equal(staleTime({ v: 1, day: today, t: N - STALE_MS - 60e3 }, N, 'bb'), '18:15'); assert.equal(staleTime({ v: 1, day: today }, N, 'bb'), '', 'no time: nothing');
+  assert.equal(staleTime({ v: 1, day: today, t: at(1, 0) }, N, 'rt'), '01:00'); assert.equal(staleTime({ v: 1, day: today, t: at(1, 0) }, N, 'ss'), '');
 });
