@@ -14,7 +14,7 @@ if (typeof document !== 'undefined' && !document.querySelector('link[data-rs]'))
 export const MODES = [
   ['erg', 'ERG', 'The trainer holds the watts'],
   ['sim', 'With gradient', 'The trainer follows the road'],
-  ['flat', 'Just ride', 'No gradient: flat road feel'],
+  // 'flat' ("Just ride", no gradient) is no longer offered (owner 27.11.: ERG or the road is enough); setMode still knows it
 ];
 export const SOURCES = [
   ['trainer', 'Trainer control', 'RIDEFRAME sets ERG and gradient on the smart trainer'],
@@ -33,7 +33,7 @@ export const modeOf = r => sourceOf(r) === 'pm' ? 'pm' : (r.workout && r.erg) ||
 export const shiftOf = r => r.virtual ? 'virtual' : 'real';
 /** the workout list: your own first (personal ★, then the Training-tab ones), then the standard ones; minutes rounded */
 export function workoutChoices(list = allWorkouts()) {
-  const rank = w => w.personal ? 0 : w.mine ? 1 : 2;
+  const rank = w => w.personal ? 0 : w.mine ? 1 : w.coach ? 2 : 3; // the coach's ones before the standard list (owner 27.11.: the 30 / 15 was out of sight at the very end)
   return list.map((w, i) => ({ w, i, r: rank(w) })).sort((a, b) => a.r - b.r || a.i - b.i)
     .map(({ w }) => ({ id: w.id, name: w.name, min: Math.round(workoutDuration(w) / 60), own: !!(w.personal || w.mine), coach: !!w.coach, w }));
 }
@@ -106,6 +106,7 @@ export function openSetup(r, focus = 0) {
   box.innerHTML = `<div class="label">Ride setup · ${esc(r.route?.name || '')}</div><h2 class="display">Workout &amp; mode</h2>
     <div class="padmenu rs">
       <button class="btn rsgo" id="oBack">Ride on ▸</button>
+      ${r.state.hr?.connected ? `<span class="rsdev rshr">✓ ${esc(r.state.hr.device?.name || 'Heart rate')}${r.state.hr.hr ? ` · ${r.state.hr.hr} bpm` : ''}</span>` : '<button type="button" class="btn ghost small rshr" id="rsHr">Connect heart rate</button>'}
       <div class="rsg" role="group" aria-label="Power source"><div class="rsl">Power source</div><div class="rsrow">${SOURCES.map(([id, n, h]) => `<button type="button" data-src="${id}" ${press(src === id)} title="${esc(h)}"><b>${n}</b><small>${h}</small></button>`).join('')}</div>
         <div class="rsnote" id="rsNote">${esc(SOURCE_NOTE[src])} ${t.connected ? `<span class="rsdev">✓ ${esc(t.device?.name || (pm ? 'Power meter' : 'Trainer'))}${pm ? ' · watts only' : ''}</span>` : `<button type="button" class="btn ghost small" id="rsConn">Connect ${pm ? 'power meter' : 'trainer'}</button>`}</div></div>
       <div class="rsg" role="group" aria-label="Mode"><div class="rsl">Mode${pm ? ' <span class="rscur">off: the trainer is not controlled</span>' : ''}</div><div class="rsrow">${MODES.map(([id, n, h]) => { const off = pm, hold = id === 'erg' && !r.workout;
@@ -127,6 +128,11 @@ export function openSetup(r, focus = 0) {
     try { await t.connect(); await t.setSim?.({ riderKg: r.state.settings.riderKg, bikeKg: r.state.settings.bikeKg, crr: 0.004, cw: 0.51 }); if (r.erg) r._workout(0); }
     catch (e) { if (e?.name !== 'NotFoundError') r._flash(e?.name === 'SecurityError' ? 'Bluetooth needs a click or Enter: press Enter or click “Connect”' : 'Connection failed: ' + (e?.message || e), 4000); }
     if (box.isConnected && box.classList.contains('rsbox')) again(conn); };
+  const hrB = box.querySelector('#rsHr'); // owner 27.11.: the strap connects here too, next to the trainer
+  if (hrB) hrB.onclick = async () => { hrB.disabled = true; hrB.textContent = 'Connecting …';
+    try { await (await import('./app.js')).connectHR(false); } catch (e) { r._flash('Connection failed: ' + (e?.message || e), 4000); }
+    if (r.state.hr?.connected) r._flash('✓ Heart rate connected'); else if (r.state.hr?.device) r.state.hr.rejoinNow?.()?.catch?.(() => {});
+    if (box.isConnected && box.classList.contains('rsbox')) again(hrB); };
   box.querySelectorAll('[data-shift]').forEach(b => b.onclick = () => { setShift(r, b.dataset.shift); again(b); });
   box.querySelectorAll('[data-w]').forEach(b => b.onclick = () => { const w = list.find(x => x.id === b.dataset.w)?.w || null; if (!w) { setWorkout(r, null); return again(b); } openAdjust(r, w, [...box.querySelectorAll('.padmenu button')].indexOf(b)); });
   r._padFocus(focus);

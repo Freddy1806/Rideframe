@@ -20,7 +20,7 @@ function fakeRide(o = {}) {
 }
 
 test('three modes; ERG only with a workout', () => {
-  assert.deepEqual(MODES.map(m => m[0]), ['erg', 'sim', 'flat']);
+  assert.deepEqual(MODES.map(m => m[0]), ['erg', 'sim'], 'two modes: "Just ride" is no longer offered (owner 27.11.)');
   assert.equal(modeChange('erg', false), null); assert.deepEqual(modeChange('erg', true), { erg: true, flat: false });
   assert.deepEqual(modeChange('sim', true), { erg: false, flat: false }); assert.deepEqual(modeChange('flat', false), { erg: false, flat: true });
   assert.equal(modeOf({ workout: null, erg: true }), 'sim', 'ERG setting without a workout: the road');

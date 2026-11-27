@@ -41,3 +41,4 @@
 .rsaf button:focus-visible, .rsask:focus-visible { outline: 3px solid var(--rs); outline-offset: 3px; }
 @media (max-width: 640px) { .rsar { grid-template-columns: 1fr 1fr; } }
 
+.rs .rshr { align-self: flex-start; }

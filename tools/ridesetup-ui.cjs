@@ -1,6 +1,6 @@
 // Workout, mode and shifting inside the ride (js/ridesetup.js, Freddy 17.11. 22:14), end to end on Passo Demo: a free ride,
 // then by fake pad only: Start -> "Workout & mode" -> a workout (the interval bar comes, step 1, ERG target to the trainer),
-// "With gradient" (ERG off), "Just ride" (0 % to the trainer), virtual shifting; by keyboard only: O -> ERG again -> no
+// "With gradient" (ERG off), virtual shifting; by keyboard only: O -> ERG again -> no
 // workout (the bar goes, the trainer free). The ride records all along and the saved ride names the workout. No browser
 // dialogs. Starts its own serve.mjs on a free port with a temp data folder.
 // Usage: NODE_PATH=$(npm root -g) node tools/ridesetup-ui.cjs [shotsDir]
@@ -29,7 +29,7 @@ let fails = 0; const ok = (c, m) => { console.log(`${c ? '✓' : '✗'} ${m}`); 
     const on = () => R.evaluate(() => { const a = document.activeElement; return a ? (a.id || (a.dataset.src ? 'src:' + a.dataset.src : '') || a.dataset.mode || a.dataset.shift || (a.dataset.w !== undefined ? 'w:' + a.dataset.w : a.textContent.trim())) : ''; });
     /** the ride's own menu: D-pad down / up until the wanted button is the focused one */
     // → and ← walk through every button in order (the D-pad goes where it points; at the end of a row it steps on to the next one)
-    const padTo = async (want, dir = 'down', max = 60) => { dir = dir === 'up' ? 'left' : 'right'; for (let i = 0; i < max; i++) { if (await on() === want) return true; await press(dir); } return (await on()) === want; };
+    const padTo = async (want, dir = 'down', max = 60) => { dir = dir === 'up' ? 'left' : 'right'; for (let i = 0; i < max; i++) { const o = await on(); if (process.env.DBG) console.log("  pad", dir, o); if (o === want) return true; await press(dir); } return (await on()) === want; };
     const st = () => R.evaluate(() => { const r = window.__ride, t = r.state.trainer; return { w: r.workout?.id || null, erg: r.erg, flat: r.flatRide, virt: r.virtual, t0: r._wT0, el: r.elapsed, step: r.wNow?.i ?? null, target: r.wNow?.target ?? null,
       trainerErg: t.erg ?? null, bar: !!document.querySelector('#hWork'), wk: r.el.classList.contains('wk'), n: r.samples.length, paused: r.paused, grade: window.__grade }; });
 
@@ -42,7 +42,7 @@ let fails = 0; const ok = (c, m) => { console.log(`${c ? '✓' : '✗'} ${m}`); 
 
     // ---- by pad only ----
     await press('start'); await R.waitForSelector('#pSetup'); ok(await padTo('pSetup'), 'pad: Start, then down to “Workout & mode”'); await press('A');
-    await R.waitForSelector('.rsbox'); ok(await R.locator('.rsbox [data-mode]').count() === 3 && await R.locator('.rsbox [data-shift]').count() === 2 && await R.locator('.rsbox [data-w]').count() > 10, 'setup: 3 modes, 2 shiftings, the workouts');
+    await R.waitForSelector('.rsbox'); ok(await R.locator('.rsbox [data-mode]').count() === 2 && await R.locator('.rsbox [data-shift]').count() === 2 && await R.locator('.rsbox [data-w]').count() > 10, 'setup: 2 modes, 2 shiftings, the workouts');
     ok(!(await R.locator('.rsbox [data-mode="erg"]').isDisabled()) && /Holds your watts/.test(await R.textContent('.rsbox [data-mode="erg"]')), 'ERG without a workout offers hold watts');
     { await R.evaluate(() => { const r = window.__ride, t = r.state.trainer, p = t.setPower.bind(t); window.__hw = []; t.setPower = x => { window.__hw.push(x); return p(x); }; });
       await R.click('.rsbox [data-mode="erg"]'); await R.waitForTimeout(250);
@@ -73,10 +73,13 @@ let fails = 0; const ok = (c, m) => { console.log(`${c ? '✓' : '✗'} ${m}`); 
     if (SHOTS) await R.screenshot({ path: `${SHOTS}/ridesetup_workout_1280.png` });
     ok(await padTo('sim', 'up'), 'pad: up to “With gradient”'); await press('A'); await R.waitForTimeout(200);
     s = await st(); ok(!s.erg && s.trainerErg === null && s.w === 'ss2x12', 'with gradient: ERG off, the trainer back on the road, the workout goes on');
-    ok(await padTo('flat'), 'pad: to “Just ride”'); await press('A'); await R.waitForTimeout(200); s = await st(); ok(s.flat && !s.erg, 'just ride: no gradient');
+    ok(await R.evaluate(() => !document.querySelector('.rsbox [data-mode="flat"]') && document.querySelectorAll('.rsbox [data-mode]').length === 2), 'two modes only: ERG and With gradient (“Just ride” is gone)');
     ok(await padTo('virtual'), 'pad: to “Virtual” shifting'); await press('A'); await R.waitForTimeout(200); s = await st(); ok(s.virt, 'virtual shifting on');
     await press('B'); await R.waitForTimeout(1200); s = await st(); ok(!s.paused && !(await R.locator('#pauseOverlay').count()), 'pad B: back on the road');
-    ok(Math.abs(s.grade) < 0.01, `just ride: 0 % goes to the trainer (${(+s.grade).toFixed(3)} %, before ${(await R.evaluate(() => window.__ride._roadGrade())).toFixed(1)} % road)`);
+    await R.keyboard.press('o'); await R.waitForSelector('.rsbox'); await R.mouse.click(6, 300); await R.waitForTimeout(600);
+    ok(!(await R.locator('#pauseOverlay').count()) && !(await R.evaluate(() => window.__ride.paused)), 'a click beside the window closes it and rides on (owner 27.11.)');
+    await R.keyboard.press('o'); await R.waitForSelector('.rsbox'); await R.mouse.move(700, 300); await R.mouse.down(); await R.mouse.move(6, 300); await R.mouse.up(); await R.waitForTimeout(400);
+    ok(await R.locator('#pauseOverlay .rsbox').count() === 1, 'a drag out of the window closes nothing'); await press('B'); await R.waitForTimeout(800);
     const tl = await R.evaluate(() => { const r = window.__ride; return [r.wNow?.i, Math.round(r._wClock())]; }); ok(tl[0] === 0 && tl[1] > 0, `the workout clock runs from the choice (${tl[1]} s, step ${tl[0] + 1})`);
 
     // ---- by keyboard only: O, Tab, Enter ----
@@ -104,6 +107,11 @@ let fails = 0; const ok = (c, m) => { console.log(`${c ? '✓' : '✗'} ${m}`); 
         note: b.querySelector('#rsNote')?.textContent || '', conn: b.querySelector('#rsConn')?.textContent || '', on: b.querySelector('[data-src="pm"]').classList.contains('on') }; });
     ok(pm.pm && pm.gone && !pm.dev && pm.set === 'pm' && pm.on, 'power meter only: the trainer is disconnected, the choice is kept');
     ok(!pm.erg && pm.tErg === null && pm.modesOff && pm.virtOff && pm.realOn, 'no ERG, no gradient modes, no virtual gears');
+    { // owner 27.11.: the heart rate strap connects in the ride setup too
+      await R.evaluate(() => { window.__picks = 0; const bt = navigator.bluetooth || {}; bt.requestDevice = async () => { window.__picks++; throw Object.assign(new Error('User cancelled the requestDevice() chooser.'), { name: 'NotFoundError' }); }; if (!navigator.bluetooth) Object.defineProperty(navigator, 'bluetooth', { value: bt, configurable: true }); });
+      const hb = await R.evaluate(() => document.querySelector('.rsbox #rsHr')?.textContent || '');
+      await R.click('.rsbox #rsHr'); await R.waitForTimeout(400);
+      ok(/Connect heart rate/.test(hb) && await R.evaluate(() => window.__picks) === 1 && await R.evaluate(() => !!document.querySelector('.rsbox #rsHr')), 'ride setup: “Connect heart rate” opens the device list, the setup stays open'); }
     ok(/never controls the trainer/.test(pm.note) && /Connect power meter/.test(pm.conn), `one line explains it, a button connects the power meter (“${pm.note.slice(0, 60)}…”)`);
     if (SHOTS) await R.screenshot({ path: `${SHOTS}/ridesetup_pm_1280.png` });
     await R.evaluate(() => { const t = window.__ride.state.trainer; window.__w = []; // a power meter connected (fake): watts in, nothing out

@@ -138,7 +138,7 @@ export class RideSession {
     if (st.ueBridge || new URLSearchParams(location.search).has('ue')) { this.ue = new UEBridge(route.id, { ...this.track, step: STEP }); this.ue.weather = st.ueWeather || 'auto'; } // Unreal view (beta)
     if (resume) { // the ride after a reload or a crash (js/ridedraft.js): position, clocks, samples and workout go on where they stopped
       restoreDraft(this, resume); this.d = Math.max(0, Math.min(this.d, this.track.length - 1)); this.lastEle = eleAt(this.track, this.d);
-      if (state.trainer.pmOnly) this.erg = false; this.gi = Math.max(0, Math.min(this.gears.length - 1, this.gi | 0)); this.gear = this.virtual ? this.gears[this.gi] : null; this._resumed = true;
+      if (state.trainer.pmOnly) this.erg = false; this.gi = Math.max(0, Math.min(this.gears.length - 1, this.gi | 0)); this.gear = this.virtual ? this.gears[this.gi] : null; this.flatRide = false; this._resumed = true; // "just ride" is gone from the setup: a restored ride follows the road
     }
   }
   /** "Save as it is" on the resume sheet: the ride record of a checkpoint, made exactly as _finish makes it (no DOM, no world) */
@@ -1250,6 +1250,10 @@ export class RideSession {
     this.paused = true; this.player.pause(); this.music?.pause(); this._saveDraft();
     this.q('#pauseOverlay')?.remove();
     const o = document.createElement('div'); o.className = 'paused'; o.id = 'pauseOverlay';
+    // owner 27.11.: a click beside the window closes it (pause menu, options, workout & mode: all live in this overlay) and rides on;
+    // only when the press also began on the dark area, so a drag out of the window closes nothing
+    o.addEventListener('pointerdown', e => { this._bdDown = e.target === o; });
+    o.addEventListener('click', e => { if (e.target === o && this._bdDown && this.paused && !this.finished) this._resume(); this._bdDown = false; });
     o.innerHTML = `<div class="box"><div class="label">${fmtKm(this.lapOff + this.d)} km · ${fmtTime(this.elapsed)}</div><h2 class="display">Pause</h2>
       <div class="row-actions padmenu"><button class="btn" id="pResume">Resume</button><button class="btn ghost" id="pOpts">Options</button><button class="btn ghost" id="pSetup">Workout &amp; mode</button><button class="btn ghost" id="pSet">Settings</button>${this.state.trainer.connected ? '' : `${this.state.trainer.device ? '<button class="btn ghost" id="pRejoin">Reconnect trainer</button>' : ''}<button class="btn ghost" id="pConn">${this.state.trainer.device ? 'Choose trainer …' : 'Connect trainer'}</button>`}${this.state.hr?.connected ? '' : '<button class="btn ghost" id="pHr">Connect heart rate</button>'}<button class="btn ghost" id="pSave">Finish &amp; save</button><button class="btn ghost" id="pDiscard">Discard</button>${this.group?.voice?.on ? '<button class="btn ghost" id="pVoice">Voice chat off</button>' : ''}${this.group ? this.group.others().filter(r => r.riding || r.d > 0).slice(0, 4).map((r, i) => `<button class="btn ghost" data-jump="${i}">⇢ Jump to ${esc(r.name)}</button>`).join('') : this.autopilot ? '' : '<button class="btn ghost" id="pGroup">Open group</button>'}${this.presence?.on ? '<button class="btn ghost" id="pInvite">Invite friends</button>' : ''}</div>
       <div class="hint pad-hint" style="margin-top:12px;opacity:.7">🎮 D-pad to choose · A ok · B back</div></div>`;
