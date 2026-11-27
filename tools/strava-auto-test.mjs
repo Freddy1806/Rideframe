@@ -60,10 +60,10 @@ test('a signed-in browser links its Strava key to the account; the background th
   assert.equal((await call('GET', '/api/strava/status', { token: U.token, key: KEY('a') })).j.canImport, true);
   assert.equal(JSON.parse(await readFile(join(U.dir, 'strava-link.json'), 'utf8')).key, KEY('a'), 'status with login + key = link');
   fake.acts = [act(1001, 5, { name: 'Morning Run' })];
-  const g0 = fake.gets.length; await M.runStravaAuto();
-  assert.equal(fake.gets.length, g0, 'linked, but no device has sent its deleted ids yet: wait (rollout)'); assert.deepEqual(await ids(U.dir), []);
-  await ready(U);
-  const r1 = await M.runStravaAuto();
+  const old = { id: 999, name: 'Old', sport_type: 'Run', type: 'Run', start_date: '2026-11-22T08:00:00Z', elapsed_time: 3000, moving_time: 2900, distance: 8000, total_elevation_gain: 40 };
+  if (Date.now() - Date.parse(old.start_date) < 9 * 86400e3) fake.acts.push(old); // inside the first run's window only for a few days after the rollout
+  const r1 = await M.runStravaAuto(); // 27.11.: no device has sent its deleted ids yet = import all the same, only nothing from before 23.11.
+  fake.acts = fake.acts.filter(a => a.id !== 999);
   assert.equal(r1.added, 1); assert.deepEqual(await ids(U.dir), ['st1001']);
   const rec = JSON.parse(await readFile(join(U.dir, 'rides', 'st1001.json'), 'utf8'));
   assert.equal(rec.source, 'strava'); assert.equal(rec.stravaId, '1001'); assert.equal(rec.workout, 'Morning Run'); assert.equal(rec.distance, 8000); assert.equal(rec.ext, undefined);
