@@ -179,7 +179,9 @@ export function hrZones(z) {
   return r;
 }
 /** a target a step on (d = +1 / -1, big = UP / DOWN held), on the step grid, inside 30..1000 W */
-export function nextTarget(R, d, big) { const k = big ? Math.max(R.step, HOLD_W) : R.step; return clamp(d > 0 ? Math.floor(R.tgt / k) * k + k : Math.ceil(R.tgt / k) * k - k, W_MIN, W_MAX); }
+export function nextTarget(R, d, big) { return nextBy(R.tgt, d, big ? Math.max(R.step, HOLD_W) : R.step); }
+/** 27.11.5: w a step of k W on (d > 0) or back, on the grid of k, inside W_MIN..W_MAX */
+export function nextBy(w, d, k) { return clamp(d > 0 ? Math.floor(w / k) * k + k : Math.ceil(w / k) * k - k, W_MIN, W_MAX); }
 /** the step size on a tap on the target: 5 -> 10 -> 25 -> 5 */
 export const nextStep = s => STEPS[(STEPS.indexOf(s) + 1) % STEPS.length];
 /** a new target starts a new block (the stats page: time and average power since the last change) */
@@ -322,14 +324,19 @@ export function wkClose(W) { wkFlush(W); W.recU = -1; }
 /** 27.11.4: the summary (js/watchflow.js tFinish, F.tsum; garmin tReport): o = rideSum + name, with the workout W (null = a free ride):
  *  wn, wt (s), wd (s ridden of it), ivN / ivD (intervals in it / done), uS (sets), uN / uD (units / done), per interval iw, it, iu, per unit
  *  uw, ut (average watts / target without the ramp seconds, 0 = not ridden), uhp (peak heart rate), urec (the drop, REC_NONE none);
- *  zs (seconds per zone, only with zones), hs (the heart rate series of the upload) */
+ *  zs (seconds per zone, only with zones), hs (the heart rate series of the upload). 27.11.5: ivS / ivW the intervals' length (s) and
+ *  target sent where all have the same (else 0), per unit udn / ucn its intervals done / in it (fewer done: cut short) */
 export function rideReport(o, R, W) {
   if (R.zb) o.zs = R.zs.slice();
   o.hs = R.s.hr.slice();
   if (!W) { o.wn = ''; o.wt = 0; return o; }
   const nu = W.uCnt.length; let ud = 0; for (let u = 0; u < nu; u++) if (W.uDn[u] >= W.uCnt[u]) ud++;
   Object.assign(o, { wn: W.n, wt: W.tot, wd: Math.min(R.t, W.tot), ivN: W.ivN, ivD: W.ivD, uS: W.uS, uN: nu, uD: ud, iw: W.iw.slice(), it: W.it.slice(), iu: W.iu.slice(),
-    uw: W.uPn.map((n, u) => n > 0 ? Math.round(W.uPw[u] / n) : 0), ut: W.uPn.map((n, u) => n > 0 ? Math.round(W.uTg[u] / n) : 0), uhp: W.uHp.slice(), urec: W.uRec.slice() });
+    uw: W.uPn.map((n, u) => n > 0 ? Math.round(W.uPw[u] / n) : 0), ut: W.uPn.map((n, u) => n > 0 ? Math.round(W.uTg[u] / n) : 0), uhp: W.uHp.slice(), urec: W.uRec.slice(),
+    udn: W.uDn.slice(), ucn: W.uCnt.slice(), ivS: 0, ivW: W.it.length > 0 ? W.it[0] : 0 });
+  for (let k = 0; k < W.dur.length; k++) if (W.un[k] >= 0) { if (o.ivS === 0) o.ivS = W.dur[k]; else if (W.dur[k] !== o.ivS) { o.ivS = -1; break; } }
+  if (o.ivS < 0) o.ivS = 0;
+  for (let k = 1; k < W.it.length; k++) if (W.it[k] !== o.ivW) { o.ivW = 0; break; }
   return o;
 }
 /** the step's own watts after into seconds (a ramp moves evenly from w to w2), without the rider's offset */

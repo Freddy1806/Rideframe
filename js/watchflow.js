@@ -11,11 +11,11 @@
 // 19.11.: READY (run / ride) -> RPICK (UP / DOWN or a tap on the route line): None or a route sent from the phone
 // (GET /api/watch/routes; out 'routes' asks for the list, out 'route' for one route, setRoutes / setRoute answer).
 // 23.11. (second priority after strength): HOME -> TSCAN (find / connect the indoor trainer, js/watchtrainer.js) -> TREC (ERG: target, + / -,
-// power, cadence, heart rate; 28.11.: the pages of tPages, UP / DOWN page) <-> TEND (Back to ride / Resume, Finish & save, Discard; never a pause) -> TSUM. Out 'trainer' keeps the trainer's
+// power, cadence, heart rate; 28.11.: the pages of tPages, UP / DOWN page) <-> TEND (Back to ride / Resume, +5 W, -5 W, Finish & save, Discard; never a pause) -> TSUM. Out 'trainer' keeps the trainer's
 // name and the last target, 'saveAct' with sum.sp 'trainer' saves the ride (F.tbody = the upload).
 import { compact, defaults, FIELDS, TOP } from './watchfields.js';
 import { newLink, scan as tScan, connect as tConnect, stop as tStop, setTarget, bleEv, linkTick, live, shown, newRide, nextTarget, nextStep, newBlock, rideSec, rideSum, rideBody, W_START, W_MIN, W_MAX, W_PAUSE,
-  newWk, wkAt, wkTarget, wkTune, wkLeft, wkEasy, wkFallback, WK_FB_ID, wkRec, wkClose, rideReport, hrZones } from './watchtrainer.js';
+  newWk, wkAt, wkTarget, wkTune, nextBy, wkLeft, wkEasy, wkFallback, WK_FB_ID, wkRec, wkClose, rideReport, hrZones } from './watchtrainer.js';
 export const SCR = { HOME: 'home', START: 'start', SMODE: 'smode', PICK: 'pick', SET: 'set', REST: 'rest', MENU: 'menu', SUM: 'sum', PAIR: 'pair', GLANCE: 'glance',
   MORE: 'more', READY: 'ready', REC: 'rec', PAUSE: 'pause', RSUM: 'rsum', RPICK: 'rpick', END: 'end', SAVEQ: 'saveq', TSCAN: 'tscan', TREC: 'trec', TEND: 'tend', TSUM: 'tsum', TPICK: 'tpick', THR: 'thr' };
 export const KG_STEP = 2.5, KG_HOLD = 10, KG_MAX = 500, REPS_HOLD = 5, REPS_MAX = 100, SEC_STEP = 5, SEC_HOLD = 15, SEC_MAX = 600, REST_STEP = 15, PR_SECS = 3;
@@ -25,7 +25,10 @@ export const HOME = { run: 'Run', ride: 'Ride', trainer: 'Indoor trainer', kraft
 /** 23.11.: the trainer ride's menu (BACK): it does not pause (a stray BACK must not drop the watts), START pauses. 28.11. (the owner on his
  *  first ride: "BACK pauses too"): it never did, but its first row said "Resume" and the ride was out of sight; now the first row says
  *  "Back to ride" while it runs (only a paused ride shows "Resume"), the title RIDE MENU and the line under it "Riding 12:34, 180 W" */
-export const TEND_ROWS = ['Back to ride', 'Finish & save', 'Discard'], TEND_RESUME = 'Resume';
+export const TEND_ROWS = ['Back to ride', '+5 W', '-5 W', 'Finish & save', 'Discard'], TEND_RESUME = 'Resume';
+/** 27.11.5: the menu's + / - (the fenix 8's held UP / DOWN are system keys): 5 W like the target page's + / - at the 5 W step (a workout:
+ *  its offset), the menu stays open for the next press */
+export const TEND_W = 5;
 /** 28.11.: the ride's pages: the target page (the overview) always first, then the ones switched on in the phone's editor (watch config
  *  "tp", js/watchfields.js TRAINER_PAGES; a config without it: TP_DEF), the workout page only while a workout runs */
 export const TP_DEF = ['wk', 'body', 'stats'];
@@ -44,7 +47,7 @@ export function setHrZones(F, z) { F.hrZ = hrZones(z); }
 /** 23.11.: the strength list: the exercises (free), then the saved workouts (the phone's and those saved on the watch) */
 export const FREE = 'Free';
 /** shown in the menu title on the watch and in the preview, so the user can tell which file is on the watch; raise it with every watch file (garmin/source/Flow.mc VERSION) */
-export const VERSION = '27.11.4';
+export const VERSION = '27.11.5';
 /** BACK from the exercise list once sets are logged: nothing is lost without a second step */
 export const END_ROWS = ['Keep training', 'Finish & save', 'Discard'];
 /** the pause screen (every mode): BACK held this long (or a finger on the "Hold to finish" pill) saves; the short-press hint shows this long */
@@ -462,6 +465,9 @@ function wkSec(F, now) {
 }
 /** + / - in a workout: d W on the offset of the step now (hard or easy), sent at once (paused: on the resume) */
 function wkStep(F, d, now) { wkTune(F.wk, d); wkApply(F, now); }
+/** + / - d W (the target page's + / -, the menu's + / - 5 W): a workout the offset of the step now (27.11.), a free ride the target on
+ *  the grid of |d| */
+function tPlus(F, d, now) { const R = F.tr; if (F.wk) wkStep(F, d, now); else tTarget(F, nextBy(R.tgt, d > 0 ? 1 : -1, d > 0 ? d : -d), now); }
 /** a new target: shown at once, sent when the line is free (latest wins); while paused it waits for the resume */
 function tTarget(F, w, now) { const R = F.tr; if (w === R.tgt) return; R.tgt = w; F.tTgt = w; newBlock(R); if (R.st === 'run') setTarget(F.link, w, now); }
 /** pause: the clock stops and the trainer goes down to W_PAUSE (easy to spin, no ERG spiral when the legs start again); resume: the target again */
@@ -519,8 +525,7 @@ function onTRec(F, ev, now, arg) {
   const n = tPages(F).length, plus = ev === 'upHold' || (ev === 'item' && arg === 1), minus = ev === 'downHold' || (ev === 'item' && arg === 0);
   if (plus || minus) {
     const t0 = R.tgt;
-    if (F.wk) wkStep(F, plus ? R.step : -R.step, now); // 27.11.: a workout: the offset
-    else tTarget(F, nextTarget(R, plus ? 1 : -1, false), now);
+    tPlus(F, plus ? R.step : -R.step, now);
     if (ev !== 'item' && R.tgt !== t0) F.cues.push('tick'); // held on any page: felt, not only seen
   }
   else if (ev === 'item') R.step = nextStep(R.step);
@@ -613,7 +618,7 @@ export function handle(F, ev, now, arg) {
       else if (s === SCR.PICK) pickBack(F);
       else if (s === SCR.END) { if (F.endConf) { F.endConf = false; F.sel = 2; } else toPick(F, true); } // BACK = keep training
       else if (s === SCR.SAVEQ) reset(F); // = No
-      else if (s === SCR.TEND) { if (F.tConf) { F.tConf = false; F.sel = 2; } else F.scr = SCR.TREC; } // BACK = back to the ride (a paused one stays paused)
+      else if (s === SCR.TEND) { if (F.tConf) { F.tConf = false; F.sel = 4; } else F.scr = SCR.TREC; } // BACK = back to the ride (a paused one stays paused)
       else if (s === SCR.TPICK) { F.sel = 0; F.scr = SCR.TSCAN; } // the trainer's state, still connected
       else reset(F); // SMODE: the strength screen
     }
@@ -683,9 +688,10 @@ function pickItem(F, i, now) {
     else if (i === 0) toPick(F, true); else if (i === 1) finish(F, now); else { F.endConf = true; F.sel = 0; }
   }
   else if (s === SCR.TEND) {
-    if (F.tConf) { if (i === 1) tDiscard(F); else { F.tConf = false; F.sel = 2; } } // the second step: Discard for real, or keep riding
+    if (F.tConf) { if (i === 1) tDiscard(F); else { F.tConf = false; F.sel = 4; } } // the second step: Discard for real, or keep riding
     else if (i === 0) { F.scr = SCR.TREC; if (F.tr.st !== 'run') tResume(F, now); } // Back to ride (Resume: a paused one goes on)
-    else if (i === 1) tFinish(F, now); else { F.tConf = true; F.sel = 0; }
+    else if (i === 1 || i === 2) tPlus(F, i === 1 ? TEND_W : -TEND_W, now); // 27.11.5: + / - 5 W, the menu stays
+    else if (i === 3) tFinish(F, now); else { F.tConf = true; F.sel = 0; }
   }
   else if (s === SCR.TPICK) tChoose(F, i, now);
   else if (s === SCR.SAVEQ) { const q = F.saveq, k = q.rows.length - 1; if (i < k) saveTpl(F, !q.w || i === 1); reset(F); } // the last row is No
