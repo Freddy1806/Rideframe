@@ -46,33 +46,35 @@ const list = () => SPORTS.map(([t, n, d, el, dist], i) => ({ id: 777000 + i, nam
   const p = await c.newPage(), errs = []; p.on('pageerror', e => errs.push(e.message)); p.setDefaultTimeout(8000);
   const shot = async n => { if (SHOTS) await p.screenshot({ path: path.join(SHOTS, n + '.png'), fullPage: false }); };
   const noSide = async tag => ok(await p.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1), `no sideways scroll: ${tag}`);
+  const menu = async pg => { if (!await pg.isVisible('#fMenu')) await pg.click('#fPlus'); }; // Add and Import sit behind the + in the header
   await p.goto(BASE + '/handy.html'); await p.evaluate(() => { localStorage.setItem('rf_strava_key', 'kUI'); });
   await p.goto(BASE + '/aktivitaeten.html'); await p.waitForTimeout(1500);
   // the page itself does the automatic import on open (setting on by default once the permission is there)
   await p.waitForFunction(() => document.querySelectorAll('[data-act]').length >= 12, null, { timeout: 8000 }).catch(() => {});
   const n0 = await p.locator('[data-act]').count(); ok(n0 === 12, `automatic import on open: ${n0} rows (12 on the fake Strava)`);
-  ok(await p.isVisible('#fImp') && await p.isVisible('#fAdd'), 'Import from Strava and + Add activity are shown');
+  await menu(p); ok(await p.isVisible('#fImp') && await p.isVisible('#fAdd'), 'the + menu: Import from Strava and Add activity'); await shot('01b_plus_menu'); await p.click('#fPlus');
   await shot('01_feed_after_import'); await noSide('feed');
-  await p.click('#fImp'); await p.waitForFunction(() => /Nothing new|new activit/.test(document.querySelector('#fMsg')?.textContent || ''));
+  await menu(p); await p.click('#fImp'); await p.waitForFunction(() => /Nothing new|new activit/.test(document.querySelector('#fMsg')?.textContent || ''));
   ok((await p.textContent('#fMsg')).trim() === 'Nothing new.', `second import: "${(await p.textContent('#fMsg')).trim()}"`);
   ok(await p.locator('[data-act]').count() === 12, 'importing twice adds nothing');
   const rows = await p.$$eval('[data-act] small', l => l.map(x => x.textContent));
   ok(rows.some(t => t.startsWith('Ice skating')) && rows.some(t => t.startsWith('Underwater hockey')) && rows.some(t => t.startsWith('Football')), 'rows say the sport (Ice skating, Football, unknown type prettified)');
   const chips = await p.$$eval('[data-f]', l => l.map(x => x.textContent));
   ok(['Skate', 'Walk', 'Swim', 'Snow', 'Fitness', 'Ball', 'Strength', 'Other', 'Run', 'Indoor'].every(k => chips.includes(k)), 'filter chips per sport: ' + chips.join(', '));
-  await p.click('[data-f="skate"]'); ok(await p.locator('[data-act]').count() === 1, 'Skate filter shows the ice skating only'); await shot('02_filter_skate');
+  const chipsOpen = async () => { if (!await p.isVisible('#fChips')) await p.click('#fFilter'); }; // the chips sit behind "Filter"
+  await chipsOpen(); await p.click('[data-f="skate"]'); ok(/Filter · Skate/.test(await p.textContent('#fFilter')), 'the Filter button names the chosen sport'); ok(await p.locator('[data-act]').count() === 1, 'Skate filter shows the ice skating only'); await shot('02_filter_skate');
   await p.click('[data-act]'); await p.waitForSelector('.fdet');
   const det = await p.textContent('.fdet');
   ok(/Ice skating · from Strava/.test(det) && /View on Strava/.test(det) && !(await p.$('#dStrava')), 'imported detail: sport + source, View on Strava, no Upload to Strava');
   ok(!!(await p.$('.froute path')) && /Avg HR/.test(det) && /Load/.test(det), 'imported detail: route line, heart rate, load');
   await shot('03_detail_imported'); await noSide('detail');
   p.once('dialog', d => d.accept()); await p.click('#dDel'); await p.waitForTimeout(600);
-  await p.click('[data-f="all"]').catch(() => {}); ok(await p.locator('[data-act]').count() === 11, 'deleting an imported one here');
-  await p.click('#fImp'); await p.waitForFunction(() => /Nothing new|new activit/.test(document.querySelector('#fMsg')?.textContent || ''));
+  await chipsOpen().catch(() => {}); await p.click('[data-f="all"]').catch(() => {}); ok(await p.locator('[data-act]').count() === 11, 'deleting an imported one here');
+  await menu(p); await p.click('#fImp'); await p.waitForFunction(() => /Nothing new|new activit/.test(document.querySelector('#fMsg')?.textContent || ''));
   ok(await p.locator('[data-act]').count() === 11, 'a deleted one does not come back with the next import');
 
   // ---- by hand ----
-  await p.click('#fAdd'); await p.waitForSelector('.fadd');
+  await menu(p); await p.click('#fAdd'); await p.waitForSelector('.fadd');
   await p.selectOption('#aSport', 'Yoga'); await p.fill('#aStart', new Date(Date.now() - 2 * H * 1000 - new Date().getTimezoneOffset() * 60e3).toISOString().slice(0, 16));
   await p.fill('#aH', '0'); await p.fill('#aM', '45'); await p.fill('#aHr', '95'); await p.fill('#aNote', 'Sunday flow, hips and shoulders');
   await shot('04_add_manual'); await noSide('add sheet');
@@ -84,11 +86,11 @@ const list = () => SPORTS.map(([t, n, d, el, dist], i) => ({ id: 777000 + i, nam
   ok(await p.locator('[data-act]').filter({ hasText: 'Evening yoga' }).count() === 1 && await p.locator('[data-act]').filter({ hasText: '50:00' }).count() === 1, 'edit keeps one entry, with the new name and 50 min');
 
   // ---- files ----
-  await p.click('#fAdd'); await p.waitForSelector('.fadd'); await p.setInputFiles('#aFileIn', fit); await p.waitForFunction(() => /points/.test(document.querySelector('#aFileTxt')?.textContent || ''));
+  await menu(p); await p.click('#fAdd'); await p.waitForSelector('.fadd'); await p.setInputFiles('#aFileIn', fit); await p.waitForFunction(() => /points/.test(document.querySelector('#aFileTxt')?.textContent || ''));
   const fv = await Promise.all(['#aSport', '#aH', '#aM', '#aDist', '#aGain', '#aHr'].map(k => p.inputValue(k)));
   ok(fv.join('|') === 'IceSkate|0|10|3.12|12|140', 'FIT fills the form: ice skating, 0 h 10 min, 3.12 km, 12 m, 140 bpm (' + fv.join('|') + ')');
   await shot('05_file_fit'); await p.click('#aSave'); await p.waitForSelector('.fadd', { state: 'detached' });
-  await p.click('#fAdd'); await p.waitForSelector('.fadd'); await p.setInputFiles('#aFileIn', fit); await p.waitForFunction(() => /points/.test(document.querySelector('#aFileTxt')?.textContent || ''));
+  await menu(p); await p.click('#fAdd'); await p.waitForSelector('.fadd'); await p.setInputFiles('#aFileIn', fit); await p.waitForFunction(() => /points/.test(document.querySelector('#aFileTxt')?.textContent || ''));
   await p.click('#aSave'); await p.waitForTimeout(300); ok(/already here/.test(await p.textContent('#aErr')), 'the same file twice: "already here"');
   await p.setInputFiles('#aFileIn', gpx); await p.waitForFunction(() => /hike\.gpx/.test(document.querySelector('#aFileTxt')?.textContent || ''));
   ok(await p.inputValue('#aSport') === 'Hike' && await p.inputValue('#aName') === 'Morning Hike & Coffee', 'GPX fills the form: hike with its name');
@@ -106,7 +108,7 @@ const list = () => SPORTS.map(([t, n, d, el, dist], i) => ({ id: 777000 + i, nam
   ok(/–/.test(await p.textContent('.fest')), 'no bike: power bests stay empty'); await shot('08_stats'); await noSide('stats');
   await p.goto(BASE + '/handy.html'); await p.waitForTimeout(700); await p.click('#hSet'); await p.waitForSelector('#tImpRow:not([hidden])');
   ok(await p.isChecked('#tImp'), 'settings: "Import my Strava activities automatically" on by default'); await p.locator('#tImpRow').scrollIntoViewIfNeeded(); await shot('09_settings'); await noSide('settings');
-  await p.evaluate(() => localStorage.setItem('rf_strava_key', 'kOld')); await p.goto(BASE + '/aktivitaeten.html'); await p.waitForSelector('#fImp:not([hidden])'); await p.waitForTimeout(400);
+  await p.evaluate(() => localStorage.setItem('rf_strava_key', 'kOld')); await p.goto(BASE + '/aktivitaeten.html'); await p.waitForSelector('#fImp:not([hidden])', { state: 'attached' }); await p.waitForTimeout(400);
   ok((await p.textContent('#fImp')).trim() === 'Reconnect Strava' && /Reconnect Strava to import/.test(await p.textContent('#fMsg')), 'old connection: Reconnect Strava + hint'); await shot('10_reconnect');
   await p.goto(BASE + '/handy.html'); await p.waitForTimeout(700); await p.click('#hSet'); await p.waitForTimeout(500);
   ok(!(await p.isHidden('#tImpHint')) && (await p.textContent('#tConn')).trim() === 'Reconnect', 'settings: Reconnect + hint for an old connection');

@@ -7,6 +7,7 @@ const BASE = process.argv[2] || 'http://localhost:8799', OUT = process.env.SHOTS
 const WIDTHS = (process.env.WIDTHS || '320,360,375,390,414,430').split(',').map(Number), MIN_GAP = 6;
 const WIDE = (process.env.WIDE || '768,1024,1280,1440,1920').split(',').filter(Boolean).map(Number); // main app (laptop/TV/tablet)
 const NAME = process.env.NAME || 'FREDDY TEST MAXIMILIAN';
+const ONLY = process.env.ONLY ? new RegExp(process.env.ONLY) : null; // ONLY=^workouts: just those screens
 const LONG = 'Rumänisches Kreuzheben mit Pause';
 const seed = async p => p.evaluate(async ([long, NAME]) => { const { db } = await import('/js/db.js'); const now = Date.now(), d = 864e5;
   await db.kvSet('kraft', [0, 1, 2].map(i => ({ id: 'w' + i, name: 'Oberkörper schwer und lang benannt', start: now - i * 3 * d, date: now - i * 3 * d + 3600e3, dur: 3725, prs: 2,
@@ -137,7 +138,8 @@ const SCREENS = [
   ['kraft-schnell', '/kraft.html', async p => { await p.click('#kQuick'); await p.fill('#qT', 'Ich habe gerade 100 Liegestütze und 50 Klimmzüge gemacht, 3x10 Bankdrücken mit 80 kg, 30 Hampelmänner mit Klatschen, 2 Minuten Plank, blabla, ungefähr 45 Minuten trainiert'); await p.click('#qGo'); }],
   ['kraft-schnell-ki', '/kraft.html', async p => { await p.click('#kQuick'); await p.click('#qAi'); }],
   ['aktivitaeten', '/aktivitaeten.html', null],
-  ['aktivitaeten-filter', '/aktivitaeten.html', p => p.click('[data-f="run"]')],
+  ['aktivitaeten-filter', '/aktivitaeten.html', async p => { await p.click('#fFilter'); await p.click('[data-f="run"]'); }],
+  ['aktivitaeten-plus', '/aktivitaeten.html', p => p.click('#fPlus')],
   ['aktivitaet-fahrt', '/aktivitaeten.html', p => p.click('[data-act="r:lr1"]')],
   ['aktivitaet-lauf', '/aktivitaeten.html', p => p.click('[data-act="r:lr2"]')],
   ['aktivitaet-kraft', '/aktivitaeten.html', p => p.click('[data-act="k:w0"]')],
@@ -145,9 +147,9 @@ const SCREENS = [
   ['kraft-verlauf-uhr', '/kraft.html', async p => { await p.click('[data-tab="hist"]'); await p.click('[data-open="watch-ww"]'); }],
   ['aktivitaet-import', '/aktivitaeten.html', p => p.click('[data-act="r:st9001"]')],
   ['aktivitaet-manuell', '/aktivitaeten.html', p => p.click('[data-act="r:man1"]')],
-  ['aktivitaet-neu', '/aktivitaeten.html', p => p.click('#fAdd')],
+  ['aktivitaet-neu', '/aktivitaeten.html', async p => { await p.click('#fPlus'); await p.click('#fAdd'); }],
   ['aktivitaet-bearbeiten', '/aktivitaeten.html', async p => { await p.click('[data-act="r:man1"]'); await p.click('#dEdit'); }],
-  ['aktivitaet-datei', '/aktivitaeten.html', async p => { await p.click('#fAdd'); await p.setInputFiles('#aFileIn', require('node:path').join(__dirname, 'fixtures/hike.gpx')); await p.waitForTimeout(300); }],
+  ['aktivitaet-datei', '/aktivitaeten.html', async p => { await p.click('#fPlus'); await p.click('#fAdd'); await p.setInputFiles('#aFileIn', require('node:path').join(__dirname, 'fixtures/hike.gpx')); await p.waitForTimeout(300); }],
   ['aktivitaeten-strava', '/aktivitaeten.html', async p => { await stravaOld(p); await p.reload(); await p.waitForTimeout(700); }],
   ['menu-einstellungen-strava', '/handy.html', async p => { await stravaOld(p); await p.reload(); await p.waitForTimeout(500); await p.click('#hSet'); await p.waitForTimeout(300); }],
   ['statistik', '/statistik.html', null],
@@ -156,11 +158,15 @@ const SCREENS = [
   ['profil', '/profil.html', null],
   ['remote', '/remote.html', null], // phone remote (js/remote.js): the code screen
   ['profil-daten', '/profil.html', p => p.click('#fSet')],
-  // personal workouts (js/myworkouts-ui.js): the profile section with a long name, its editor, the route page editor on the phone
-  ['profil-workouts', '/profil.html', async p => { await p.evaluate(() => localStorage.setItem('rf_myworkouts', JSON.stringify([{ id: 'pw_layout1', name: 'Schwelle lang über den Pass mit Freddy x', base: 'thr2x20', routeId: 'fluss', routeName: 'River Valley mit sehr langem Namen', updated: 1,
-    steps: [{ min: 10, pct: 55, label: 'Einfahren lang benannt' }, ...Array.from({ length: 6 }, (_, i) => ({ min: 7.5, pct: i % 2 ? 55 : 104, label: i % 2 ? 'Pause' : 'Schwelle ' + (i / 2 + 1) })), { min: 0.25, pct: 200, label: 'Sprint', free: true }] }]))); await p.reload(); await p.waitForSelector('.mwitem'); await p.locator('#mwProf').scrollIntoViewIfNeeded(); await p.fill('#mwB20', '312'); }],
-  ['profil-workout-editor', '/profil.html', async p => { await p.evaluate(() => localStorage.setItem('rf_myworkouts', JSON.stringify([{ id: 'pw_layout1', name: 'Schwelle lang über den Pass mit Freddy x', base: null, routeId: 'fluss', routeName: 'River Valley mit sehr langem Namen', updated: 1,
-    steps: [{ min: 10, pct: 55, label: 'Einfahren lang benannt' }, { min: 117.75, pct: 104, label: 'Schwelle über alles' }, { min: 0.25, pct: 200, label: 'Sprint', free: true }] }]))); await p.reload(); await p.waitForSelector('[data-ed]'); await p.click('[data-ed]'); await p.waitForSelector('.mwbox'); }],
+  ['handy-updates', '/handy.html', p => p.click('#hBell')],
+  ['handy-woche', '/handy.html', async p => { await p.click('#tdWeek'); await p.waitForTimeout(500); }],
+  ['workouts', '/workouts.html', null],
+  ['workouts-lauf-neu', '/workouts.html', async p => { await p.click('[data-new="run"]'); await p.waitForSelector('#rwSheet'); }],
+  // personal workouts (js/myworkouts-ui.js): on the Workouts page (27.11.) with a long name, its detail, its editor on the phone
+  ['workouts-eigene', '/workouts.html', async p => { await p.evaluate(() => localStorage.setItem('rf_myworkouts', JSON.stringify([{ id: 'pw_layout1', name: 'Schwelle lang über den Pass mit Freddy x', base: 'thr2x20', routeId: 'fluss', routeName: 'River Valley mit sehr langem Namen', updated: 1,
+    steps: [{ min: 10, pct: 55, label: 'Einfahren lang benannt' }, ...Array.from({ length: 6 }, (_, i) => ({ min: 7.5, pct: i % 2 ? 55 : 104, label: i % 2 ? 'Pause' : 'Schwelle ' + (i / 2 + 1) })), { min: 0.25, pct: 200, label: 'Sprint', free: true }] }]))); await p.reload(); await p.waitForSelector('#wk-ride .wkr'); await p.click('#wk-ride .wkr'); await p.waitForSelector('#wkSheet'); }],
+  ['workouts-editor', '/workouts.html', async p => { await p.evaluate(() => localStorage.setItem('rf_myworkouts', JSON.stringify([{ id: 'pw_layout1', name: 'Schwelle lang über den Pass mit Freddy x', base: null, routeId: 'fluss', routeName: 'River Valley mit sehr langem Namen', updated: 1,
+    steps: [{ min: 10, pct: 55, label: 'Einfahren lang benannt' }, { min: 117.75, pct: 104, label: 'Schwelle über alles' }, { min: 0.25, pct: 200, label: 'Sprint', free: true }] }]))); await p.reload(); await p.waitForSelector('#wk-ride .wkr'); await p.click('#wk-ride .wkr'); await p.click('#wkEdit'); await p.waitForSelector('.mwbox'); }],
 ];
 const DESK = [ // the main app with its top bar (account pill, tabs) on tablet, laptop and TV widths
   ['app-strecken', '/?desktop&noprofile', null],
@@ -218,7 +224,7 @@ function measure(minGap) { // runs in the page
   for (const [w, list, mobile] of runs) {
     const c = await b.newContext({ viewport: { width: w, height: mobile ? 800 : Math.round(w * .5625) }, deviceScaleFactor: mobile ? 2 : 1, isMobile: mobile, hasTouch: mobile });
     const p0 = await c.newPage(); await p0.goto(BASE + '/kraft.html'); await seed(p0); await p0.close();
-    for (const [nm, url, act] of list) for (const safari of [false, true]) {
+    for (const [nm, url, act] of list.filter(([n]) => !ONLY || ONLY.test(n))) for (const safari of [false, true]) {
       const p = await c.newPage(); p.setDefaultTimeout(4000);
       if (!mobile) await p.route('**/api/account/**', r => r.fulfill({ status: 200, contentType: 'application/json', body: '{}' })); // signed in: the pill shows the long name
       const errs = []; p.on('pageerror', e => errs.push(e.message));

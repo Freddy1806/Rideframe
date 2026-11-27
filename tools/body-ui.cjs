@@ -107,7 +107,7 @@ const layout = P => P.evaluate(() => {
 
     // start page card
     await P.goto(BASE + '/handy.html'); await P.waitForSelector('.bcard'); const card = await P.textContent('.bcard');
-    ok(/81\.6/.test(card) && /7 days/.test(card), 'weight card on the start page: latest and the 7-day change'); ok(await P.locator('.bcard .bspark path').count() === 1, 'with a sparkline');
+    ok(/81\.6/.test(card) && /7 days/.test(card), 'weight card on the start page: latest and the 7-day change'); ok(await P.locator('.bcard .wgsvg path').count() === 1, 'with the 90-day trend chart');
     await lay('start page'); await shot('start_card');
     await P.click('.bcard'); await P.waitForURL(/body\.html/); ok(true, 'the card opens the body page');
 
@@ -151,7 +151,7 @@ const layout = P => P.evaluate(() => {
     await lay('composition'); await P.evaluate(() => document.querySelector('.bchart').scrollIntoView({ block: 'start' })); await shot('comp_body'); await P.evaluate(() => scrollTo(0, 0)); await shot('comp_body_full', true);
     const fc = {}; for (const r of ['w1', 'm1', 'all']) { await P.click(`[data-r="${r}"]`); await P.waitForSelector(`[data-r="${r}"].on`); fc[r] = await P.locator('.bfsvg .bpt').count(); }
     ok(fc.w1 < fc.m1 && fc.m1 < fc.all, 'the body-fat line follows the range switch: ' + JSON.stringify(fc)); await P.click('[data-r="m1"]');
-    await P.goto(BASE + '/handy.html'); await P.waitForSelector('.bcard'); ok(/24\.0 % fat/.test(await P.textContent('.bcard .bcfat')) && /est\./.test(await P.textContent('.bcard .bcfat')), 'Today weight card: body fat as the second value');
+    await P.goto(BASE + '/handy.html'); await P.waitForSelector('.bcard'); ok(/Body fat\s*24\.0 %/.test(await P.textContent('.bcard .wgsub')) && /est\./.test(await P.textContent('.bcard .wgsub')), 'Today weight card: body fat under the chart');
     await lay('weight card with body fat'); await P.locator('.bcard').screenshot({ path: SHOTS ? `${SHOTS}/comp_card.png` : path.join(os.tmpdir(), 'rf-comp-card.png') }); await shot('comp_today');
     ok(!perr.length, 'no page errors' + (perr.length ? ': ' + perr.join(' | ') : ''));
   } catch (e) { console.log('✗ ' + e.message); fails++; }

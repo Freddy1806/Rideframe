@@ -1,0 +1,45 @@
+/* Workouts (workouts.html, js/workoutspage.js, 27.11.): three big sport tiles, each with its workouts as compact rows and "+ New workout".
+   Cycling in the accent (orange), running in its turquoise, strength in pink. */
+#workouts { min-height: 100dvh; max-width: 620px; margin: 0 auto; padding: env(safe-area-inset-top) 14px calc(env(safe-area-inset-bottom) + 24px); display: flex; flex-direction: column; gap: 14px; }
+body.hasnav #workouts { padding-bottom: calc(env(safe-area-inset-bottom) + 92px); }
+:root[data-theme="light"] .wkt { --wc2: var(--wc); }
+.wkt { display: flex; flex-direction: column; gap: 10px; padding: 14px; border-radius: 20px; background: linear-gradient(165deg, color-mix(in srgb, var(--wc) 13%, var(--ink-2)), var(--ink-2) 55%);
+  border: 1px solid color-mix(in srgb, var(--wc) 28%, var(--line)); scroll-margin-top: 16px; }
+.wkth { display: flex; align-items: center; gap: 12px; min-width: 0; }
+.wkti { width: 48px; height: 48px; flex: none; border-radius: 14px; display: grid; place-items: center; background: var(--wc); color: #0b0b0b; } .wkico { width: 26px; height: 26px; }
+.wkth > div { flex: 1; min-width: 0; display: flex; flex-direction: column; } .wkth h2 { margin: 0; font-size: 22px; font-weight: 900; font-stretch: 108%; line-height: 1.1; }
+.wkth small { font-size: 12.5px; font-weight: 700; color: var(--muted); line-height: 1.25; }
+.wknew { flex: none; height: 44px; padding: 0 14px; white-space: nowrap; background: var(--wc); border-color: var(--wc); color: #0b0b0b; }
+:root[data-theme="light"] .wknew { color: #fff; }
+.wkl { display: flex; flex-direction: column; border-radius: 14px; background: color-mix(in srgb, var(--ink) 55%, transparent); overflow: hidden; }
+.wkr { display: grid; grid-template-columns: minmax(0, 1fr) 92px 14px; align-items: center; gap: 10px; min-height: 56px; padding: 8px 10px 8px 12px; text-align: left; color: inherit; font: inherit; background: none; border: 0; }
+.wkr + .wkr { border-top: 1px solid var(--line); } .wkr:active { background: color-mix(in srgb, var(--wc) 10%, transparent); }
+.wkr:not(:has(.wkshape)) { grid-template-columns: minmax(0, 1fr) 14px; }
+.wkrt { min-width: 0; display: flex; flex-direction: column; } .wkrt b { font-size: 15px; font-weight: 800; line-height: 1.2; overflow-wrap: anywhere; }
+.wkrt small { font-size: 12px; font-weight: 700; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.wkstar { font-style: normal; color: var(--wc); }
+.wkshape .wsvg { display: block; width: 92px; height: 28px; } .wkgo { font-style: normal; color: var(--muted); font-size: 18px; }
+.wkmore { align-self: flex-start; min-height: 44px; padding: 0 4px; font-size: 13.5px; font-weight: 800; color: var(--wc); background: none; border: 0; font-family: inherit; }
+.wkempty { margin: 0; font-size: 13px; color: var(--muted); font-weight: 600; line-height: 1.4; }
+.wklink { font-size: 13.5px; font-weight: 800; color: var(--muted); text-decoration: none; padding: 10px 2px; }
+.wkup { display: flex; align-items: center; justify-content: space-between; gap: 10px; font-size: 12.5px; color: var(--muted); font-weight: 700; }
+/* a workout's sheet */
+#wkSheet h2 { margin: 0; font-size: 22px; font-weight: 900; line-height: 1.15; }
+.wkdshape { padding: 8px 0; } .wkdshape .wsvg { display: block; width: 100%; height: 64px; }
+.wkdwhat { margin: 0; font-size: 13.5px; line-height: 1.45; color: var(--muted); }
+.wkstart { height: 52px; display: flex; align-items: center; justify-content: center; text-decoration: none; font-size: 16px; background: var(--wc); border-color: var(--wc); color: #0b0b0b; }
+.wkplan { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: end; gap: 8px; } .wkplan .btn { height: 46px; }
+#wkSheet .pfoot { flex-wrap: wrap; } #wkSheet .pfoot .btn { flex: 1 1 auto; }
+/* the run builder (js/runworkouts.js) */
+.rwname { width: 100%; height: 48px; border-radius: 8px; background: var(--ink-3); border: 1px solid var(--line-2); padding: 0 12px; font-size: 17px; font-weight: 800; color: var(--paper); font-family: inherit; }
+.rwtpl { display: flex; gap: 6px; flex-wrap: wrap; } .rwtpl .fchip { min-height: 36px; }
+.rwshape { display: flex; flex-direction: column; gap: 4px; } .rwshape .wsvg { width: 100%; height: 54px; display: block; --rc: #2fd3e0; } .rwshape small { font-size: 12px; color: var(--muted); font-weight: 700; }
+.rwrow { display: grid; grid-template-columns: 74px minmax(0, 1fr) 44px; grid-template-areas: "t i x" "e e e"; align-items: center; gap: 6px 8px; padding: 8px 10px; border-radius: 12px; background: var(--ink-3); }
+.rwrow.rwfix { grid-template-columns: 74px minmax(0, 1fr); grid-template-areas: "t i"; } .rwrow > b { grid-area: t; font-size: 13px; font-weight: 800; }
+.rwrow .rwi, .rwrow.rwfix .rwn { grid-area: i; } .rwrow select { grid-area: e; height: 44px; font-size: 15px; } .rwx { grid-area: x; width: 44px; height: 44px; border-radius: 10px; border: 1px solid var(--line-2); color: var(--muted); }
+.rwi { display: flex; gap: 6px; min-width: 0; } .rwn { display: flex; align-items: center; gap: 4px; min-width: 0; flex: 1; }
+.psheetin .rwn input[type=number] { height: 44px; font-size: 17px; padding: 0 8px; min-width: 0; width: 100%; } .rwn small { font-size: 11.5px; font-weight: 700; color: var(--muted); white-space: nowrap; }
+.rwadd { display: flex; gap: 8px; } .rwadd .btn { flex: 1; height: 44px; }
+#rwSheet .pfoot .btn { flex: 1 1 auto; }
+.wknew { display: inline-flex; align-items: center; gap: 6px; padding: 0 14px 0 10px; } .wkplus { width: 18px; height: 18px; }
+.wkd .pfoot { flex-wrap: wrap; } .wkd .pfoot .btn { flex: 1 1 28%; min-width: 0; height: 48px; }

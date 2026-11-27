@@ -43,7 +43,7 @@ function render() {
     return `<div class="bst" role="group" aria-label="${esc(label)}: ${esc(w.text)}"><b class="${w.cls}" aria-hidden="true">${w.arrow ? `<em>${w.arrow}</em>` : ''}${d == null ? '–' : flat ? '±0' : Math.abs(d).toFixed(1)}<small>${flat ? '' : ' kg'}</small></b><small aria-hidden="true">${label}</small><span aria-hidden="true">${esc(d == null ? 'not enough data' : flat ? 'about the same' : d < 0 ? 'down' : 'up')}</span></div>`; };
   const bmi = last && bmiOf(last.kg, P.heightCm), goal = P.goalKg && last ? last.kg - P.goalKg : null;
   el.innerHTML = `${head()}${err ? `<p class="phint perr" role="alert">${esc(err)}</p>` : ''}
-    ${ask ? `<section class="bask" aria-label="Weigh-ins to confirm">${ask}<p class="phint">The scale is shared and this weigh-in was not clearly anyone's, so everyone in the household is asked. Your answer is private: nobody sees whose it became.</p></section>` : ''}
+    ${ask ? `<section class="bask" aria-label="Weigh-ins to confirm">${ask}<p class="phint">Shared scale: your answer stays private.</p></section>` : ''}
     ${last ? `<section class="bhero"><div class="bhl"><span class="label">Latest</span><div class="bbig">${fmtKg(last.kg)}<small> kg</small></div>
         <p class="bmeta">${esc(dt(last.t))} · ${esc(SRCN[last.src] || last.src)}</p></div>
       <div class="bhr"><div><small>Trend</small><b>${c.now.toFixed(1)} kg</b></div>${bmi ? `<div><small>BMI</small><b>${bmi.toFixed(1)}</b></div>` : ''}${goal != null ? `<div><small>Goal ${fmtKg(P.goalKg)}</small><b>${Math.abs(goal) < 0.05 ? 'reached' : `${fmtKg(Math.abs(goal), 1)} kg ${goal > 0 ? 'above' : 'below'}`}</b></div>` : ''}</div></section>
@@ -51,25 +51,24 @@ function render() {
       <section class="kcard bchart"><div class="pseg bseg" role="group" aria-label="Range">${RANGES.map(([k, l]) => `<button data-r="${k}" class="${range === k ? 'on' : ''}" aria-pressed="${range === k}">${l}</button>`).join('')}</div>
         <div id="bChart"></div><p class="bread" id="bRead" aria-live="polite"></p>
         <div class="fleg bleg"><span><i class="ldot"></i>Weigh-in</span><span><i class="ltr"></i>Trend</span>${P.goalKg ? '<span><i class="lgoal"></i>Goal</span>' : ''}</div></section>
-      <div id="bEst"></div><div id="bComp"></div>`
+      <div id="bComp"></div><div id="bEst"></div>`
     : `<section class="bempty"><span class="bcico big" aria-hidden="true">${SCALE}</span><h2>No weigh-ins yet</h2>
-      <p>Step on the scale (once it is set up in Settings → Bathroom scale) or add your weight by hand. After a few mornings you see your trend here.</p>
+      <p>Step on the scale or add your weight by hand.</p>
       <div class="scbtns"><button class="btn" id="bAdd0">Add by hand</button><button class="btn ghost" id="bScale0">Set up the scale</button></div></section>`}
-    <div id="bHealth" class="bhealth"></div>
+    ${last ? '' : '<div id="bComp"></div>'}
     <details class="kcard btips"><summary>How to weigh for a clean trend</summary><ul>${TIPS.map(t => `<li>${esc(t)}</li>`).join('')}</ul><p class="phint">${esc(RULE)}</p></details>
     ${list.length ? `<div class="bhead"><h3 class="ksec">Weigh-ins</h3><button class="btn ghost ksmall" id="bAdd">+ Add by hand</button></div>
       <section class="blist">${byWeek(list).slice(0, allWeeks ? Infinity : 6).map(g => `<div class="bweek"><div class="bwk"><span>Week of ${new Date(g.week).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: new Date(g.week).getFullYear() === new Date().getFullYear() ? undefined : 'numeric' })}</span><span>avg ${g.avg.toFixed(1)} kg</span></div>
         ${g.list.map(m => `<button class="brow" data-id="${m.id}"><span class="bd">${esc(new Date(m.t).toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric' }))}<small>${new Date(m.t).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })}</small></span>
           <span class="bk">${fmtKg(m.kg)} <small>kg</small></span><span class="bs">${(c => c ? `<b>${c.fatPct.toFixed(1)} % fat</b> est. · ` : '')(compOf(m, P))}${esc(SRCN[m.src] || m.src)}${m.fatPct ? ` · ${m.fatPct} % fat` : ''}${m.note ? ` · ${esc(m.note)}` : ''}</span><i aria-hidden="true">›</i></button>`).join('')}</div>`).join('')}${!allWeeks && byWeek(list).length > 6 ? `<button class="btn ghost" id="bMore">Show all ${byWeek(list).length} weeks</button>` : ''}</section>` : ''}`;
   wireHead();
-  import('./healthcard.js').then(m => m.mountHealthCard($('#bHealth'))).catch(() => {}); // 25.11.: Body = weight and recovery (the watch's values, js/healthcard.js)
   el.querySelectorAll('[data-yes],[data-no]').forEach(b => b.onclick = async () => { b.disabled = true; try { await api('/api/body/prompts/' + (b.dataset.yes || b.dataset.no), { method: 'POST', body: JSON.stringify({ mine: !!b.dataset.yes }) }); } catch (e) { err = e.message; } await load(); render(); });
   el.querySelectorAll('[data-r]').forEach(b => b.onclick = () => { range = b.dataset.r; sel = null; try { localStorage.setItem('rf-body-range', range); } catch {} render(); });
   el.querySelectorAll('.brow').forEach(b => b.onclick = () => editSheet(list.find(m => m.id === b.dataset.id)));
   for (const id of ['#bAdd', '#bAdd0']) $(id)?.addEventListener('click', () => editSheet(null));
   $('#bScale0')?.addEventListener('click', () => settingsSheet(true));
   $('#bMore')?.addEventListener('click', () => { allWeeks = true; render(); });
-  if (last) { drawChart(); est(); comp(); }
+  if (last) { drawChart(); est(); } comp(); // 27.11.: the tiles (scale and watch values) even before the first weigh-in
 }
 const head = () => `<header class="ptop"><a class="pback" href="handy.html" title="Back" aria-label="Back">‹</a><div class="pbrand"><b>RIDEFRAME </b><span>Body</span></div>
   <button class="pgear" id="bSet" title="Settings" aria-label="Body settings">${'<svg class="gico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M4 6h9M17 6h3M4 12h3M11 12h9M4 18h11M19 18h1"/><circle cx="15" cy="6" r="2"/><circle cx="9" cy="12" r="2"/><circle cx="17" cy="18" r="2"/></svg>'}</button></header>`;
@@ -127,12 +126,13 @@ function est() {
   const cell = (label, v, u, d, extra = '') => `<div class="bcx"><span class="label">${label}</span><b>${v.toFixed(1)}<small> ${u}</small></b>${dl(d, u === '%' ? ' pts' : ' kg')}${extra}</div>`; // extra after the change, so the changes line up
   const df = d30('fatPct'), stale = Date.now() - lc.t > 3 * 864e5;
   box.innerHTML = `<section class="kcard bcmp" aria-label="Body composition, estimated">
-    <div class="bcmph"><h3 class="ksec">Composition <span class="best">est.</span></h3><small>${esc(when(lc.t))}${stale ? ' · last reading with impedance' : ''}</small></div>
+    <div class="bcmph"><h3 class="ksec">Composition <span class="best">est.</span></h3><small>${esc(when(lc.t))}${stale ? ' · last reading with impedance' : ''}</small><button type="button" class="binfo" id="bEstI" aria-expanded="false" aria-controls="bEstT" aria-label="How this is estimated">i</button></div>
     <div class="bcmpm"><div class="bfat"><span class="label">Body fat</span><b>${lc.fatPct.toFixed(1)}<small> %</small></b>
       ${df != null ? `<span class="bcd">${ptsTxt(df)} pts <small>in 30 days</small></span>` : `<span class="bcd"><small>trend ${(cur('fatPct') ?? lc.fatPct).toFixed(1)} %</small></span>`}</div>
       <div class="bfline" id="bFat"></div></div>
     <div class="bcmpg">${cell('Fat mass', lc.fatKg, 'kg', d30('fatKg'))}${cell('Lean mass', lc.leanKg, 'kg', d30('leanKg'))}${cell('Body water', lc.waterKg, 'kg', d30('waterKg'), `<small class="bcsub">${lc.waterPct.toFixed(1)} % of weight</small>`)}</div>
-    <p class="phint">${esc(EXPLAIN)} <span class="bsrc">${esc(MODEL.name)}; lean mass = fat-free mass.</span></p></section>`;
+    <p class="phint" id="bEstT" hidden>${esc(EXPLAIN)} <span class="bsrc">${esc(MODEL.name)}; lean mass = fat-free mass.</span></p></section>`;
+  $('#bEstI').onclick = e => { const t = $('#bEstT'); t.hidden = !t.hidden; e.currentTarget.setAttribute('aria-expanded', String(!t.hidden)); };
   estLine();
 }
 /** the small body-fat line over the same range as the weight chart: estimates as dots, their trend as the line */
@@ -151,16 +151,32 @@ function estLine() {
     ${pts.map(s => `<circle class="bpt" cx="${x(s.t).toFixed(1)}" cy="${y(s.fatPct).toFixed(1)}" r="2.2"/>`).join('')}${line ? `<path class="kline btr" d="${line}"/>` : ''}</svg>`;
 }
 
-/** body composition: one small card per value the scale (or an import) reported, latest + a mini line */
+/** 27.11. (owner: "more data, much less text"): one tile per value: what the scale (or an import) reports, and the watch's sleep, resting HR,
+ *  body battery and stress, each with its latest value and a small line; no paragraphs. Without a sleep source one small tile says so. */
+let H = null; // the watch's last 14 days (GET /api/account/health)
+const tline = vs => { if (vs.length < 2) return ''; const w = 120, h = 30, lo = Math.min(...vs), hi = Math.max(...vs);
+  return `<svg viewBox="0 0 ${w} ${h}" preserveAspectRatio="none" aria-hidden="true"><path d="${vs.map((v, i) => `${i ? 'L' : 'M'}${(i / (vs.length - 1) * w).toFixed(1)},${(3 + (hi - v) / ((hi - lo) || 1) * (h - 6)).toFixed(1)}`).join('')}" vector-effect="non-scaling-stroke"/></svg>`; };
+const tile = (label, v, u, sub, vs = [], cls = '') => `<div class="kcard bcc ${cls}"><span class="label">${label}</span><b>${v}${u ? `<small> ${u}</small>` : ''}</b>${sub ? `<small>${sub}</small>` : ''}${tline(vs)}</div>`;
 function comp() {
   const box = $('#bComp'); if (!box) return;
-  // the raw impedance is not a card of its own (the estimate above is made from it; the weigh-in sheet shows the number)
-  const ks = Object.keys(FIELDS).filter(k => k !== 'impedance' && D.list.some(m => m[k] != null)); if (!ks.length) { box.innerHTML = ''; return; }
-  box.innerHTML = `<h3 class="ksec">${D.list.some(m => m.impedance) ? 'Reported by the scale’s app' : 'Body composition'}</h3><p class="phint">As your import or entry reported it.</p><div class="bcomp">${ks.map(k => {
-    const f = FIELDS[k], l = D.list.filter(m => m[k] != null), lastM = l[l.length - 1], vs = l.slice(-60).map(m => m[k]), lo = Math.min(...vs), hi = Math.max(...vs), w = 120, h = 34;
-    const path = vs.length > 1 ? vs.map((v, i) => `${i ? 'L' : 'M'}${(i / (vs.length - 1) * w).toFixed(1)},${(3 + (hi - v) / ((hi - lo) || 1) * (h - 6)).toFixed(1)}`).join('') : '';
-    return `<div class="kcard bcc"><span class="label">${f.n}</span><b>${lastM[k].toFixed(f.d)}<small> ${f.u}</small></b><small>${esc(when(lastM.t))}</small>${path ? `<svg viewBox="0 0 ${w} ${h}" preserveAspectRatio="none" aria-hidden="true"><path d="${path}" vector-effect="non-scaling-stroke"/></svg>` : ''}</div>`; }).join('')}</div>`;
+  const list = D?.list || [], P = D?.prefs || {}, out = [];
+  for (const k of ['fatPct', 'musclePct', 'waterPct', 'boneKg', 'bmi']) {
+    const f = FIELDS[k], l = list.filter(m => m[k] != null); if (!l.length) continue; const lastM = l[l.length - 1];
+    out.push(tile(f.n === 'Muscle' ? 'Muscle' : f.n, lastM[k].toFixed(f.d), f.u, esc(when(lastM.t)), l.slice(-60).map(m => m[k]), 'bscale'));
+  }
+  if (!list.some(m => m.bmi != null) && list.length && P.heightCm) { const lm = list[list.length - 1], b = bmiOf(lm.kg, P.heightCm); if (b) out.push(tile('BMI', b.toFixed(1), '', 'from your height', list.slice(-60).map(m => bmiOf(m.kg, P.heightCm)), 'bscale')); }
+  const days = (H?.days || []).slice().reverse(), L = H?.latest || {}, ser = k => days.map(d => d[k]).filter(v => v != null);
+  const ago = k => L[k] ? (L[k].day === dayKey(Date.now()) ? 'today' : esc(new Date(L[k].day).toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric' }))) : '';
+  if (L.ss) out.push(tile('Sleep score', L.ss.v, '', ago('ss'), ser('ss'), 'brec')); else if (H) out.push('<div class="kcard bcc brec bnone"><span class="label">Sleep</span><small>No sleep source yet</small></div>');
+  if (L.rhr) out.push(tile('Resting HR', L.rhr.v, 'bpm', ago('rhr'), ser('rhr'), 'brec'));
+  if (L.bb) out.push(tile('Body battery', L.bb.v, '', ago('bb'), ser('bb'), 'brec'));
+  if (L.hrv) out.push(tile('HRV', L.hrv.v, 'ms', ago('hrv'), ser('hrv'), 'brec'));
+  if (L.st) out.push(tile('Stress', L.st.v, '', ago('st'), ser('st'), 'brec'));
+  if (L.rr) out.push(tile('Respiration', L.rr.v, '/min', ago('rr'), ser('rr'), 'brec'));
+  box.innerHTML = out.length ? `<div class="bcomp" aria-label="Body values">${out.join('')}</div>` : '';
 }
+const dayKey = t => { const d = new Date(t); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`; };
+async function loadHealth() { const a = account(); if (!a) return; try { const r = await fetch('/api/account/health?days=14', { cache: 'no-store', headers: { 'X-RF-Token': a.token || '' } }); H = r.ok ? await r.json() : null; } catch { H = null; } comp(); }
 
 /* ---- add / edit one weigh-in ---- */
 function editSheet(m) {
@@ -217,7 +233,7 @@ function settingsSheet(toScale, toBody) {
   import('./scaleset.js').then(m => { m.scaleSection($('#sScale', s), { signIn: () => { s.remove(); signIn(); } }); if (toScale) $('#sScaleH', s).scrollIntoView({ block: 'start' }); });
 }
 
-await load(); render(); nav('body');
+await load(); render(); nav('body'); loadHealth();
 if (location.hash === '#scale') settingsSheet(true);
 let rw = 0; addEventListener('resize', () => { clearTimeout(rw); rw = setTimeout(() => { if (D?.list?.length) { drawChart(); estLine(); } }, 150); });
 document.addEventListener('visibilitychange', async () => { if (!document.hidden && account()) { await load(); render(); } }); // back in the morning: the new weigh-in

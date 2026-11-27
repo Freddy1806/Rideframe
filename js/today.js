@@ -56,39 +56,41 @@ export function heroHTML(r, { acc, loading = false } = {}) {
     <p class="tdsleep" id="tdSleepTxt" hidden>RIDEFRAME has no sleep source yet: the watch app cannot read Garmin's sleep score. Readiness works without it.</p></section>`;
 }
 
-/** what is on today: the entries of today with Start, a rest day, or a suggestion; then the week strip */
-export function planHTML({ entries = null, acts = [], r = null, form = null, acc = null, today = dayKey(Date.now()), msg = '' } = {}) {
+/** today's training, led by the plan (27.11., owner): a planned session big (name, minutes, the workout's shape, Start); a rest day small;
+ *  nothing planned: one compact card with "Plan this week" and "Pick a workout" and the readiness suggestion as one quiet line.
+ *  Then the week strip: every day a button (add, change, remove a session: js/weekplan.js). shape(e) -> { svg, min } of a planned workout. */
+export function planHTML({ entries = null, acts = [], r = null, form = null, acc = null, today = dayKey(Date.now()), msg = '', shape = () => null } = {}) {
   const T = (entries || []).filter(e => e.day === today), actDays = new Map(); for (const a of acts) { const k = dayKey(a.date); actDays.set(k, (actDays.get(k) || 0) + 1); }
   const doneAct = e => e.done && acts.find(a => String(a.id) === String(e.done) || 'watch-' + a.watch === e.done);
-  const entry = (e, first) => { const href = startHref(e), d = doneAct(e), m = kindMode(e.kind);
-    return `<div class="tdplan${e.done ? ' tddone' : ''}" style="--mc:${MODES[m].color};--mcl:${MODES[m].light}">
-      <span class="tdpi">${kindIcon(e.kind, 'tdpico')}</span><div class="tdpt"><b>${esc(e.title)}</b><small>${[KIND_NAME[e.kind], e.minutes ? `${e.minutes} min` : '', e.by === 'coach' ? 'from your coach' : ''].filter(Boolean).join(' · ')}</small>${e.note ? `<p>${esc(e.note)}</p>` : ''}</div>
-      ${e.done ? `<a class="tdok" href="${d ? 'aktivitaeten.html?open=' + encodeURIComponent(keyOf(d)) : 'aktivitaeten.html'}">${svg('<path d="m5 12 5 5 9-10"/>')}Done</a>` : e.kind === 'rest' ? '' : href ? `<a class="btn ${first ? '' : 'ghost '}tdstart" href="${href}">Start</a>` : ''}</div>`; };
+  const meta = (e, sh) => [KIND_NAME[e.kind], e.minutes ? `${e.minutes} min` : sh?.min ? `${sh.min} min` : '', e.by === 'coach' ? 'from your coach' : ''].filter(Boolean).join(' · ');
+  const big = e => { const href = startHref(e), d = doneAct(e), m = kindMode(e.kind), sh = shape(e);
+    return `<div class="tdplan tdbig${e.done ? ' tddone' : ''}" style="--mc:${MODES[m].color};--mcl:${MODES[m].light}">
+      <div class="tdbt"><span class="tdpi">${kindIcon(e.kind, 'tdpico')}</span><div class="tdpt"><b>${esc(e.title)}</b><small>${meta(e, sh)}</small></div></div>
+      ${sh?.svg ? `<div class="tdshape" aria-hidden="true">${sh.svg}</div>` : ''}${e.note ? `<p class="tdnote">${esc(e.note)}</p>` : ''}
+      ${e.done ? `<a class="tdok" href="${d ? 'aktivitaeten.html?open=' + encodeURIComponent(keyOf(d)) : 'aktivitaeten.html'}">${svg('<path d="m5 12 5 5 9-10"/>')}Done</a>` : href ? `<a class="btn tdstart" href="${href}">Start</a>` : ''}</div>`; };
+  const small = e => { const href = startHref(e), m = kindMode(e.kind);
+    return `<div class="tdplan${e.done ? ' tddone' : ''}" style="--mc:${MODES[m].color};--mcl:${MODES[m].light}"><span class="tdpi">${kindIcon(e.kind, 'tdpico')}</span><div class="tdpt"><b>${esc(e.title)}</b><small>${meta(e, shape(e))}</small></div>
+      ${e.done ? `<span class="tdok">${svg('<path d="m5 12 5 5 9-10"/>')}Done</span>` : href ? `<a class="btn ghost tdstart" href="${href}">Start</a>` : ''}</div>`; };
+  const none = () => { const s = suggestion(r, form);
+    return `<div class="tdnone"><b>No session planned today</b><div class="tdnb"><button type="button" class="btn ksmall" id="tdPlanWeek">Plan this week</button><a class="btn ghost ksmall" id="tdPick" href="workouts.html">Pick a workout</a></div>
+      ${r?.score != null ? `<p class="tdsugl">${s.kind === 'rest' ? 'Readiness suggests a rest day.' : `Readiness suggests: <b>${esc(s.title)}${s.minutes ? ` · ${s.minutes} min` : ''}</b>`}</p>` : ''}</div>`; };
   let body;
-  if (!acc) { const s = suggestion(r, form); body = `<div class="tdempty"><p><b>Plan your week</b>Sign in to keep a training plan: from you, or from your coach through the Claude connector.</p></div>${sugHTML(s, false)}`; }
-  else if (entries == null) body = '<div class="tdempty"><span class="cdsk"><i></i></span></div>';
-  else if (!T.length) { const s = suggestion(r, form); body = `<div class="tdempty"><p><b>Nothing planned today</b>${s.kind === 'rest' ? 'Your readiness suggests a rest day.' : 'A quiet suggestion from your readiness and form:'}</p></div>${sugHTML(s, true)}`; }
+  if (acc && entries == null) body = '<div class="tdnone"><span class="cdsk"><i></i></span></div>';
+  else if (!T.length) body = none();
   else if (T.every(e => e.kind === 'rest')) body = `<div class="tdplan tdrest"><span class="tdpi">${kindIcon('rest', 'tdpico')}</span><div class="tdpt"><b>${esc(T[0].title === 'Rest day' ? 'Rest day' : T[0].title)}</b><small>Recovery is part of the plan.${T[0].note ? ' ' + esc(T[0].note) : ''}</small></div></div>`;
-  else { const open = T.filter(e => e.kind !== 'rest'); const first = open.find(e => !e.done); body = open.map(e => entry(e, e === first)).join(''); }
+  else { const open = T.filter(e => e.kind !== 'rest'), first = open.find(e => !e.done) || open[0]; body = big(first) + open.filter(e => e !== first).map(small).join(''); }
   const W = week(today, entries || [], actDays, today);
-  const strip = `<ol class="tdweek" aria-label="This week">${W.map(d => { const dn = new Date(...d.day.split('-').map((v, i) => i === 1 ? v - 1 : +v));
+  const strip = `<ol class="tdweek" aria-label="This week: tap a day to plan it">${W.map(d => { const dn = new Date(...d.day.split('-').map((v, i) => i === 1 ? v - 1 : +v));
     const planned = d.entries.filter(e => e.kind !== 'rest'), rest = d.entries.some(e => e.kind === 'rest'), done = planned.filter(e => e.done).length;
     const state = planned.length ? (done >= planned.length ? 'done' : d.past ? 'missed' : 'planned') : rest ? 'rest' : d.acts ? 'extra' : '';
-    const say = [planned.length ? `${planned.length} planned${done ? `, ${done} done` : ''}` : '', rest ? 'rest day' : '', !planned.length && d.acts ? `${d.acts} done` : ''].filter(Boolean).join(', ') || 'nothing';
-    return `<li><a href="training.html?day=${d.day}" class="tdday${d.today ? ' now' : ''}${d.past ? ' past' : ''}" aria-label="${dn.toLocaleDateString('en-GB', { weekday: 'long', day: 'numeric', month: 'long' })}: ${say}"${d.today ? ' aria-current="date"' : ''}>
-      <small>${dn.toLocaleDateString('en-GB', { weekday: 'narrow' })}</small><b>${dn.getDate()}</b><i class="tddot ${state}" aria-hidden="true"></i></a></li>`; }).join('')}</ol>`;
-  return `<section class="tdtoday" aria-labelledby="tdTodayH"><div class="tdh"><h2 class="label" id="tdTodayH">Today</h2><a class="tdlink" href="training.html">Plan ›</a></div>${body}${msg ? `<p class="phint" role="status">${esc(msg)}</p>` : ''}${strip}</section>`;
-}
-function sugHTML(s, canPlan) {
-  if (s.kind === 'rest') return `<div class="tdsug"><div><b>Rest day</b><small>${esc(s.why)}</small></div>${canPlan ? '<button type="button" class="btn ghost ksmall" id="tdPlanIt">Plan it</button>' : ''}</div>`;
-  return `<div class="tdsug"><div><b>${esc(s.title)}${s.minutes ? ` · ${s.minutes} min` : ''}</b><small>${esc(s.why)}</small></div>${canPlan ? `<div class="tdsugb"><button type="button" class="btn ghost ksmall" id="tdPlanIt">Plan it</button><a class="btn ghost ksmall" href="training.html?day=${dayKey(Date.now())}&add=1">Plan something</a></div>` : ''}</div>`;
-}
-export function whatHTML(list) {
-  if (!list.length) return '';
-  return `<section class="tdwhat" aria-labelledby="tdWhatH"><h2 class="label" id="tdWhatH">What changed</h2><ul>${list.map(i => `<li><a href="${i.href}" class="tdins tdi-${i.k}"><span>${esc(i.text)}</span><i aria-hidden="true">›</i></a></li>`).join('')}</ul></section>`;
+    const say = [planned.length ? `${planned.length} planned${done ? `, ${done} done` : ''}` : '', rest ? 'rest day' : '', !planned.length && d.acts ? `${d.acts} done` : ''].filter(Boolean).join(', ') || 'nothing planned';
+    return `<li><button type="button" data-day="${d.day}" class="tdday${d.today ? ' now' : ''}${d.past ? ' past' : ''}" aria-label="${dn.toLocaleDateString('en-GB', { weekday: 'long', day: 'numeric', month: 'long' })}: ${say}. Plan it."${d.today ? ' aria-current="date"' : ''}>
+      <small>${dn.toLocaleDateString('en-GB', { weekday: 'narrow' })}</small><b>${dn.getDate()}</b><i class="tddot ${state}" aria-hidden="true"></i></button></li>`; }).join('')}</ol>`;
+  return `<section class="tdtoday" aria-labelledby="tdTodayH"><div class="tdh"><h2 class="label" id="tdTodayH">Today's training</h2><button type="button" class="tdlink" id="tdWeek">Week ›</button></div>${body}${msg ? `<p class="phint" role="status">${esc(msg)}</p>` : ''}${strip}</section>`;
 }
 
-/** fills the three blocks; ctx as js/cards.js mountOverview (acts, P, S, acc); boxes: { hero, plan, what } */
+/** fills the blocks; ctx as js/cards.js mountOverview (acts, P, S, acc, signIn); boxes: { hello, hero, plan }; ctx.onInsights(lines) gets
+ *  the "Updates" lines (js/updates.js), ctx.shape(entry) the shape of a planned workout */
 export function mountToday(B, ctx) {
   ctx.ld ||= C.loads(ctx.P);
   const now = Date.now(), today = dayKey(now), st = { h: undefined, entries: null, msg: '', r: null, form: null };
@@ -98,25 +100,31 @@ export function mountToday(B, ctx) {
     B.hero.innerHTML = heroHTML(st.r, { acc: ctx.acc });
     const sl = $('#tdSleep', B.hero); if (sl) sl.onclick = () => { const t = $('#tdSleepTxt', B.hero); t.hidden = !t.hidden; sl.setAttribute('aria-expanded', String(!t.hidden)); };
   };
+  const m0 = monday(today);
+  const loadPlan = () => getJSON('plan', `/api/account/plan?from=${m0}&to=${addDays(m0, 6)}`, ctx.acc, 0).then(j => { st.entries = j.entries || []; st.msg = ''; }, () => { st.entries = st.entries || []; st.msg = 'The plan could not be loaded right now.'; });
+  const changed = () => loadPlan().then(drawPlan);
+  const plan = async (how, x) => { const W = await import('./weekplan.js'), o = { acc: ctx.acc, S: ctx.S, signIn: ctx.signIn, onChange: changed };
+    if (how === 'week') W.openWeek({ ...o, day: x }); else W.openDay({ ...o, ...x }); };
   const drawPlan = () => {
-    B.plan.innerHTML = planHTML({ entries: st.entries, acts: ctx.acts, r: st.r, form: st.form, acc: ctx.acc, today, msg: st.msg });
-    const pi = $('#tdPlanIt', B.plan); if (pi) pi.onclick = async () => { const s = suggestion(st.r, st.form); pi.disabled = true;
-      try { const j = await send('POST', '/api/account/plan', { day: today, kind: s.kind === 'other' ? 'other' : s.kind, title: s.title, ...(s.minutes ? { minutes: s.minutes } : {}) }); st.entries = [...(st.entries || []), j.entry]; st.msg = ''; }
-      catch (e) { st.msg = e.message || 'Not saved. Check your connection.'; } drawPlan(); };
+    if (!B.plan.isConnected) return;
+    B.plan.innerHTML = planHTML({ entries: ctx.acc ? st.entries : [], acts: ctx.acts, r: st.r, form: st.form, acc: ctx.acc, today, msg: st.msg, shape: ctx.shape });
+    $('#tdWeek', B.plan).onclick = () => plan('week');
+    $('#tdPlanWeek', B.plan)?.addEventListener('click', () => plan('week'));
+    B.plan.querySelectorAll('[data-day]').forEach(b => b.onclick = () => { const d = b.dataset.day, E = (st.entries || []).filter(e => e.day === d);
+      if (!ctx.acc || E.length > 1) plan('week', d); else plan('day', { day: d, entry: E[0] || null }); });
   };
-  const send = async (m, url, b) => { const r = await fetch(url, { method: m, cache: 'no-store', headers: { 'Content-Type': 'application/json', 'X-RF-Token': ctx.acc?.token || '' }, body: JSON.stringify(b) });
-    const j = await r.json().catch(() => ({})); if (!r.ok) throw new Error(j.error || 'Not saved.'); return j; };
   if (ctx.acc) { B.hero.innerHTML = heroHTML(null, { loading: true });
     Promise.race([health(ctx), new Promise(ok => setTimeout(() => ok(null), 4000))]).then(h => { st.h = h; }, () => { st.h = null; }).then(() => { drawHero(); drawPlan(); });
-    const m0 = monday(today); getJSON('plan', `/api/account/plan?from=${m0}&to=${addDays(m0, 6)}`, ctx.acc, 0).then(j => { st.entries = j.entries || []; }, () => { st.entries = []; st.msg = 'The plan could not be loaded right now.'; }).then(() => { if (st.r) drawPlan(); });
+    loadPlan().then(() => { if (st.r) drawPlan(); });
   } else drawHero();
   drawPlan();
-  // what changed: from the activities right away, with the weight once the account answers
+  // the "Updates" lines: from the activities right away, with the weight once the account answers
   const what = async () => {
     const last = ctx.acts[0], fit = C.fitnessSummary(ctx.acts, ctx.ld), recs = C.recentRecords(ctx.acts);
     const L = last ? { name: nameOf(last), href: 'aktivitaeten.html?open=' + encodeURIComponent(keyOf(last)) } : null;
-    const draw = b => { if (B.what.isConnected) B.what.innerHTML = whatHTML(insights({ acts: ctx.acts, body: b, fit, recs, last: L, now })); };
-    draw(null); if (ctx.acc) { try { draw(await body(ctx)); } catch {} }
+    let b = null; if (ctx.acc) { try { b = await body(ctx); } catch {} }
+    ctx.onInsights?.(insights({ acts: ctx.acts, body: b, fit, recs, last: L, now }));
   };
   setTimeout(what, 0);
+  return { plan };
 }

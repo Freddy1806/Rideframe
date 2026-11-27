@@ -80,7 +80,7 @@ export function wireRoutePick(root, { route, state, saveSettings, rerender, rout
       state.settings.laps = n; if (ls) ls.value = String(n); await saveSettings(); await show(); (ls || $('#workSel', root))?.focus(); }; // focus on the laps, so the pad stays on the page
     info.querySelectorAll('[data-route]').forEach(b => b.onclick = () => openRoute(b.dataset.route));
   };
-  const mine = $('#wMine', root); if (mine) mine.onclick = () => { location.href = 'profil.html#myworkouts'; };
+  const mine = $('#wMine', root); if (mine) mine.onclick = () => { location.href = 'workouts.html#ride'; }; // 27.11.: My workouts live on the Workouts page
   sel.addEventListener('change', show); $('#lapSel', root)?.addEventListener('change', () => setTimeout(show)); show(); // after app.js stored the laps
   btn.onclick = async () => {
     const cur = workoutById(sel.value), own = cur?.personal ? personalById(cur.id) : null;
@@ -94,42 +94,4 @@ export function wireRoutePick(root, { route, state, saveSettings, rerender, rout
 // no mark on the library cards (owner 18.11.: "too short" belongs on the route page, where you pick the workout, not on the card)
 
 /* ---------------- profile ---------------- */
-/** "My workouts" with the FTP, in the profile; ctx = { ftp: () => W, setFtp: async W => {} } */
-export async function profileSection(el, ctx) {
-  if (!el) return;
-  await loadPersonal();
-  const draw = () => {
-    const list = personalList(), ftp = +ctx.ftp() || 0, up = localOnly();
-    el.innerHTML = `<h3 class="ksec" id="myworkouts">My workouts</h3>
-    <section class="kcard mwprof">
-      <div class="mwftp"><label class="mwftpin" for="mwFtp"><span>FTP</span></label><input type="number" id="mwFtp" min="60" max="600" step="1" inputmode="numeric" value="${ftp || ''}" placeholder="e.g. 250"><small>W</small></div>
-      <p class="hint mwhint">FTP is the power you can hold for about an hour; every workout target is a % of it.</p>
-      <div class="mwest"><label for="mwB20">Best 20 min</label><input type="number" id="mwB20" min="60" max="700" step="1" inputmode="numeric" placeholder="W"><span>× 0.95 =</span><b id="mwEst">–</b><button type="button" class="btn ghost ksmall" id="mwUse" disabled>Use as FTP</button></div>
-      ${storeMode() === 'local' ? '<p class="hint mwhint">Saved in this browser only. Sign in to keep them private in your account on every device.</p>' : ''}
-      ${up.length ? `<div class="mwupbox"><span>${up.length} ${up.length === 1 ? 'workout' : 'workouts'} from this browser not in your account yet.</span><button type="button" class="btn ghost ksmall" id="mwUpP">Upload</button></div>` : ''}
-      <div class="mwlist">${list.length ? list.map(w => { const st = statsOf(w, ftp || undefined); return `<div class="mwitem" data-id="${esc(w.id)}">
-        <div class="mwitop"><b>${esc(w.name)}</b><small>${st.exact ? '' : '~'}${fmtTime(st.sec)} · ${st.steps} steps${st.avg ? ` · avg ${st.avg} %` : ''}${w.routeName ? ` · for ${esc(w.routeName)}` : ''}</small></div>
-        ${chartSVG(toV2(w).steps, { h: 34, cls: 'mwthumb', ftp: +ctx.ftp() || undefined })}
-        <div class="mwiacts"><button type="button" class="btn ghost ksmall" data-ed="${esc(w.id)}">Edit</button><button type="button" class="btn ghost ksmall" data-dup="${esc(w.id)}">Duplicate</button><button type="button" class="btn ghost ksmall mwdanger" data-del="${esc(w.id)}">Delete</button></div></div>`; }).join('')
-        : '<p class="hint mwhint">No personal workouts yet. Open a route on the big screen, pick a workout and tap “Customise”, or build one here.</p>'}</div>
-      <button type="button" class="btn ghost ksmall mwnew" id="mwNew">+ New workout</button>
-      <p class="mwerr" id="mwPErr" role="alert"></p>
-    </section>`;
-    const perr = t => { $('#mwPErr', el).textContent = t || ''; };
-    const fi = $('#mwFtp', el); fi.onchange = async () => { const v = Math.round(+fi.value); if (!(v >= 60 && v <= 600)) { fi.value = ftp || ''; return perr('FTP: 60–600 W.'); } perr(); await ctx.setFtp(v); };
-    const b20 = $('#mwB20', el), est = () => { const v = +b20.value; return v >= 60 && v <= 700 ? Math.round(v * 0.95) : 0; };
-    b20.oninput = () => { const e = est(); $('#mwEst', el).textContent = e ? e + ' W' : '–'; $('#mwUse', el).disabled = !e; };
-    $('#mwUse', el).onclick = async () => { const e = est(); if (e >= 60 && e <= 600) await ctx.setFtp(e); };
-    const edit = async (w, saved) => { const res = await openEditor({ draft: w, saved, ftp: +ctx.ftp() || 0, hrMax: +ctx.hrMax?.() || 0, route: w.routeId ? { id: w.routeId, name: w.routeName || '' } : null }); if (res) draw(); };
-    el.querySelectorAll('[data-ed]').forEach(b => b.onclick = () => { const w = personalById(b.dataset.ed); if (w) edit(w, true); });
-    el.querySelectorAll('[data-dup]').forEach(b => b.onclick = async () => { const w = personalById(b.dataset.dup); if (!w) return;
-      try { await savePersonal({ ...w, id: newId(), name: cut(w.name, LIM.name - 5) + ' copy' }); draw(); } catch (e) { perr('Not saved: ' + e.message); } });
-    el.querySelectorAll('[data-del]').forEach(b => b.onclick = async () => { const w = personalById(b.dataset.del); if (!w) return;
-      if (await ask({ title: `Delete “${w.name}”?`, text: 'It is removed from your workouts for good.', buttons: [{ label: 'Keep it', value: null }, { label: 'Delete', value: 'del', cls: 'danger' }] }) !== 'del') return b.focus();
-      try { await deletePersonal(w.id); draw(); } catch (e) { perr('Not deleted: ' + e.message); } });
-    $('#mwNew', el).onclick = () => edit({ ...newWorkout2(), name: '' }, false);
-    const ub = $('#mwUpP', el); if (ub) ub.onclick = async () => { ub.disabled = true; await uploadLocal(); draw(); };
-  };
-  draw();
-  if (location.hash === '#myworkouts') $('#myworkouts', el)?.scrollIntoView();
-}
+// (27.11.) the profile's "My workouts" section moved to the Workouts page (js/workoutspage.js)

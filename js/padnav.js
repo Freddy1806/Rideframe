@@ -70,7 +70,7 @@ export function stepValue(value, d, { step, min, max, start } = {}) {
 // ---------------- the browser part ----------------
 const FOCUSABLE = 'button, a[href], input:not([type=hidden]), select, textarea, summary, [role=button], [role=tab], [tabindex]:not([tabindex="-1"]), .card[data-id], tr[data-key]';
 const TEXTY = el => (el.tagName === 'INPUT' && !/^(checkbox|radio|range|button|submit|reset|color|file)$/i.test(el.type)) || el.tagName === 'TEXTAREA' || el.isContentEditable;
-const OVERLAYS = '.modal, .ride .finish';
+const OVERLAYS = '.modal, .psheet, .ride .finish'; // .psheet: the phone pages' bottom sheets (27.11.: Workouts, the week planner)
 const NUMBER = el => el?.tagName === 'INPUT' && el.type === 'number';
 const numAttr = (el, a) => el.getAttribute(a) === null || el.getAttribute(a) === '' ? NaN : +el.getAttribute(a);
 /** a number field changed by the pad: one step, the page hears input + change like from typing */
@@ -193,7 +193,7 @@ function back() {
     const bs = candidates(root).filter(b => b.tagName === 'BUTTON' || b.tagName === 'A');
     const b = bs.find(x => /(Close|Cancel|Back|X|No|Later)$/.test(x.id) && CLOSE_RX.test(x.textContent)) || bs.find(x => CLOSE_RX.test(x.textContent)) || bs.find(x => DONE_RX.test(x.textContent));
     if (b) { b.click(); return true; }
-    if (root.classList.contains('modal')) { root.dispatchEvent(new MouseEvent('click', { bubbles: true })); return true; } // most windows close on a click on the dark backdrop
+    if (root.matches('.modal, .psheet')) { root.dispatchEvent(new MouseEvent('click', { bubbles: true })); return true; } // most windows close on a click on the dark backdrop
     return false;
   }
   const bk = document.querySelector('#main #back'); if (bk && visible(bk)) { bk.click(); return true; }

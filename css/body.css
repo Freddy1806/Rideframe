@@ -113,3 +113,13 @@
 #bMore { align-self: center; }
 body.hasnav #body { padding-bottom: calc(env(safe-area-inset-bottom) + 92px); } /* room for the bottom bar (css/feed.css) */
 .bhealth:empty { display: none; } .bhealth { margin: 4px 0; } /* 25.11.: the recovery card on the Body page (js/healthcard.js) */
+/* 27.11.: the value tiles (scale in yellow, the watch's recovery values in periwinkle), three in a row on the phone */
+.bcomp { grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; margin-top: 0; }
+.bcc { padding: 10px 10px 8px; border-radius: 14px; } .bcc .label { font-size: 10px; letter-spacing: .02em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.bcc b { font-size: 21px; line-height: 1.1; white-space: nowrap; } .bcc > small { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.bcc svg { height: 26px; margin-top: auto; } .bcc.bscale path { stroke: var(--bc); } .bcc.brec path { stroke: var(--a-rec, #a5b4ff); }
+.bcc.brec { border-color: color-mix(in srgb, var(--a-rec, #a5b4ff) 26%, var(--line)); } .bcc.brec .label { color: var(--a-rec, #a5b4ff); }
+.bcc.bnone > small { white-space: normal; font-weight: 700; margin-top: 4px; }
+.binfo { width: 28px; height: 28px; margin-left: auto; border-radius: 50%; border: 1px solid var(--line-2); font: italic 800 14px/1 Georgia, serif; color: var(--muted); position: relative; }
+.binfo::after { content: ''; position: absolute; inset: -8px 0 -8px -16px; } /* 44 px to tap, nothing past the edge */
+@media (min-width: 560px) { .bcomp { grid-template-columns: repeat(4, minmax(0, 1fr)); } }

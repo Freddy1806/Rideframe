@@ -1,10 +1,10 @@
-// End to end for the Today page (handy.html: js/today.js, js/cards.js) and Training (training.html, js/trainplan.js), 25.11.:
+// End to end for the Today page (handy.html: js/today.js, js/cards.js, the week planner js/weekplan.js, Updates js/updates.js), 25.11. / 27.11.:
 // a demo account with data (activities on the phone, weigh-ins, a paired watch with recovery values, a plan, a coach link): the
 // readiness hero, today's planned session with Start, the week strip, what changed, the cards; the hero states (ready / tired /
 // not enough data / rest day / planned session); an empty account and signed out (an explanation and the start actions, no wall
 // of empty cards); edit mode: drag by mouse and by touch, the arrows, remove, add back, size, reset; the arrangement kept after a
 // reload and on the server; no sideways scroll and no overlapping cards at 360 / 320 px and 1280 px; every card's link exists;
-// Training: plan a session, it shows on Today. Starts its own serve.mjs on a free port with a temp data folder.
+// Planning from Today (week and day sheets) and the Workouts tab. Starts its own serve.mjs on a free port with a temp data folder.
 // Usage: NODE_PATH=$(npm root -g) RIDEFRAME_DATA=$(mktemp -d) node tools/cards-ui.cjs [shotsDir]
 const { chromium } = require('playwright');
 const { spawn } = require('node:child_process'), fs = require('node:fs'), os = require('node:os'), path = require('node:path'), net = require('node:net');
@@ -63,7 +63,7 @@ const clearActs = p => p.evaluate(async () => { const { db } = await import('/js
     const settle = async p => { await p.waitForFunction(() => document.querySelector('#ovGrid') && ![...document.querySelectorAll('.cd')].some(c => c.dataset.state === 'loading') && !document.querySelector('.tdload'), null, { timeout: 15000 }); await wait(250); };
     /** no sideways scroll, nothing sticking out of the page, no two cards overlapping */
     const layout = p => p.evaluate(() => { const W = innerWidth, bad = [], over = [];
-      for (const e of document.querySelectorAll('#handy *, #training *')) { const r = e.getBoundingClientRect(); if (!r.width || getComputedStyle(e).position === 'fixed' || e.closest('.ovsr, .bnav, .psheet')) continue; if (r.right > W + 1 || r.left < -1) bad.push((e.id || e.className || e.tagName) + ''); }
+      for (const e of document.querySelectorAll('#handy *, #workouts *')) { const r = e.getBoundingClientRect(); if (!r.width || getComputedStyle(e).position === 'fixed' || e.closest('.ovsr, .bnav, .psheet')) continue; if (r.right > W + 1 || r.left < -1) bad.push((e.id || e.className || e.tagName) + ''); }
       const cs = [...document.querySelectorAll('.cd')].filter(c => c.offsetParent).map(c => [c.dataset.card, c.getBoundingClientRect()]);
       for (let i = 0; i < cs.length; i++) for (let j = i + 1; j < cs.length; j++) { const [a, A] = cs[i], [b2, B] = cs[j]; if (A.left < B.right - 1 && B.left < A.right - 1 && A.top < B.bottom - 1 && B.top < A.bottom - 1) over.push(a + '/' + b2); }
       return { side: document.documentElement.scrollWidth > W + 1, bad: bad.slice(0, 8), over }; });
@@ -86,7 +86,7 @@ const clearActs = p => p.evaluate(async () => { const { db } = await import('/js
     const steps = await P.$$eval('.ovstep', l => l.map(a => a.getAttribute('href')));
     ok(steps.length === 5 && steps.includes('body.html') && steps.includes('handy.html#settings-watch') && steps.includes('handy.html#settings-coach'), 'new account: five first steps ' + steps.join(' '));
     ok(!(await P.locator('.cd[data-state="empty"]:visible').count()), 'new account: empty cards stay out of the way');
-    ok(/Nothing planned today/.test(await P.textContent('.tdtoday')) && await P.isVisible('#tdPlanIt'), 'new account: nothing planned, a quiet suggestion with Plan it');
+    ok(/No session planned today/.test(await P.textContent('.tdtoday')) && await P.isVisible('#tdPlanWeek') && await P.getAttribute('#tdPick', 'href') === 'workouts.html', 'new account: no session planned, "Plan this week" and "Pick a workout"');
     await shot(P, 'empty_account_360');
     await P.click('.ovstep[href="handy.html#settings-coach"]'); await P.waitForSelector('#tMcp', { timeout: 5000 }); ok(await P.isVisible('.psheet'), 'first step "Connect your coach": opens Settings'); await P.click('#tOk');
 
@@ -98,22 +98,31 @@ const clearActs = p => p.evaluate(async () => { const { db } = await import('/js
     await P.click('#tdSleep'); ok(await P.isVisible('#tdSleepTxt') && !/will|soon|coming/i.test(await P.textContent('#tdSleepTxt')), 'Sleep chip: says why, promises nothing');
     ok(/Sweet Spot 3 × 10/.test(await P.textContent('.tdtoday')) && await P.getAttribute('.tdstart', 'href') === 'pure.html?workout=ss3x10', 'today: the planned ride with Start opening exactly that workout');
     ok(await P.locator('.tdweek .tdday').count() === 7 && await P.locator('.tdday.now').count() === 1, 'the week strip: Monday to Sunday, today marked');
-    const ins = await P.$$eval('.tdins', l => l.map(a => [a.textContent.trim(), a.getAttribute('href')]));
-    ok(ins.length >= 2 && ins.length <= 4 && ins.some(([t]) => /Weight trend down/.test(t)) && ins.some(([t]) => /Fitness/.test(t)), 'what changed: 2 to 4 lines from the data ' + JSON.stringify(ins.map(x => x[0])));
-    const order = await P.evaluate(() => ['#hHero', '#hPlan', '.hstart', '#hWhat', '#hOv'].map(s => document.querySelector(s).getBoundingClientRect().top));
-    ok(order.every((v, i) => !i || v > order[i - 1]), 'order: readiness, today, record, what changed, cards');
+    ok(!(await P.$('.tdwhat')), 'what changed is not on the page any more');
+    await P.waitForFunction(() => !document.querySelector('#hDot')?.hidden, null, { timeout: 5000 }).catch(() => {});
+    ok(!(await P.getAttribute('#hDot', 'hidden') !== null), 'the bell has a dot: something new');
+    await P.click('#hBell'); await P.waitForSelector('#upSheet');
+    const ins = await P.$$eval('#upSheet .tdins', l => l.map(a => [a.textContent.trim(), a.getAttribute('href')]));
+    ok(ins.length >= 2 && ins.some(([t]) => /Weight trend down/.test(t)) && ins.some(([t]) => /Fitness/.test(t)) && /Today/.test(await P.textContent('#upSheet')), 'Updates: the lines with their day ' + JSON.stringify(ins.map(x => x[0])));
+    await shot(P, 'updates_sheet_360', false); await P.click('#upOk');
+    ok(await P.getAttribute('#hDot', 'hidden') !== null, 'opened: the dot is gone');
+    await P.reload(); await settle(P); await wait(600); ok(await P.getAttribute('#hDot', 'hidden') !== null, 'after a reload: still nothing new');
+    const order = await P.evaluate(() => ['#hHero', '#hPlan', '.hstart', '#ovGrid', '#ovEnd'].map(s => document.querySelector(s).getBoundingClientRect().top));
+    ok(order.every((v, i) => !i || v > order[i - 1]), 'order: readiness, today\'s training, record, the overview, this week');
+    ok(await P.$eval('#ovEnd', e => e.querySelector('[data-card="today"]') && /This week/.test(e.textContent)), '"This week" at the end');
     const cards = await P.$$eval('#ovGrid > .cd', l => l.map(c => c.dataset.card));
-    ok(cards.slice(0, 6).join() === 'today,last,recovery,weight,fitness,strength', 'default order of the cards: ' + cards.join(','));
+    ok(cards.slice(0, 6).join() === 'last,fitness,strength,weight,vo2,ftp', 'default order of the cards: ' + cards.join(','));
+    ok(await P.locator('[data-card="weight"] .wgbig .wgsvg circle').count() > 20 && /7 days/.test(await P.textContent('[data-card="weight"]')) && /30 days/.test(await P.textContent('[data-card="weight"]')), 'the weight card: big, with 90 days of weigh-ins and the 7 / 30 day change');
     ok(!(await P.locator('.cd[data-state="error"]').count()), 'no card failed');
     const states = await P.$$eval('.cd', l => l.map(c => c.dataset.card + ':' + c.dataset.state).join(' '));
     ok(!/:empty/.test(states.replace(/battery|rhr|sleep/g, '')), 'every default card has data for the demo account: ' + states);
     ok(/Watch · Screens & workouts/.test(await P.textContent('[data-card="watch"]')) && /fenix 8/.test(await P.textContent('[data-card="watch"]')), 'the watch card (paired)');
-    ok(/VO2max/i.test(await P.textContent('[data-card="vo2"]')) && /watch/.test(await P.textContent('[data-card="vo2"]')) && /estimate/.test(await P.innerHTML('[data-card="vo2"]')), 'VO2max: watch value and estimate, each labelled');
+    ok(await P.locator('[data-card="vo2"] .vring').count() === 2 && /From your watch/.test(await P.textContent('[data-card="vo2"]')), 'VO2max: a ring for bike and run, the source in one line');
     ok(/Connected/.test(await P.textContent('[data-card="coach"]')), 'the coach card: connected');
     // every link of the page goes somewhere that exists
     const links = await P.$$eval('#handy a[href]', l => [...new Set(l.map(a => a.getAttribute('href')).filter(h => h && !h.startsWith('#')))]);
     let dead = []; for (const h of links) { const u = new URL(h, BASE + '/handy.html'); if (u.origin !== BASE) continue; const r = await fetch(u.origin + u.pathname); if (r.status !== 200) dead.push(h); }
-    ok(!dead.length && links.length > 15, `every link of the page exists (${links.length})` + (dead.length ? ': ' + dead.join(' ') : ''));
+    ok(!dead.length && links.length > 10, `every link of the page exists (${links.length})` + (dead.length ? ': ' + dead.join(' ') : ''));
     for (const wdt of [360, 320]) { await P.setViewportSize({ width: wdt, height: 740 }); await wait(200); L = await layout(P); ok(!L.side && !L.bad.length && !L.over.length, `demo: no sideways scroll, nothing sticking out, no overlapping cards at ${wdt} px ` + JSON.stringify(L)); }
     await P.setViewportSize({ width: 360, height: 740 }); await wait(150);
     const halves = await P.evaluate(() => { const a = document.querySelector('[data-card="fitness"]').getBoundingClientRect(), b2 = document.querySelector('[data-card="strength"]').getBoundingClientRect(); return Math.abs(a.top - b2.top) < 2 && a.right <= b2.left; });
@@ -127,7 +136,8 @@ const clearActs = p => p.evaluate(async () => { const { db } = await import('/js
     /* ---- edit mode ---- */
     const ids = () => P.$$eval('#ovList .ovrow', l => l.map(r => r.dataset.id));
     await P.click('#ovEdit'); await P.waitForSelector('#ovList');
-    let before = await ids(); ok(before[0] === 'today' && before.length === 13, 'edit: the list of shown cards ' + before.join(','));
+    let before = await ids(); ok(before[0] === 'last' && before.length === 12 && !before.includes('today'), 'edit: the list of shown cards (This week stays last) ' + before.join(','));
+    const R = before[2];
     // drag by touch: the third card's handle up to the top
     const touchDrag = async (fromSel, toY) => {
       const g = await P.$(fromSel), bb = await g.boundingBox(), x = bb.x + bb.width / 2, y = bb.y + bb.height / 2;
@@ -138,7 +148,7 @@ const clearActs = p => p.evaluate(async () => { const { db } = await import('/js
     await P.evaluate(() => document.querySelector('#ovList .ovrow:nth-child(3)').scrollIntoView({ block: 'center' })); await wait(100);
     const t1 = (await (await P.$('#ovList .ovrow:nth-child(1)')).boundingBox()).y;
     await touchDrag('#ovList .ovrow:nth-child(3) .ovgrip', t1 + 4);
-    let after = await ids(); ok(after[0] === 'recovery' && after[1] === 'today', 'drag by touch: Recovery moved to the top ' + after.slice(0, 3).join(','));
+    let after = await ids(); ok(after[0] === R && after[1] === 'last', 'drag by touch: the third card moved to the top ' + after.slice(0, 3).join(','));
     void top0;
     // mouse drag: the first card down below the fourth, a screenshot mid-drag
     const m = async (sel, dy, mid) => { const g = await P.$(sel), bb = await g.boundingBox(), x = bb.x + bb.width / 2, y = bb.y + bb.height / 2; await P.mouse.move(x, y); await P.mouse.down();
@@ -146,13 +156,13 @@ const clearActs = p => p.evaluate(async () => { const { db } = await import('/js
     await P.evaluate(() => document.querySelector('#ovList').scrollIntoView({ block: 'start' })); await P.evaluate(() => scrollBy(0, -90)); await wait(100);
     const rowH = (await (await P.$('#ovList .ovrow')).boundingBox()).height + 6;
     await m('#ovList .ovrow:nth-child(1) .ovgrip', rowH * 3.5, () => shot(P, 'edit_mid_drag_360', false));
-    after = await ids(); ok(after.indexOf('recovery') === 3, 'drag by mouse: Recovery to the fourth place ' + after.slice(0, 5).join(','));
+    after = await ids(); ok(after.indexOf(R) === 3, 'drag by mouse: to the fourth place ' + after.slice(0, 5).join(','));
     // keyboard on the handle and the arrow buttons
-    await P.focus('.ovrow[data-id="recovery"] .ovgrip'); await P.keyboard.press('ArrowUp'); after = await ids(); ok(after.indexOf('recovery') === 2, 'keyboard: arrow up on the handle moves it up');
-    ok(await P.evaluate(() => document.activeElement?.closest('.ovrow')?.dataset.id) === 'recovery', 'keyboard: the focus stays on the moved card');
-    await P.click('.ovrow[data-id="recovery"] .ovmv[data-d="1"]'); after = await ids(); ok(after.indexOf('recovery') === 3, 'the down button');
+    await P.focus(`.ovrow[data-id="${R}"] .ovgrip`); await P.keyboard.press('ArrowUp'); after = await ids(); ok(after.indexOf(R) === 2, 'keyboard: arrow up on the handle moves it up');
+    ok(await P.evaluate(() => document.activeElement?.closest('.ovrow')?.dataset.id) === R, 'keyboard: the focus stays on the moved card');
+    await P.click(`.ovrow[data-id="${R}"] .ovmv[data-d="1"]`); after = await ids(); ok(after.indexOf(R) === 3, 'the down button');
     // size, remove, add back
-    await P.click('.ovrow[data-id="today"] .ovsz'); ok(/Half/.test(await P.textContent('.ovrow[data-id="today"] .ovsz')), 'size: This week now half width');
+    await P.click('.ovrow[data-id="last"] .ovsz'); ok(/Half/.test(await P.textContent('.ovrow[data-id="last"] .ovsz')), 'size: Last activity now half width');
     await P.click('.ovrow[data-id="records"] .ovrm'); ok(!(await ids()).includes('records') && await P.locator('[data-add="records"]').count() === 1, 'remove: Records is under Add cards');
     await P.click('[data-add="battery"]'); after = await ids(); ok(after[after.length - 1] === 'battery', 'add: Body battery at the end');
     await P.evaluate(() => document.querySelector('#ovAddH').scrollIntoView({ block: 'start' })); await wait(100); await shot(P, 'edit_add_cards_360', false);
@@ -160,18 +170,18 @@ const clearActs = p => p.evaluate(async () => { const { db } = await import('/js
     await P.setViewportSize({ width: 320, height: 740 }); await wait(150); L = await layout(P); ok(!L.side && !L.bad.length, 'edit mode: nothing sticks out at 320 px ' + JSON.stringify(L)); await P.setViewportSize({ width: 360, height: 740 });
     await P.click('#ovDone'); await settle(P);
     const shown = await P.$$eval('#ovGrid > .cd', l => l.map(c => c.dataset.card + ':' + c.className.match(/cd-(half|full)/)[1]));
-    ok(shown[0] === 'today:half' && !shown.some(x => x.startsWith('records')) && shown[shown.length - 1].startsWith('battery'), 'the overview follows: ' + shown.join(' '));
+    ok(shown.includes('last:half') && !shown.some(x => x.startsWith('records')) && shown[shown.length - 1].startsWith('battery'), 'the overview follows: ' + shown.join(' '));
     await wait(900); // the account gets it half a second later
     const srvL = (await api('GET', '/api/account/home', null, T)).j.layout;
-    ok(srvL && srvL.cards[0].id === 'today' && srvL.cards[0].size === 'half' && srvL.hidden.includes('records'), 'saved in the account');
+    ok(srvL && srvL.cards.some(c => c.id === 'last' && c.size === 'half') && srvL.hidden.includes('records'), 'saved in the account');
     await P.reload(); await settle(P);
     ok((await P.$$eval('#ovGrid > .cd', l => l.map(c => c.dataset.card + ':' + c.className.match(/cd-(half|full)/)[1]))).join() === shown.join(), 'kept after a reload');
     // another device (a fresh browser) gets the account's arrangement
     const other = await b.newContext({ viewport: { width: 360, height: 740 }, isMobile: true, hasTouch: true }), Q = await page(other); await Q.waitForSelector('#hSet'); await as(Q, A); await seedActs(Q); await Q.reload(); await settle(Q); await wait(500);
-    ok((await Q.$$eval('#ovGrid > .cd', l => l.map(c => c.dataset.card)))[0] === 'today' && !(await Q.locator('[data-card="records"]').count()), 'another device: the same arrangement from the account'); await other.close();
+    ok((await Q.$$eval('#ovGrid > .cd', l => l.map(c => c.dataset.card))).join() === shown.map(x => x.split(':')[0]).join() && !(await Q.locator('[data-card="records"]').count()), 'another device: the same arrangement from the account'); await other.close();
     // reset
     P.once('dialog', d => d.accept()); await P.click('#ovEdit'); await P.click('#ovReset'); await P.click('#ovDone'); await settle(P);
-    ok((await P.$$eval('#ovGrid > .cd', l => l.map(c => c.dataset.card))).slice(0, 4).join() === 'today,last,recovery,weight', 'reset: back to the default');
+    ok((await P.$$eval('#ovGrid > .cd', l => l.map(c => c.dataset.card))).slice(0, 4).join() === 'last,fitness,strength,weight', 'reset: back to the default');
     await P.reload(); await settle(P); await wait(300); // leaving at once: the waiting save still reaches the account
     const srvR = (await api('GET', '/api/account/home', null, T)).j.layout;
     ok(srvR && srvR.def === true && !srvR.cards, 'reset: the default is saved in the account even when the page is left at once ' + JSON.stringify(srvR));
@@ -202,21 +212,26 @@ const clearActs = p => p.evaluate(async () => { const { db } = await import('/js
     ok(h.num === '–' && /Not enough data yet/.test(h.word) && /Only body battery so far/.test(await P.textContent('.tdwhy')), 'hero: one input only: not enough data, no number, says which');
     await P.unroute(/\/api\/account\/kraft/); await as(P, A); await seedActs(P);
 
-    /* ---- Training: plan a session, it shows on Today ---- */
-    const TR = await page(phone, '/training.html'); await TR.waitForSelector('.trdays');
-    ok(await TR.locator('.trday').count() === 7 && /Sweet Spot 3 × 10/.test(await TR.textContent('.trday.now')), 'Training: the week with today\'s planned ride');
-    const tomorrow = dk(now + 864e5), tw = await TR.$(`[data-add="${tomorrow}"]`);
-    if (!tw) { await TR.click('#trNext'); await TR.waitForSelector(`[data-add="${tomorrow}"]`); }
-    await TR.click(`[data-add="${tomorrow}"]`); await TR.waitForSelector('#trSheet');
-    await TR.click('#trSheet [data-k="run"]'); await TR.fill('#trTitle', 'Intervals 6 × 800 m'); await TR.fill('#trMin', '55'); await shot(TR, 'training_plan_sheet_360', false); await TR.click('#trOk');
-    await TR.waitForFunction(t => /Intervals 6 × 800 m/.test(document.querySelector('#d-' + t)?.textContent || ''), tomorrow);
-    ok(true, 'Training: a run planned for tomorrow');
-    const lst = (await api('GET', `/api/account/plan?from=${tomorrow}&to=${tomorrow}`, null, T)).j.entries.filter(e => e.title === 'Intervals 6 × 800 m'); ok(lst.length === 1 && lst[0].kind === 'run' && lst[0].minutes === 55, 'stored in the account'); // by title: the seeded week may already have something on that day (it failed on a Thursday, Friday has the seeded rest day)
-    L = await layout(TR); ok(!L.side && !L.bad.length, 'Training: nothing sticks out at 360 px ' + JSON.stringify(L));
-    await TR.evaluate(() => scrollTo(0, 0)); await shot(TR, 'training_360');
-    const bn = await TR.$$eval('.bnav a', l => l.map(a => a.textContent.trim() + '>' + a.getAttribute('href')));
-    ok(bn.join() === 'Today>handy.html,Training>training.html,Activities>aktivitaeten.html,Body>body.html,Profile>profil.html', 'bottom bar: Today, Training, Activities, Body, Profile');
-    await TR.close();
+    /* ---- planning from Today: the week planner, a run for tomorrow; the Workouts tab ---- */
+    const TR = await page(phone); await TR.waitForSelector('#tdWeek'); await settle(TR);
+    ok(await TR.locator('.tdday').count() === 7, 'Today: the week strip with seven days');
+    await TR.click('#tdWeek'); await TR.waitForSelector('#wpSheet .wpday');
+    ok(await TR.locator('#wpSheet .wpday').count() === 7 && /Sweet Spot 3 × 10/.test(await TR.textContent('#wpSheet .wpday.now')), 'week planner: seven days with today\'s planned ride');
+    const tomorrow = dk(now + 864e5);
+    if (!await TR.$(`#wpSheet [data-add="${tomorrow}"]`)) { await TR.click('#wpNext'); await TR.waitForSelector(`#wpSheet [data-add="${tomorrow}"]`); }
+    await TR.click(`#wpSheet [data-add="${tomorrow}"]`); await TR.waitForSelector('#wdSheet');
+    await TR.click('#wdSheet [data-k="run"]'); await TR.fill('#wdTitle', 'Intervals 6 × 800 m'); await TR.fill('#wdMin', '55'); await shot(TR, 'plan_day_sheet_360', false); await TR.click('#wdFree');
+    await TR.waitForFunction(t => /Intervals 6 × 800 m/.test(document.querySelector('#wp-' + t)?.textContent || ''), tomorrow);
+    ok(true, 'week planner: a run planned for tomorrow');
+    const lst = (await api('GET', `/api/account/plan?from=${tomorrow}&to=${tomorrow}`, null, T)).j.entries.filter(e => e.title === 'Intervals 6 × 800 m'); ok(lst.length === 1 && lst[0].kind === 'run' && lst[0].minutes === 55, 'stored in the account'); // by title: the seeded week may already have something on that day
+    await TR.click('#wpOk'); await TR.close();
+    const WK = await page(phone, '/workouts.html'); await WK.waitForSelector('#wk-strength');
+    ok(await WK.locator('.wkt').count() === 3 && await WK.locator('#wk-ride .wkr').count() > 0, 'Workouts: three sport tiles, cycling workouts listed');
+    L = await layout(WK); ok(!L.side && !L.bad.length, 'Workouts: nothing sticks out at 360 px ' + JSON.stringify(L));
+    await WK.evaluate(() => scrollTo(0, 0)); await shot(WK, 'workouts_360');
+    const bn = await WK.$$eval('.bnav a', l => l.map(a => a.textContent.trim() + '>' + a.getAttribute('href')));
+    ok(bn.join() === 'Today>handy.html,Workouts>workouts.html,Activities>aktivitaeten.html,Body>body.html,Profile>profil.html', 'bottom bar: Today, Workouts, Activities, Body, Profile');
+    await WK.close();
     void P0;
 
     /* ---- the pages Today leads to open without errors; Start of a planned watch workout opens exactly it ---- */
@@ -226,7 +241,7 @@ const clearActs = p => p.evaluate(async () => { const { db } = await import('/js
     await K.goto(BASE + '/reset.html').catch(() => {}); await K.evaluate(a => localStorage.setItem('rf_account', JSON.stringify({ token: a.token, name: a.name })), A); await K.goto(BASE + '/kraft.html?watch=wpush1');
     const started = await K.waitForFunction(() => document.querySelector('#kName')?.value === 'Push day' && !location.search, null, { timeout: 8000 }).then(() => true, () => false);
     ok(started && /Bench/i.test(await K.textContent('body')), 'kraft.html?watch=<id>: that watch workout starts, the address is cleaned');
-    for (const u of ['/training.html', '/aktivitaeten.html', '/body.html', '/profil.html', '/statistik.html', '/kraft.html', '/?desktop&noprofile']) { const n = errs.length;
+    for (const u of ['/workouts.html', '/training.html', '/aktivitaeten.html', '/body.html', '/profil.html', '/statistik.html', '/kraft.html', '/?desktop&noprofile']) { const n = errs.length;
       await K.goto(BASE + u); await wait(1200); ok(errs.length === n, `${u} opens without page errors` + (errs.length > n ? ': ' + errs.slice(n).join(' | ') : '')); }
     await kc.close();
 
@@ -237,8 +252,8 @@ const clearActs = p => p.evaluate(async () => { const { db } = await import('/js
     ok(await DP.evaluate(() => new Set([...document.querySelectorAll('#ovGrid > .cd')].map(c => Math.round(c.getBoundingClientRect().top))).size < document.querySelectorAll('#ovGrid > .cd').length - 3), 'desktop: the cards in several columns');
     await shot(DP, 'desktop_1280');
     // edit by mouse on the desktop as well
-    await DP.click('#ovEdit'); await DP.evaluate(() => document.querySelector('#ovList').scrollIntoView({ block: 'center' })); await wait(100); const g = await DP.$('#ovList .ovrow:nth-child(2) .ovgrip'), gb = await g.boundingBox(); await DP.mouse.move(gb.x + 20, gb.y + 20); await DP.mouse.down(); for (let i = 1; i <= 8; i++) { await DP.mouse.move(gb.x + 20, gb.y + 20 - 60 * i / 8); await wait(16); } await DP.mouse.up();
-    ok((await DP.$$eval('#ovList .ovrow', l => l.map(r => r.dataset.id)))[0] === 'last', 'desktop: drag by mouse'); await desk.close();
+    await DP.click('#ovEdit'); await DP.evaluate(() => document.querySelector('#ovList').scrollIntoView({ block: 'center' })); await wait(100); const second = await DP.$eval('#ovList .ovrow:nth-child(2)', r => r.dataset.id), g = await DP.$('#ovList .ovrow:nth-child(2) .ovgrip'), gb = await g.boundingBox(); await DP.mouse.move(gb.x + 20, gb.y + 20); await DP.mouse.down(); for (let i = 1; i <= 8; i++) { await DP.mouse.move(gb.x + 20, gb.y + 20 - 60 * i / 8); await wait(16); } await DP.mouse.up();
+    ok((await DP.$$eval('#ovList .ovrow', l => l.map(r => r.dataset.id)))[0] === second, 'desktop: drag by mouse'); await desk.close();
 
     ok(!errs.length, 'no page errors' + (errs.length ? ': ' + errs.join(' | ') : ''));
   } catch (e) { console.log('✗ ' + (e.stack || e.message)); fails++; }

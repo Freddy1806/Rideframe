@@ -1,6 +1,6 @@
 // Personal workouts end to end with the workout builder (js/wbuilder.js, owner 24.11.: "rebuild the builder exactly like the
 // Garmin Connect one"; before, 17.11.: "personalise the workout for the route, save it under my name, find and edit it in my
-// profile"). Desktop 1280 × 800: River Valley, Customise on VO2max 5 × 3 (its set comes in as a repeat block ×5), a step
+// profile"; since 27.11. the Workouts page). Desktop 1280 × 800: River Valley, Customise on VO2max 5 × 3 (its set comes in as a repeat block ×5), a step
 // changed, saved as "My VO2" (on the server as steps v2), in the route's workout choice; the long coach workout keeps every
 // step; the route fit line; Profile → My workouts (FTP, duplicate, delete). The builder's flow: a new workout starts with warm
 // up / bike / cool down, Add a step, every duration and every target type, Add repeat with × N, skip last recovery, drag and
@@ -39,6 +39,8 @@ const layoutOf = (page, root) => page.evaluate(root => {
   for (let i = 0; i < 50; i++) { try { await fetch(BASE + '/api/account/ping'); break; } catch { await wait(100); } }
   const reg = async name => { const r = await fetch(BASE + '/api/account/register', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name, email: name.replace(/\W/g, '') + '@example.org', password: 'secret-pw-1' }) }); return (await r.json()).token; };
   const listOf = async token => (await (await fetch(BASE + '/api/account/workouts', { headers: { 'X-RF-Token': token } })).json()).workouts || [];
+  const wkRow = (pg, name) => pg.locator('#wk-ride .wkr').filter({ has: pg.locator('.wkrt b', { hasText: new RegExp(name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '$') }) }); // the row of a workout on workouts.html, by its exact name
+  const openW = async (pg, name) => { await wkRow(pg, name).first().click(); await pg.waitForSelector('#wkSheet'); };
   const MW = await import(path.join(__dirname, '..', 'js', 'myworkouts.js'));
   const b = await chromium.launch();
   const errs = [];
@@ -120,23 +122,22 @@ const layoutOf = (page, root) => page.evaluate(root => {
     await D.click('.card[data-id="demo"]'); await D.waitForSelector('#workSel'); await D.selectOption('#workSel', ''); await D.waitForTimeout(200);
     ok(await D.locator('#mwFitLine').count() === 0, 'free ride: no fit line');
 
-    // ---- Profile → My workouts, FTP there = the FTP of "My data" ----
-    await D.goto(BASE + '/profil.html#myworkouts'); await D.waitForSelector('.mwitem');
-    const item = D.locator('.mwitem', { hasText: 'My VO2' });
-    ok(await item.count() === 1 && /for River Valley/.test(await item.textContent()) && /18 steps/.test(await item.textContent()), 'profile: “My VO2” listed with its 18 steps, made for River Valley');
-    ok(await D.inputValue('#mwFtp') === '250', 'profile: the FTP field shows the stored FTP');
-    await D.fill('#mwB20', '280'); ok((await D.textContent('#mwEst')).trim() === '266 W', 'profile: 20 min best 280 W × 0.95 = 266 W');
-    await D.fill('#mwFtp', '260'); await D.press('#mwFtp', 'Tab'); await D.waitForTimeout(400);
-    await D.click('#fSet'); ok(await D.inputValue('#dFtp') === '260', 'profile: “My data” shows the FTP set in My workouts (one value)'); await D.click('#dX');
-    await D.locator('.mwitem', { hasText: 'My VO2' }).locator('[data-dup]').click(); await D.waitForTimeout(400);
-    ok((await listOf(token)).some(w => w.name === 'My VO2 copy' && w.v === 2), 'profile: duplicate → “My VO2 copy” on the server');
-    await D.locator('.mwitem', { hasText: 'My VO2 copy' }).locator('[data-del]').click(); await D.waitForSelector('.mwask');
-    ok(/Delete “My VO2 copy”/.test(await D.textContent('.mwask')), 'profile: delete asks in the page (no browser dialog)');
-    await D.click('.mwask button:has-text("Delete")'); await D.waitForTimeout(400);
-    ok(!(await listOf(token)).some(w => w.name === 'My VO2 copy') && await D.locator('.mwitem', { hasText: 'My VO2 copy' }).count() === 0, 'profile: delete removes the copy');
+    // ---- Workouts (the one home of My workouts, 27.11.): listed, FTP in the profile's Personal data, duplicate, delete ----
+    await D.goto(BASE + '/workouts.html#ride'); await D.waitForSelector('#wk-ride .wkr');
+    const item = wkRow(D, 'My VO2');
+    ok(await item.count() === 1 && /★/.test(await item.textContent()) && /\d+ min/.test(await item.textContent()) && await item.locator('svg').count() === 1, 'Workouts: “My VO2” listed as mine with its minutes and shape');
+    await D.goto(BASE + '/profil.html'); await D.waitForSelector('#fSet'); await D.click('#fSet'); ok(await D.inputValue('#dFtp') === '250', 'profile: Personal data shows the stored FTP');
+    await D.fill('#dFtp', '260'); await D.click('#dOk'); await D.waitForTimeout(400);
+    await D.goto(BASE + '/workouts.html#ride'); await D.waitForSelector('#wk-ride .wkr');
+    await openW(D, 'My VO2'); await D.click('#wkDup'); await D.waitForSelector('#wkSheet', { state: 'detached' }); await D.waitForTimeout(300);
+    ok((await listOf(token)).some(w => w.name === 'My VO2 copy' && w.v === 2), 'Workouts: duplicate → “My VO2 copy” on the server');
+    await openW(D, 'My VO2 copy'); await D.click('#wkDel'); await D.waitForSelector('.mwask');
+    ok(/Delete “My VO2 copy”/.test(await D.textContent('.mwask')), 'Workouts: delete asks in the page (no browser dialog)');
+    await D.click('.mwask button:has-text("Delete")'); await D.waitForTimeout(500);
+    ok(!(await listOf(token)).some(w => w.name === 'My VO2 copy') && await wkRow(D, 'My VO2 copy').count() === 0, 'Workouts: delete removes the copy');
 
     // ---- the builder's flow: a new workout, every duration and target type, a repeat, drag and drop, save, reopen ----
-    await D.click('#mwNew'); await D.waitForSelector('.mwbox.wb');
+    await D.click('[data-new="ride"]'); await D.waitForSelector('.mwbox.wb');
     ok(await D.inputValue('#mwName') === 'Bike Workout', 'new: titled “Bike Workout”');
     const kinds = async () => D.evaluate(() => [...document.querySelectorAll('#wbList .wbcard')].map(c => [c.querySelector('[data-f="type"]').value, c.querySelector('[data-f="dk"]').value, c.querySelector('[data-f="tk"]').value].join('/')));
     ok(JSON.stringify(await kinds()) === JSON.stringify(['warmup/lap/none', 'work/time/none', 'cooldown/lap/none']), 'new: warm up and cool down until the lap button, one bike step of 10:00 between: ' + (await kinds()).join(', '));
@@ -230,7 +231,7 @@ const layoutOf = (page, root) => page.evaluate(root => {
     ok(!!bt && bt.notes === 'All the options' && bt.steps.length === 5 && bt.steps[2].repeat === 3 && bt.steps[2].skipLast && bt.steps[2].steps[0].target.pct === 115 && btSt?.dur.sec === 750
       && JSON.stringify(btSt.target) === JSON.stringify({ kind: 'power', lo: 280, hi: 300 }) && JSON.stringify(btSt.target2) === JSON.stringify({ kind: 'cadence', lo: 90, hi: 100 }) && btSt.note === 'Seated, smooth' && bt.steps[4].type === 'cooldown',
       'saved: the order, the repeat × 3 skipping its last recovery, 12:30 at 280–300 W with cadence 90–100 and the note');
-    await D.locator('.mwitem', { hasText: 'Builder test' }).locator('[data-ed]').click(); await D.waitForSelector('.mwbox.wb');
+    await openW(D, 'Builder test'); await D.click('#wkEdit'); await D.waitForSelector('.mwbox.wb');
     ok(await D.inputValue('.wbcard[data-p="3"] [data-f="sec"]') === '12:30' && await D.inputValue('.wbcard[data-p="3"] [data-f="lo"]') === '280' && await D.inputValue('.wbcard[data-p="3"] [data-f="2hi"]') === '100' && await D.inputValue('.wbrep [data-f="rep"]') === '3' && await D.inputValue('#wbNotes') === 'All the options',
       'reopened with Edit: every value as saved');
     // start from a standard workout: the steps are replaced, Undo brings them back
@@ -283,8 +284,8 @@ const layoutOf = (page, root) => page.evaluate(root => {
     // ---- phone 360 × 740: compact cards, the step sheet, drag by touch, nothing overlaps, the indoor page lists it ----
     const pctx = await b.newContext({ viewport: { width: 360, height: 740 }, deviceScaleFactor: 2, isMobile: true, hasTouch: true });
     const P = await pctx.newPage(); P.on('pageerror', e => errs.push('phone: ' + e.message)); P.on('dialog', d => d.accept());
-    await P.goto(BASE + '/profil.html'); await signIn(P, token, 'Freddy Workouts', 260, 190); await P.reload(); await P.waitForSelector('.mwitem');
-    await P.locator('.mwitem', { hasText: 'My VO2' }).locator('[data-ed]').click(); await P.waitForSelector('.mwbox.wb');
+    await P.goto(BASE + '/workouts.html'); await signIn(P, token, 'Freddy Workouts', 260, 190); await P.reload(); await P.waitForSelector('#wk-ride .wkr');
+    await openW(P, 'My VO2'); await P.click('#wkEdit'); await P.waitForSelector('.mwbox.wb');
     let pl = await layoutOf(P, '.wb'); ok(pl.sw <= pl.iw && !pl.bad.length, `phone builder: no sideways scrolling at 360 px, ${pl.n} controls, none overlapping ${pl.bad.join(' | ')}`);
     ok(await P.locator('#wbList .wbcard.compact').count() === await P.locator('#wbList .wbcard').count() && await P.locator('#wbList .wbcard [data-f]').count() === 0, 'phone: compact cards (type, duration · target), no fields in the list');
     ok(/125 → 130 % FTP · 325 → 338 W/.test(await P.textContent('.wbrep .wbcard[data-p$=".0"] .wbsumtxt')), 'phone: the VO2max step reads 3:30 · 125 → 130 % FTP · 325 → 338 W');
@@ -318,7 +319,7 @@ const layoutOf = (page, root) => page.evaluate(root => {
     await P.click('#mwCancel'); await P.waitForSelector('.mwask'); ok(/Discard your changes/.test(await P.textContent('.mwask')), 'phone: Cancel with changes asks first (in the page)');
     await P.click('.mwask button:has-text("Discard")'); await P.waitForSelector('.mwbox', { state: 'detached' });
     ok((await listOf(token)).find(w => w.id === saved.id).steps.find(x => x.repeat).steps[0].target.pct === 125, 'phone: Discard keeps the stored workout');
-    await P.click('#mwNew'); await P.waitForSelector('.mwbox.wb'); await P.click('#wbAddRep'); await P.waitForTimeout(150);
+    await P.click('[data-new="ride"]'); await P.waitForSelector('.mwbox.wb'); await P.click('#wbAddRep'); await P.waitForTimeout(150);
     pl = await layoutOf(P, '.wb'); ok(pl.sw <= pl.iw && !pl.bad.length, `phone: a new workout with a repeat block fits 360 px without overlaps ${pl.bad.join(' | ')}`);
     // audit 27.11.: the last step of the only repeat (or the only repeat) could be deleted: an empty workout that Save then refused
     for (let k = 0; k < 4 && await P.locator('#wbList > .wbcard').count(); k++) { await P.tap('#wbList > .wbcard .wbopen'); await P.waitForSelector('.wbsheet'); await P.tap('.wbsheet [data-a="del"]'); await P.waitForTimeout(100); }
@@ -335,13 +336,13 @@ const layoutOf = (page, root) => page.evaluate(root => {
     // ---- signed out: kept in this browser, offered for upload after signing in ----
     const octx = await b.newContext({ viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true });
     const O = await octx.newPage(); O.on('pageerror', e => errs.push('signed out: ' + e.message)); O.on('dialog', d => d.accept());
-    await O.goto(BASE + '/profil.html'); await O.waitForSelector('#mwNew'); await O.click('#mwNew'); await O.waitForSelector('.mwbox');
+    await O.goto(BASE + '/workouts.html'); await O.waitForSelector('[data-new="ride"]'); await O.click('[data-new="ride"]'); await O.waitForSelector('.mwbox');
     await O.fill('#mwName', 'Offline intervals'); await O.click('#mwSave'); await O.waitForSelector('.mwbox', { state: 'detached' });
     ok(await O.evaluate(() => JSON.parse(localStorage.getItem('rf_myworkouts') || '[]').some(w => w.name === 'Offline intervals' && w.v === 2)), 'signed out: saved in this browser');
-    const t2 = await reg('Offline Rider'); await signIn(O, t2, 'Offline Rider', 220); await O.reload(); await O.waitForSelector('#mwUpP');
-    await O.click('#mwUpP'); await O.waitForTimeout(500);
+    const t2 = await reg('Offline Rider'); await signIn(O, t2, 'Offline Rider', 220); await O.reload(); await O.waitForSelector('#wkUp');
+    await O.click('#wkUp'); await O.waitForTimeout(500);
     ok((await listOf(t2)).some(w => w.name === 'Offline intervals') && !(await listOf(token)).some(w => w.name === 'Offline intervals'), 'after sign-in: uploaded to that account only');
-    ok(await O.locator('#mwUpP').count() === 0, 'after the upload: no offer any more');
+    ok(await O.locator('#wkUp').count() === 0, 'after the upload: no offer any more');
     await octx.close();
 
     // ---- the whole thing by gamepad only (js/padnav.js, a fake standard pad): Customise, a value, a step, save, profile, delete ----
@@ -389,12 +390,12 @@ const layoutOf = (page, root) => page.evaluate(root => {
     ok(await padTo('#mwSave'), 'pad: reaches Save workout'); await press('A'); await G.waitForSelector('.mwbox', { state: 'detached' }); await G.waitForTimeout(300);
     const padW = (await listOf(token)).find(w => w.name === nm);
     ok(!!padW && padW.v === 2 && padW.steps[1].target.pct === p0 + 2 && padW.steps.at(-2).type === 'work' && padW.steps.at(-1).type === 'cooldown', 'pad: saved on the server with the value and the new step (in before the cool-down)');
-    ok(await padTo('#wMine'), 'pad: reaches “My workouts”'); await press('A'); await G.waitForURL(/profil\.html/); await G.waitForSelector('.mwitem'); await G.waitForTimeout(500);
+    ok(await padTo('#wMine'), 'pad: reaches “My workouts”'); await press('A'); await G.waitForURL(/workouts\.html/); await G.waitForSelector('#wk-ride .wkr'); await G.waitForTimeout(500);
     await press('down');
-    const del = `.mwitem[data-id="${padW?.id}"] [data-del]`;
-    ok(await padTo(del, 120), 'pad: in the profile, reaches Delete of the new workout');
-    await press('A'); await G.waitForSelector('.mwask'); await padTo('.mwask button.danger'); await press('A'); await G.waitForTimeout(500);
-    ok(!(await listOf(token)).some(w => w.id === padW?.id) && !(await G.locator(`.mwitem[data-id="${padW?.id}"]`).count()), 'pad: deleted after the in-page question');
+    const rowSel = `#wk-ride .wkr[data-i="${await wkRow(G, nm).getAttribute('data-i')}"]`;
+    ok(await padTo(rowSel, 120), 'pad: on Workouts, reaches the new workout'); await press('A'); await G.waitForSelector('#wkSheet'); await G.waitForTimeout(200);
+    ok(await padTo('#wkDel', 30), 'pad: reaches its Delete'); await press('A'); await G.waitForSelector('.mwask'); await padTo('.mwask button.danger'); await press('A'); await G.waitForTimeout(500);
+    ok(!(await listOf(token)).some(w => w.id === padW?.id) && !(await wkRow(G, nm).count()), 'pad: deleted after the in-page question');
     // the fit line by pad: “Ride N laps” and a suggested route are buttons the pad reaches
     await G.goto(BASE + '/?desktop&noprofile&demo&view=detail&id=demo'); await G.waitForSelector('#workSel'); await G.selectOption('#workSel', 'z2_90'); await G.waitForTimeout(500);
     await press('down'); ok(await padTo('#mwFitLaps'), 'pad: reaches “Ride N laps”'); const needG = await G.getAttribute('#mwFitLaps', 'data-laps'); await press('A'); await G.waitForTimeout(300);

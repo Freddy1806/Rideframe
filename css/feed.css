@@ -81,3 +81,17 @@ button.hrow { width: 100%; text-align: left; font: inherit; color: inherit; }
 .froute .kline { fill: none; stroke-linejoin: round; stroke-linecap: round; }
 .fwsrc { margin: 6px 0 0; font-size: 12.5px; color: var(--muted); } /* "Recorded on watch" */
 #feed .ptop { justify-content: space-between; gap: 10px; } .fstats { flex: none; gap: 6px; text-decoration: none; padding: 0 12px; } .fsico { width: 18px; height: 18px; } /* 25.11.: Stats moved under Activities (js/nav.js) */
+/* 27.11.: the header row of Activities: Filter (names the active filter), "+" (a small menu) and Stats; the chips only when Filter is open */
+#feed .ptop { position: relative; gap: 8px; } #feed .ptop .pbrand { flex: 1; }
+.fhbtn { display: inline-flex; align-items: center; gap: 6px; height: 44px; padding: 0 12px; border-radius: 99px; border: 1px solid var(--line-2); color: var(--paper); font: inherit; font-size: 13px; font-weight: 800; white-space: nowrap; max-width: 44vw; }
+.fhbtn span { overflow: hidden; text-overflow: ellipsis; } .fhbtn.on { border-color: var(--accent); color: var(--accent); } .fhbtn[aria-expanded="true"] { background: var(--ink-3); }
+#feed .fstats { height: 44px; display: inline-flex; align-items: center; }
+.fplus .gico { width: 20px; height: 20px; }
+.fchips[hidden] { display: none; } .fchip { min-height: 40px; }
+.fmenu { position: absolute; right: 0; top: calc(100% + 4px); z-index: 30; min-width: 220px; display: flex; flex-direction: column; padding: 6px; border-radius: 14px; background: var(--ink-3); border: 1px solid var(--line-2); box-shadow: 0 16px 36px rgba(0,0,0,.45); }
+.fmenu[hidden] { display: none; } .fmenu button[hidden] { display: none; }
+.fmenu button { display: flex; align-items: center; gap: 10px; min-height: 48px; padding: 0 12px; border-radius: 10px; font: inherit; font-size: 15px; font-weight: 800; color: var(--paper); text-align: left; }
+.fmenu button:active { background: var(--ink-2); } .fmenu .fsico { color: var(--accent); }
+@media (max-width: 370px) { #feed .fstats { padding: 0 10px; } .fhbtn { padding: 0 10px; } }
+@media (max-width: 420px) { #feed .fstats { width: 44px; padding: 0; border-radius: 99px; } #feed .fstl { display: none; } } /* 27.11.: Filter, + and Stats beside the title: Stats as its icon on a phone */
+@media (max-width: 400px) { .fhbtn { max-width: 34vw; } }

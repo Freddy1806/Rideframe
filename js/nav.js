@@ -4,8 +4,9 @@ import { icon } from './theme.js';
 
 // 25.11. (owner: "so wie das Garmin auch macht … eher so dein Trainingscoach"): Today · Training · Activities · Body · Profile.
 // Stats lives under Activities now (its link at the top of the feed, and in Profile), so nav('stats') lights up Activities.
-const ITEMS = [['home', 'handy.html', 'home', 'Today'], ['training', 'training.html', 'trainer', 'Training'], ['feed', 'aktivitaeten.html', 'list', 'Activities'], ['body', 'body.html', 'body', 'Body'], ['profile', 'profil.html', 'user', 'Profile']];
-const ALIAS = { stats: 'feed' };
+// 27.11. (owner: the Training page "kann komplett weg"): its tab is Workouts, the one home of every workout (js/workoutspage.js).
+const ITEMS = [['home', 'handy.html', 'home', 'Today'], ['workouts', 'workouts.html', 'trainer', 'Workouts'], ['feed', 'aktivitaeten.html', 'list', 'Activities'], ['body', 'body.html', 'body', 'Body'], ['profile', 'profil.html', 'user', 'Profile']];
+const ALIAS = { stats: 'feed', training: 'workouts' };
 /** puts the bar at the end of <body> (outside the page root, so re-renders keep it) and marks the body for the bottom padding */
 export function nav(active) {
   active = ALIAS[active] || active;
