@@ -238,8 +238,10 @@ let fails = 0; const ok = (c, m) => { console.log(`${c ? '✓' : '✗'} ${m}`); 
     let x = await ts(); ok(x.scr === 'tscan' && x.st === 'scan' && x.n === 0, 'Indoor trainer: searching, nothing in range yet'); await tshot('searching'); ok(/Searching/.test(await tt()), 'fenix 8: "Searching…"');
     await T.check('#wKOn'); await T.clock.runFor(1200); x = await ts(); ok(x.n === 2, 'the scan lists the KICKR and the power meter'); await tshot('list');
     ok(/KICKR CORE/.test(await tt()) && /Smart trainer, ERG/.test(await tt()), 'the list: the trainer first, "Smart trainer, ERG"');
-    await T.click(`[data-face="${F8}"] .wbtn.start`); await tshot('connecting', 30); ok(/Connecting/.test(await tt()), 'START: "Connecting…"');
+    // START and the text in one page task (the page clock flows on its own: the pretend KICKR's answers can come before a later look)
+    const conn = await T.evaluate(() => { __watch.ev('start'); return __watch.texts.join(' | '); }); await tshot('connecting', 30); ok(/Connecting/.test(conn), 'START: "Connecting…"');
     await T.clock.runFor(1000); x = await ts(); ok(x.st === 'ready' && x.ctl, 'connected, control taken (FTMS request control + start)'); await tshot('connected'); ok(/Connected/.test(await tt()), '"Connected", START to ride');
+    await tb('start'); x = await ts(); ok(x.scr === 'tpick' && x.sel === 0, '27.11.: START: the choice, Free ride first'); ok(/Free ride \(ERG\)/.test(await tt()), '"Free ride (ERG)"');
     await tb('start'); await T.clock.runFor(3000); x = await ts(); ok(x.scr === 'trec' && x.tgt === 100 && x.kt === 100, 'riding: target 100 W, the trainer has it'); await tshot('erg_page');
     ok(/TARGET W/.test(await tt()) && /WATTS/.test(await tt()) && /RPM/.test(await tt()) && /BPM/.test(await tt()), 'ERG page: target, watts, rpm, heart rate');
     await tb('up', 3); x = await ts(); ok(x.tgt === 115 && x.kt === 115, 'UP 3×: 115 W, sent');
@@ -277,6 +279,33 @@ let fails = 0; const ok = (c, m) => { console.log(`${c ? '✓' : '✗'} ${m}`); 
     await tb('start'); x = await ts(); ok(x.scr === 'home' && (await T.evaluate(async () => (await import('/js/watchflow.js')).homeItems(__watch.F)[0])) === 'trainer', 'the start menu, Indoor trainer on top');
     await T.check('#wKRefuse'); await tb('start'); await T.clock.runFor(1500); x = await ts(); ok(x.scr === 'tscan' && x.st === 'refused', 'the trainer used last connects by itself; refused shows on the trainer screen'); await tshot('refuses_control');
     ok(/Refuses control/.test(await tt()) && /Another app/.test(await tt()), '"Refuses control", "Another app controls it."'); await tb('back'); await tb('back'); x = await ts(); ok(x.scr === 'home', 'BACK, BACK: the start menu');
+    // ---- 27.11.: a workout on the trainer: the built-in 30 / 15 (demo mode, no server list), sped up; + twice in a hard 30 s, - once in a float ----
+    await T.uncheck('#wKRefuse'); await T.evaluate(async () => { const m = await import('/js/watchflow.js'); __watch.ev('item', m.homeItems(__watch.F).indexOf('trainer')); }); await T.clock.runFor(1500);
+    await tb('start'); await T.clock.runFor(1500); x = await ts(); ok(x.scr === 'tscan' && x.st === 'ready', 'Indoor trainer again: START on the KICKR, connected');
+    await tb('start'); x = await ts(); ok(x.scr === 'tpick', 'START: the choice'); await tshot('wk_choice', 300);
+    await tb('down'); x = await ts(); ok(x.sel === 1 && /30\/15, 3 x 13/.test(await tt()) && /63 min/.test(await tt()), `DOWN: the 30 / 15, "63 min" (${await tt()})`); await tshot('wk_choice_3015', 300);
+    await tb('start'); x = await ts(); const WK = await T.evaluate(() => { const W = __watch.F.wk; return W && { dur: W.dur, w: W.w, hard: W.hard, tot: W.tot }; });
+    ok(x.scr === 'trec' && WK && WK.tot === 3750 && x.tgt === WK.w[0] && x.kt === WK.w[0], `the 30 / 15 rides: 62:30, the trainer at the first target (${x.tgt} W)`);
+    const s0 = []; WK.dur.reduce((a, d) => (s0.push(a), a + d), 0); const h = WK.hard.findIndex((y, i) => y && WK.dur[i] === 30);
+    const rideTo = async t1 => { await T.evaluate(() => __watch.speed(25)); while ((await ts()).t < t1 - 30) await T.clock.runFor(1000);
+      await T.evaluate(() => __watch.speed(1)); while ((await ts()).t < t1) await T.clock.runFor(250); };
+    const kw = () => T.evaluate(() => __watch.kickr.writes.filter(w => w[1] === 5).map(w => w[2] + (w[3] << 8)));
+    await rideTo(s0[2] + 4); x = await ts(); ok(x.tgt === WK.w[2] && x.kt === WK.w[2], `a sprint at ${WK.w[2]} W, no ramp`); await tshot('wk_sprint', 200);
+    await rideTo(s0[h] + 8); x = await ts(); const step = x.step; ok(x.tgt === WK.w[h] && x.kt === WK.w[h], `the first 30 s at ${WK.w[h]} W`); await tshot('wk_hard', 200);
+    { const t = await tt(); ok(/1\/13, SET 1/.test(t) && /NEXT 125 W, 0:15/.test(t) && /LEFT/.test(t) && /\+\/- 5 W/.test(t), 'the counter, the next step, the time left, the step: ' + t); }
+    await tb('up', 2); x = await ts(); ok(x.tgt === WK.w[h] + 2 * step && x.kt === x.tgt, `+ twice in the hard step: ${x.tgt} W at once (+${2 * step})`); await tshot('wk_hard_plus', 100); ok(/\+10 W/.test(await tt()), 'the offset shows: "+10 W"');
+    await rideTo(s0[h + 1] + 4); x = await ts(); ok(x.tgt === WK.w[h + 1] && x.kt === WK.w[h + 1], `the float at ${WK.w[h + 1]} W, the hard offset stays with the hard steps`);
+    await tb('down'); x = await ts(); ok(x.tgt === WK.w[h + 1] - step && x.kt === x.tgt, `- once in the float: ${x.tgt} W`); await tshot('wk_float_minus', 100); ok(/-5 W/.test(await tt()), 'the easy offset shows: "-5 W"');
+    await rideTo(s0[h + 2] + 3); x = await ts(); ok(x.tgt === WK.w[h + 2] + 2 * step && x.kt === x.tgt, `the next 30 s: ${x.tgt} W, the hard offset kept`);
+    await rideTo(s0[h + 3] + 3); x = await ts(); ok(x.tgt === WK.w[h + 3] - step, `the next float: ${x.tgt} W, the easy offset kept`);
+    const sent = await kw(); ok([WK.w[h] + step, WK.w[h] + 2 * step, WK.w[h + 1], WK.w[h + 1] - step, WK.w[h + 2] + 2 * step, WK.w[h + 3] - step].every(w => sent.includes(w)), `the trainer received ${[...new Set(sent)].slice(-12).join(', ')}`);
+    await tb('start'); x = await ts(); ok(x.paused, 'START: paused'); const tq = x.t; await T.clock.runFor(4000); await tshot('wk_paused', 100); ok((await ts()).t === tq, 'paused: the workout stands');
+    await tb('start'); x = await ts(); ok(!x.paused && x.tgt === x.kt, 'resumed at the same place');
+    await rideTo(WK.tot + 2); x = await ts(); const ends = WK.w.at(-1); ok(!(await T.evaluate(() => __watch.F.wk)) && x.tgt <= 100 && x.kt === x.tgt, `the end: free ERG at ${x.tgt} W`);
+    ok(/WORKOUT DONE/.test(await tt()), '"WORKOUT DONE"'); await tshot('wk_done', 100); void ends;
+    await tb('up'); x = await ts(); ok(x.kt === x.tgt, `after the workout + / - is free ERG again (${x.tgt} W)`);
+    await tb('back'); await tb('down', 2); await tb('start'); x = await ts(); ok(x.scr === 'tsum', 'Finish & save: the summary'); const wsum = await T.evaluate(() => __watch.F.tsum);
+    ok(wsum && wsum.t >= WK.tot, `saved as a ride of ${wsum && wsum.t} s`); await tshot('wk_summary', 100); await tb('start');
     ok(!terr.length, 'no page errors in the trainer flows' + (terr.length ? ': ' + terr.join(' | ') : '')); await tc.close();
 
     // ---- 23.11.7 (Freddy on the fenix 8: "like a rotary wheel"): real pointer drags on the fenix 8 face: the wheel on kg / reps, lists row by row,

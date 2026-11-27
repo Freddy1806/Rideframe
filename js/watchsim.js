@@ -12,7 +12,7 @@
 // 23.11.7: the wheel (a finger dragged over kg / reps / the trainer's target steps it, the neighbours show small above and below), lists
 // track the finger 1:1 (dragRow), a drag is never also a tap or a swipe; the six standard workouts (watchflow STD_W) instead of demo ones.
 import { newFlow, handle, SCR, curEx, setNo, restLeft, clock, sent, paired, setSetup, setConfig, setRoute, setRoutes, routeFace, routeInfo, recPages, homeItems, listItems, workouts, planItem, HOME, HOME_FIT, HOME_LAY, homeTop, holdPart, pausedTime, HOLD_S,
-  LIST_LAY, healthBody, DEMO_HEALTH, dragRow, pickRows, doneOf, prefillOf, lastSet, lastTxt, loading, VERSION, stepOf, WHEEL_STEP, WHEEL_SHOW, DRAG_MIN } from './watchflow.js';
+  LIST_LAY, healthBody, DEMO_HEALTH, dragRow, pickRows, doneOf, prefillOf, lastSet, lastTxt, loading, VERSION, stepOf, WHEEL_STEP, WHEEL_SHOW, DRAG_MIN, setRides } from './watchflow.js';
 import { nextTarget } from './watchtrainer.js';
 import { compact, defaults, fieldText, labelOf, TOP } from './watchfields.js';
 import { shown, live as tLive } from './watchtrainer.js';
@@ -25,7 +25,10 @@ import { screen, palette, LAY } from './watchscreens.js';
 
 const $ = s => document.querySelector(s), LS = window.localStorage;
 const store = { get: (k, d) => { try { const v = LS.getItem('rf_watch_' + k); return v == null ? d : JSON.parse(v); } catch { return d; } }, set: (k, v) => { try { v == null ? LS.removeItem('rf_watch_' + k) : LS.setItem('rf_watch_' + k, JSON.stringify(v)); } catch {} } };
-const now = () => Date.now() / 1000;
+// 27.11.: the clock can run faster (window.__watch.speed(k), the UI test rides a whole trainer workout in a few minutes)
+let spd = 1, spd0 = Date.now(), spdOff = Date.now();
+const now = () => (spdOff + (Date.now() - spd0) * spd) / 1000;
+function speed(k) { spdOff = now() * 1000; spd0 = Date.now(); spd = k > 0 ? k : 1; }
 
 
 /* ---- demo data: what GET /api/watch/strength/setup and /summary answer ---- */
@@ -61,9 +64,10 @@ function boot() {
   const o = { queue: q, cfg: cfg || compact(defaults()), last: store.get('last', 'run'), trainer: store.get('trainer', ''), tgt: store.get('tgt', 100) };
   K.paired = false; K.sub = {}; K.scanning = false;
   F = live() ? newFlow(token ? store.get('setup', null) : null, { ...o, paired: !!token }) : newFlow(demoSetup(), o);
+  if (live() && token) { const rd = store.get('rides', null); if (rd) setRides(F, rd.rides, rd.ftp); } // 27.11.: the trainer's workouts (Storage "rides" on the watch)
   sum = live() ? store.get('summary', null) : DEMO_SUM; net = ''; rsrc = 'demo'; demoAuto = demoNone = false;
   if (live() && token) { refresh(); push(); }
-  window.__watch = { get F() { return F; }, get mode() { return mode; }, get net() { return net; }, get cfgFrom() { return cfgFrom; }, get rsrc() { return rsrc; }, get texts() { return shown8.texts.slice(); }, get boxes() { return shown8.boxes.slice(); }, get kickr() { return K; }, get wheel() { return wheelUi; }, ev, segDemo, loadCfg };
+  window.__watch = { get F() { return F; }, get mode() { return mode; }, get net() { return net; }, get cfgFrom() { return cfgFrom; }, get rsrc() { return rsrc; }, get texts() { return shown8.texts.slice(); }, get boxes() { return shown8.boxes.slice(); }, get kickr() { return K; }, get wheel() { return wheelUi; }, ev, segDemo, loadCfg, speed };
   panel(); paint(); loadCfg();
 }
 /** the config: the paired watch asks with its token (GET /api/watch/config), the preview without a watch with the phone login */
@@ -110,7 +114,8 @@ async function refresh() { // setup + summary, kept for the next start (the watc
   if (!near) return;
   try { const s = await api('GET', 'strength/setup'); if (s.status === 401) return unpair('This watch was removed on the phone.'); if (s.ok) { setSetup(F, s.j); store.set('setup', s.j); }
     const g = await api('GET', 'summary'); if (g.ok) { sum = g.j; store.set('summary', sum); }
-    const c = await api('GET', 'config'); if (c.ok) { cfg = c.j; cfgFrom = 'watch'; store.set('cfg', cfg); setConfig(F, cfg); } } catch {}
+    const c = await api('GET', 'config'); if (c.ok) { cfg = c.j; cfgFrom = 'watch'; store.set('cfg', cfg); setConfig(F, cfg); }
+    const w = await api('GET', 'rides'); if (w.ok) { setRides(F, w.j.rides, w.j.ftp); store.set('rides', w.j); } } catch {}
   paint();
 }
 let pushing = false;
@@ -235,7 +240,7 @@ function dragMode(u, v, f) {
   return scrollable() ? ['list', 0] : null;
 }
 /** the screens a dragged finger scrolls (FlowDelegate.scrollable) */
-const scrollable = () => ([SCR.PICK, SCR.MENU, SCR.HOME, SCR.MORE, SCR.SMODE, SCR.RPICK, SCR.END, SCR.SAVEQ, SCR.SUM, SCR.TEND].includes(F.scr) || F.scr === SCR.TSCAN && tList()) && !F.flash;
+const scrollable = () => ([SCR.PICK, SCR.MENU, SCR.HOME, SCR.MORE, SCR.SMODE, SCR.RPICK, SCR.END, SCR.SAVEQ, SCR.SUM, SCR.TEND, SCR.TPICK].includes(F.scr) || F.scr === SCR.TSCAN && tList()) && !F.flash;
 /** the trainer screen shows the list (searching), not one trainer's state */
 const tList = () => ['scan', 'off'].includes(shown(F.link));
 /** the row drawn nearest to v (within 0.09 S): [offset, y] or null (23.11.8: the rows as the face drew them, js/watchscreens.js LAY) */
@@ -253,7 +258,7 @@ function tapAt(u, v, f) {
   if (s === SCR.PAUSE) { const P = F.pz || {}; // conf: the Discard pill = yes, elsewhere = no; else Discard row = ask, the top = resume
     if (P.conf) return ev(Math.abs(v - PAUSE_LAY.discard) < .06 ? 'start' : 'back');
     if (Math.abs(v - PAUSE_LAY.discard) < .055) return ev('item', 1); if (v < .62) return ev('item', 0); return; }
-  const menu = [SCR.MENU, SCR.END, SCR.SAVEQ, SCR.TEND].includes(s), pick = [SCR.PICK, SCR.MORE, SCR.SMODE, SCR.RPICK, SCR.TSCAN].includes(s);
+  const menu = [SCR.MENU, SCR.END, SCR.SAVEQ, SCR.TEND].includes(s), pick = [SCR.PICK, SCR.MORE, SCR.SMODE, SCR.RPICK, SCR.TSCAN, SCR.TPICK].includes(s);
   if (s === SCR.HOME) { const n = listItems(F).length, r = rowAt(L.rows, v), i = r ? homeTop(F.sel, n) + r[0] : -1; // the rows as drawn
     if (i >= 0 && i < n) ev('item', i); return; }
   if (menu || pick) { const r = rowAt(L.rows, v), n = listItems(F).length, i = r ? F.sel + r[0] : -1; // the title, the counter: no row

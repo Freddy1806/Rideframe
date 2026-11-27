@@ -15,12 +15,12 @@ const fl = (o = {}) => newFlow(null, { id: () => 'tr' + (++n), ...o });
 const radio = (F, K, now) => { for (let i = 0; i < 100 && F.link.act.length; i++) for (const a of F.link.act.splice(0)) for (const e of K.handle(a)) handle(F, 'ble', now, e); };
 const ev = (F, K, now, ...evs) => { for (const e of evs) { if (Array.isArray(e)) handle(F, e[0], now, e[1]); else handle(F, e, now); radio(F, K, now); } };
 const tgtWrites = K => K.writes.filter(w => w[0] === 'fcp' && w[1] === 0x05).map(w => w[2] + (w[3] << 8));
-/** HOME -> Indoor trainer -> the list -> START: connected; then START: riding at the start target */
+/** HOME -> Indoor trainer -> the list -> START: connected; then START, START (27.11.: the choice, Free ride on top): riding at the start target */
 function ride(o = {}, K = fakeKickr(o.k)) {
   const F = fl(o.f); ev(F, K, 1000, ['item', homeItems(F).indexOf('trainer')]);
   if (shown(F.link) === 'scan') ev(F, K, 1000, 'start');
   handle(F, 'tick', 1000 + OP_S + .5); radio(F, K, 1000 + OP_S + .5);
-  if (o.ride !== false) ev(F, K, 1005, 'start');
+  if (o.ride !== false) ev(F, K, 1005, 'start', 'start');
   return [F, K];
 }
 
@@ -34,14 +34,15 @@ test('scan list -> connect -> subscribe, request control, start -> the target go
   assert.deepEqual(K.writes, [['fcp', 0x00], ['fcp', 0x07]], 'request control, then start, one at a time');
   assert.equal(shown(F.link), 'ready', 'the 0x80 0x00 0x01 answer = control'); assert.ok(F.out.some(o => o.k === 'trainer'), 'the trainer is remembered');
   assert.equal(F.link.want, 'KICKR CORE 2 5A1F');
-  ev(F, K, 1003, 'start'); assert.equal(F.scr, SCR.TREC); assert.equal(F.tr.tgt, 100, 'default 100 W'); assert.deepEqual(tgtWrites(K), [100]); assert.equal(K.tgt, 100);
+  ev(F, K, 1003, 'start'); assert.equal(F.scr, SCR.TPICK, '27.11.: START: Free ride or a workout'); assert.equal(listItems(F)[0], 'Free ride (ERG)'); assert.equal(F.sel, 0);
+  ev(F, K, 1003, 'start'); assert.equal(F.scr, SCR.TREC); assert.equal(F.wk, null, 'a free ride'); assert.equal(F.tr.tgt, 100, 'default 100 W'); assert.deepEqual(tgtWrites(K), [100]); assert.equal(K.tgt, 100);
   assert.equal(F.last, 'trainer');
 });
 test('the trainer used last connects by itself; a cancel goes back to the list without connecting again', () => {
   const K = fakeKickr(), F = fl({ trainer: 'KICKR CORE 2 5A1F', tgt: 185 });
   ev(F, K, 1000, ['item', homeItems(F).indexOf('trainer')]); assert.equal(shown(F.link), 'ready', 'seen in the scan: connected at once');
   ev(F, K, 1001, 'back'); assert.equal(shown(F.link), 'scan'); assert.ok(!K.paired, 'let go'); assert.equal(F.link.want, '');
-  assert.deepEqual(listItems(F), ['KICKR CORE 2 5A1F'], 'listed, not connected'); ev(F, K, 1002, 'start', 'start'); assert.equal(F.tr.tgt, 185, 'the last target');
+  assert.deepEqual(listItems(F), ['KICKR CORE 2 5A1F'], 'listed, not connected'); ev(F, K, 1002, 'start', 'start', 'start'); assert.equal(F.tr.tgt, 185, 'the last target');
   const G = fl(); ev(G, K, 1000, ['item', homeItems(G).indexOf('trainer'), 'back']); ev(G, K, 1000, 'back'); assert.equal(G.scr, SCR.HOME, 'BACK on the list: home, scan off'); assert.ok(!K.scanning);
 });
 test('+ / - steps, step size 5 / 10 / 25 on a tap, held = 25 W, limits 30..1000', () => {
@@ -72,7 +73,7 @@ test('refused control (another app controls it): the state, ride anyway, retried
   assert.equal(shown(F.link), 'refused'); assert.equal(F.scr, SCR.TSCAN); assert.deepEqual(K.writes, [['fcp', 0], ['fcp', 7]], 'no target');
   const w0 = K.writes.length; handle(F, 'tick', 1004); radio(F, K, 1004); assert.equal(K.writes.length, w0, 'not before 5 s');
   handle(F, 'tick', 1005.5); radio(F, K, 1005.5); assert.deepEqual(K.writes.slice(w0), [['fcp', 0], ['fcp', 7]], 'asks for control again'); assert.equal(shown(F.link), 'refused');
-  ev(F, K, 1006, 'start'); assert.equal(F.scr, SCR.TREC, 'riding anyway (the power is still recorded)'); assert.deepEqual(tgtWrites(K), [], 'no target without control');
+  ev(F, K, 1006, 'start', 'start'); assert.equal(F.scr, SCR.TREC, 'riding anyway (the power is still recorded)'); assert.deepEqual(tgtWrites(K), [], 'no target without control');
   K.refuse = false; handle(F, 'tick', 1018); radio(F, K, 1018); assert.equal(shown(F.link), 'ready'); assert.equal(K.tgt, 100, 'the target once control is back');
   // refused mid-ride: the answer to a target is 0x05
   K.refuse = true; ev(F, K, 1020, 'up'); assert.equal(shown(F.link), 'refused'); K.refuse = false; handle(F, 'tick', 1020 + CTL_S); radio(F, K, 1026); handle(F, 'tick', 1027); radio(F, K, 1027);
@@ -155,4 +156,127 @@ test('23.11.7 wheel on the ERG target: one step of the current size per finger s
   for (const e of K.release()) handle(F, 'ble', 1007, e); radio(F, K, 1007); assert.equal(K.tgt, 140, 'the newest target reached the trainer'); assert.ok(tgtWrites(K).length <= w0 + 2, 'latest wins: no write per step');
   ev(F, K, 1008, ['wheel', [0, -500]]); assert.equal(F.tr.tgt, W_MIN); ev(F, K, 1008, ['wheel', [0, 500]]); assert.equal(F.tr.tgt, W_MAX);
   F.tr.pg = 1; ev(F, K, 1009, ['wheel', [0, -3]]); assert.equal(F.tr.tgt, W_MAX, 'the stats page: no wheel'); assert.equal(F.scr, SCR.TREC);
+});
+
+/* ---- 27.11.: workouts on the watch (js/watchtrainer.js newWk ... = Trainer.mc TWork; js/watchflow.js tPick ... = Flow.mc) ---- */
+import { readFileSync } from 'node:fs';
+import { newWk, wkAt, wkTarget, wkTune, wkFallback, wkFromRide, wkCompact, wkDur, wkEasy, wkShown, WK_FB_HARD, WK_FB_ID, WK_STEPS } from '../js/watchtrainer.js';
+import * as WT from '../js/watchtrainer.js';
+import { rides, setRides, FREE_RIDE, WK_DONE_S, VERSION } from '../js/watchflow.js';
+import { WORKOUTS, workoutDuration, workoutState, setFtp, isHard } from '../js/workouts.js';
+const WO = WORKOUTS.find(w => w.id === WK_FB_ID);
+/** the watch's target at every second of a workout (step by step like the flow does) */
+function wkTrack(W, from = 0, to = W.tot) { const out = []; for (let t = from; t < to; t++) { wkAt(W, t); out.push(wkTarget(W, t)); } return out; }
+
+test('the built-in 30 / 15: 39 hard 30 s in 3 sets of 13 (+ 3 sprints), every step as long as js/workouts.js c_30_15_3x13, the same watts', () => {
+  const W = newWk(wkFallback(250));
+  assert.equal(W.tot, workoutDuration(WO), 'the same length'); assert.equal(W.dur.length, WO.steps.length, 'the same steps');
+  assert.deepEqual(W.dur, WO.steps.map(s => s.dur), 'every step as long');
+  const h30 = W.hard.map((h, i) => h && W.dur[i] === 30).filter(Boolean).length; assert.equal(h30, 39, '39 hard intervals of 30 s'); assert.equal(W.hard.filter(Boolean).length, 42, '+ 3 sprints');
+  setFtp(250); const woHard = [...new Set(WO.steps.filter(s => s.dur === 30 && isHard(s)).map(s => s.watts))];
+  assert.equal(woHard.length, 1, 'js/workouts.js: one hard wattage'); assert.ok(woHard[0] >= 340 && woHard[0] <= WK_FB_HARD, `js/workouts.js hard ${woHard[0]} W, the watch's built-in ${WK_FB_HARD} W (the owner's +10..30 W)`);
+  WO.steps.forEach((s, i) => { if (s.dur === 30 && isHard(s)) assert.equal(W.w[i], WK_FB_HARD); else if (s.watts) assert.equal(W.w[i], s.watts, `step ${i} ${s.label}`);
+    else { assert.equal(W.w[i], Math.round(s.pct / 100 * 250), `step ${i} ${s.label}`); assert.equal(W.w2[i], s.pct2 != null ? Math.round(s.pct2 / 100 * 250) : -1); }
+    assert.equal(W.hard[i], isHard(s), `step ${i} hard`); });
+  assert.deepEqual([W.cnt[8], W.cnt[W.dur.length - 2]], ['1/13, SET 1', '13/13, SET 3'], 'the counter of the first and the last 30 s');
+  W.i = 8; assert.equal(wkShown(W), '1/13, SET 1'); W.i = 9; assert.equal(wkShown(W), 'FLOAT'); W.i = 0; assert.equal(wkShown(W), 'WARM-UP');
+  assert.equal(wkDur(wkFallback(250).s), W.tot, 'wkDur without expanding');
+  assert.equal(newWk(wkFallback(300)).w[0], 120, 'the ramps follow the FTP sent last (40 % of 300)');
+});
+test('server form: every built-in workout of js/workouts.js comes out second by second as workoutState (ERG ramps) gives it, with and without offsets', () => {
+  for (const ftp of [287]) for (const w of WORKOUTS) {
+    setFtp(ftp); const c = wkFromRide(w, ftp, isHard);
+    if (w.steps.some(s => s.free)) { assert.equal(c, null, `${w.id}: a free (non-ERG) step: not for the watch`); continue; }
+    assert.ok(c && JSON.stringify(c).length < 800, `${w.id}: ${JSON.stringify(c).length} bytes`);
+    for (const [ha, ea] of [[0, 0], [15, -10]]) {
+      const W = newWk(c); W.ha = ha; W.ea = ea; assert.equal(W.tot, workoutDuration(w), w.id);
+      // every 7th second and every second within 12 s of a step's start (ramps in / out, the jumps); workoutState is slow
+      const got = wkTrack(W), near = new Set(); let s0 = 0; for (const st of w.steps) { for (let d = -12; d <= 12; d++) near.add(s0 + d); s0 += st.dur; }
+      const bad = []; for (let t = 0; t < W.tot; t++) { if (t % 7 && !near.has(t)) continue; const y = workoutState(w, t, ftp, { ramp: true, hardAdj: ha, easyAdj: ea }).target; if (Math.abs(got[t] - y) > 1) bad.push([t, got[t], y]); }
+      assert.deepEqual(bad.slice(0, 3), [], `${w.id} at FTP ${ftp}, offsets ${ha} / ${ea}: watch vs js/workouts.js`);
+    }
+  }
+});
+test('server form: repeats fold (the 30 / 15 in a few hundred bytes), labels lose their counters, ASCII only', () => {
+  setFtp(250); const c = wkFromRide(WO, 250, isHard), j = JSON.stringify(c);
+  assert.ok(j.length < 400, `${j.length} bytes`); assert.equal(c.n, '30 / 15, 3 x 13'); assert.ok(/^[\x20-\x7e]*$/.test(j));
+  const set = c.s.find(e => Array.isArray(e[1]) && e[0] === 3 && Array.isArray(e[1][0][1])); assert.ok(set, 'three sets of [13 x (30 / 15), rest]');
+  assert.deepEqual(set[1][0][1][0].slice(0, 4), [30, WO.steps.find(s => s.dur === 30 && isHard(s)).watts, null, 1]); assert.equal(set[1][0][1][0][4], '30 / 15');
+  assert.deepEqual(wkCompact([{ sec: 60, w: 100, hard: false, label: 'A' }, { sec: 60, w: 100, hard: false, label: 'A' }]), [[120, 100, null, 0, 'A']], 'the same step twice: one');
+  assert.equal(newWk({ id: 'x', n: 'x', s: [[100000, [[1, 100, null, 0, 'a']], 0]] }).dur.length, 100, 'at most 100 rounds');
+  assert.equal(newWk({ id: 'x', n: 'x', s: [[100, [[100, [[1, 100, null, 0, 'a']], 0]], 0]] }).dur.length, WK_STEPS, `at most ${WK_STEPS} steps`);
+  assert.equal(newWk({ id: 'x', n: 'x', s: [['a', 1], [0, 100, null, 0, 'a']] }), null, 'nothing usable: null');
+});
+/** a ride with a workout: connected, START (the choice), the workout's row, START */
+function wkRide(row = 1, o = {}) { const [F, K] = ride({ ...o, ride: false }); if (o.rides) setRides(F, o.rides, o.ftp); ev(F, K, 1005, 'start'); assert.equal(F.scr, SCR.TPICK); for (let i = 0; i < row; i++) ev(F, K, 1005, 'down'); ev(F, K, 1005, 'start'); return [F, K]; }
+/** n seconds of riding, one tick per second; the cues */
+function secs(F, K, n) { const cues = []; for (let i = 0; i < n; i++) { const t = F.tr.ts + 1; handle(F, 'tick', t); radio(F, K, t); cues.push(...F.cues.splice(0)); } return cues; }
+test('choice: Free ride (ERG) or a workout, also while connecting (then START rides it once connected); BACK keeps the link', () => {
+  const [F, K] = ride({ ride: false }); ev(F, K, 1005, 'start'); assert.deepEqual(listItems(F), [FREE_RIDE, '30/15, 3 x 13'], 'no sync yet: the built-in 30 / 15');
+  ev(F, K, 1005, 'back'); assert.equal(F.scr, SCR.TSCAN); assert.equal(shown(F.link), 'ready', 'still connected');
+  ev(F, K, 1005, 'down'); assert.equal(F.scr, SCR.TPICK, 'UP / DOWN open it too'); ev(F, K, 1005, ['item', 1]); assert.equal(F.scr, SCR.TREC); assert.equal(F.wk.n, '30/15, 3 x 13');
+  // while connecting: the choice waits, START rides it once connected
+  const G = fl(), K2 = fakeKickr(); ev(G, K2, 1000, ['item', homeItems(G).indexOf('trainer')]); K2.hold = true; ev(G, K2, 1000, 'start'); assert.equal(shown(G.link), 'conn');
+  ev(G, K2, 1000, 'start'); assert.equal(G.scr, SCR.TPICK); ev(G, K2, 1000, 'down', 'start'); assert.equal(G.scr, SCR.TSCAN, 'not connected yet: back to the state'); assert.equal(G.tw, 1);
+  for (const e of K2.release()) handle(G, 'ble', 1001, e); K2.hold = false; radio(G, K2, 1001); handle(G, 'tick', 1001 + OP_S + .5); radio(G, K2, 1005); assert.equal(shown(G.link), 'ready');
+  ev(G, K2, 1005, 'start'); assert.equal(G.scr, SCR.TREC); assert.ok(G.wk, 'the workout chosen while connecting'); assert.equal(G.tw, -1);
+  // the server's list replaces the built-in one when it has the 30 / 15
+  setFtp(260); const srv = [wkFromRide(WORKOUTS[0], 260, isHard), wkFromRide(WO, 260, isHard)]; const H = fl(); setRides(H, srv, 260);
+  assert.deepEqual(rides(H).map(w => w.id), ['ss3x10', WK_FB_ID]); setRides(H, [srv[0]], 260); assert.deepEqual(rides(H).map(w => w.id), [WK_FB_ID, 'ss3x10'], 'without it: the built-in first');
+  setRides(H, null, 0); assert.equal(rides(H).length, 2, 'an answer without a list keeps them'); assert.equal(H.ftp, 260);
+});
+test('riding the 30 / 15: steps by the clock, ramps once a second, short efforts jump, 3-2-1 before each hard one and one at its end, the end', () => {
+  const [F, K] = wkRide(); const W = F.wk; assert.equal(F.tr.tgt, 100, 'the warm-up ramp starts at 40 % of 250'); assert.equal(K.tgt, 100);
+  const w0 = tgtWrites(K).length; let c = secs(F, K, 600); const ramp = tgtWrites(K).slice(w0);
+  assert.ok(ramp.length <= 600 && ramp.length >= 70, `the ramp 100 -> 180 W: ${ramp.length} writes in 600 s`); assert.ok(ramp.every((x, i) => !i || x > ramp[i - 1]), 'rising only');
+  c.push(...secs(F, K, 180 + 60 + 60 + 10 + 170 - 3)); assert.equal(F.tr.t, 1077); assert.equal(K.tgt, 130, 'spin before the first 30 s');
+  c.push(...secs(F, K, 3)); assert.equal(K.tgt, WK_FB_HARD, 'the first 30 s: the target jumps, no ramp'); assert.equal(wkShown(W), '1/13, SET 1');
+  assert.deepEqual(c.slice(-3), ['set', 'set', 'set'], '3-2-1 before it');
+  c = secs(F, K, 29); assert.equal(K.tgt, WK_FB_HARD); c.push(...secs(F, K, 1)); assert.equal(K.tgt, 125, 'the float: 125 W at once'); assert.deepEqual(c.filter(x => x !== 'set'), ['stop'], 'one cue at its end');
+  c = secs(F, K, W.tot - F.tr.t + 2); assert.equal(c.filter(x => x === 'set').length, 38 * 3, 'the other 38 30 s: 3-2-1 each'); assert.equal(c.filter(x => x === 'stop').length, 38);
+  assert.equal(F.wk, null, 'over'); assert.ok(c.includes('done')); assert.equal(F.tr.tgt, wkEasy(W)); assert.equal(K.tgt, 88, 'free ERG at the cool-down\'s end (35 % of 250), at most 100 W');
+  assert.ok(F.wkDone > F.tr.ts && F.wkDone <= F.tr.ts + WK_DONE_S, '"Workout done" for a while');
+  ev(F, K, F.tr.ts, 'up'); assert.equal(F.tr.tgt, 90, 'then + / - as in a free ride (onto the 5 W grid)');
+});
+test('+ / - in a workout: hard offset in a hard step, easy offset in an easy one, both stay; held = 25 W; the wheel; sent at once', () => {
+  const [F, K] = wkRide(); const W = F.wk; secs(F, K, 1080 + 5); assert.equal(K.tgt, WK_FB_HARD);
+  ev(F, K, F.tr.ts, 'up', 'up'); assert.equal(W.ha, 10); assert.equal(F.tr.tgt, WK_FB_HARD + 10); assert.equal(K.tgt, WK_FB_HARD + 10, 'sent at once');
+  secs(F, K, 30); assert.equal(K.tgt, 125, 'the float unchanged'); ev(F, K, F.tr.ts, 'down'); assert.equal(W.ea, -5); assert.equal(K.tgt, 120);
+  secs(F, K, 15); assert.equal(K.tgt, WK_FB_HARD + 10, 'the next 30 s keeps +10'); secs(F, K, 30); assert.equal(K.tgt, 120, 'the next float keeps -5');
+  secs(F, K, 15 + 45 * 11 + 30); assert.equal(K.tgt, 125, 'the rest between the sets: 130 - 5'); assert.equal(wkShown(W), 'REST');
+  ev(F, K, F.tr.ts, ['item', 1]); assert.equal(W.ea, 0, 'the + zone'); ev(F, K, F.tr.ts, 'upHold'); assert.equal(W.ea, 25, 'held: 25 W'); assert.equal(K.tgt, 155);
+  ev(F, K, F.tr.ts, ['item', 2], 'down'); assert.equal(F.tr.step, 10); assert.equal(W.ea, 15, 'the step size counts');
+  handle(F, 'wheel', F.tr.ts, [0, -2]); radio(F, K, F.tr.ts); assert.equal(W.ea, -5, 'the wheel: 2 steps down'); assert.equal(K.tgt, 125); assert.ok(F.cues.includes('tick'));
+  for (let i = 0; i < 40; i++) ev(F, K, F.tr.ts, 'downHold'); assert.equal(W.ea, -150, 'at most -150 W'); assert.equal(K.tgt, 50, 'never below 50 W');
+  assert.equal(W.ha, 10, 'the hard offset is its own');
+});
+test('pause in a workout keeps the place: the clock stands, 30 W while paused, + / - wait; resume goes on where it was', () => {
+  const [F, K] = wkRide(); secs(F, K, 1080 + 10); const i = F.wk.i, t = F.tr.t, left = F.wk.s0 + F.wk.dur[i] - t;
+  ev(F, K, F.tr.ts, 'start'); assert.equal(F.tr.st, 'pause'); assert.equal(K.tgt, W_PAUSE);
+  secs(F, K, 300); assert.equal(F.tr.t, t); assert.equal(F.wk.i, i, 'the same step'); assert.equal(K.tgt, W_PAUSE, 'still easy');
+  ev(F, K, F.tr.ts, 'up'); assert.equal(K.tgt, W_PAUSE, 'a change waits for the resume'); assert.equal(F.tr.tgt, WK_FB_HARD + 5);
+  ev(F, K, F.tr.ts, 'start'); assert.equal(K.tgt, WK_FB_HARD + 5, 'resume: the hard target again, with the offset'); secs(F, K, left - 1); assert.equal(F.wk.i, i); secs(F, K, 1); assert.equal(F.wk.i, i + 1);
+});
+test('a long hard step ramps in and out (js/workouts.js rampIn / rampOut), finish and discard end the workout, the upload as before', () => {
+  const W = newWk({ id: 'l', n: 'Long', s: [[60, 100, null, 0, 'Easy'], [120, 300, null, 1, 'VO2'], [60, 100, null, 0, 'Easy']] });
+  const tr = wkTrack(W); assert.deepEqual(tr.slice(49, 61), [100, 100, 120, 140, 160, 180, 200, 220, 240, 260, 280, 300], 'the last 10 s up to 300');
+  assert.deepEqual(tr.slice(180, 186), [300, 260, 220, 180, 140, 100], 'the first 5 s down');
+  const [F, K] = wkRide(); secs(F, K, 100); ev(F, K, F.tr.ts, 'back'); assert.equal(F.scr, SCR.TEND); ev(F, K, F.tr.ts, 'down', 'down', 'start');
+  assert.equal(F.scr, SCR.TSUM); assert.equal(F.wk, null); assert.equal(F.tbody.type, 'VirtualRide'); assert.equal(F.tbody.moving, 100);
+  const [G, K2] = wkRide(); secs(G, K2, 5); ev(G, K2, G.tr.ts, 'back', 'down', 'down', 'down', 'start', 'down', 'start'); assert.equal(G.scr, SCR.HOME); assert.equal(G.wk, null);
+});
+test('Monkey C: Trainer.mc TWork / Flow.mc have the JavaScript\'s constants, functions and the built-in 30 / 15 entry by entry; the version', () => {
+  const tmc = readFileSync(new URL('../garmin/source/Trainer.mc', import.meta.url), 'utf8'), fmc = readFileSync(new URL('../garmin/source/Flow.mc', import.meta.url), 'utf8');
+  for (const k of ['WK_STEPS', 'WK_ADJ', 'WK_FLOOR', 'WK_SHORT', 'WK_RI', 'WK_RO', 'WK_EASY', 'WK_FB_HARD']) assert.match(tmc, new RegExp(`const ${k} = ${WT[k]};`), k);
+  assert.match(tmc, new RegExp(`const WK_FB_ID = "${WK_FB_ID}";`)); assert.match(fmc, new RegExp(`const FREE_RIDE = "${FREE_RIDE.replace(/[()]/g, '\\$&')}";`)); assert.match(fmc, new RegExp(`const WK_DONE_S = ${WK_DONE_S};`));
+  for (const f of ['wkCnt', 'wkAdd', 'wkBase', 'wkPlat', 'wkAt', 'wkTarget', 'wkTune', 'wkAdj', 'wkEasy', 'wkShown', 'wkNextW', 'wkDur', 'wkFallback', 'newWk']) assert.match(tmc, new RegExp(`js: ${f}\\(`), `Trainer.mc ports ${f}`);
+  for (const f of ['setRides', 'rides', 'tBegin', 'wkApply', 'wkEnd', 'wkSec', 'wkStep', 'tPick', 'tChoose']) assert.match(fmc, new RegExp(`\\b${f}\\b`), `Flow.mc ports ${f}`);
+  // the built-in workout's entries, read from Trainer.mc wkFallback (rnd(x.0 * f / 100) = Math.round(x * f / 100))
+  const body = tmc.slice(tmc.indexOf('function wkFallback')); const src = body.slice(body.indexOf('"s" => [') + 7, body.indexOf('] } as Dictionary;') + 1);
+  for (const ftp of [250, 287]) {
+    const mcS = Function('f', 'rnd', 'WK_FB_HARD', `return ${src};`)(ftp, x => Math.round(x), WK_FB_HARD), js = wkFallback(ftp);
+    assert.deepEqual(mcS, js.s, `the 30 / 15 at FTP ${ftp}: Trainer.mc = js`);
+  }
+  assert.match(tmc, /"n" => "30\/15, 3 x 13", "ri" => 3, "ro" => 2/); assert.deepEqual([wkFallback(1).n, wkFallback(1).ri, wkFallback(1).ro], ['30/15, 3 x 13', 3, 2]);
+  assert.match(fmc, new RegExp(`RF_VERSION = "${VERSION.replace(/\./g, '\\.')}"`)); assert.equal(VERSION, '27.11.1');
 });

@@ -15,6 +15,8 @@
 // events (TrainerBle.mc), O_TRAINER keeps the trainer's name and the last target, O_SAVEACT with tsum saves the ride (tbody = the upload).
 // 23.11.7: E_WHEEL (a finger turning kg / reps / the trainer's target, wheel), lists 1:1 with the finger (dragRow), a swipe without drag
 // events moves a list SWIPE_ROWS rows, the six standard workouts (stdWorkouts) after the saved ones.
+// 27.11.: trainer workouts (js/watchflow.js tPick ... wkStep): S_TSCAN START -> S_TPICK (Free ride or a workout of rideList: the server's,
+// GET /api/watch/rides, else the built-in 30 / 15) -> S_TREC steps through it (Trainer.mc TWork) by the ride's clock; + / - = the offsets.
 import Toybox.Lang;
 import Toybox.Math;
 
@@ -55,6 +57,7 @@ const DRAG_MIN = 0.03;
 const HOME_FIT = 4;
 const HOME_Y0 = 0.27;
 const HOME_DY = 0.155;
+const S_TPICK = 23;        // 27.11.: the trainer: Free ride (ERG) or a workout (rideList)
 // events (js: the ev strings of handle())
 const E_UP = 1;
 const E_DOWN = 2;
@@ -113,8 +116,10 @@ const M_PAUSE = "Pause";
 const M_SYNC = "Sync now";
 const M_PAIR = "Pair with phone";
 const FREE_ROW = "Free";
+const FREE_RIDE = "Free ride (ERG)";   // 27.11.: js FREE_RIDE
+const WK_DONE_S = 30;                  // "Workout done" shows this long
 // js/watchflow.js VERSION: the menu title shows it
-const RF_VERSION = "25.11.2";
+const RF_VERSION = "27.11.1";
 // pairing states / sum states
 const P_ENTER = 0;
 const P_SENDING = 1;
@@ -367,6 +372,12 @@ class Flow {
     var tbody as Dictionary or Null = null;                     // POST /api/watch/activity of the ride just saved (Recorder takes it)
     var tTgt as Number = TW_START;
     var tConf as Boolean = false;
+    // 27.11.: the trainer's workouts (js: F.rides, F.ftp, F.wk, F.tw, F.wkDone)
+    var rides as Array<Dictionary> = [] as Array<Dictionary>;
+    var ftp as Number = 0;
+    var wk as TWork or Null = null;
+    var tw as Number = -1;                                      // the choice on S_TPICK: -1 none, 0 free ride, k = rideList()[k - 1]
+    var wkDone as Number = 0;
 
     // js: newFlow(setup, { paired, queue, cfg, last })
     function initialize(setupIn, isPaired as Boolean, q, cfgIn, lastIn, trainerIn, tgtIn) {
@@ -556,6 +567,7 @@ class Flow {
             if (R == null) { return; }
             if (R.pg != 0) { return; }
             var t0 = R.tgt, w = t0;
+            if (wk != null) { if (n != 0) { wkStep(n * R.step, now); if (R.tgt != t0) { cues.add(C_TICK); } } return; } // 27.11.: a workout: the offset
             for (var j = 0; j < k; j++) { R.tgt = w; w = R.nextTarget(d, false); }
             R.tgt = t0;
             if (w != t0) { tTarget(w, now); cues.add(C_TICK); }
@@ -1049,10 +1061,71 @@ class Flow {
         else if (ev == E_BACK) { pzHint = now + HINT_S; }
     }
 
+    /* ---- 27.11.: the trainer's workouts (js/watchflow.js setRides, rides, tBegin, wkApply, wkEnd, wkSec, wkStep, tPick, tChoose) ---- */
+    // js: setRides(F, l, ftp): GET /api/watch/rides { ftp, rides } (or Storage "rides"); an answer without a list keeps the ones there are
+    function setRides(l, f) as Void {
+        if (l instanceof Array) {
+            var a = l as Array, r = [] as Array<Dictionary>;
+            for (var k = 0; k < a.size() && r.size() < 30; k++) {
+                var x = a[k];
+                if (x instanceof Dictionary) { var d = x as Dictionary; if (d["id"] instanceof String && d["n"] instanceof String && d["s"] instanceof Array) { r.add(d); } }
+            }
+            rides = r;
+        }
+        var fv = numOf(f); if (fv > 0) { ftp = fv; }
+    }
+    // js: rides(F): the built-in 30 / 15 first when the server has not sent it (yet), then the server's
+    function rideList() as Array<Dictionary> {
+        var r = [] as Array<Dictionary>, has = false;
+        for (var k = 0; k < rides.size(); k++) { if (WK_FB_ID.equals(strOf(rides[k]["id"]))) { has = true; } }
+        if (!has) { r.add(wkFallback(ftp)); }
+        r.addAll(rides);
+        return r;
+    }
+    function clampW(x as Number) as Number { return x < TW_MIN ? TW_MIN : (x > TW_MAX ? TW_MAX : x); }
+    function wkApply(now as Number) as Void {
+        var W = wk, R = tr;
+        if (W == null || R == null) { return; }
+        var x = clampW(W.target(R.t));
+        if (x != R.tgt) { R.tgt = x; if (R.st == RS_RUN) { link.setTarget(x, now); } }
+    }
+    function wkEnd(now as Number) as Void {
+        var W = wk, R = tr;
+        if (W == null || R == null) { return; }
+        var x = W.easy(); wk = null; wkDone = now + WK_DONE_S; R.tgt = x; R.newBlock();
+        if (R.st == RS_RUN) { link.setTarget(x, now); }
+        cues.add(C_DONE);
+    }
+    // one second of the workout (after the ride counted it): the step, 3-2-1 before a hard one (C_SET), one at its end (C_STOP)
+    function wkSec(now as Number) as Void {
+        var W = wk, R = tr;
+        if (W == null || R == null) { return; }
+        var i0 = W.i; W.at(R.t);
+        var n = W.dur.size();
+        if (W.i >= n) { wkEnd(now); return; }
+        if (W.i != i0) { R.newBlock(); if (W.hard[i0] && !W.hard[W.i]) { cues.add(C_STOP); } }
+        var lf = W.left(R.t);
+        if (W.i + 1 < n && lf >= 1 && lf <= 3) { if (W.hard[W.i + 1] && !W.hard[W.i]) { cues.add(C_SET); } }
+        wkApply(now);
+    }
+    // + / - in a workout: d W on the offset of the step now, sent at once (paused: on the resume)
+    function wkStep(d as Number, now as Number) as Void { var W = wk; if (W == null) { return; } W.tune(d); wkApply(now); }
+    function tPick() as Void { sel = tw > 0 ? tw : 0; scr = S_TPICK; }
+    // S_TPICK row i: 0 = free ride, else that workout; connected: the ride starts, else back to the trainer's state until it is
+    function tChoose(i as Number, now as Number) as Void {
+        tw = i; var v = link.shown();
+        if (v == TL_READY || v == TL_REFUSED) { tBegin(now); } else { sel = 0; scr = S_TSCAN; }
+    }
+
     /* ---- 23.11.: the indoor trainer (js/watchflow.js tOpen, tBegin, tTarget, tPause, tResume, tFinish, tDiscard, tSecs, onTScan, onTRec) ---- */
-    function tOpen(now as Number) as Void { sel = 0; scr = S_TSCAN; if (link.st == TL_OFF) { link.scan(now); } }
+    function tOpen(now as Number) as Void { sel = 0; tw = -1; scr = S_TSCAN; if (link.st == TL_OFF) { link.scan(now); } }
+    // the ride starts: free ERG at the last target, or the workout chosen on S_TPICK at its first target
     function tBegin(now as Number) as Void {
-        var R = new TRide(now, tTgt); tr = R; tsum = null; tbody = null; tConf = false;
+        var k = tw, l = rideList(), W = k > 0 && k <= l.size() ? newWk(l[k - 1]) : null;
+        tw = -1; wk = W; wkDone = 0;
+        var w0 = tTgt;
+        if (W != null) { w0 = clampW(W.target(0)); }
+        var R = new TRide(now, w0); tr = R; tsum = null; tbody = null; tConf = false;
         link.setTarget(R.tgt, now); last = "trainer"; scr = S_TREC; cues.add(C_START);
     }
     // a new target: shown at once, sent when the line is free (latest wins); while paused it waits for the resume
@@ -1069,19 +1142,20 @@ class Flow {
         var R = tr;
         if (R == null) { return; }
         if (R.t == 0) { tDiscard(); return; }
+        wk = null; wkDone = 0;
         var su = R.sum();
         tbody = R.body(su, newId(now), now);
         su["name"] = link.name; tsum = su;
         out.add({ "k" => O_SAVEACT } as Dictionary); out.add({ "k" => O_TRAINER } as Dictionary);
         link.stop(); tr = null; sel = 0; scr = S_TSUM; cues.add(C_DONE);
     }
-    function tDiscard() as Void { link.stop(); tr = null; tConf = false; sel = 0; scr = S_HOME; }
+    function tDiscard() as Void { link.stop(); tr = null; wk = null; wkDone = 0; tConf = false; sel = 0; scr = S_HOME; }
     // the ride's seconds up to now (at most 5 at once, a longer gap is not made up)
     function tSecs(now as Number) as Void {
         var R = tr;
         if (R == null) { return; }
         if (now - R.ts > 5) { R.ts = now - 5; }
-        while (R.ts + 1 <= now) { R.ts++; if (R.st == RS_RUN) { R.sec(link.livePw(now), link.liveCad(now), hr); } }
+        while (R.ts + 1 <= now) { R.ts++; if (R.st == RS_RUN) { R.sec(link.livePw(now), link.liveCad(now), hr); wkSec(now); } }
     }
     // S_TSCAN: the list while searching (UP / DOWN, drag, START or a tap connects), else the state with START to ride
     function onTScan(ev as Number, now as Number, arg) as Void {
@@ -1098,8 +1172,12 @@ class Flow {
             }
             return;
         }
-        if (ev == E_START || ev == E_TAP) { if (v == TL_READY || v == TL_REFUSED) { tBegin(now); } } // refused: ride anyway, the power is recorded
-        else if (ev == E_BACK) { link.stop(); link.want = ""; link.scan(now); sel = 0; }        // cancel: the list, no automatic connect this time
+        // 27.11.: START (a tap) opens the choice (S_TPICK), also while connecting; once chosen and connected START rides (refused: ride
+        // anyway, the power is recorded); UP / DOWN open the choice again
+        var go = v == TL_READY || v == TL_REFUSED;
+        if (ev == E_START || ev == E_TAP) { if (go && tw >= 0) { tBegin(now); } else if (go || v == TL_CONN) { tPick(); } }
+        else if (ev == E_UP || ev == E_DOWN) { if (go || v == TL_CONN) { tPick(); } }
+        else if (ev == E_BACK) { link.stop(); link.want = ""; tw = -1; link.scan(now); sel = 0; }   // cancel: the list, no automatic connect this time
     }
     // S_TREC: UP / DOWN (and the - / + zones, E_ITEM 0 / 1) = a step, held = 25 W; a tap on the target (E_ITEM 2) = 5 / 10 / 25 W steps;
     // START = pause / resume; BACK (BACK held, swipe left / right) = the menu; swipe up / down = the stats page
@@ -1108,7 +1186,9 @@ class Flow {
         if (R == null) { scr = S_HOME; return; }
         var a = ev == E_ITEM ? numOf(arg) : -1;
         var plus = ev == E_UP || ev == E_UP_HOLD || a == 1, minus = ev == E_DOWN || ev == E_DOWN_HOLD || a == 0;
-        if (plus || minus) { tTarget(R.nextTarget(plus ? 1 : -1, ev == E_UP_HOLD || ev == E_DOWN_HOLD), now); }
+        var big = ev == E_UP_HOLD || ev == E_DOWN_HOLD;
+        if ((plus || minus) && wk != null) { var k = big ? (R.step > TW_HOLD ? R.step : TW_HOLD) : R.step; wkStep(plus ? k : -k, now); } // 27.11.: a workout: the offset
+        else if (plus || minus) { tTarget(R.nextTarget(plus ? 1 : -1, big), now); }
         else if (ev == E_ITEM) { R.nextStep(); }
         else if (ev == E_START) { if (R.st == RS_RUN) { tPause(now); } else { tResume(now); } }
         else if (ev == E_SWIPE_UP || ev == E_SWIPE_DOWN) { R.pg = 1 - R.pg; }
@@ -1151,7 +1231,7 @@ class Flow {
         if (ev == E_SWIPE_LEFT) { ev = E_MENU; }
         if (ev == E_SWIPE_RIGHT) { ev = E_BACK; }
         var s = scr;
-        var isList = s == S_PICK || s == S_MENU || s == S_HOME || s == S_MORE || s == S_SMODE || s == S_RPICK || s == S_END || s == S_SAVEQ || s == S_TEND;
+        var isList = s == S_PICK || s == S_MENU || s == S_HOME || s == S_MORE || s == S_SMODE || s == S_RPICK || s == S_END || s == S_SAVEQ || s == S_TEND || s == S_TPICK;
         var paged = isList || s == S_REC || s == S_PAUSE || s == S_SUM || s == S_TSCAN;
         if (s == S_TREC) { onTRec(ev, now, arg); return; } // before the swipe mapping: swipe up / down is the stats page there, UP / DOWN the watts
         // 23.11.7: a swipe on a list (only when no drag events came: FlowDelegate swallows the swipe that ends a drag) moves it SWIPE_ROWS
@@ -1216,6 +1296,7 @@ class Flow {
                 else if (s == S_PICK) { pickBack(); }
                 else if (s == S_END) { if (endConf) { endConf = false; sel = 2; } else { toPick(true); } } // BACK = keep training
                 else if (s == S_TEND) { if (tConf) { tConf = false; sel = 3; } else { scr = S_TREC; } }  // BACK = resume
+                else if (s == S_TPICK) { sel = 0; scr = S_TSCAN; }                                     // the trainer's state, still connected
                 else { reset(); } // SMODE: the strength screen; SAVEQ: = No
             }
             return;
@@ -1288,6 +1369,7 @@ class Flow {
             else { r = ["Resume", R != null && R.pg == 1 ? "ERG page" : "Stats page", "Finish & save", "Discard"] as Array<String>; }
         }
         else if (s == S_TSCAN) { for (var i = 0; i < link.list.size(); i++) { r.add(strOf(link.list[i]["name"])); } }
+        else if (s == S_TPICK) { r.add(FREE_RIDE); var l = rideList(); for (var i = 0; i < l.size(); i++) { r.add(strOf(l[i]["n"])); } }
         return r;
     }
     function pickItem(i as Number, now as Number) as Void {
@@ -1320,6 +1402,7 @@ class Flow {
             else if (i == 1) { R.pg = 1 - R.pg; scr = S_TREC; }
             else if (i == 2) { tFinish(now); } else { tConf = true; sel = 0; }
         }
+        else if (s == S_TPICK) { tChoose(i, now); }
         else if (s == S_SAVEQ) { // the last row is No
             var q = saveq;
             if (q != null) { var lastRow = (q["rows"] as Array).size() - 1; if (i < lastRow) { saveTpl(q["wid"] == null || i == 1, now); } }

@@ -33,6 +33,8 @@ class Api {
     function pair(code as String, done as Method) as Void { add(Communications.HTTP_REQUEST_METHOD_POST, "/api/watch/pair", { "code" => code, "label" => deviceLabel() }, done); }
     // GET /api/watch/strength/setup -> { ex: [{ id, n, t, s, b }], rest, unit, last, top, recent, workouts }
     function setup(done as Method) as Void { add(Communications.HTTP_REQUEST_METHOD_GET, "/api/watch/strength/setup", null, done); }
+    // 27.11.: GET /api/watch/rides -> { ftp, rides: [{ id, n, s: [[sec, w, w2 | null, hard, label] | [n, [...], trim]], ri?, ro? }] } (tools/watch-api.mjs rideWorkouts)
+    function rides(done as Method) as Void { add(Communications.HTTP_REQUEST_METHOD_GET, "/api/watch/rides", null, done); }
     // GET /api/watch/summary -> { pts, prev, delta, sessions, strength, streak }
     function summary(done as Method) as Void { add(Communications.HTTP_REQUEST_METHOD_GET, "/api/watch/summary", null, done); }
     // GET /api/watch/config -> { v, run, ride, other, more, w, at } (js/watchfields.js compact)

@@ -281,6 +281,7 @@ module Draw {
         else if (s == S_TSCAN) { drawTScan(dc, F, S, P); }
         else if (s == S_TREC) { drawTRec(dc, F, S, P, now); }
         else if (s == S_TEND) { drawTEnd(dc, F, S, P); }
+        else if (s == S_TPICK) { drawTPick(dc, F, S, P); }
         else if (s == S_TSUM) { drawTSum(dc, F, S, P); }
         else { drawHome(dc, F, S, P, sum); }
     }
@@ -1016,6 +1017,8 @@ module Draw {
         var a = "", col = P.fg, b = "", d = "";
         if (v == TL_CONN) { a = "Connecting"; b = "Taking control"; }
         else if (v == TL_READY) { a = "Connected"; col = P.good; b = L.ctl ? "ERG ready" : "Power only, no ERG|Power only"; }
+        var nm = F.tw >= 0 && (v == TL_CONN || v == TL_READY); // 27.11.: the choice made while connecting (S_TPICK), START rides it
+        if (nm) { var rl = F.rideList(); d = F.tw > 0 && F.tw <= rl.size() ? strOf(rl[F.tw - 1]["n"]) : FREE_RIDE; }
         else if (v == TL_REFUSED) { a = "Refuses control"; col = P.bad; b = "Another app controls it.|Another app has it.|App in use"; d = "Close it, or ride without ERG|Or ride without ERG|Or ride, no ERG"; }
         else if (v == TL_LOST) { a = "Lost, reconnecting|Lost"; col = P.bad; b = "Keeps trying"; }
         var start = v == TL_READY || v == TL_REFUSED, py = S * 0.81, ph = S * 0.13, bt = 0.0;
@@ -1029,7 +1032,7 @@ module Draw {
             if (lines[i].length() == 0) { continue; }
             var y = below(dc, yb, XT, S * (i == 0 ? 0.61 : 0.675)), m = roomC(dc, c, y, XT, "g", R0), t = pick(dc, lines[i], XT, m < (S * 0.74).toNumber() ? m : (S * 0.74).toNumber(), false);
             if (y + dn(dc, XT, t) > bt) { break; }
-            put(dc, c, y, XT, t, (S * 0.74).toNumber(), i == 0 ? P.fg : P.lbl, false, R0); yb = y + dn(dc, XT, t);
+            put(dc, c, y, XT, t, (S * 0.74).toNumber(), i == 0 ? P.fg : (nm ? P.acc : P.lbl), i == 1 && nm, R0); yb = y + dn(dc, XT, t);
         }
     }
     // the ERG ride: the time, the target big with - / + beside it, the trainer's power, cadence, heart rate below; a stats page.
@@ -1037,18 +1040,28 @@ module Draw {
     function drawTRec(dc as Dc, F as Flow, S as Number, P as Palette, now as Number) as Void {
         var R = F.tr;
         if (R == null) { return; }
-        var L = F.link, v = L.shown(), paused = R.st != RS_RUN, c = S / 2, G = gap(S);
+        var L = F.link, v = L.shown(), paused = R.st != RS_RUN, c = S / 2, G = gap(S), W = F.wk;
         recRing(dc, S, P, !paused); pageDots(dc, S, P, 2, R.pg);
         if (R.pg != 0) { trStats(dc, S, P, R); return; }
-        var ct = clock(R.t), tf = fontIn(dc, ct, [NMI, ME, SM, XT], (S * 0.5).toNumber(), S * 0.1), ty = S * 0.13 > up(dc, tf) + S * 0.075 ? S * 0.13 : up(dc, tf) + S * 0.075;
-        put(dc, c, ty, tf, ct, S, P.fg, false, R0);
+        // 27.11.: in a workout the time left in the step (orange in a hard one), its label / counter, the offset, the next step and the time left
+        var ct = clock(W != null ? W.left(R.t) : R.t), tf = fontIn(dc, ct, [NMI, ME, SM, XT], (S * 0.5).toNumber(), S * 0.1), ty = S * 0.13 > up(dc, tf) + S * 0.075 ? S * 0.13 : up(dc, tf) + S * 0.075;
+        put(dc, c, ty, tf, ct, S, W != null && W.isHard() ? P.acc : P.fg, false, R0);
         var warn = v == TL_LOST ? "LOST, RECONNECTING|LOST" : (v == TL_REFUSED ? "NO CONTROL, OTHER APP|NO CONTROL" : (!L.ctl ? "POWER ONLY, NO ERG|NO ERG" : (paused ? "PAUSED" : "")));
-        var wc = warn.length() == 0 ? P.lbl : (paused && L.ctl && v != TL_LOST && v != TL_REFUSED ? P.acc : P.bad);
-        var wh = wheelOn(F, 0), ly = below(dc, ty + dn(dc, tf, "0"), XT, S * 0.205), lp = warn.length() > 0 ? warn : "TARGET W", lm = roomC(dc, c, ly, XT, "W", R0);
-        if (!wh) { put(dc, c, ly, XT, alt(dc, first(lp), pick(dc, lp, XT, 0, false), XT, lm), S, wc, false, R0); }
-        // the bottom: AVG / the resume pill, the three numbers with labels, the separator
+        var done = W == null && F.wkDone > now, lab = done ? "WORKOUT DONE" : "TARGET W";
+        if (W != null) { lab = W.shown(); }
+        var wc = warn.length() == 0 ? (done ? P.good : (W != null ? P.fg : P.lbl)) : (paused && L.ctl && v != TL_LOST && v != TL_REFUSED ? P.acc : P.bad);
+        var wh = wheelOn(F, 0), ly = below(dc, ty + dn(dc, tf, "0"), XT, S * 0.205), lp = warn.length() > 0 ? warn : lab, lm = roomC(dc, c, ly, XT, "W", R0);
+        if (!wh) { put(dc, c, ly, XT, warn.length() == 0 && W != null ? lp : alt(dc, first(lp), pick(dc, lp, XT, 0, false), XT, lm), S, wc, warn.length() == 0 && W != null, R0); }
+        // the bottom: AVG / the resume pill (a workout: the time left, the next step above it), the three numbers with labels, the separator
         var by = S * 0.85, bt = 0.0;
         if (paused) { var ph = S * 0.1; pill(dc, c, by, S * 0.44, ph, P.acc); put(dc, c, by, inPill(dc, "START", [XT], S * 0.4, ph), "START resume|Resume", S * 0.4, P.ink, false, R0); bt = by - ph / 2.0 - G; }
+        else if (W != null) {
+            var tl = clock(W.totLeft(R.t)), nw = W.nextW(), nx = "LAST STEP";
+            if (nw >= 0) { var nd = clock(W.dur[W.i + 1]), ns = nw.toString() + " W"; nx = "NEXT " + ns + ", " + nd + "|" + ns + ", " + nd + "|" + ns; }
+            // the time left goes where the font size setting leaves no room for two lines
+            if (inkH(dc, XT) <= S * 0.08) { put(dc, c, by, XT, tl + " LEFT|" + tl, S, P.lbl, false, R0); var ny = above(dc, by - up(dc, XT), XT, "g", S); put(dc, c, ny, XT, nx, S, P.fg, false, R0); bt = ny - up(dc, XT) - G; }
+            else { put(dc, c, by, XT, nx, S, P.fg, false, R0); bt = by - up(dc, XT) - G; }
+        }
         else { var ap = "AVG " + R.avgPw().toString(); put(dc, c, by, XT, ap + " W, " + rnd(R.kj).toString() + " kJ|" + ap + " W|" + ap, S, P.lbl, false, R0); bt = by - up(dc, XT) - G; }
         // the three numbers: the largest font whose row and labels fit 0.2 S and the circle (WATTS is W where it does not)
         var vals = [L.livePw(now).toString(), L.liveCad(now).toString(), F.hr > 0 ? F.hr.toString() : "--"] as Array<String>, vfs = [NMI, ME, SM, XT], vl = above(dc, bt, XT, "G", S * 0.735);
@@ -1085,12 +1098,21 @@ module Draw {
         }
         if (wh) {
             for (var dd = -1; dd <= 1; dd += 2) {
-                var w = R.nextTarget(dd, false);
+                var w = W != null ? R.tgt + dd * R.step : R.nextTarget(dd, false);
                 if (w == R.tgt) { continue; }
                 var yy = dd < 0 ? above(dc, gy - up(dc, gf), XT, "0", S) : below(dc, gy + dn(dc, gf, "0"), XT, 0);
                 if (yy - up(dc, XT) >= ty + dn(dc, tf, "0") + G && yy + dn(dc, XT, "0") <= sep - G) { txt(dc, c, yy, XT, w.toString(), P.dim); }
             }
-        } else { put(dc, c, below(dc, gy + dn(dc, gf, "0"), sf, 0), sf, "+/- " + R.step.toString() + " W", S, P.lbl, false, R0); }
+        } else {
+            var aj = W != null ? W.adj() : 0;
+            put(dc, c, below(dc, gy + dn(dc, gf, "0"), sf, 0), sf, aj != 0 ? (aj > 0 ? "+" : "-") + (aj > 0 ? aj : -aj).toString() + " W" : "+/- " + R.step.toString() + " W", S, aj != 0 ? P.fg : P.lbl, false, R0);
+        }
+    }
+    // 27.11.: the trainer's choice: a free ride (one target) or a workout (its length under it); while connecting it says so
+    function drawTPick(dc as Dc, F as Flow, S as Number, P as Palette) as Void {
+        var l = F.rideList(), v = F.link.shown(), m = 0, sub = "One target, + / - change it|One target";
+        if (F.sel > 0 && F.sel <= l.size()) { m = (wkDur(l[F.sel - 1]["s"]) + 30) / 60; sub = m.toString() + " min"; }
+        list(dc, F, S, P, F.listItems(), "INDOOR TRAINER", "TRAINER", false, sub, null, v == TL_READY || v == TL_REFUSED ? [] : [["Still connecting|Connecting|Wait", P.lbl, false]]);
     }
     function orDash(n as Number) as String { return n > 0 ? n.toString() : "--"; }
     // the ride's second page: this target's block (time, avg power), then the whole ride
