@@ -333,6 +333,7 @@ export class RideSession {
    *  workout done, power meter only) */
   _ergNow() {
     if (this.state.trainer.pmOnly) return null;
+    if (this.workout && this.erg && this.wNow?.done && this._coolW) return { w: this._coolW, by: 'hold' };
     if (this.workout && this.erg) { const w = this.wNow; return w && !w.done && w.step && !w.step.free && w.target != null ? { w: w.target, by: 'workout' } : null; }
     return this.berg ? { w: this._bergW || this._bergTarget(), by: 'hold' } : null;
   }
@@ -482,7 +483,7 @@ export class RideSession {
     if (hit(8)) this.toggleShift();
   }
   /** what the pad's L / R do right now: 'work' (workout target), 'erg' (free-ride ERG watts) or 'gear' */
-  _padMode() { return this.workout && !this.wDone ? 'work' : this.berg ? 'erg' : 'gear'; }
+  _padMode() { return this.workout && (!this.wDone || (this.erg && this._coolW)) ? 'work' : this.berg ? 'erg' : 'gear'; }
   /** the controller legend in the top bar: which button does what in this mode; only once a pad was used */
   _padLegend() {
     const el = this.q('#hPadLegend'); if (!el || !this.padSeen) return;
@@ -673,6 +674,8 @@ export class RideSession {
    *  L2 / R2 / W / S 5 W). Two offsets, both kept for the whole workout: one for the hard intervals (wAdj), one for everything
    *  easier (wAdjE: warm-up, rests, cool-down); free blocks have none. */
   _wTune(d) {
+    if (this.workout && this.wDone && this.erg && this._coolW) { // the open-end cool-down: the held wattage itself moves
+      this._coolW = Math.max(30, Math.min(900, this._coolW + d)); this.state.trainer.setPower(this._coolW); this._workoutHUD(this.power); return this._flash(`Cool-down ${this._coolW} W`, 1200); }
     if (!this.workout || this.wDone) return;
     const w = workoutState(this._wv(), this._wClock(), this.ftp); if (w.done || !w.step || w.step.free) return this._flash(w.step?.tgt ? 'This step has no power target: ride by the band shown' : 'Free block: ride as you like');
     const k = isHard(w.step) ? 'wAdj' : 'wAdjE'; this[k] = tuneAdj(this[k], d);
@@ -689,9 +692,13 @@ export class RideSession {
     const w = this.wNow = workoutState(runView(this.workout, run, t), t, this.ftp, { hardAdj: this.wAdj, easyAdj: this.wAdjE, ramp: this.erg });
     if (!w.done) { w.endI = endInfo(w.step, run, smp); w.tgtI = tgtInfo(w.step.tgt, smp, { hrMax: this.state.settings.hrMax }); w.tgt2I = tgtInfo(w.step.tgt2, smp, { hrMax: this.state.settings.hrMax }); }
     if (!w.done && isHard(w.step) && dt > 0) { this._adjAcc += this.wAdj * dt; this._adjT += dt; const sa = this._stepAdj[w.i] ||= [0, 0]; sa[0] += this.wAdj * dt; sa[1] += dt; } // time-weighted, for the saved ride
-    if (this.erg) this.state.trainer.setPower(w.done || w.step?.free ? null : w.target); // a test block is ridden freely
+    if (!w.done && w.target != null) this._lastTgt = w.target;
+    // owner 27.11.: after the last step the ride must not just stop: the cool-down goes on open end, the trainer keeps the
+    // last easy wattage (W / S, the pad and the buttons move it) until the rider ends the ride
+    if (w.done && this.erg && !this._coolW) this._coolW = Math.max(50, Math.min(Math.round(this.ftp * 0.6), Math.round(this._lastTgt || this.ftp * 0.4)));
+    if (this.erg) this.state.trainer.setPower(w.done ? this._coolW : w.step?.free ? null : w.target); // a test block is ridden freely
     if (dt > 0) this._ergSpan(this.erg && !w.done && !w.step?.free);
-        if (w.done && !this.wDone) { this.wDone = true; this._flash?.('Workout done!'); } // no coach voice in workouts (owner 17.11.): the bar shows it all
+        if (w.done && !this.wDone) { this.wDone = true; this._flash?.(this.erg ? `Workout done! Cool-down goes on at ${this._coolW} W until you end the ride` : 'Workout done!', 6000); } // no coach voice in workouts (owner 17.11.): the bar shows it all
   }
 
   /** the hard interval running now (pct >= 88, 1 min or longer) with the rider's tuned target, or null (ivgate.js) */
@@ -987,7 +994,7 @@ export class RideSession {
     q('#hWAdjV').textContent = fmtAdj(ca); q('#hWAdj').classList.toggle('adj', !!ca); bar.classList.toggle('adj', !!ca); q('#hWAdj').hidden = !w.done && !!w.step?.free; // no watts to move on a free step (heart rate / cadence / speed target, free riding)
     const pw = q('.metric.power'), wp = q('#hWPow'); pw?.classList.remove('z-lo', 'z-ok', 'z-hi'); wp.classList.remove('z-lo', 'z-hi');
     const cue = q('#hWCue'), arc = q('#hWArc'), C = 2 * Math.PI * 58;
-    if (w.done) { q('#hWStep').textContent = 'Done – ride on freely'; q('#hWOf').textContent = ''; q('#hWT').textContent = '✓'; q('#hWLeft').textContent = '0:00'; q('#hWLeftL').textContent = 'Left'; q('#hWNote').hidden = true; q('#hWTgt2').hidden = true; q('#hWNextN').textContent = 'Workout done'; q('#hWNext').textContent = ''; q('#hWState').textContent = 'done'; cue.hidden = true; arc.setAttribute('stroke-dasharray', `0 ${C}`); bar.className = `wbar glass done v-${this._wbView()}`; }
+    if (w.done) { const cw = this.erg && this._coolW; q('#hWStep').textContent = cw ? 'Done · cool-down, open end' : 'Done – ride on freely'; q('#hWOf').textContent = ''; q('#hWT').textContent = cw || '✓'; q('#hWLeft').textContent = '0:00'; q('#hWLeftL').textContent = 'Left'; q('#hWNote').hidden = true; q('#hWTgt2').hidden = true; q('#hWNextN').textContent = 'Workout done'; q('#hWNext').textContent = cw ? 'End the ride when you like' : ''; q('#hWState').textContent = 'done'; cue.hidden = true; arc.setAttribute('stroke-dasharray', `0 ${C}`); bar.className = `wbar glass done v-${this._wbView()}`; }
     else {
       const free = !!w.step.free, hard = w.hard, rest = !hard && !free && !w.ramp && /rest|easy|recover/i.test(w.step.label || '');
       const sp = this._sensors().pw; // no power source: "–", no verdict
@@ -1188,7 +1195,7 @@ export class RideSession {
   _arrowWithTrainer(e) {
     e.preventDefault?.();
     const k = e.key, f = e.shiftKey ? 5 : 1;
-    if (this.workout && !this.wDone && (k === 'ArrowUp' || k === 'ArrowDown')) this._wTune(k === 'ArrowUp' ? f : -f);
+    if (this.workout && (!this.wDone || (this.erg && this._coolW)) && (k === 'ArrowUp' || k === 'ArrowDown')) this._wTune(k === 'ArrowUp' ? f : -f);
     const now = performance.now(); this._arrowT = (this._arrowT || []).filter(x => now - x < 10000); this._arrowT.push(now);
     if (this._arrowT.length >= 3 && !this._arrowHint) { this._arrowHint = true; this._flash('Controller is in keyboard mode: switch it to D for all buttons'); }
   }

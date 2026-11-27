@@ -328,6 +328,13 @@ function fakePad() { // a standard-mapping gamepad; window.__pad.press(i) holds 
       await q2.evaluate(d => { window.__ride.elapsed = d + 1; }, dur); await q2.waitForTimeout(1200);
       const v = await q2.evaluate(() => ({ coach: window.__aud.filter(s => /assets\/audio\/coach\//.test(s)), voice: window.__voice, done: window.__ride.wDone, lines: Object.keys(window.__ride.coach?.lines || {}).length }));
       ok(v.lines === keys.length && v.done && !v.coach.length && !v.voice, 'workout start to finish: no coach line plays (warm-up, countdown, go, half, low, rest, done)', JSON.stringify(v));
+      // owner 27.11.: after the last step the cool-down goes on open end, the trainer keeps an easy wattage until the rider stops
+      const cd = await q2.evaluate(() => ({ erg: window.__ride.erg, cool: window.__ride._coolW, sent: window.__ride.state.trainer.erg, step: document.querySelector('#hWStep')?.textContent, t: document.querySelector('#hWT')?.textContent, run: window.__ride.running && !window.__ride.finished && !window.__ride.paused }));
+      ok(cd.erg && cd.cool >= 50 && cd.sent === cd.cool && /open end/.test(cd.step) && +cd.t === cd.cool && cd.run, `workout done: the ride goes on, ERG holds the cool-down's ${cd.cool} W, the bar says "${cd.step}"`, JSON.stringify(cd));
+      await q2.keyboard.press('w'); await q2.keyboard.press('w'); await q2.keyboard.press('s'); await q2.waitForTimeout(1500);
+      const cd2 = await q2.evaluate(() => ({ cool: window.__ride._coolW, sent: window.__ride.state.trainer.erg, t: document.querySelector('#hWT')?.textContent, e0: window.__ride.elapsed, run: window.__ride.running && !window.__ride.finished }));
+      ok(cd2.cool === cd.cool + 5 && cd2.sent === cd2.cool && +cd2.t === cd2.cool && cd2.run, `open-end cool-down: W W S moves the held watts to ${cd2.cool} W, still riding`, JSON.stringify(cd2));
+      if (SHOTS) await q2.screenshot({ path: `${SHOTS}/cooldown_open_end.jpg`, type: 'jpeg', quality: 80 });
       await q2.evaluate(() => { window.__ride.coach.say('challenge', 0); new Audio('assets/audio/spy-check.mp3'); });
       ok(await q2.evaluate(() => window.__aud.some(s => /spy-check/.test(s)) && !window.__aud.some(s => /coach\//.test(s))), 'control: the Audio spy sees new sounds; the coach is off everywhere now (main 92fa9ac), a challenge line plays nothing either');
       await c.close();
